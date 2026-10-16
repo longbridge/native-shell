@@ -1,6 +1,7 @@
 //! Rust components' lists on the engine: a list's own header, footer,
 //! empty view and separators, viewable rows, a `ListView` with rows of a
-//! Rust component (`ComponentElement::items`) or of the app.
+//! Rust component (`ComponentElement::items`) or of the app, and the
+//! methods of a nested component called through a `ComponentRef`.
 
 use std::{collections::HashMap, time::Duration};
 
@@ -10,7 +11,7 @@ use nsh_core::{
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
-use nsh_ui_mobile::{ListView, ListViewProps};
+use nsh_ui_mobile::{ListView, ListViewProps, Stepper, StepperProps};
 
 use crate::ChannelSink;
 
@@ -392,4 +393,73 @@ fn the_apps_handlers_on_a_list_views_rows_run() {
         .dispatch_event(list, EventKind::EndReached, EventPayload::None);
     tree.drain(&rx);
     assert!(tree.shows("ends 1"), "{:?}", tree.texts);
+}
+
+/// A stepper it asks for its value, then sets.
+#[derive(Default)]
+struct Asker {
+    asked: String,
+    stepper: Option<ComponentRef<Stepper>>,
+    ask: Option<Task<()>>,
+}
+
+impl Component for Asker {
+    const NAME: &'static str = "app.asker";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self.stepper = Some(cx.component_ref());
+    }
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let stepper = self.stepper.as_ref().expect("set up");
+        view()
+            .flex_1()
+            .child(text(format!("asked {}", self.asked)).on_press(cx.listener(
+                |this: &mut Self, _, cx| {
+                    let stepper = this.stepper.clone().expect("set up");
+                    let value = stepper.update(|s, cx| {
+                        let value = s.value();
+                        s.set_value(5.0, cx);
+                        value
+                    });
+                    this.ask = Some(cx.spawn(|this, _| async move {
+                        let value = value.await;
+                        let _ = this
+                            .update(move |this, cx| {
+                                this.asked = format!("{value:?}");
+                                cx.notify();
+                            })
+                            .await;
+                    }));
+                },
+            )))
+            .child(
+                Stepper::element(StepperProps {
+                    default_value: 3.0,
+                    ..StepperProps::default()
+                })
+                .component_ref(stepper),
+            )
+    }
+}
+
+#[test]
+fn rust_components_call_the_methods_of_components_they_render() {
+    let (engine, rx) = start(Root::of::<Asker>());
+    let mut tree = Tree::default();
+    tree.drain(&rx);
+    assert!(tree.shows("3"), "{:?}", tree.texts);
+    let ask = tree.find("asked ").unwrap();
+    engine
+        .control()
+        .dispatch_event(ask, EventKind::Press, EventPayload::None);
+    tree.drain(&rx);
+    assert!(tree.shows("asked Some(3.0)"), "{:?}", tree.texts);
+    assert!(
+        tree.shows("5"),
+        "the stepper shows its new value: {:?}",
+        tree.texts
+    );
 }

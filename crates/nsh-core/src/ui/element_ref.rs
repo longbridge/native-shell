@@ -1,14 +1,19 @@
 //! Handles to the elements a component renders (TS: `ref`), to send
 //! them commands: focus an input, scroll a scroll view, drive a web view or
-//! a video, call a native component.
+//! a video, call a native component; and to the components it renders, to
+//! call their methods ([`ComponentRef`]).
 
 use std::{
     cell::Cell,
     fmt,
+    marker::PhantomData,
     rc::{Rc, Weak},
 };
 
-use super::task::{Action, Executor};
+use super::{
+    Component, Context,
+    task::{Action, Executor, Updated, WeakComponent},
+};
 use crate::{Command, JsonValue, NodeId};
 
 /// One element of a component's render: made once
@@ -168,5 +173,69 @@ impl PartialEq for ElementRef {
 impl fmt::Debug for ElementRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ElementRef").field(&self.node.get()).finish()
+    }
+}
+
+/// One component of a component's render (TS: a `ref` to a component, its
+/// methods): made once ([`super::Context::component_ref`], in `setup`), put
+/// on the component each render ([`super::ComponentElement::component_ref`]).
+/// Rust calls its methods directly, with no encoding: [`Self::update`] runs
+/// a closure with the component and its [`Context`].
+pub struct ComponentRef<C: Component> {
+    element: ElementRef,
+    _component: PhantomData<fn() -> C>,
+}
+
+impl<C: Component> ComponentRef<C> {
+    pub(crate) fn new(executor: &Rc<Executor>) -> Self {
+        Self {
+            element: ElementRef::new(executor),
+            _component: PhantomData,
+        }
+    }
+
+    pub(crate) fn element(&self) -> &ElementRef {
+        &self.element
+    }
+
+    /// The component's host node, while one is rendered.
+    pub fn node(&self) -> Option<NodeId> {
+        self.element.node()
+    }
+
+    /// Runs `f` with the component and its [`Context`] (its `#[methods]`
+    /// are plain Rust functions: `|stepper, cx| stepper.set_value(5.0,
+    /// cx)`), right after the current listener or update, before the next
+    /// render. Await it for `f`'s result (TS: a method's promise), `None`
+    /// when no rendered component carries the ref; not awaited, it still
+    /// runs.
+    pub fn update<R: 'static>(
+        &self,
+        f: impl FnOnce(&mut C, &mut Context<'_, C>) -> R + 'static,
+    ) -> Updated<R> {
+        WeakComponent::<C>::new(self.node().unwrap_or(0), self.element.executor.clone()).update(f)
+    }
+}
+
+impl<C: Component> Clone for ComponentRef<C> {
+    fn clone(&self) -> Self {
+        Self {
+            element: self.element.clone(),
+            _component: PhantomData,
+        }
+    }
+}
+
+impl<C: Component> PartialEq for ComponentRef<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.element == other.element
+    }
+}
+
+impl<C: Component> fmt::Debug for ComponentRef<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ComponentRef")
+            .field(&self.element.node.get())
+            .finish()
     }
 }

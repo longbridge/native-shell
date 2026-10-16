@@ -514,6 +514,14 @@ impl<C> Clone for WeakComponent<C> {
 }
 
 impl<C: Component> WeakComponent<C> {
+    pub(crate) fn new(host: NodeId, executor: Weak<Executor>) -> Self {
+        Self {
+            host,
+            executor,
+            _component: PhantomData,
+        }
+    }
+
     /// Changes the component's state: `f` runs on the engine thread right
     /// after this poll, with the component and a [`Context`]
     /// (`cx.notify()` renders it again). Await it for `f`'s result, `None`

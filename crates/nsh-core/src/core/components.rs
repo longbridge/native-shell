@@ -1768,6 +1768,16 @@ impl<M: TextEngine> Core<M> {
             if let Some(listener) = c.on_event {
                 inst.event_handlers.push((id, listener));
             }
+            // Its `ComponentRef`.
+            let element_ref = el.attrs.element_ref.take();
+            if old_attrs.element_ref != element_ref
+                && let Some(r) = &old_attrs.element_ref
+            {
+                r.detach(id);
+            }
+            if let Some(r) = &element_ref {
+                r.attach(id);
+            }
             // The content this render passes it (`.child`, `.fill`): nodes of
             // this render, inserted into its host as JS inserts its children,
             // so the nested component places them where its render says.
@@ -1778,7 +1788,10 @@ impl<M: TextEngine> Core<M> {
                 tag: el.tag,
                 key: el.key,
                 text: None,
-                attrs: Attrs::default(),
+                attrs: Attrs {
+                    element_ref,
+                    ..Attrs::default()
+                },
                 style: el.style,
                 classes: (None, None),
                 events: EventMask::default(),

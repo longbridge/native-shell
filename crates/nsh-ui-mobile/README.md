@@ -33,7 +33,8 @@ stays native. JS only gets the events the component emits.
   and async work are tasks (`cx.set_interval`, `cx.spawn` with tokio inside); keep the `Task` in a field and drop it to
   stop. Read the environment in the render (`cx.safe_area()`): it renders again when that changes. `Stepper` is the
   example, also of methods: `#[methods] impl Stepper { pub fn set_value(..), pub fn value(&self) -> f64 }` are
-  `ref.setValue(5)` and `await ref.value()` in JS.
+  `ref.setValue(5)` and `await ref.value()` in JS, and `r.update(|s, cx| s.set_value(5.0, cx))` on a
+  `ComponentRef<Stepper>` in Rust.
 - **Every host element is there**: `input()`, `scroll()`, `modal()`, `canvas(Painter::new()..)`, `web_view(url)`,
   `video(url)`, `native(name)`, with typed props and events (`on_change_text(cx.listener(|this, text: &str, cx| ..))`,
   `on_layout`, `on_pan_end`, `on_scroll`). Props that take a plain color take `cx.color(theme.x)`.

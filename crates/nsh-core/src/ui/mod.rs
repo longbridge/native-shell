@@ -62,7 +62,7 @@ pub use self::{
         FluentBuilder, Image, Interactive, IntoElement, Items, ListConfig, ListElement, Listener,
         ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
     },
-    element_ref::ElementRef,
+    element_ref::{ComponentRef, ElementRef},
     env::Environment,
     events::{
         GestureEvent, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection, VideoInfo,
@@ -131,6 +131,7 @@ pub mod prelude {
         Component,
         ComponentElement,
         ComponentError,
+        ComponentRef,
         Context,
         Curve,
         DialogAnswer,

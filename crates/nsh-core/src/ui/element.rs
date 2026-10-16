@@ -432,6 +432,14 @@ impl<'a, C: Component> Context<'a, C> {
         super::ElementRef::new(&self.inner.executor)
     }
 
+    /// A handle for a component of the render (TS: a `ref` to a component,
+    /// `stepper.value()`): keep it in a field, put it on the component with
+    /// [`ComponentElement::component_ref`], call its methods with
+    /// [`super::ComponentRef::update`] from listeners and tasks.
+    pub fn component_ref<T: Component>(&self) -> super::ComponentRef<T> {
+        super::ComponentRef::new(&self.inner.executor)
+    }
+
     /// Starts a task: `f(this, cx)` builds a future run on the engine
     /// thread, which changes the component with `this.update(..)` and waits
     /// with `cx.timer(..)` or for any other future. Dropping the [`Task`]
@@ -1694,6 +1702,12 @@ impl<C: Component> ComponentElement<C> {
             Some(name) => self.node.children.push(list.into_items(name)),
             None => log::error!(target: "js", "{} has no `Items` prop to fill", C::NAME),
         }
+        self
+    }
+
+    /// Puts `handle` on this component: its updates go to it.
+    pub fn component_ref(mut self, handle: &super::ComponentRef<C>) -> Self {
+        self.node.attrs.element_ref = Some(handle.element().clone());
         self
     }
 
