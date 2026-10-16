@@ -1,7 +1,8 @@
 //! Apps with Rust components of their own: `"rust": "<crate dir>"` in
-//! `nsh.json` names a library crate whose `registry()` returns the
-//! `nsh_core::ui::Registry` of its components and modules (a UI set, by the
-//! specifier the app imports it as).
+//! `nsh.json` names a library crate with a `#[native_module("<specifier>")]`
+//! function at its root, which registers its components and modules into
+//! a UI set the app imports by that specifier. The attribute makes the
+//! entry the generated code calls ([`ENTRY`]).
 //!
 //! The prebuilt toolchain cannot know such components, so `nsh` builds the
 //! app its own: a Cargo workspace in `.nsh/rust` with the command line
@@ -23,6 +24,10 @@ use std::{
 use anyhow::{Context as _, bail};
 
 use crate::runtime::Platform;
+
+/// The function `#[native_module]` makes at the root of the app's crate
+/// (`nsh-macros` `native_module.rs`): the app's UI set.
+const ENTRY: &str = "__nsh_native_module";
 
 /// Set in the app's command line: which app it is for (its workspace).
 const APP_ENV: &str = "NSH_RUST_APP";
@@ -263,7 +268,7 @@ impl RustApp {
                 self.bin(name)
             )
         };
-        let sets = "vec![nsh_ui_mobile::registry(), app::registry()]";
+        let sets = "vec![nsh_ui_mobile::registry(), app_set()]";
         let ws = &self.workspace;
         write(
             &ws.join("Cargo.toml"),
@@ -287,10 +292,11 @@ impl RustApp {
         write(
             &ws.join("cli/Cargo.toml"),
             &format!(
-                "{}\n[[bin]]\nname = {:?}\npath = \"main.rs\"\n\n[dependencies]\nnsh-cli = {}\nnsh-ui-mobile = {}\n{app}\n",
+                "{}\n[[bin]]\nname = {:?}\npath = \"main.rs\"\n\n[dependencies]\nnsh-cli = {}\nnsh-core = {}\nnsh-ui-mobile = {}\n{app}\n",
                 package("cli"),
                 self.bin("cli"),
                 src("nsh-cli"),
+                src("nsh-core"),
                 src("nsh-ui-mobile"),
             ),
         )?;
@@ -300,7 +306,8 @@ impl RustApp {
                 "//! `nsh` for this app: the mobile UI and the app's Rust components.\n\n\
                  fn main() -> std::process::ExitCode {{\n    match nsh_cli::main_with({sets}) {{\n        \
                  Ok(()) => std::process::ExitCode::SUCCESS,\n        Err(err) => {{\n            \
-                 eprintln!(\"Error: {{err:?}}\");\n            std::process::ExitCode::FAILURE\n        }}\n    }}\n}}\n"
+                 eprintln!(\"Error: {{err:?}}\");\n            std::process::ExitCode::FAILURE\n        }}\n    }}\n}}\n{}",
+                app_set("")
             ),
         )?;
         for (dir, lib, what) in [
@@ -310,11 +317,12 @@ impl RustApp {
             write(
                 &ws.join(dir).join("Cargo.toml"),
                 &format!(
-                    "{}\n[[bin]]\nname = {:?}\npath = \"main.rs\"\n\n[dependencies]\n{lib} = {}\nnsh-ui-mobile = {}\n{app}\n\n\
+                    "{}\n[[bin]]\nname = {:?}\npath = \"main.rs\"\n\n[dependencies]\n{lib} = {}\nnsh-core = {}\nnsh-ui-mobile = {}\n{app}\n\n\
                      [target.'cfg(target_os = \"ios\")'.dependencies]\nnsh-platform-ios = {}\n",
                     package(dir),
                     self.bin(dir),
                     src(lib),
+                    src("nsh-core"),
                     src("nsh-ui-mobile"),
                     src("nsh-platform-ios"),
                 ),
@@ -324,7 +332,8 @@ impl RustApp {
                 &ws.join(dir).join("main.rs"),
                 &format!(
                     "//! The iOS {what} with the mobile UI and the app's Rust components.\n\n\
-                     fn main() {{\n    #[cfg(target_os = \"ios\")]\n    nsh_platform_ios::set_ui_sets({sets});\n    {lib}::main();\n}}\n"
+                     fn main() {{\n    #[cfg(target_os = \"ios\")]\n    nsh_platform_ios::set_ui_sets({sets});\n    {lib}::main();\n}}\n{}",
+                    app_set("#[cfg(target_os = \"ios\")]\n")
                 ),
             )?;
         }
@@ -332,8 +341,9 @@ impl RustApp {
             &ws.join("android/Cargo.toml"),
             &format!(
                 "{}\n[lib]\nname = \"nsh_app\"\npath = \"lib.rs\"\ncrate-type = [\"cdylib\"]\n\n[features]\ndev = [\"nsh-platform-android/dev\"]\n\n\
-                 [dependencies]\nnsh-platform-android = {}\nnsh-ui-mobile = {}\n{app}\n",
+                 [dependencies]\nnsh-core = {}\nnsh-platform-android = {}\nnsh-ui-mobile = {}\n{app}\n",
                 package("android"),
+                src("nsh-core"),
                 src("nsh-platform-android"),
                 src("nsh-ui-mobile"),
             ),
@@ -342,7 +352,8 @@ impl RustApp {
             &ws.join("android/lib.rs"),
             &format!(
                 "//! The app's `libnsh.so`: the Android runtime with the mobile UI and the\n//! app's Rust components.\n\n\
-                 #[cfg(target_os = \"android\")]\nnsh::ui_sets!({sets});\n"
+                 #[cfg(target_os = \"android\")]\nnsh::ui_sets!({sets});\n{}",
+                app_set("#[cfg(target_os = \"android\")]\n")
             ),
         )?;
         Ok(())
@@ -397,7 +408,10 @@ impl RustApp {
         }
         let status = cmd.status().context("run cargo")?;
         if !status.success() {
-            let error = anyhow::anyhow!("building {package} failed");
+            let error = anyhow::anyhow!(
+                "building {package} failed (the app's crate: {})",
+                self.crate_dir.display()
+            );
             // A development session that ran: a mistake in the code just
             // saved waits for the fix (the command line runs again).
             if env::var_os(RESTARTED_ENV).is_some() {
@@ -465,6 +479,21 @@ impl RustApp {
     }
 }
 
+/// `app_set()`, the app's UI set, for the generated code (each item under
+/// `cfg`): the [`ENTRY`] `#[native_module]` makes in the app's crate. The
+/// crate is glob-imported in a block, which shadows the module's import of
+/// nsh's stand-in, so a crate without the entry fails to build with a
+/// message saying what to add rather than "cannot find function".
+fn app_set(cfg: &str) -> String {
+    format!(
+        "\n/// The app's UI set: the entry `#[native_module(\"…\")]` makes in its crate.\n\
+         {cfg}fn app_set() -> nsh_core::ui::Registry {{\n    \
+         #[allow(unused_imports)]\n    use app::*;\n    {ENTRY}()\n}}\n\n\
+         // Without the entry: nsh's stand-in, which fails the build saying what to add.\n\
+         {cfg}#[allow(unused_imports)]\nuse nsh_core::ui::__private::no_native_module as {ENTRY};\n"
+    )
+}
+
 /// Copies `from` to `to` when it is newer.
 fn install(from: &Path, to: &Path) -> anyhow::Result<()> {
     let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
@@ -515,6 +544,45 @@ mod tests {
         )
         .unwrap();
         assert_eq!(super::package_name(&manifest).unwrap(), "gallery-native");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_generated_code_calls_the_entry_of_the_crate() {
+        let dir = std::env::temp_dir().join(format!("nsh-rust-app-ws-{}", std::process::id()));
+        let app = super::RustApp {
+            workspace: dir.join(".nsh/rust"),
+            source: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+            package: "app-native".into(),
+            crate_dir: dir.join("native"),
+        };
+        app.write_workspace().unwrap();
+        let read = |file: &str| std::fs::read_to_string(app.workspace.join(file)).unwrap();
+        for (file, cfg) in [
+            ("cli/main.rs", ""),
+            ("ios-host/main.rs", "#[cfg(target_os = \"ios\")]\n"),
+            ("ios-app/main.rs", "#[cfg(target_os = \"ios\")]\n"),
+            ("android/lib.rs", "#[cfg(target_os = \"android\")]\n"),
+        ] {
+            let code = read(file);
+            for line in [
+                "vec![nsh_ui_mobile::registry(), app_set()]".to_owned(),
+                format!(
+                    "{cfg}fn app_set() -> nsh_core::ui::Registry {{\n    #[allow(unused_imports)]\n    use app::*;\n    __nsh_native_module()\n}}"
+                ),
+                format!(
+                    "{cfg}#[allow(unused_imports)]\nuse nsh_core::ui::__private::no_native_module as __nsh_native_module;"
+                ),
+            ] {
+                assert!(code.contains(&line), "{file}: no {line:?} in\n{code}");
+            }
+        }
+        for dir in ["cli", "ios-host", "ios-app", "android"] {
+            assert!(
+                read(&format!("{dir}/Cargo.toml")).contains("\nnsh-core = "),
+                "{dir}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

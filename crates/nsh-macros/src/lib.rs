@@ -15,19 +15,23 @@
 //! - `asset!("logo@2x.png")` / `assets!()`: the files a crate ships in its
 //!   `assets/` directory, read at compile time.
 //!
+//! - `#[native_module("gallery/native")]` on a function of an app's crate:
+//!   the UI set it registers, which nsh's generated workspace links.
+//!
 //! The code they generate names `::nsh_core::ui`. `style_helpers!` is
 //! internal to `nsh-core`: the spacing and sizing methods of `Styled`.
 
 mod assets;
 mod host_props;
 mod js_ops;
+mod native_module;
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Fields, FnArg, GenericArgument, Ident, ImplItem, ItemImpl,
-    LitStr, Pat, PathArguments, ReturnType, Token, Type, bracketed, parse::Parse,
+    Attribute, Data, DeriveInput, Expr, Fields, FnArg, GenericArgument, Ident, ImplItem, ItemFn,
+    ItemImpl, LitStr, Pat, PathArguments, ReturnType, Token, Type, bracketed, parse::Parse,
     parse_macro_input, punctuated::Punctuated, spanned::Spanned,
 };
 
@@ -729,6 +733,47 @@ pub fn assets(input: TokenStream) -> TokenStream {
         .into();
     }
     assets::assets(Span::call_site())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// `#[native_module("gallery/native")]` on `fn native(registry: &mut
+/// Registry)` at the root of an app's crate (`nsh.json` `"rust"`): the UI
+/// set the app's TSX imports by that specifier. The function registers the
+/// crate's components, modules and assets into the set's registry
+/// (`Registry::ui_set("gallery/native")`), which the command line, hosts
+/// and Android library nsh builds for the app serve:
+///
+/// ```ignore
+/// #[native_module("gallery/native")]
+/// fn native(registry: &mut Registry) {
+///     registry.register::<Gallery>();
+///     registry.assets(assets!());
+/// }
+/// ```
+///
+/// The specifier is checked at compile time: a bare import specifier
+/// (`my-app/native`, `@acme/ui`), not a path, and not nsh's own (`nsh`,
+/// `nsh/...`). A crate has one, at its root: it generates a hidden entry
+/// of a fixed name the generated workspace calls, so a second one fails as
+/// that name defined twice, one in a module as not at the root, and a
+/// crate without one fails the generated workspace's build saying what to
+/// add.
+#[proc_macro_attribute]
+pub fn native_module(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let specifier = match syn::parse::<LitStr>(attr) {
+        Ok(lit) => lit,
+        Err(_) => {
+            return syn::Error::new(
+                Span::call_site(),
+                "`#[native_module]` takes the specifier the app imports the set by: `#[native_module(\"my-app/native\")]`",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+    let item = parse_macro_input!(item as ItemFn);
+    native_module::expand(specifier, item)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

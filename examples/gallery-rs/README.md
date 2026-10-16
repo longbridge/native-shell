@@ -2,7 +2,8 @@
 
 The app is one native component: `App.tsx` mounts `Gallery`, and everything it shows is written in Rust, in the
 app's own crate `native/` (`nsh.json` `"rust": "native"`). It shows what Rust components can do, next to the TSX
-gallery (`examples/gallery`).
+gallery (`examples/gallery`). The crate's set is the `#[native_module("gallery/native")]` function in
+`native/src/lib.rs`, which registers `Gallery` and the crate's `assets/`; `App.tsx` imports it by that specifier.
 
 ```sh
 cargo build -p nsh-cli

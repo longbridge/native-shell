@@ -21,7 +21,8 @@ crates/
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
                        Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`); the runtime's Rust
                        modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, ...; their JS face is made from their specs)
-  nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `Styled`'s spacing methods;
+  nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`,
+                       `#[native_module("…")]` (an app crate's UI set, which `rust_app.rs`'s generated code calls), `Styled`'s spacing methods;
                        `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS
                        face is made from their specs (nsh-js `components.rs`), their TypeScript declarations generated
@@ -58,8 +59,8 @@ crates/
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
   nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / dev / run / package; keygen /
-                       certify / publish / verify / revoke; apps with Rust components of their own (`rust_app.rs`,
-                       docs/dev/tooling.md)
+                       certify / publish / verify / revoke; apps with Rust components of their own (`rust_app.rs`: the crate
+                       nsh.json `"rust"` names has a `#[native_module("…")]` fn; docs/dev/tooling.md)
   xtask/               Maintainer tasks: `cargo xtask android` (Android runtime), `ios-embed` (the iOS SDK), `dist` (the distribution),
                        `web` (the WebAssembly runtime and the website's demos)
 docs/                 Documentation; `docs/dev/`: for developers of nsh (architecture, internals, decisions, pitfalls)

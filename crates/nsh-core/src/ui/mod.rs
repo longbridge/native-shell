@@ -47,7 +47,9 @@ mod value;
 pub(crate) mod virtual_list;
 
 pub use nsh_anim::{Curve, EaseMode, Easing, Extrapolate, Output as AnimOutput};
-pub use nsh_macros::{Event, JsObject, PropEnum, Props, asset, assets, methods, module};
+pub use nsh_macros::{
+    Event, JsObject, PropEnum, Props, asset, assets, methods, module, native_module,
+};
 
 pub use self::{
     animated::{
@@ -191,6 +193,7 @@ pub mod prelude {
         Position,
         PropEnum,
         Props,
+        Registry,
         RenderCx,
         ResizeMode,
         ResponderEvent,
@@ -226,6 +229,7 @@ pub mod prelude {
         WebView,
         WritingDirection,
         asset,
+        assets,
         canvas,
         image,
         input,
@@ -234,6 +238,7 @@ pub mod prelude {
         modal,
         module,
         native,
+        native_module,
         px,
         relative,
         rgb,
@@ -250,8 +255,41 @@ pub mod prelude {
     };
 }
 
-/// What the derive macros' code names.
+/// What the macros' code and nsh's generated workspace name.
 #[doc(hidden)]
 pub mod __private {
     pub use serde_json::Map as JsonMap;
+
+    /// Implemented by nothing: what the generated workspace of an app
+    /// calls when the app's crate has no `#[native_module]`
+    /// ([`no_native_module`]) fails the build with this message.
+    #[diagnostic::on_unimplemented(
+        message = "the app's crate (nsh.json \"rust\") has no `#[native_module(\"…\")]` at its root",
+        label = "the app's UI set",
+        note = "add to the crate's lib.rs, with the specifier its TSX imports the set by: `#[native_module(\"my-app/native\")] fn native(registry: &mut Registry) {{ registry.register::<MyComponent>(); }}` (`use nsh_core::ui::prelude::*`)"
+    )]
+    pub trait NoNativeModule {}
+
+    /// Implemented by nothing: `#[native_module]` in a module other than
+    /// the crate's root fails with this message.
+    #[diagnostic::on_unimplemented(
+        message = "`#[native_module]` goes at the root of the crate (lib.rs)",
+        label = "nsh's generated workspace calls the entry it makes there",
+        note = "move the function with `#[native_module(\"…\")]` to the crate's lib.rs"
+    )]
+    pub trait NotAtRoot {}
+
+    /// Stands in for the entry `#[native_module]` makes
+    /// (`app::__nsh_native_module`) when the app's crate has none: a glob
+    /// import of the crate in a block shadows it, so it is only called, and
+    /// fails to compile, without the entry.
+    pub fn no_native_module<R: NoNativeModule>() -> R {
+        unreachable!("never compiles")
+    }
+
+    /// Stands in for `crate::__nsh_native_module` when `#[native_module]`
+    /// is not at the crate's root (as [`no_native_module`]).
+    pub fn native_module_not_at_root<R: NotAtRoot>() -> R {
+        unreachable!("never compiles")
+    }
 }

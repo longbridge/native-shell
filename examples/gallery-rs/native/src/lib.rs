@@ -9,17 +9,15 @@ mod demos;
 mod nav;
 mod ui;
 
-use nsh_core::ui::{Registry, prelude::*};
+use nsh_core::ui::prelude::*;
 
 use crate::nav::Routes;
 
 /// The UI set of the gallery: what `App.tsx` imports from `gallery/native`.
-pub fn registry() -> Registry {
-    let mut registry = Registry::ui_set("gallery/native");
-    registry
-        .register::<Gallery>()
-        .assets(nsh_core::ui::assets!());
-    registry
+#[native_module("gallery/native")]
+fn native(registry: &mut Registry) {
+    registry.register::<Gallery>();
+    registry.assets(assets!());
 }
 
 /// The gallery: a native stack of its index and the screens pushed on it.

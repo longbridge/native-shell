@@ -745,7 +745,8 @@ impl Registry {
     }
 
     /// The registry of a UI set apps import as `specifier`
-    /// (`nsh/ui/mobile`).
+    /// (`nsh/ui/mobile`). An app's crate makes its own with
+    /// `#[native_module("…")]`.
     pub fn ui_set(specifier: &'static str) -> Self {
         Self {
             ui_set: Some(specifier),
