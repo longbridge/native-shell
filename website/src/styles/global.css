@@ -26,6 +26,7 @@
   --muted-foreground: #8d9198;
   --faint: #5a5e65;
   --border: #2c2e33;
+  --divider: #25272b;
   --line: #1f2124;
   --border-hover: #3b3e44;
   --ring: #c8f26d;
@@ -56,11 +57,11 @@
   /* Finishes (`finish` in ui.tsx): gentle top-to-bottom gradients, a
      highlight along the top edge, soft shadows. */
   --finish-card-bg: linear-gradient(180deg, #1d1e22 0%, #17181b 100%);
-  --finish-card: inset 0 1px 0 rgb(255 255 255 / 6%), 0 10px 28px rgb(0 0 0 / 38%);
-  --finish-flat: inset 0 1px 0 rgb(255 255 255 / 5%), 0 1px 2px rgb(0 0 0 / 30%);
+  --finish-card: 0 10px 28px rgb(0 0 0 / 38%);
+  --finish-flat: 0 1px 2px rgb(0 0 0 / 30%);
   --finish-inset: inset 0 1px 3px rgb(0 0 0 / 55%);
   --finish-raised-bg: linear-gradient(180deg, #2d2f34 0%, #222428 100%);
-  --finish-raised: inset 0 1px 0 rgb(255 255 255 / 8%), 0 1px 2px rgb(0 0 0 / 45%);
+  --finish-raised: 0 1px 2px rgb(0 0 0 / 45%);
   --finish-primary-bg: linear-gradient(180deg, #fbfbfc 0%, #d4d6d9 100%);
   --finish-primary-hover-bg: linear-gradient(180deg, #ffffff 0%, #dfe1e4 100%);
   --finish-primary: inset 0 1px 0 rgb(255 255 255 / 90%), 0 3px 10px rgb(0 0 0 / 40%);
@@ -96,8 +97,12 @@
   --screen: #101113;
 
   --nav-shadow: 0 1px 0 rgb(0 0 0 / 35%);
+  --nav-bg: color-mix(in srgb, var(--background) 72%, transparent);
+  --nav-line: var(--line);
   --page-light: rgb(255 255 255 / 3.5%);
-  --highlight: rgb(255 255 255 / 6%);
+  /* Dark surfaces get their top light from their gradients: a 1px inset highlight right inside a 1px border
+     reads as a doubled, blurry edge. */
+  --highlight: transparent;
   --band-tinted: linear-gradient(180deg, #0d0e10, #0b0c0e);
   --logo-dot: #eef0f2;
   --logo-ring: transparent;
@@ -120,6 +125,7 @@
   --callout-tint-end: 3%;
   --callout-base: var(--card);
   --callout-edge: transparent;
+  --active-shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 4px 10px -6px rgb(0 0 0 / 55%);
   --callout-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -12px rgb(0 0 0 / 45%);
   /* A faint grain over the page, as on the gallery's surfaces. */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  .07 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -150,6 +156,7 @@ html.light {
   --muted-foreground: #565a61;
   --faint: #8c9097;
   --border: #e0e0d9;
+  --divider: rgb(40 40 20 / 11%);
   --line: rgb(0 0 0 / 7%);
   --border-hover: #cfcfc7;
   --ring: #4a6a0a;
@@ -208,7 +215,9 @@ html.light {
   --shadow-panel: 0 20px 50px -24px rgb(20 20 10 / 24%);
   --shadow-dialog: 0 25px 60px -12px rgb(20 20 10 / 28%);
 
-  --nav-shadow: 0 1px 0 rgb(255 255 255 / 70%);
+  --nav-shadow: 0 1px 0 rgb(40 40 20 / 4%);
+  --nav-bg: color-mix(in srgb, #ffffff 74%, transparent);
+  --nav-line: rgb(40 40 20 / 13%);
   --page-light: rgb(255 255 255 / 70%);
   --highlight: #ffffff;
   --band-tinted: linear-gradient(180deg, #eeeee9, #ebebe5);
@@ -230,6 +239,7 @@ html.light {
   --callout-tint-end: 7%;
   --callout-base: var(--background);
   --callout-edge: var(--highlight);
+  --active-shadow: 0 1px 2px rgb(40 40 20 / 8%);
   --callout-shadow: 0 0 0 transparent;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.05  .09 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
@@ -330,8 +340,8 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   top: 0;
   z-index: 40;
   height: var(--nav-height);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--background) 72%, transparent);
+  border-bottom: 1px solid var(--nav-line);
+  background: var(--nav-bg);
   box-shadow: inset 0 1px 0 var(--highlight), var(--nav-shadow);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
@@ -580,8 +590,11 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
 .sidebar-item.active:hover,
 .site-nav__link.active {
   border: 1px solid color-mix(in srgb, var(--important) 25%, transparent);
-  background-color: color-mix(in srgb, var(--important) var(--callout-tint), var(--background));
-  box-shadow: inset 0 1px 0 var(--callout-edge);
+  background: linear-gradient(
+    color-mix(in srgb, var(--important) calc(var(--callout-tint) + 4%), var(--callout-base)),
+    color-mix(in srgb, var(--important) var(--callout-tint-end), var(--callout-base))
+  );
+  box-shadow: inset 0 1px 0 var(--callout-edge), var(--active-shadow);
   color: var(--foreground);
   font-weight: 600;
 }
@@ -816,7 +829,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
     align-items: center;
     height: 2.25rem;
     padding: 0 0.9rem;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--divider);
     color: var(--muted-foreground);
     font: 600 0.7rem/1 var(--font-mono);
     letter-spacing: 0.04em;
@@ -1111,7 +1124,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   gap: 0.75rem;
   min-height: 2.75rem;
   padding: 0.4rem 0.5rem 0.4rem 0.75rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--divider);
   background: transparent;
   font-size: 0.8rem;
 }
