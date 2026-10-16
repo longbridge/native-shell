@@ -51,7 +51,7 @@ function Browser() {
 
 | `desktop` key | Type | Description |
 |---|---|---|
-| `allowsBackForwardNavigationGestures` | `boolean` | macOS: swipe with two fingers on the trackpad to go back and forward; Windows: swipe on a touchscreen (ignored on Linux). |
+| `allowsBackForwardNavigationGestures` | `boolean` | macOS: swipe with two fingers on the trackpad to go back and forward; Windows: swipe on a touchscreen; Linux: swipe on the touchpad. |
 
 ## Events
 
