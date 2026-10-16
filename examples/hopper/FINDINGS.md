@@ -16,5 +16,4 @@ workaround here in the same change.
 | 8 | Mobile UI | `nsh/ui/mobile` has no switch, slider, segmented control, stepper styled for dark themes, menu or tab bar; each app writes them. | `ui.tsx` and the tab bar in `App.tsx` (about 500 lines). |
 | 9 | Canvas | No `isPointInPath`: tapping a shape in a drawing means redoing its geometry for hit testing. | Hand-written hit tests in the drawings' design units (`cards/Mass.tsx`, `cards/Rcs.tsx`). |
 | 10 | Tooling | Type checking needs `tsc` from npm (`bunx tsc -p .`), although the toolchain otherwise needs no Node: an `nsh check` would close that. | Checked with `bunx --bun tsc -p examples/hopper`. |
-| 11 | Tooling | Killing `nsh run` (SIGTERM / `pkill`) leaves the Catalyst host window running, so the next run opens a second window. `cargo run` stops the whole process group; a plain `nsh run` does not stop its host on a signal. | Close the stale window. |
-| 12 | Hot reload | A hot update of the entry renders the app again: a pushed screen pops back to the root and component state (a resized landing zone) resets. | None. |
+| 11 | Hot reload | A hot update of the entry renders the app again: a pushed screen pops back to the root and component state (a resized landing zone) resets. | None. |
