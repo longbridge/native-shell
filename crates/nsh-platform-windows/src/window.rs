@@ -78,6 +78,10 @@ struct WindowData {
     last_press: Cell<(u32, (i32, i32), u32)>,
     /// A high surrogate waiting for its low half (`WM_CHAR`).
     surrogate: Cell<u16>,
+    /// The Alt key combination just handled: its `WM_SYSCHAR` (Alt+Return
+    /// makes one) must not reach `DefWindowProc`, which beeps for a menu
+    /// mnemonic it cannot find.
+    sys_char: Cell<bool>,
 }
 
 thread_local! {
@@ -160,6 +164,7 @@ pub(crate) fn create(
         buttons: Cell::new(0),
         last_press: Cell::new((0, (0, 0), 0)),
         surrogate: Cell::new(0),
+        sys_char: Cell::new(false),
     });
     let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
     let (style, ex_style) = match parent {
@@ -619,11 +624,16 @@ fn handle(
                 repeat: down && (lparam.0 >> 30) & 1 == 1,
                 modifiers: modifiers(),
             };
-            if crate::input::key(surface, event) {
+            let handled = crate::input::key(surface, event);
+            if msg == WM_SYSKEYDOWN {
+                data.sys_char.set(handled);
+            }
+            if handled {
                 return Some(LRESULT(0));
             }
             // Alt+F4 and the system menu keep working.
         }
+        WM_SYSCHAR if data.sys_char.replace(false) => return Some(LRESULT(0)),
         WM_CHAR => {
             let unit = wparam.0 as u16;
             if (0xD800..0xDC00).contains(&unit) {

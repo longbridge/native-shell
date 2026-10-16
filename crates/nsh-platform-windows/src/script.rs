@@ -14,6 +14,8 @@
 //!   toward the end); `pad <x> <y> <dx> <dy>` a precision touchpad's.
 //! - `hover <x> <y>`: moves the pointer.
 //! - `type <text>`: types into the focused field.
+//! - `mark <text>`: an IME's composition in the focused field (`mark`
+//!   alone ends it).
 //! - `key <name>`: presses a key: `Return`, `BackSpace`, `Tab`, `Escape`,
 //!   `Left`, `Home`, `Page_Down`, `F5`, a letter, ...; `ctrl+`, `shift+`,
 //!   `alt+` prefixes add modifiers (`ctrl+a`).
@@ -99,6 +101,7 @@ pub(crate) fn run(surface: Rc<Surface>, script: &str) {
                     });
                 }
                 "type" => on_main(key, move |s| crate::text_input::char_input(s, &rest)),
+                "mark" => on_main(key, move |s| crate::text_input::mark(s, &rest)),
                 "key" | "selectall" => {
                     let name = if cmd == "selectall" {
                         "ctrl+a".to_owned()

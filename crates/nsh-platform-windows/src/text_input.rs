@@ -28,6 +28,17 @@
 //! (`ImmAssociateContextEx`), so typing elsewhere never opens a
 //! composition with nowhere to go.
 //!
+//! Return follows the config's `submit()`: a single line submits; a
+//! multiline input whose return submits does so on a plain return (or
+//! Ctrl+Return), while Shift+Return and Alt+Return still insert a line
+//! break. The IME takes the keys it uses while it composes (they come as
+//! `VK_PROCESSKEY`), so a return that commits a composition (CJK input
+//! methods) submits nothing.
+//!
+//! `onKeyPress` reports what typing inserts and deletes, as UIKit does
+//! (nothing for pasted text, no Backspace for a selection typed over), and
+//! Escape, as on macOS and Linux.
+//!
 //! Input accessory views (`inputAccessoryViewID`) belong over a software
 //! keyboard and have no meaning on the desktop: they are never shown.
 
@@ -39,7 +50,8 @@ use std::{
 };
 
 use nsh_core::{
-    Color, EventKind, EventPayload, InputConfig, PayloadValue, Rect, TextAlign, tailwind::state,
+    Color, EventKind, EventPayload, InputConfig, PayloadValue, Rect, SubmitBehavior, TextAlign,
+    tailwind::state,
 };
 use rustc_hash::FxHashMap;
 use windows::{
@@ -70,8 +82,8 @@ use windows::{
                     NOTIFY_IME_INDEX,
                 },
                 KeyboardAndMouse::{
-                    VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_HOME, VK_INSERT, VK_LEFT, VK_NEXT,
-                    VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+                    VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT,
+                    VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
                 },
             },
             WindowsAndMessaging::{
@@ -88,7 +100,7 @@ use windows_numerics::Vector2;
 
 use self::model::{Composition, Model, Unit, key_of, pasted, utf16_to_byte};
 use crate::{
-    input::{KeyEvent, PointerKind},
+    input::{KeyEvent, Modifiers, PointerKind},
     render::{DrawCx, rect_f},
     surface::Surface,
     view::{Hosted, ItemPointer, NshView},
@@ -737,7 +749,7 @@ pub(crate) fn set_accessible_value(surface: &Rc<Surface>, view: &NshView, text: 
         let deleted = input.model.borrow_mut().delete(Unit::Char, false);
         after_edit(surface, view, &input, deleted);
     } else {
-        insert(surface, view, &input, &text);
+        insert(surface, view, &input, &text, false);
     }
     true
 }
@@ -1051,7 +1063,7 @@ pub(crate) fn ime(
                 .or(Some(Composition::default()));
             input.relayout();
             if let Some(result) = result.filter(|r| !r.is_empty()) {
-                insert(surface, &view, &input, &result);
+                insert(surface, &view, &input, &result, true);
             } else {
                 input.wake_caret();
                 input.reveal();
@@ -1141,8 +1153,9 @@ fn after_edit(surface: &Surface, view: &NshView, input: &InputState, changed: bo
     place_ime(surface);
 }
 
-/// Inserts typed, pasted or composed text (clipped to `maxLength`).
-fn insert(surface: &Surface, view: &NshView, input: &InputState, text: &str) {
+/// Inserts typed, pasted or composed text (clipped to `maxLength`);
+/// `typed` text is reported as a key press.
+fn insert(surface: &Surface, view: &NshView, input: &InputState, text: &str, typed: bool) {
     if !input.config.borrow().editable {
         return;
     }
@@ -1151,22 +1164,36 @@ fn insert(surface: &Surface, view: &NshView, input: &InputState, text: &str) {
     input.goal_x.set(None);
     if let Some(fit) = &inserted
         && !fit.is_empty()
+        && typed
     {
         key_press(surface, view, key_of(fit));
     }
     after_edit(surface, view, input, inserted.is_some());
 }
 
-/// Return in a single-line input.
-fn submit(surface: &Rc<Surface>, view: &NshView, input: &InputState) {
+/// Return submitted the input (`blur`: and unfocuses it).
+fn submit(surface: &Rc<Surface>, view: &NshView, input: &InputState, blur: bool) {
     key_press(surface, view, "Enter");
     let text = input.model.borrow().text().to_owned();
     let count = input.count.get();
     send(surface, view, EventKind::SubmitEditing, || {
         EventPayload::Text { text, count }
     });
-    if input.config.borrow().blur_on_submit {
+    if blur {
         set_focus(surface, None);
+    }
+}
+
+/// What a return with `modifiers` does in an input whose return does
+/// `behavior`: `None` inserts a line break, `Some(blur)` submits (and
+/// unfocuses). Shift+Return and Alt+Return break the line of a multiline
+/// input that submits, as in desktop chat apps.
+fn return_key(behavior: SubmitBehavior, multiline: bool, modifiers: Modifiers) -> Option<bool> {
+    match behavior {
+        _ if multiline && (modifiers.shift || modifiers.alt) => None,
+        SubmitBehavior::Newline if multiline => None,
+        SubmitBehavior::Submit => Some(false),
+        SubmitBehavior::BlurAndSubmit | SubmitBehavior::Newline => Some(true),
     }
 }
 
@@ -1371,7 +1398,37 @@ pub(crate) fn char_input(surface: &Rc<Surface>, text: &str) {
     if text.is_empty() {
         return;
     }
-    insert(surface, &view, &input, &text);
+    insert(surface, &view, &input, &text, true);
+}
+
+/// An input method's composition in the focused field (the script's
+/// `mark`), as `WM_IME_STARTCOMPOSITION` and `WM_IME_COMPOSITION` make it;
+/// empty text ends it.
+pub(crate) fn mark(surface: &Rc<Surface>, text: &str) {
+    let Some(view) = focused(surface) else { return };
+    let Some(input) = input_of(&view) else {
+        return;
+    };
+    if !input.config.borrow().editable {
+        return;
+    }
+    let starts = input.model.borrow().composition.is_none();
+    if text.is_empty() {
+        input.model.borrow_mut().composition = None;
+    } else {
+        if starts && input.model.borrow().has_selection() {
+            let deleted = input.model.borrow_mut().delete(Unit::Char, false);
+            after_edit(surface, &view, &input, deleted);
+        }
+        input.model.borrow_mut().composition = Some(Composition {
+            text: text.to_owned(),
+            cursor: text.len(),
+            target: None,
+        });
+    }
+    input.relayout();
+    input.reveal();
+    view.changed();
 }
 
 /// The window got (or lost) the keyboard focus: the focused field keeps
@@ -1518,7 +1575,8 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         true
     };
     match vk {
-        _ if vk == VK_LEFT.0 || vk == VK_RIGHT.0 => {
+        // Alt+Left goes back, from a field too (`navigation::key_pressed`).
+        _ if (vk == VK_LEFT.0 || vk == VK_RIGHT.0) && !m.alt => {
             input.goal_x.set(None);
             moved(&|model| model.step(unit, vk == VK_RIGHT.0, m.shift))
         }
@@ -1565,12 +1623,33 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
             true
         }
         _ if vk == VK_RETURN.0 => {
-            if multiline {
-                insert(surface, &view, &input, "\n");
-            } else {
-                submit(surface, &view, &input);
+            let composing = input
+                .model
+                .borrow()
+                .composition
+                .as_ref()
+                .is_some_and(|c| !c.text.is_empty());
+            if composing {
+                // The IME takes the return that commits a composition (it
+                // comes as `VK_PROCESSKEY`); one that comes anyway only
+                // commits it.
+                notify_composition(surface, CPS_COMPLETE);
+                return true;
+            }
+            let behavior = input.config.borrow().submit();
+            match return_key(behavior, multiline, m) {
+                None => insert(surface, &view, &input, "\n", true),
+                Some(blur) => submit(surface, &view, &input, blur),
             }
             true
+        }
+        // Reported as on macOS and Linux; navigation then takes the focus
+        // from the field (`navigation::key_pressed`).
+        _ if vk == VK_ESCAPE.0 => {
+            if !m.ctrl && !m.alt && !event.repeat {
+                key_press(surface, &view, "Escape");
+            }
+            false
         }
         _ if vk == VK_TAB.0 && !m.ctrl && !m.alt => match next_input(surface, &view, !m.shift) {
             Some(next) => {
@@ -1659,7 +1738,7 @@ fn paste(surface: &Surface, view: &NshView, input: &InputState) {
     };
     let text = pasted(&text, input.multiline());
     if !text.is_empty() {
-        insert(surface, view, input, &text);
+        insert(surface, view, input, &text, false);
     }
 }
 
@@ -1814,6 +1893,28 @@ mod tests {
         assert_eq!(family(Some("'Noto Sans', serif")), "Noto Sans");
         assert_eq!(family(Some("serif")), "Times New Roman");
         assert!(!family(None).is_empty());
+    }
+
+    #[test]
+    fn returns() {
+        use SubmitBehavior::*;
+        let none = Modifiers::default();
+        let shift = Modifiers {
+            shift: true,
+            ..none
+        };
+        let alt = Modifiers { alt: true, ..none };
+        let ctrl = Modifiers { ctrl: true, ..none };
+        // A single line always submits.
+        assert_eq!(return_key(BlurAndSubmit, false, none), Some(true));
+        assert_eq!(return_key(Submit, false, shift), Some(false));
+        // Several lines: as `submitBehavior` says; Shift and Alt break the
+        // line.
+        assert_eq!(return_key(Newline, true, none), None);
+        assert_eq!(return_key(Submit, true, none), Some(false));
+        assert_eq!(return_key(BlurAndSubmit, true, ctrl), Some(true));
+        assert_eq!(return_key(Submit, true, shift), None);
+        assert_eq!(return_key(BlurAndSubmit, true, alt), None);
     }
 
     #[test]
