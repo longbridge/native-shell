@@ -96,6 +96,20 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool
     false
 }
 
+/// The field's text, whether it is read-only and whether it is secure, for
+/// UI Automation's Value pattern ([`crate::access`]).
+pub(crate) fn accessible_value(view: &NshView) -> Option<crate::access::FieldValue> {
+    let _ = view;
+    None
+}
+
+/// Replaces the field's text as typing it would (UI Automation's
+/// `SetValue`); false when it cannot.
+pub(crate) fn set_accessible_value(surface: &Rc<Surface>, view: &NshView, text: &str) -> bool {
+    let _ = (surface, view, text);
+    false
+}
+
 /// The field that has the keyboard focus.
 pub(crate) fn focused(surface: &Surface) -> Option<NshView> {
     let _ = surface;
