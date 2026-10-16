@@ -1115,6 +1115,10 @@ Menu.setApplicationMenu([
   },
 ]);
 
+Menu.popup([{ label: "Copy link", onSelect: () => chosen.set("copied") }]).then(() =>
+  chosen.set(`${chosen()} closed`),
+);
+
 mount(() => <Text>{chosen()}</Text>);
 "#;
 
@@ -1187,6 +1191,27 @@ fn menus_reach_the_platform_and_call_back() {
         until(&rx, |batch| shows(batch, "new"))
             .iter()
             .any(|b| shows(b, "new"))
+    );
+
+    // A context menu: its item, then its promise once it closes.
+    let control = engine.control();
+    control.dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![("id", PayloadValue::Number(2.0))]),
+    );
+    control.dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![
+            ("id", PayloadValue::Number(0.0)),
+            ("closed", PayloadValue::Bool(true)),
+        ]),
+    );
+    assert!(
+        until(&rx, |batch| shows(batch, "copied closed"))
+            .iter()
+            .any(|b| shows(b, "copied closed"))
     );
 
     // On a phone, nothing is sent.

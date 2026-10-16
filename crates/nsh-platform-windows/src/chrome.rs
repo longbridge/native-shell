@@ -947,12 +947,22 @@ pub(crate) fn show_popup(surface: &Rc<Surface>) {
         let _ = DestroyMenu(menu);
         chosen.0 as usize
     };
-    let Some(entry) = entries.get(chosen.wrapping_sub(1)).copied() else {
-        return;
-    };
-    match actions.get((entry.id as usize).wrapping_sub(1)) {
-        Some(action) => action(surface),
-        None => choose(surface, entry.id, entry.role),
+    if let Some(entry) = entries.get(chosen.wrapping_sub(1)).copied() {
+        match actions.get((entry.id as usize).wrapping_sub(1)) {
+            Some(action) => action(surface),
+            None => choose(surface, entry.id, entry.role),
+        }
+    }
+    // The app's `Menu.popup` promise settles.
+    if actions.is_empty() {
+        surface.event(
+            ROOT_ID,
+            EventKind::Menu,
+            EventPayload::Map(vec![
+                ("id", PayloadValue::Number(0.0)),
+                ("closed", PayloadValue::Bool(true)),
+            ]),
+        );
     }
 }
 

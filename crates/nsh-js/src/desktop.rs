@@ -33,20 +33,49 @@ const UNDEFINED: JsValue = qjs::JS_UNDEFINED;
 type Functions = Vec<(u32, JsValue)>;
 
 /// The menus' part of a context's state.
-#[derive(Default)]
 pub(crate) struct Menus {
     /// The application menu's functions (id, owned function).
     app: RefCell<Vec<(u32, JsValue)>>,
     /// The last context menu's functions.
     popup: RefCell<Vec<(u32, JsValue)>>,
+    /// Resolves the promise of the context menu shown (owned), once the
+    /// platform reports it closed.
+    closed: Cell<JsValue>,
     /// The root's `onMenu` handler is set.
     listening: Cell<bool>,
     next: Cell<u32>,
 }
 
+impl Default for Menus {
+    fn default() -> Self {
+        Menus {
+            app: RefCell::default(),
+            popup: RefCell::default(),
+            closed: Cell::new(UNDEFINED),
+            listening: Cell::new(false),
+            next: Cell::new(0),
+        }
+    }
+}
+
+/// Resolves the promise of the context menu shown, if there is one.
+fn resolve_closed(ctx: *mut JsContext) {
+    let resolve = menus(ctx).closed.replace(UNDEFINED);
+    if !nullish(resolve) {
+        // SAFETY: an owned resolving function, called then freed.
+        unsafe {
+            let r = qjs::JS_Call(ctx, resolve, UNDEFINED, 0, ptr::null_mut());
+            qjs::JS_FreeValue(ctx, r);
+            qjs::JS_FreeValue(ctx, resolve);
+        }
+    }
+}
+
 impl Menus {
     /// Frees the values held (the state is unregistered).
     pub(crate) fn free_all(&mut self, raw: *mut JsContext) {
+        // SAFETY: owned; no JS runs from here on.
+        unsafe { qjs::JS_FreeValue(raw, self.closed.replace(UNDEFINED)) };
         for (_, f) in self
             .app
             .get_mut()
@@ -310,14 +339,32 @@ unsafe extern "C" fn popup(
     argc: c_int,
     argv: *mut JsValue,
 ) -> JsValue {
+    let mut funcs = [UNDEFINED; 2];
+    // SAFETY: a new promise and its resolving functions (owned).
+    let promise = unsafe { qjs::JS_NewPromiseCapability(ctx, funcs.as_mut_ptr()) };
+    free(ctx, funcs[1]);
     if !os(ctx).is_desktop() {
-        return UNDEFINED;
+        // Nothing shows: settled at once.
+        // SAFETY: an owned resolving function, called then freed.
+        unsafe {
+            let r = qjs::JS_Call(ctx, funcs[0], UNDEFINED, 0, ptr::null_mut());
+            qjs::JS_FreeValue(ctx, r);
+        }
+        free(ctx, funcs[0]);
+        return promise;
     }
     let (items, functions) = match decode(ctx, arg(argc, argv, 0)) {
         Ok(decoded) => decoded,
-        Err(e) => return e,
+        Err(e) => {
+            free(ctx, funcs[0]);
+            free(ctx, promise);
+            return e;
+        }
     };
     keep(ctx, &menus(ctx).popup, functions);
+    // One context menu at a time: one shown before is closed by now.
+    resolve_closed(ctx);
+    menus(ctx).closed.set(funcs[0]);
     let at = arg(argc, argv, 1);
     let at = if is_object(at) {
         let number = |key: &CStr| {
@@ -332,8 +379,13 @@ unsafe extern "C" fn popup(
     } else {
         None
     };
-    let result = listen(ctx).and_then(|()| send(ctx, DesktopCommand::PopupMenu { items, at }));
-    result.err().unwrap_or(UNDEFINED)
+    match listen(ctx).and_then(|()| send(ctx, DesktopCommand::PopupMenu { items, at })) {
+        Ok(()) => promise,
+        Err(e) => {
+            free(ctx, promise);
+            e
+        }
+    }
 }
 
 /// The root's `onMenu`: calls the chosen item's function.
@@ -350,6 +402,11 @@ unsafe extern "C" fn on_menu(
     unsafe { qjs::JS_ToFloat64(ctx, &mut id, v) };
     free(ctx, v);
     let id = id as u32;
+    // A context menu closed (after its chosen item was reported).
+    if flag(ctx, e, c"closed") == Some(true) {
+        resolve_closed(ctx);
+        return UNDEFINED;
+    }
     let m = menus(ctx);
     let f = [&m.app, &m.popup].into_iter().find_map(|slot| {
         slot.borrow()
@@ -487,8 +544,10 @@ export interface MenuModule {
    * signals it reads); `null` restores the platform's default menu. */
   setApplicationMenu(items: readonly (MenuItem | null | undefined | false)[] | null): void;
   /** Shows a context menu with its top left corner at `at` (the window's
-   * coordinates, points), else at the pointer. */
-  popup(items: readonly (MenuItem | null | undefined | false)[], at?: { x: number; y: number }): void;
+   * coordinates, points), else at the pointer. The promise resolves once
+   * the menu closes, chosen or dismissed: a button that opened it can look
+   * pressed until then. */
+  popup(items: readonly (MenuItem | null | undefined | false)[], at?: { x: number; y: number }): Promise<void>;
 }
 "#;
 

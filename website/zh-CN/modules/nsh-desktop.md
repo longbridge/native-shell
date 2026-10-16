@@ -99,14 +99,14 @@ const titleBar: Accessor<{ height: number; left: number; right: number }>;
 ```ts
 const Menu: {
   setApplicationMenu(items: MenuItem[] | null): void;
-  popup(items: MenuItem[], at?: { x: number; y: number }): void;
+  popup(items: MenuItem[], at?: { x: number; y: number }): Promise<void>;
 };
 ```
 
 | 成员 | 说明 |
 |---|---|
 | `setApplicationMenu(items)` | 设置应用菜单：每个顶层项是一个子菜单（`File`、`Edit`……）。在 macOS 上是菜单栏，第一个菜单是应用菜单（AppKit 以应用名作为标题）。在 Windows 和 Linux 上是窗口的菜单栏，隐藏标题栏时不显示；它的快捷键仍然有效，自定义标题栏可以用 `Menu.popup` 打开这些菜单。`null` 恢复平台默认菜单。 |
-| `popup(items, at?)` | 显示右键菜单，左上角在 `at`（窗口坐标，单位为点），省略时在指针处。 |
+| `popup(items, at?)` | 显示右键菜单，左上角在 `at`（窗口坐标，单位为点），省略时在指针处。菜单关闭时（无论是否选中了菜单项）返回的 Promise 会 resolve：打开它的按钮可以在此之前一直保持按下样式。 |
 
 再次调用 `setApplicationMenu` 即可修改菜单。放在 `effect` 里时，它会跟随读取的 signal：依赖应用状态的勾选或可用状态始终保持最新。
 

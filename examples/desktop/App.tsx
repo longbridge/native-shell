@@ -89,6 +89,8 @@ function App() {
 
   // Where each menu button is, to open its menu below it.
   const buttons: Record<string, { x: number; width: number }> = {};
+  // The menu open from the bar: its button stays pressed until it closes.
+  const opened = signal<string | null>(null);
   const barHeight = () => titleBar().height || 40;
 
   return (
@@ -113,11 +115,14 @@ function App() {
             {(menu) => (
               <View
                 onLayout={(e) => (buttons[menu().label] = { x: e.x, width: e.width })}
-                onPress={() =>
-                  Menu.popup(menu().submenu, { x: buttons[menu().label]?.x ?? 0, y: barHeight() })
-                }
+                onPress={() => {
+                  const label = menu().label;
+                  opened.set(label);
+                  Menu.popup(menu().submenu, { x: buttons[label]?.x ?? 0, y: barHeight() }).then(() => opened.set(null));
+                }}
                 style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
-                class="hover:bg-black/10 dark:hover:bg-white/10"
+                class="hover:bg-black/10 active:bg-black/15 dark:hover:bg-white/10 dark:active:bg-white/15"
+                classList={{ "bg-black/15 dark:bg-white/15": opened() === menu().label }}
               >
                 <Text style={{ fontSize: 13, color: dark() ? "#e6e8ec" : "#1f2328" }}>{menu().label}</Text>
               </View>

@@ -586,10 +586,25 @@ fn popup(surface: &Rc<Surface>, items: &[MenuItem], at: Option<(f32, f32)>) {
     menu.set_halign(gtk::Align::Start);
     menu.set_position(gtk::PositionType::Bottom);
     menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-    // Unparented once closed, after the chosen item's action ran.
-    menu.connect_closed(|menu| {
+    // Unparented once closed, after the chosen item's action ran; then the
+    // app's `Menu.popup` promise settles.
+    let weak = Rc::downgrade(surface);
+    menu.connect_closed(move |menu| {
         let menu = menu.clone();
-        glib::idle_add_local_once(move || menu.unparent());
+        let weak = weak.clone();
+        glib::idle_add_local_once(move || {
+            menu.unparent();
+            if let Some(surface) = weak.upgrade() {
+                surface.event(
+                    ROOT_ID,
+                    EventKind::Menu,
+                    EventPayload::Map(vec![
+                        ("id", PayloadValue::Number(0.0)),
+                        ("closed", PayloadValue::Bool(true)),
+                    ]),
+                );
+            }
+        });
     });
     menu.popup();
 }

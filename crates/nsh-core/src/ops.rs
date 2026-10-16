@@ -170,7 +170,7 @@ events! {
     BackRequest = "onBackRequest": "The user tried to leave a screen with `preventBack` (back button, header back button).",
     NativeEvent = "onNativeEvent": "A registered native component emitted an event (payload: [`EventPayload::Native`]).",
     Clipboard = "onClipboard": "A clipboard read finished (root only; payload: `id`, `has`: whether it holds text, `text`: the text, unless only `has` was asked).",
-    Menu = "onMenu": "A menu item was chosen: the application menu's or a context menu's (root only; desktops; payload: `id`).",
+    Menu = "onMenu": "A menu item was chosen: the application menu's or a context menu's (root only; desktops; payload: `id`), or a context menu closed (`closed`: true, after its item).",
 }
 
 /// What an input holds, for the system's autofill and suggestions

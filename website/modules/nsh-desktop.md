@@ -99,14 +99,14 @@ On Windows the caption buttons are drawn by nsh in Windows 11's style and follow
 ```ts
 const Menu: {
   setApplicationMenu(items: MenuItem[] | null): void;
-  popup(items: MenuItem[], at?: { x: number; y: number }): void;
+  popup(items: MenuItem[], at?: { x: number; y: number }): Promise<void>;
 };
 ```
 
 | Member | Description |
 |---|---|
 | `setApplicationMenu(items)` | Sets the application menu: one submenu per top-level item (`File`, `Edit`, ...). On macOS it is the menu bar, whose first menu is the app menu (AppKit titles it with the app's name). On Windows and Linux it is the window's menu bar, which is not shown while the title bar is hidden; its shortcuts still work, and a title bar of the app's own can open its menus with `Menu.popup`. `null` restores the platform's default menu. |
-| `popup(items, at?)` | Shows a context menu with its top left corner at `at` (the window's coordinates, in points), or at the pointer. |
+| `popup(items, at?)` | Shows a context menu with its top left corner at `at` (the window's coordinates, in points), or at the pointer. The promise resolves once the menu closes, whether an item was chosen or not: a button that opened it can stay pressed until then. |
 
 Call `setApplicationMenu` again to change the menu. Inside an `effect` it follows the signals it reads: a check mark or an enabled state that depends on app state stays current.
 

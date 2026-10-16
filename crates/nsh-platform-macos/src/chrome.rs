@@ -528,7 +528,17 @@ fn popup(surface: &Surface, items: &Arc<[MenuItem]>, at: Option<(f32, f32)>) {
             root.convertPoint_fromView(in_window, None)
         }
     };
+    // Returns once the menu closed (the chosen item's action sent).
     menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(root));
+    // The app's `Menu.popup` promise settles.
+    surface.event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![
+            ("id", PayloadValue::Number(0.0)),
+            ("closed", PayloadValue::Bool(true)),
+        ]),
+    );
 }
 
 /// The root view moved to a window, or the window changed: a hidden title
