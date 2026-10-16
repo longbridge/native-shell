@@ -9,7 +9,8 @@
 //!   quit"` runs steps once the window shows: screenshots rendered
 //!   offscreen and simulated input, to check the backend without touching
 //!   the screen.
-//! - `--size 390x844` sets the window size.
+//! - `--size 390x844` sets the window size in points (default 1200x800,
+//!   wide enough for desktop layouts such as the gallery's sidebar).
 //!
 //! Without arguments it connects to the dev server on this machine.
 //!
@@ -52,11 +53,10 @@ pub fn main() -> std::process::ExitCode {
             // Steps run once the window shows (`nsh_platform_windows`'s
             // `script` module): offscreen screenshots and simulated input.
             "--script" => options.script = args.next(),
-            "--size" => {
-                if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x')) {
-                    options.size = (w.parse().unwrap_or(390), h.parse().unwrap_or(844));
-                }
-            }
+            "--size" => match args.next().as_deref().and_then(parse_size) {
+                Some(size) => options.size = size,
+                None => log::warn!("--size takes <width>x<height> in points, as 390x844"),
+            },
             other => log::warn!("unknown argument {other}"),
         }
     }
@@ -66,6 +66,28 @@ pub fn main() -> std::process::ExitCode {
     });
     options.title = "nsh".to_owned();
     run_app(source, options)
+}
+
+/// `1200x800` → `(1200, 800)` (points; both positive).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_size(s: &str) -> Option<(i32, i32)> {
+    let (w, h) = s.trim().split_once(['x', 'X'])?;
+    let (w, h) = (w.trim().parse().ok()?, h.trim().parse().ok()?);
+    (w > 0 && h > 0).then_some((w, h))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_size;
+
+    #[test]
+    fn sizes() {
+        assert_eq!(parse_size("1200x800"), Some((1200, 800)));
+        assert_eq!(parse_size(" 390X844 "), Some((390, 844)));
+        assert_eq!(parse_size("390"), None);
+        assert_eq!(parse_size("0x10"), None);
+        assert_eq!(parse_size("ax10"), None);
+    }
 }
 
 /// Not on Windows: says so and exits.
