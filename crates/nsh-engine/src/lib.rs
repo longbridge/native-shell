@@ -9,6 +9,7 @@
 //! the engine.
 
 mod access;
+pub mod perf;
 mod script;
 #[cfg(feature = "js")]
 mod symbolicate;
@@ -441,6 +442,7 @@ enum Message {
     /// engine left are dropped).
     Fetch(RequestId, u64, FetchEvent),
     Hot(HotUpdate),
+    Perf(Option<Arc<perf::PerfMonitor>>),
     /// Sent by a dropped [`Engine`] (there is none in WebAssembly).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Shutdown,
@@ -544,6 +546,12 @@ impl EngineControl {
     pub fn set_states(&self, id: NodeId, states: u8) {
         let _ = self.tx.send(Message::States(id, states));
     }
+
+    /// Records the engine's commits into `monitor` from now on (`None`:
+    /// stops). Measuring costs nothing while no monitor is installed.
+    pub fn set_perf_monitor(&self, monitor: Option<Arc<perf::PerfMonitor>>) {
+        let _ = self.tx.send(Message::Perf(monitor));
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -635,6 +643,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
                 Err(_) => return,
             },
         };
+        let started = driver.state.perf.is_some().then(Instant::now);
         if let Some(message) = message {
             if !driver.handle(message) {
                 return;
@@ -647,6 +656,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
             }
         }
         driver.turn();
+        driver.state.record_perf(started);
         if rx.is_empty() {
             driver.collect_if_idle();
         }
@@ -690,10 +700,12 @@ impl<M: TextEngine + 'static> LocalEngine<M> {
         // Bounded: messages sent while handling (a task waking another)
         // are handled in the same call, a loop that never settles is not.
         for _ in 0..4 {
+            let started = self.driver.state.perf.is_some().then(Instant::now);
             while let Ok(message) = self.rx.try_recv() {
                 self.driver.handle(message);
             }
             self.driver.turn();
+            self.driver.state.record_perf(started);
             if self.rx.is_empty() {
                 break;
             }
@@ -788,6 +800,8 @@ impl<M: TextEngine + 'static> Driver<M> {
             binds: Vec::new(),
             events: Vec::new(),
             trace: config.trace,
+            perf: None,
+            perf_commit: perf::CommitTiming::default(),
             committed_since_gc: false,
             hot: Vec::new(),
             scroll_events: FxHashMap::default(),
@@ -965,6 +979,11 @@ struct State<M: TextEngine> {
     /// Events raised by the core (e.g. `onEndReached`, `onLayout`).
     events: Vec<(NodeId, EventKind, EventPayload)>,
     trace: bool,
+    /// Where commit timings go ([`EngineControl::set_perf_monitor`]).
+    perf: Option<Arc<perf::PerfMonitor>>,
+    /// The core's share of the wake-up being measured (`layout`, `ops`,
+    /// `items`; `js` is the rest of the wake-up).
+    perf_commit: perf::CommitTiming,
     committed_since_gc: bool,
     net: Net,
     /// Development updates to apply.
@@ -1109,6 +1128,21 @@ impl Net {
 }
 
 impl<M: TextEngine> State<M> {
+    /// Ends the measured wake-up that began at `started`
+    /// ([`EngineControl::set_perf_monitor`]).
+    fn record_perf(&mut self, started: Option<Instant>) {
+        let (Some(started), Some(monitor)) = (started, &self.perf) else {
+            return;
+        };
+        let busy = started.elapsed();
+        monitor.record_busy(busy);
+        let mut commit = std::mem::take(&mut self.perf_commit);
+        if commit.ops > 0 || commit.items > 0 {
+            commit.js = busy.saturating_sub(commit.layout);
+            monitor.record_commit(commit);
+        }
+    }
+
     /// Sends the pending touch move.
     fn dispatch_touch_move(&mut self, script: Option<&Script>) {
         if let Some((id, touch)) = self.touch_move.take()
@@ -1262,6 +1296,12 @@ impl<M: TextEngine> State<M> {
             }
         }
         self.committed_since_gc |= op_count > 0;
+        if self.perf.is_some() && (op_count > 0 || merged.is_some()) {
+            let c = &mut self.perf_commit;
+            c.layout += start.elapsed().saturating_sub(js);
+            c.ops += op_count as u32;
+            c.items += merged.as_ref().map_or(0, |b| b.items.len() as u32);
+        }
         if self.trace && (op_count > 0 || merged.is_some()) {
             log::info!(
                 target: "nsh::perf",
@@ -1417,6 +1457,10 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
             }
         }
         Message::Hot(update) => state.hot.push(update),
+        Message::Perf(monitor) => {
+            state.perf = monitor;
+            state.perf_commit = perf::CommitTiming::default();
+        }
         Message::Shutdown => return false,
     }
     true

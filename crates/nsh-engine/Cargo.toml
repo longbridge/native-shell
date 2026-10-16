@@ -30,7 +30,8 @@ tokio = { workspace = true, features = ["rt", "time"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
-[target.'cfg(target_vendor = "apple")'.dependencies]
+# Thread priority (Apple), process CPU and memory (`perf`).
+[target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [dev-dependencies]

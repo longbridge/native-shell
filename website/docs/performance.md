@@ -178,6 +178,15 @@ nsh run App.tsx --target android --trace --release
 logs the same commit lines from the real host, with the platform's own text engine. `NshAppView(trace: true)` and
 `new NshView(context, true)` do the same in an embedding app.
 
+### On screen: `--fps`
+
+```sh
+nsh run App.tsx --target macos --fps --release
+```
+
+shows the frame rate and what frames and commits cost over the running app, with CPU, GPU and memory
+([macOS: performance monitor](./macos.md#performance-monitor)).
+
 > [!TIP]
 > Single measurements are dominated by the CPU's clock state: a thread that just slept runs slower for a while.
 > Compare the minimum of several runs, on the same machine, and prefer release builds for timing.

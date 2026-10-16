@@ -1,0 +1,17 @@
+[package]
+name = "nsh-macos-app"
+description = "Release app runner on macOS: the executable of packaged nsh apps (no development features)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+log.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos = { workspace = true, features = ["js"] }
+serde_json.workspace = true

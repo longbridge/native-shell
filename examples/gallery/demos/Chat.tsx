@@ -635,7 +635,7 @@ export function Chat() {
               }}
             >
               <Text style={{ fontSize: 12, fontWeight: "600", color: colors.faint, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 }}>ADD AND REPLAY</Text>
-              <Scroll style={{ flexGrow: 0 }}>
+              <Scroll style={{ flexShrink: 1 }}>
                 <Each of={menuRows}>
                   {(row, i) => (
                     <View

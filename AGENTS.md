@@ -7,8 +7,8 @@ View). Plugins for native apps and standalone apps use the same machinery.
 Module code runs in QuickJS on a native runtime (the reactive graph, the renderer and every module apps import are
 Rust); layout uses Taffy; embedding native components such as maps or web views has no layering problems. The
 toolchain is pure Rust and does not need Node.js; app developers get a prebuilt distribution (`cargo xtask dist`) and
-never need Rust either. Mobile comes first; Linux runs apps with GTK 4 widgets (`nsh-platform-linux`); a GPUI desktop backend is in
-development; the web build only runs the website's demos.
+never need Rust either. Mobile comes first; Linux runs apps with GTK 4 widgets (`nsh-platform-linux`), macOS with AppKit views
+(`nsh-platform-macos`); a GPUI desktop backend is in development; the web build only runs the website's demos.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.
@@ -62,6 +62,11 @@ crates/
                        `--script` steps (screenshots, simulated input) for checking changes (docs/dev/linux.md)
   nsh-linux-host/      Development host on Linux (`nsh run --target linux`): connects to a dev server or runs a bundle
   nsh-linux-app/       Release runner on Linux: the executable of apps built by `nsh package --target linux`
+  nsh-platform-macos/  AppKit backend (macOS): one flipped, layer-backed `NSView` per node decorated by Core Animation, CoreText text
+                       (typeset on the engine thread), desktop input and scroll views as on Linux, navigation, video, web views,
+                       native components, AppView, standalone app; feature `dev` as above; `--script` steps (docs/dev/macos.md)
+  nsh-macos-host/      Development host on macOS (`nsh run --target macos`): connects to a dev server or runs a bundle
+  nsh-macos-app/       Release runner on macOS: the executable of apps built by `nsh package --target macos`
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
   nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / check / dev / run / package; keygen /
@@ -79,7 +84,7 @@ examples/             Example apps (gallery: a demo index, one module per demo; 
 ```
 
 Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ←
-`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
+`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
 on `nsh-core` only and is used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
 on any platform or JS crate.
 
@@ -99,6 +104,7 @@ on any platform or JS crate.
 | `.nsh/types`, the dev server, hot reload | `docs/dev/tooling.md` |
 | the web runtime (`nsh-platform-web`), the website's demos | `docs/dev/web.md`, `website/README.md` |
 | the Linux backend (`nsh-platform-linux`, GTK 4) | `docs/dev/linux.md` |
+| the macOS backend (`nsh-platform-macos`, AppKit) | `docs/dev/macos.md` |
 | a hot path | `docs/dev/performance.md` (baselines) |
 | anything platform-specific | `docs/dev/pitfalls.md` (verified constraints, by area) |
 | components (`nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md` |
@@ -109,14 +115,15 @@ including the user-facing pages in `website/` (English and `zh-CN`).
 ## Commands
 
 ```sh
-cargo run [-- <app>] [-- --target ios|android]                                     # the gallery in Mac Catalyst, hot reload; rebuilt and restarted on Rust changes
-cargo xtask [<app>] [--target ios|android] [-v]                                    # the same without cargo's own two lines; -v (any nsh / xtask command): all output
+cargo run [-- <app>] [-- --target catalyst|ios|android]                            # the gallery on this machine's backend (AppKit / GTK), hot reload; rebuilt and restarted on Rust changes
+cargo xtask [<app>] [--target catalyst|ios|android] [-v]                           # the same without cargo's own two lines; -v (any nsh / xtask command): all output
 cargo build -p nsh-cli                                                             # build the nsh CLI
 ./target/debug/nsh init my-app                                                     # new app: App.tsx, nsh.json, tsconfig.json, .nsh/types
 cargo build -p nsh-ios-host --target aarch64-apple-ios-macabi                          # the Catalyst development host (nsh run builds it in a checkout)
 cargo build -p nsh-ios-host --target aarch64-apple-ios-sim                             # the iOS simulator host (`nsh run --target ios`)
 cargo build -p nsh-ios-app --target aarch64-apple-ios-sim                              # the release runner (`nsh package --target ios-simulator`)
 cargo build -p nsh-linux-host                                                          # the Linux (GTK) development host (`nsh run` on Linux builds it in a checkout)
+cargo build -p nsh-macos-host                                                          # the macOS (AppKit) development host (`nsh run --target macos` builds it in a checkout)
 ./target/debug/nsh trace examples/counter                                  # headless run: prints mount items and the time of every commit
 ./target/release/nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0       # headless scrolling (10pt per frame): per-frame list cost
 ./target/debug/nsh trace examples/hopper --tap label:Plan --wait 500 --safe-area 47,0,34,0   # tap by testID / label / text, run timers, insets
@@ -147,6 +154,7 @@ cargo xtask ios-embed                                                           
 cargo xtask web                                                                 # nsh.wasm + player + website demos into website/public/play
 cargo clippy -p nsh-platform-web --target wasm32-unknown-unknown --features compiler   # the web backend (empty off WebAssembly)
 cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets      # the Linux backend (on Linux; empty elsewhere)
+cargo clippy -p nsh-platform-macos -p nsh-macos-host -p nsh-macos-app --all-targets --features nsh-platform-macos/dev   # the macOS backend (on macOS)
 cd website && bun run dev                                                       # the documentation site (builds the player too)
 ```
 
@@ -154,7 +162,8 @@ cd website && bun run dev                                                       
 host it is an empty crate, so always run clippy on platform code with the Catalyst target. Likewise
 `nsh-platform-android` is empty off Android: check it with `cargo xtask android` (which sets up the NDK linker, `CC`,
 `AR` and bindgen's sysroot) and `cargo xtask clippy-android`. `nsh-platform-linux` and its hosts are empty off Linux:
-check them on Linux, with the GTK 4 (≥ 4.14) development packages installed. `.cargo/config.toml` sets
+check them on Linux, with the GTK 4 (≥ 4.14) development packages installed. `nsh-platform-macos` and its hosts are
+empty off macOS (`target_os = "macos"`, not Catalyst). `.cargo/config.toml` sets
 `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.
 
 ## Rules
@@ -249,7 +258,7 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
 
 ## Verification after changes
 
-1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, `cargo xtask clippy-android` and, on Linux, the Linux crates).
+1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, the macOS crates, `cargo xtask clippy-android` and, on Linux, the Linux crates).
 2. Changes to the runtime (`nsh-js`), engine or core: run `nsh trace` and check item counts and timings.
 3. Changes to the platform layer: launch with `nsh run`, check screenshots and simulate input where needed (the terminal needs the Screen
    Recording and Accessibility permissions; while the screen is locked the frontmost app is `loginwindow` and clicks fail, but window

@@ -100,6 +100,15 @@ nsh run my-app/App.tsx --target android
 
 Start an emulator or connect a device first (`adb devices` lists them; nsh uses the first one). `nsh` installs a development host APK (rebuilt only when the runtime changes) and forwards the dev server's port to the device with `adb reverse`, so it works over USB without a shared network.
 
+#### macOS (AppKit)
+
+```sh
+nsh run my-app/App.tsx --target macos
+```
+
+The app opens as a desktop Mac app (AppKit, in a resizable window), with mouse, trackpad and keyboard input instead of
+touches. It needs macOS 14 or later; see [macOS](./macos.md).
+
 #### Linux (default on Linux)
 
 ```sh
@@ -206,6 +215,7 @@ The same module can also be a whole app. `nsh package` builds an installable app
 ```sh
 nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
+nsh package my-app --target macos
 nsh package my-app --target linux
 ```
 

@@ -119,16 +119,16 @@ Linux, so platform code is only checked by the platform-specific clippy runs abo
 ### Run the examples
 
 `examples/gallery` has a demo for every area of nsh. If you change an existing feature, run the related demo on the
-platforms it touches. `cargo run` runs the gallery in the Mac Catalyst window (UIKit on macOS, no simulator): it builds
+platforms it touches. `cargo run` runs the gallery on the machine's own desktop backend (an AppKit window on macOS, a GTK window on Linux): it builds
 the CLI and the development host, reloads JS and TSX in place, and rebuilds and restarts the app whenever Rust code
 under `crates/` changes (components and modules are Rust and live in the host). Ctrl-C stops it.
 
 ```sh
-cargo run                                      # the gallery in the Mac Catalyst window
+cargo run                                      # the gallery in an AppKit window (macOS) or a GTK window (Linux)
 cargo run -- examples/counter                  # another app: its directory (App.tsx is the entry) or entry module
+cargo run -- --target catalyst                 # in the Mac Catalyst window (UIKit, phone-style)
 cargo run -- --target ios                      # in an iOS simulator
 cargo run -- --target android                  # on an Android device or emulator
-cargo run -- --target linux                    # in a GTK window (the default on Linux)
 ```
 
 `nsh run` itself works too; in a checkout it builds the host it needs first:

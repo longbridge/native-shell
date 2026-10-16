@@ -2197,6 +2197,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsh-macos-app"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nsh-platform-macos",
+ "serde_json",
+]
+
+[[package]]
+name = "nsh-macos-host"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nsh-dev",
+ "nsh-engine",
+ "nsh-platform-macos",
+]
+
+[[package]]
 name = "nsh-macros"
 version = "0.1.0"
 dependencies = [
@@ -2282,6 +2301,33 @@ dependencies = [
  "serde_json",
  "ttf-parser",
  "ureq",
+]
+
+[[package]]
+name = "nsh-platform-macos"
+version = "0.1.0"
+dependencies = [
+ "block2",
+ "crossbeam-channel",
+ "dispatch2",
+ "libc",
+ "log",
+ "nsh-animation",
+ "nsh-core",
+ "nsh-dev",
+ "nsh-engine",
+ "nsh-ui-mobile",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-core-text",
+ "objc2-foundation",
+ "objc2-image-io",
+ "objc2-io-kit",
+ "objc2-quartz-core",
+ "rustc-hash",
+ "serde_json",
 ]
 
 [[package]]
@@ -2402,6 +2448,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-app-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
+dependencies = [
+ "bitflags",
+ "block2",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-quartz-core",
+]
+
+[[package]]
 name = "objc2-core-foundation"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2451,6 +2512,7 @@ dependencies = [
  "bitflags",
  "block2",
  "objc2",
+ "objc2-core-foundation",
 ]
 
 [[package]]
@@ -2461,6 +2523,16 @@ checksum = "32b0446e98cf4a784cc7a0177715ff317eeaa8463841c616cfc78aa4f953c4ea"
 dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
+]
+
+[[package]]
+name = "objc2-io-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
+dependencies = [
+ "libc",
+ "objc2-core-foundation",
 ]
 
 [[package]]

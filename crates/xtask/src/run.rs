@@ -1,6 +1,7 @@
 //! `cargo run` (the workspace's default task): runs an example app, the
-//! gallery by default, in the Mac Catalyst development host (the GTK host
-//! on Linux, an Android device or emulator elsewhere) with hot reload
+//! gallery by default, on the machine's own desktop backend (the AppKit
+//! host on macOS, the GTK host on Linux; an Android device or emulator
+//! elsewhere) with hot reload
 //! (`nsh run`), and rebuilds and restarts it when the runtime's sources
 //! under `crates/` change: components and modules are Rust and live in the
 //! host, so only JS and TSX reload in place.
@@ -28,8 +29,9 @@ pub(crate) struct RunArgs {
     /// module.
     #[arg(default_value = "examples/gallery")]
     entry: String,
-    /// Where to run: `catalyst`, `ios` (a simulator), `android` or `linux`;
-    /// default: `catalyst` on macOS, `linux` on Linux, else `android`.
+    /// Where to run: `macos` (the AppKit host), `catalyst`, `ios` (a
+    /// simulator), `android` or `linux`; default: the machine's own
+    /// backend (`macos` on macOS, `linux` on Linux), else `android`.
     #[arg(long)]
     target: Option<String>,
     /// iOS simulator to use (name or UDID).
@@ -139,7 +141,7 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
     let mut cmd = Command::new(root.join("target/debug/nsh"));
     cmd.arg("run").arg(&args.entry).current_dir(root);
     let default = if cfg!(target_os = "macos") {
-        "catalyst"
+        "macos"
     } else if cfg!(target_os = "linux") {
         "linux"
     } else {
@@ -160,7 +162,8 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
         .context("launch target/debug/nsh")
 }
 
-/// Stops `nsh run` and everything it started (the Catalyst or Linux host).
+/// Stops `nsh run` and everything it started (the Catalyst, macOS or Linux
+/// host).
 fn stop(app: &mut Child) {
     let Ok(pgid) = libc::pid_t::try_from(app.id()) else {
         let _ = app.kill();

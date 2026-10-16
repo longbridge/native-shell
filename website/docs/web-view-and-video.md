@@ -8,12 +8,14 @@ order: 21
 
 `WebView` from `nsh/webview` and `Video` from `nsh/video` embed the platform's own web engine and media player as ordinary views. Because nsh renders with native views, they sit in your layout like any other element: they scroll with their parent, take rounded corners and clipping, and other views can overlap them without layering problems.
 
-| Component | iOS | Android | Linux |
-|---|---|---|---|
-| `WebView` | WKWebView | `android.webkit.WebView` | Not supported: a placeholder |
-| `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` | GTK's media stream (GStreamer) in a `GtkPicture`; `GtkVideo` with `controls` |
+| Component | iOS | Android | macOS | Linux |
+|---|---|---|---|---|
+| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | Not supported: a placeholder |
+| `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` | AVPlayerLayer; AVKit's AVPlayerView with `controls` | GTK's media stream (GStreamer) in a `GtkPicture`; `GtkVideo` with `controls` |
 
 The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Import them from `nsh/webview` and `nsh/video`.
+
+On [macOS](./macos.md) the web view has no scroll view of its own, so `scrollEnabled` is ignored.
 
 On [Linux](./linux.md) a web view would need WebKitGTK, which nsh does not use: it shows a neutral placeholder and
 ignores its commands. Videos play the formats the installed GStreamer plugins decode; `rate` is not supported (they
