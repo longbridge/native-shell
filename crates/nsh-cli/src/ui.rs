@@ -326,7 +326,7 @@ fn width(text: &str) -> usize {
 /// `path` relative to the current directory when it is inside it.
 pub(crate) fn path(path: &Path) -> String {
     let full = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    let cwd = std::env::current_dir().and_then(|d| dunce::canonicalize(d));
+    let cwd = std::env::current_dir().and_then(dunce::canonicalize);
     match cwd.as_deref().map(|cwd| full.strip_prefix(cwd)) {
         Ok(Ok(rest)) if rest.as_os_str().is_empty() => ".".to_owned(),
         Ok(Ok(rest)) => rest.display().to_string(),
