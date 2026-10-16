@@ -113,6 +113,25 @@ The environment is a desktop's: the safe area and the keyboard height are 0, `Pl
 follows Settings > Personalization > Colors live, `fontScale()` the Text size setting, reduce motion the animation
 effects setting and the locale the user's regional format. See [Device and environment](./device-and-environment.md).
 
+### Keyboard
+
+| Keys | Do |
+|---|---|
+| Return | In an `Input`, what `submitBehavior` says: submit (`onSubmitEditing`), submit and leave the field, or a new line (multiline inputs) |
+| Shift+Return, Alt+Return | A new line in a multiline input whose return submits (Ctrl+Return submits) |
+| Tab, Shift+Tab | The next / previous text field, within the newest modal; the field's text is selected, as in Windows' dialogs |
+| Escape | Leaves the focused field; else clears a text selection, then goes back or asks the newest modal to close |
+| Alt+Left, Browser Back key, mouse back button | Go back (also from a field) |
+| Ctrl+arrows, Home / End, Ctrl+Home / End, with Shift; Ctrl+Backspace / Delete | Move, select and delete by word and line in a field, as in every Windows app |
+| Ctrl+Z, Ctrl+Y, Ctrl+X / C / V / A; Shift+Delete, Ctrl+Insert, Shift+Insert | Undo, redo, cut, copy, paste, select all (a secure field refuses cut and copy); Ctrl+A / Ctrl+C select and copy `selectable` text |
+| Arrows; Page Up / Down, Space, Shift+Space; Home / End, Ctrl+Home / End | Scroll the scroll view around the focused view or under the mouse by a line, a page, to the start / end (not while a field has the focus) |
+| F11, Alt+F4 | Full screen, close the window (`nsh package` and `nsh run` apps) |
+| Ctrl+R, F5 | Reload the latest build (`nsh run`) |
+
+Shortcuts work with any keyboard layout (on a Cyrillic or Greek one, Ctrl+C is the key that types C on a US layout).
+A return that commits an input method's composition (Chinese, Japanese, ...) never submits. `onKeyPress` reports
+what React Native reports: the typed text, `"Enter"`, `"Backspace"`, and `"Escape"`; pasted text is not reported.
+
 Different, or not supported:
 
 - **`WebView`** is a WebView2 child window: nsh content drawn over it (a dialog, a sheet) is hidden under it.

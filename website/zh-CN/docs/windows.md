@@ -104,6 +104,24 @@ QuickJS 字节码是受信任的输入，只能从你自己应用的文件中加
 （Windows 11 上也是：Windows 沿用了这个版本号）。深色模式实时跟随“设置 > 个性化 > 颜色”，`fontScale()` 跟随“文本大小”设置，
 减少动态效果跟随“动画效果”设置，区域设置跟随用户的区域格式。见[设备与环境](./device-and-environment.md)。
 
+### 键盘
+
+| 按键 | 作用 |
+|---|---|
+| Return | 在 `Input` 中按 `submitBehavior` 行事：提交（`onSubmitEditing`）、提交并离开输入框，或换行（多行输入框） |
+| Shift+Return、Alt+Return | 在回车即提交的多行输入框中换行（Ctrl+Return 提交） |
+| Tab、Shift+Tab | 移到下一个 / 上一个文本框，只在最上层的模态窗口之内；与 Windows 的对话框一样，文本框中的文字会被选中 |
+| Escape | 离开有焦点的输入框；否则清除文本选区，再返回上一页或请求关闭最上层的模态窗口 |
+| Alt+Left、浏览器后退键、鼠标的后退键 | 返回上一页（在输入框中也是） |
+| Ctrl+方向键、Home / End、Ctrl+Home / End，加 Shift；Ctrl+Backspace / Delete | 在输入框中按词和行移动、选择、删除，与其他 Windows 应用一致 |
+| Ctrl+Z、Ctrl+Y、Ctrl+X / C / V / A；Shift+Delete、Ctrl+Insert、Shift+Insert | 撤销、重做、剪切、复制、粘贴、全选（密码输入框拒绝剪切和复制）；Ctrl+A / Ctrl+C 选择并复制 `selectable` 文本 |
+| 方向键；Page Up / Down、Space、Shift+Space；Home / End、Ctrl+Home / End | 滚动有焦点的视图所在或鼠标下方的滚动视图：一行、一页、到开头 / 结尾（输入框有焦点时不滚动） |
+| F11、Alt+F4 | 全屏、关闭窗口（`nsh package` 和 `nsh run` 的应用） |
+| Ctrl+R、F5 | 重新加载最新的构建（`nsh run`） |
+
+快捷键适用于任何键盘布局（在西里尔或希腊字母布局下，Ctrl+C 是美式布局中输入 C 的那个键）。确认输入法组合文字（中文、日文等）的回车
+不会提交。`onKeyPress` 报告的与 React Native 一致：输入的文字、`"Enter"`、`"Backspace"` 和 `"Escape"`；粘贴的文字不报告。
+
 不同之处或不支持的功能：
 
 - **`WebView`** 是一个 WebView2 子窗口：绘制在它上方的 nsh 内容（对话框、sheet）会被它遮住。不支持 HTML 的
