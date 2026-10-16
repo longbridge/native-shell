@@ -13,7 +13,7 @@ demo: mod-canvas
 import { Canvas, CanvasGradient, CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 ```
 
-See [Canvas](../docs/canvas.md) for the guide and [`<canvas>`](../elements/canvas.md) for the element underneath.
+See [Canvas](../docs/canvas.md) for the guide and [`<Canvas>`](../elements/canvas.md) for its props.
 
 ## Canvas
 
@@ -39,13 +39,13 @@ A view drawn with a 2D context. It takes every [view prop](../elements/view.md) 
 Give the canvas a size through its style (`width` / `height`, `flex: 1`, `aspectRatio`, ...). Coordinates are in points, the origin at the top left.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 function App() {
   const values = signal([12, 30, 22, 48, 36, 60, 52, 75]);
   return (
-    <view style={{ flex: 1, padding: 24 }}>
+    <View style={{ flex: 1, padding: 24 }}>
       <Canvas
         style={{ height: 160 }}
         draw={(ctx, { width, height }) => {
@@ -59,8 +59,8 @@ function App() {
           ctx.stroke();
         }}
       />
-      <text onPress={() => values.update((v) => [...v.slice(1), Math.random() * 80])}>Next</text>
-    </view>
+      <Text onPress={() => values.update((v) => [...v.slice(1), Math.random() * 80])}>Next</Text>
+    </View>
   );
 }
 
@@ -73,6 +73,7 @@ Any argument typed `CanvasNumber` and any paint (`fillStyle`, `strokeStyle`) acc
 
 ```tsx
 import { createNativeValue, Easing } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
 
 const progress = createNativeValue(0);
 

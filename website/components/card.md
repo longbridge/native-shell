@@ -17,20 +17,20 @@ import { Card } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48 }}>
       <Card
-        header={<text>Weekly summary</text>}
+        header={<Text>Weekly summary</Text>}
         footer={<Button title="Details" variant="plain" onPress={() => console.log("details")} />}
       >
-        <text>You walked 42 km this week.</text>
-        <text>That is 8 km more than last week.</text>
+        <Text>You walked 42 km this week.</Text>
+        <Text>That is 8 km more than last week.</Text>
       </Card>
-    </view>
+    </View>
   );
 }
 
@@ -40,7 +40,7 @@ mount(App);
 ## Layout
 
 - **Header**: 16 pt padding at the sides and the top. Text in the header is semibold and 1 pt larger than the theme's
-  `font.size`, so a plain `<text>` works as a title. A header can be any JSX, for example an avatar and a name in a
+  `font.size`, so a plain `<Text>` works as a title. A header can be any JSX, for example an avatar and a name in a
   row.
 - **Content**: the children are stacked in a column with 8 pt gaps. With a header, the content has 8 pt padding at the
   top and 16 pt at the sides and the bottom. Without a header, it has 16 pt padding on all sides.
@@ -51,23 +51,23 @@ mount(App);
 <Card
   variant="outlined"
   header={
-    <view style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <view style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
-      <text>Ada Lovelace</text>
-    </view>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
+      <Text>Ada Lovelace</Text>
+    </View>
   }
   footer={
-    <view style={{ flexDirection: "row", gap: 8 }}>
+    <View style={{ flexDirection: "row", gap: 8 }}>
       <Button title="Ignore" variant="plain" onPress={ignore} />
       <Button title="Reply" onPress={reply} />
-    </view>
+    </View>
   }
 >
-  <text>Can we move the meeting to Thursday?</text>
+  <Text>Can we move the meeting to Thursday?</Text>
 </Card>
 ```
 
-The header and footer only exist while you pass them: `header={cond() ? <text>…</text> : undefined}` adds and
+The header and footer only exist while you pass them: `header={cond() ? <Text>…</Text> : undefined}` adds and
 removes the header, and the content's padding changes to match.
 
 ## Variants

@@ -1,39 +1,36 @@
 ---
-title: web-view
-description: "The web view element and the WebView component: web pages and inline HTML inside an app, with messaging both ways."
+title: WebView
+description: "The WebView component: web pages and inline HTML inside an app, with messaging both ways."
 order: 9
 ---
 
-# web-view
+# WebView
 
 A web view shows a web page, or HTML you pass in, inside the app: WKWebView on iOS and Mac Catalyst,
 `android.webkit.WebView` on Android. Because nsh renders with native views, a web view sits in the layout like any other
 view: no overlay, no layering problems with views around it.
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 
 function Browser() {
   const nav = signal<WebViewNavigation | null>(null);
   return (
-    <view style={{ flex: 1 }}>
-      <text numberOfLines={1}>{nav()?.title ?? "Loading…"}</text>
+    <View style={{ flex: 1 }}>
+      <Text numberOfLines={1}>{nav()?.title ?? "Loading…"}</Text>
       <WebView
         source="https://example.com"
         style={{ flex: 1 }}
         onNavigationStateChange={(e) => nav.set(e)}
       />
-    </view>
+    </View>
   );
 }
 ```
 
-## `WebView` and `<web-view>`
-
-`WebView` from [`nsh/webview`](../modules/nsh-webview.md) is the typed form of the `<web-view>` tag: same element, same
-props, but its props are checked and `source` is required. The bare tag accepts any prop in TypeScript. Prefer
-`WebView`. The [web view and video guide](../docs/web-view-and-video.md) covers messaging patterns and capabilities.
+`WebView` comes from [`nsh/webview`](../modules/nsh-webview.md); `source` is required. The
+[web view and video guide](../docs/web-view-and-video.md) covers messaging patterns and capabilities.
 
 ## Props
 
@@ -80,7 +77,7 @@ The app and the page exchange strings. The page posts with `window.ReactNativeWe
 with the ref's `postMessage(data)`. Send JSON for structured data.
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { WebView } from "nsh/webview";
 
 const page = `<!doctype html>
@@ -95,10 +92,10 @@ function Bridge() {
   const message = signal("");
   let web!: YNode;
   return (
-    <view style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       <WebView ref={web} source={{ html: page }} style={{ height: 200 }} onMessage={(e) => message.set(e.data)} />
-      <text onPress={() => web.postMessage("hi from the app")}>Post to the page · got: {message()}</text>
-    </view>
+      <Text onPress={() => web.postMessage("hi from the app")}>Post to the page · got: {message()}</Text>
+    </View>
   );
 }
 ```

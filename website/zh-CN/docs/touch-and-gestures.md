@@ -13,25 +13,25 @@ nsh 的触摸处理分三个层次。**按压**（`onPress` 等）用于按钮�
 
 ## 按压
 
-所有元素都接受按压事件，不需要单独的 "touchable" 组件。把 `onPress` 加在 `<view>`、`<text>`、`<image>` 或任何其他元素上即可。
+所有元素都接受按压事件，不需要单独的 "touchable" 组件。把 `onPress` 加在 `<View>`、`<Text>`、`<Image>` 或任何其他元素上即可。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function App() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         onPress={() => count.update((n) => n + 1)}
         onLongPress={() => count.set(0)}
         activeOpacity={0.6}
         accessibilityRole="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
-        <text style={{ color: "#ffffff", fontWeight: "600" }}>Pressed {count()} times</text>
-      </view>
-    </view>
+        <Text style={{ color: "#ffffff", fontWeight: "600" }}>Pressed {count()} times</Text>
+      </View>
+    </View>
   );
 }
 
@@ -53,7 +53,7 @@ mount(App);
 - **在滚动视图内，按压会等待约 130 ms** 才开始（并显示反馈），这样从按钮上开始的拖动会滚动页面，而不是按下按钮。
 - **滑出即取消。** 手指移出视图时，按压以 `onPressOut` 结束，不触发 `onPress`。
 - **`disabled` 会把按压监听从挂载的视图上移除**，因此完全没有反馈，同时应用 `disabled:` 类（`class="disabled:opacity-40"`）。
-- **带 `onPress` 的嵌套 `<text>` 片段就是链接。** 整段文字是一个原生视图，按压会交给手指下的那个片段。见[文本](./text.md)。
+- **带 `onPress` 的嵌套 `<Text>` 片段就是链接。** 整段文字是一个原生视图，按压会交给手指下的那个片段。见[文本](./text.md)。
 
 ## 按压反馈
 
@@ -67,17 +67,17 @@ mount(App);
 | `android={{ ripple }}` | `{ color?, borderless?, radius?, foreground? }` | | Android 的 Material 水波纹。iOS 上忽略。 |
 
 ```tsx
-<view onPress={open} activeOpacity={0.5}>…</view>
+<View onPress={open} activeOpacity={0.5}>…</View>
 
-<view onPress={open} underlayColor="#ddf4ff" style={{ padding: 16 }}>…</view>
+<View onPress={open} underlayColor="#ddf4ff" style={{ padding: 16 }}>…</View>
 
-<view
+<View
   onPress={open}
   activeOpacity={0.6}
   android={{ ripple: { color: "rgba(9,105,218,0.3)" } }}
 >
   …
-</view>
+</View>
 ```
 
 无边界水波纹会扩散到视图之外，适合图标按钮：`android={{ ripple: { borderless: true, radius: 24 } }}`。`activeOpacity` 与水波纹常常一起使用：iOS 用不透明度，Android 用水波纹。见[平台特定代码](./platform-specific.md)。
@@ -85,12 +85,12 @@ mount(App);
 第三种选择是 Tailwind 的 `active:` 变体。它在视图被按下时应用对应的类，配合 `transition` 类时变化会有动画：
 
 ```tsx
-<view
+<View
   onPress={save}
   class="rounded-xl bg-emerald-600 p-4 transition active:scale-95 active:bg-emerald-800"
 >
-  <text class="font-semibold text-white">Save</text>
-</view>
+  <Text class="font-semibold text-white">Save</Text>
+</View>
 ```
 
 ## 点击区域：hitSlop
@@ -98,8 +98,8 @@ mount(App);
 `hitSlop` 把接收触摸的区域扩展到视图边界之外，而不改变布局。适合关闭按钮、开关之类的小目标。
 
 ```tsx
-<view hitSlop={12} onPress={close} style={{ width: 20, height: 20 }}>…</view>
-<view hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} onPress={next}>…</view>
+<View hitSlop={12} onPress={close} style={{ width: 20, height: 20 }}>…</View>
+<View hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} onPress={next}>…</View>
 ```
 
 | 属性 | 类型 | 说明 |
@@ -122,15 +122,15 @@ mount(App);
 典型用法：不能挡住下层内容的覆盖层（`"none"`）；全屏容器的空白处要把触摸让给后面的内容、而其中的按钮仍然可用（`"box-none"`）；手指落在子视图上时也要由整行接收按压（`"box-only"`）。
 
 ```tsx
-<view style={{ flex: 1 }}>
+<View style={{ flex: 1 }}>
   <Map />
   {/* 浮动工具栏：空白区域把触摸交给地图。 */}
-  <view pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", padding: 16 }}>
-    <view onPress={locate} style={{ alignSelf: "flex-end", padding: 12, borderRadius: 24, backgroundColor: "#ffffff" }}>
-      <text>Locate</text>
-    </view>
-  </view>
-</view>
+  <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", padding: 16 }}>
+    <View onPress={locate} style={{ alignSelf: "flex-end", padding: 12, borderRadius: 24, backgroundColor: "#ffffff" }}>
+      <Text>Locate</Text>
+    </View>
+  </View>
+</View>
 ```
 
 Tailwind 类 `pointer-events-none` 和 `pointer-events-auto` 设置的是同一件事；显式属性优先于类。
@@ -140,15 +140,15 @@ Tailwind 类 `pointer-events-none` 和 `pointer-events-auto` 设置的是同一�
 要让拖动、捏合和旋转移动屏幕上的东西，就把[原生值](./animation.md#原生值)绑定到手势上。平台的手势识别器在 UI 线程上写入这些值，绑定了它们的视图在同一帧移动；JS 只在手势开始和结束时得到通知。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
   const x = createNativeValue(0);
   const y = createNativeValue(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         pan={{ x, y }}
         onPanEnd={(e) => {
           // 以松手时的速度弹回原位。
@@ -157,7 +157,7 @@ function App() {
         }}
         style={{ width: 120, height: 120, borderRadius: 24, backgroundColor: "#8250df", transform: [{ translateX: x }, { translateY: y }] }}
       />
-    </view>
+    </View>
   );
 }
 
@@ -184,7 +184,7 @@ mount(App);
 
 ```tsx
 // 吸附到左边或右边的卡片。
-<view
+<View
   pan={{ x }}
   onPanEnd={(e) => {
     const projected = (e.valueX ?? 0) + e.velocityX * 0.2;
@@ -224,7 +224,7 @@ mount(App);
 | `stopPropagation()` | 外层视图不再收到这次触摸事件。 |
 
 ```tsx
-<view
+<View
   onTouchStart={(e) => console.log("down", e.locationX, e.locationY, e.touches.length)}
   onTouchMove={(e) => console.log("move", e.pageX, e.pageY)}
   onTouchEnd={() => console.log("up")}
@@ -302,7 +302,7 @@ mount(Sketch);
 `nsh/gesture` 中的 `PanResponder` 封装了手势响应者系统，并附加手势状态：自开始以来的距离、速度、手指数量。把它的 `panHandlers` 展开到视图上。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 import { PanResponder } from "nsh/gesture";
 
 function Ball() {
@@ -317,7 +317,7 @@ function Ball() {
     onPanResponderRelease: (_, g) => console.log("released at", g.vx, g.vy, "pt/ms"),
   });
   return (
-    <view
+    <View
       {...responder.panHandlers}
       style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: "#0969da", transform: [{ translateX: pos().x }, { translateY: pos().y }] }}
     />
@@ -349,7 +349,7 @@ mount(Ball);
 
 ## 相关内容
 
-- [`view`](../elements/view.md)：基础元素上的所有触摸属性。
+- [`View`](../elements/view.md)：基础元素上的所有触摸属性。
 - [动画](./animation.md)：用于手势驱动运动的原生值、弹簧和衰减。
 - [滚动](./scrolling.md)：`keyboardShouldPersistTaps`、滚动视图与嵌套手势。
 - [`nsh/gesture`](../modules/nsh-gesture.md)：`PanResponder` 参考。

@@ -26,9 +26,10 @@ order: 13
 导入一个 `.ttf` 或 `.otf` 文件。导入的值就是字体的字体族名，并且字体会在第一帧之前注册，文字首次渲染时即可使用：
 
 ```tsx
+import { Text } from "nsh";
 import Pacifico from "./fonts/Pacifico-Regular.ttf";
 
-<text style={{ fontFamily: Pacifico, fontSize: 30 }}>Custom fonts</text>
+<Text style={{ fontFamily: Pacifico, fontSize: 30 }}>Custom fonts</Text>
 ```
 
 `Pacifico` 是字符串 `"Pacifico"`：它是字体文件中存储的字体族名（优先取排版字体族名，否则取字体族名），而不是文件名。使用导入的值而不是手写名称，可以让两者始终一致，并确保文件被打包。
@@ -43,6 +44,7 @@ import Pacifico from "./fonts/Pacifico-Regular.ttf";
 一个字体族通常由多个文件组成，每个字重和样式一个。逐个导入它们；它们会注册在同一个字体族名下，由 `fontWeight` 和 `fontStyle` 选择具体字形：
 
 ```tsx
+import { Text } from "nsh";
 import Inter from "./fonts/Inter-Regular.ttf";
 import "./fonts/Inter-Medium.ttf";
 import "./fonts/Inter-Bold.ttf";
@@ -50,10 +52,10 @@ import "./fonts/Inter-Italic.ttf";
 
 const body = { fontFamily: Inter, fontSize: 16 } as const;
 
-<text style={body}>
-  Regular, <text style={{ fontWeight: "500" }}>medium</text>, <text style={{ fontWeight: "bold" }}>bold</text> and{" "}
-  <text style={{ fontStyle: "italic" }}>italic</text>.
-</text>
+<Text style={body}>
+  Regular, <Text style={{ fontWeight: "500" }}>medium</Text>, <Text style={{ fontWeight: "bold" }}>bold</Text> and{" "}
+  <Text style={{ fontStyle: "italic" }}>italic</Text>.
+</Text>
 ```
 
 当没有已注册字形恰好匹配所需字重时，会使用最接近的一个。缺少字形时两个平台的表现不同：
@@ -78,15 +80,16 @@ const body = { fontFamily: Inter, fontSize: 16 } as const;
 ```
 
 ```tsx
+import { Text } from "nsh";
 import "./fonts/Pacifico-Regular.ttf";
 import "./fonts/Inter-Regular.ttf";
 import "./fonts/Inter-Bold.ttf";
 
-<text class="font-display text-3xl text-violet-600">Custom fonts</text>
-<text class="font-body font-bold">Bold Inter</text>
+<Text class="font-display text-3xl text-violet-600">Custom fonts</Text>
+<Text class="font-body font-bold">Bold Inter</Text>
 ```
 
-不在主题中登记也可以使用任意字体族：`font-[Pacifico]`。字重类（`font-light`、`font-semibold`、`font-bold` 等）与 `fontWeight` 一样选择字形。视图上的文字类会传给其内部的文字，因此 `<view class="font-body">` 可以为整个页面设置字体族。
+不在主题中登记也可以使用任意字体族：`font-[Pacifico]`。字重类（`font-light`、`font-semibold`、`font-bold` 等）与 `fontWeight` 一样选择字形。视图上的文字类会传给其内部的文字，因此 `<View class="font-body">` 可以为整个页面设置字体族。
 
 ## 应用的默认字体
 
@@ -94,9 +97,9 @@ import "./fonts/Inter-Bold.ttf";
 
 ```tsx
 mount(() => (
-  <view class="flex-1 font-body">
+  <View class="flex-1 font-body">
     <App />
-  </view>
+  </View>
 ));
 ```
 

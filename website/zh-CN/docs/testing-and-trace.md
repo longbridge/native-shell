@@ -114,7 +114,7 @@ bundled in 14.3 ms (3255 B)
 nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0
 ```
 
-以每帧 10 点的速度滚动第一个 `<scroll>` 或 `List`，并打印每一帧的批次：
+以每帧 10 点的速度滚动第一个 `<Scroll>` 或 `List`，并打印每一帧的批次：
 
 ```text
  info nsh::perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
@@ -190,9 +190,9 @@ jobs:
 驱动真实的原生 UI，请给视图设置 `testID`：
 
 ```tsx
-<view testID="add-to-cart" onPress={add} style={{ padding: 12 }}>
-  <text testID="cart-count">{`${count()} items`}</text>
-</view>
+<View testID="add-to-cart" onPress={add} style={{ padding: 12 }}>
+  <Text testID="cart-count">{`${count()} items`}</Text>
+</View>
 ```
 
 | 平台 | `testID` 对应到哪里 |

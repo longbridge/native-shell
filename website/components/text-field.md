@@ -8,7 +8,7 @@ demo: ui-text-field
 # TextField
 
 `TextField` is a single-line text input with an optional label above it, a border that changes color while focused,
-and a clear button. It is built on the [`<input>`](../elements/input.md) element.
+and a clear button. It is built on the [`<Input>`](../elements/input.md) element.
 
 ```tsx
 import { TextField } from "nsh/ui/mobile";
@@ -17,16 +17,16 @@ import { TextField } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { TextField } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <TextField label="Name" placeholder="Your name" value={name()} onChange={(v) => name.set(v)} />
-      <text>{`Hello, ${name() || "nobody"}`}</text>
-    </view>
+      <Text>{`Hello, ${name() || "nobody"}`}</Text>
+    </View>
   );
 }
 
@@ -71,7 +71,7 @@ mount(App);
 
 > [!NOTE]
 > TextField covers the common case. For keyboard types, return key labels, autofill, multiline text or a ref with
-> `focus()`, use the [`<input>`](../elements/input.md) element directly. See also
+> `focus()`, use the [`<Input>`](../elements/input.md) element directly. See also
 > [Forms and keyboard](../docs/forms-and-keyboard.md).
 
 ## Props

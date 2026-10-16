@@ -10,7 +10,7 @@ demo: guide-lists
 `nsh/list` 中的 `List` 在原生滚动视图上渲染长数据，但只创建屏幕附近的行。哪些行存在、放在哪里、多列布局、吸顶标题以及哪些条目可见，全部由原生计算；只有当原生端要一个单元格时，你的 JS 才去填充内容。一百万条的列表，开销和三十条的差不多。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { List } from "nsh/list";
 
 const items = Array.from({ length: 10_000 }, (_, i) => ({ id: i, title: `Item ${i + 1}` }));
@@ -19,9 +19,9 @@ function App() {
   return (
     <List each={items} estimatedItemSize={52} style={{ flex: 1, backgroundColor: "#ffffff" }}>
       {(item) => (
-        <view style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
-          <text style={{ fontSize: 16 }}>{item().title}</text>
-        </view>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
+          <Text style={{ fontSize: 16 }}>{item().title}</Text>
+        </View>
       )}
     </List>
   );
@@ -30,7 +30,7 @@ function App() {
 mount(App);
 ```
 
-和 [`<scroll>`](./scrolling.md) 一样，列表本身是视口，需要父元素给出尺寸（`flex: 1` 或一个高度）。
+和 [`<Scroll>`](./scrolling.md) 一样，列表本身是视口，需要父元素给出尺寸（`flex: 1` 或一个高度）。
 
 ## 复用是如何工作的
 
@@ -44,11 +44,11 @@ mount(App);
 // 错误：单元格被复用后，`title` 仍是第一个条目的标题。
 {(item) => {
   const title = item().title;
-  return <text>{title}</text>;
+  return <Text>{title}</Text>;
 }}
 
 // 正确：文本跟随单元格当前的条目。
-{(item) => <text>{item().title}</text>}
+{(item) => <Text>{item().title}</Text>}
 ```
 
 **把每个条目的状态放在数据里，而不是行里。** 在行内创建的 signal 属于单元格，会跟着它去到下一个条目。"这一行是否展开 / 选中 / 点赞" 应该存放在条目中，或存放在以 id 为键的映射里：
@@ -64,10 +64,10 @@ const toggle = (id: number) =>
 
 <List each={posts()} estimatedItemSize={64} style={{ flex: 1 }}>
   {(post) => (
-    <view style={{ flexDirection: "row", padding: 16 }}>
-      <text style={{ flex: 1 }}>{post().title}</text>
-      <text onPress={() => toggle(post().id)}>{liked().has(post().id) ? "♥" : "♡"}</text>
-    </view>
+    <View style={{ flexDirection: "row", padding: 16 }}>
+      <Text style={{ flex: 1 }}>{post().title}</Text>
+      <Text onPress={() => toggle(post().id)}>{liked().has(post().id) ? "♥" : "♡"}</Text>
+    </View>
   )}
 </List>
 ```
@@ -86,7 +86,7 @@ const toggle = (id: number) =>
 
 ## 属性
 
-`List` 接受 `<scroll>` 中对列表有意义的所有滚动属性（`pagingEnabled`、`snapToInterval`、`snapToOffsets`、`snapToAlignment`、`decelerationRate`、`disableIntervalMomentum`、`bounces`、`scrollEnabled`、`contentInset`、`contentOffset`、`keyboardShouldPersistTaps`、`keyboardDismissMode`、`scrollEventThrottle`、`onScroll`、`onScrollBeginDrag`、`onScrollEndDrag`、`onMomentumScrollBegin`、`onMomentumScrollEnd`、`onScrollEnd`、`scrollValue`），说明见[滚动](./scrolling.md)。列表不能缩放。它自己的属性：
+`List` 接受 `<Scroll>` 中对列表有意义的所有滚动属性（`pagingEnabled`、`snapToInterval`、`snapToOffsets`、`snapToAlignment`、`decelerationRate`、`disableIntervalMomentum`、`bounces`、`scrollEnabled`、`contentInset`、`contentOffset`、`keyboardShouldPersistTaps`、`keyboardDismissMode`、`scrollEventThrottle`、`onScroll`、`onScrollBeginDrag`、`onScrollEndDrag`、`onMomentumScrollBegin`、`onMomentumScrollEnd`、`onScrollEnd`、`scrollValue`），说明见[滚动](./scrolling.md)。列表不能缩放。它自己的属性：
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -126,7 +126,7 @@ const toggle = (id: number) =>
   style={{ flex: 1 }}
   contentContainerStyle={{ padding: 12, gap: 8 }}
 >
-  {(photo) => <image src={photo().thumb} style={{ aspectRatio: 1, borderRadius: 8 }} />}
+  {(photo) => <Image src={photo().thumb} style={{ aspectRatio: 1, borderRadius: 8 }} />}
 </List>
 ```
 
@@ -147,24 +147,24 @@ for (const [letter, names] of groups) {
 
 <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1 }}>
   {(row) => (
-    <if
+    <If
       when={"header" in row()}
-      else={<text style={{ padding: 12 }}>{(row() as { name: string }).name}</text>}
+      else={<Text style={{ padding: 12 }}>{(row() as { name: string }).name}</Text>}
     >
-      <text style={{ padding: 6, backgroundColor: "#eaeef2", fontWeight: "700" }}>{(row() as { header: string }).header}</text>
-    </if>
+      <Text style={{ padding: 6, backgroundColor: "#eaeef2", fontWeight: "700" }}>{(row() as { header: string }).header}</Text>
+    </If>
   )}
 </List>
 ```
 
-同一个单元格可能这会儿显示标题、过一会儿显示名字，所以行用 [`<if>`](../elements/control-flow.md) 决定渲染什么，它会在条目改变时切换。吸顶标题要求单列且列表不倒置。
+同一个单元格可能这会儿显示标题、过一会儿显示名字，所以行用 [`<If>`](../elements/control-flow.md) 决定渲染什么，它会在条目改变时切换。吸顶标题要求单列且列表不倒置。
 
 ## 聊天：倒置列表
 
 `inverted` 让列表从末尾开始排版：第 0 项在底部，列表初始滚动到末尾，并在条目变化时保持与末尾的距离。把最新的消息放在数组最前面；添加消息时插到前面，用 `onEndReached` 加载更早的消息时追加到后面（倒置列表的"末尾"是顶部）。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { Input, mount, signal, Text, View } from "nsh";
 import { List } from "nsh/list";
 import { KeyboardAvoidingView } from "nsh/ui/mobile";
 
@@ -194,7 +194,7 @@ function Chat() {
         onEndReachedThreshold={0.5}
       >
         {(m) => (
-          <view
+          <View
             style={{
               alignSelf: m().mine ? "flex-end" : "flex-start",
               maxWidth: "75%",
@@ -204,12 +204,12 @@ function Chat() {
               backgroundColor: m().mine ? "#0969da" : "#eaeef2",
             }}
           >
-            <text style={{ color: m().mine ? "#ffffff" : "#1f2328" }}>{m().text}</text>
-          </view>
+            <Text style={{ color: m().mine ? "#ffffff" : "#1f2328" }}>{m().text}</Text>
+          </View>
         )}
       </List>
-      <view style={{ flexDirection: "row", gap: 8, padding: 8 }}>
-        <input
+      <View style={{ flexDirection: "row", gap: 8, padding: 8 }}>
+        <Input
           value={draft()}
           onChangeText={(t) => draft.set(t)}
           onSubmitEditing={send}
@@ -218,7 +218,7 @@ function Chat() {
           placeholder="Message"
           style={{ flex: 1, borderWidth: 1, borderColor: "#d0d7de", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 }}
         />
-      </view>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -243,7 +243,7 @@ mount(Chat);
   style={{ height: 140 }}
   contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
 >
-  {(card) => <view style={{ width: 220, height: 140, borderRadius: 14, backgroundColor: card().color }} />}
+  {(card) => <View style={{ width: 220, height: 140, borderRadius: 14, backgroundColor: card().color }} />}
 </List>
 ```
 
@@ -276,7 +276,7 @@ loadMore();
   style={{ flex: 1 }}
   onEndReached={loadMore}
   onEndReachedThreshold={0.5}
-  ListFooterComponent={<text style={{ padding: 16, textAlign: "center", color: "#8c959f" }}>Loading…</text>}
+  ListFooterComponent={<Text style={{ padding: 16, textAlign: "center", color: "#8c959f" }}>Loading…</Text>}
 >
   {(post) => <PostRow post={post()} />}
 </List>
@@ -318,10 +318,11 @@ loadMore();
 | `scrollToIndex({ index, animated?, viewPosition?, viewOffset? })` | 把第 `index` 项滚动到可见。`viewPosition` 决定位置：0 在视口开头（默认），0.5 在中间，1 在末尾；`viewOffset` 再额外偏移。 |
 | `scrollToOffset({ offset, animated? })` | 沿列表主轴滚动到内容偏移处。 |
 | `scrollToEnd({ animated? })` | 滚动到内容末尾（倒置列表则是开头）。 |
-| `scrollTo({ x?, y?, animated? })` | 滚动到某个偏移，与 `<scroll>` 相同。 |
+| `scrollTo({ x?, y?, animated? })` | 滚动到某个偏移，与 `<Scroll>` 相同。 |
 
 ```tsx
 import { type YNode } from "nsh";
+import { List } from "nsh/list";
 
 let list!: YNode;
 
@@ -337,10 +338,11 @@ list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 `nsh/ui/mobile` 中的 `ListView` 是基于同一套机制的现成列表：你传入 `each` 并渲染行，它负责内边距、分隔线以及 `inset` 分组外观。需要与移动端 UI 套件其他部分外观一致的设置类列表和普通列表时用它；需要完全掌控外观时用 `List`。见 [ListView](../components/list-view.md)。
 
 ```tsx
+import { Text } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 <ListView variant="inset" dividers each={settings} keyExtractor={(s) => s.id}>
-  {(s) => <text>{s().label}</text>}
+  {(s) => <Text>{s().label}</Text>}
 </ListView>
 ```
 
@@ -353,6 +355,6 @@ import { ListView } from "nsh/ui/mobile";
 ## 相关内容
 
 - [`List` 元素](../elements/list.md) 与 [`nsh/list`](../modules/nsh-list.md)：参考。
-- [滚动](./scrolling.md)：列表与 `<scroll>` 共用的滚动属性。
+- [滚动](./scrolling.md)：列表与 `<Scroll>` 共用的滚动属性。
 - [响应式](./reactivity.md)：为什么 `item()` 是一个函数。
 - [性能](./performance.md)：测量列表。

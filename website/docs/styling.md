@@ -10,7 +10,7 @@ demo: guide-styling
 Every element takes a `style` prop: an object of camelCase properties, including CSS features such as box shadows, gradients, filters, outlines, transitions and grid. Styles are decoded in Rust and only the properties that changed are sent to the native view. You can also style with [Tailwind classes](./tailwind.md); both resolve to the same native styles.
 
 ```tsx
-<view
+<View
   style={{
     padding: 16,
     borderRadius: 12,
@@ -20,8 +20,8 @@ Every element takes a `style` prop: an object of camelCase properties, including
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
   }}
 >
-  <text style={{ fontSize: 17, fontWeight: "600", color: "#1f2328" }}>Card</text>
-</view>
+  <Text style={{ fontSize: 17, fontWeight: "600", color: "#1f2328" }}>Card</Text>
+</View>
 ```
 
 This page covers how styles combine and the visual properties. Layout properties (flexbox, grid, sizes, positions) are on [Layout](./layout.md), text properties on [Text](./text.md), and every property with its type is listed in the [style reference](../modules/style-reference.md).
@@ -37,7 +37,7 @@ const styles = {
   danger: { backgroundColor: "#cf222e" },
 } as const;
 
-<view style={[styles.button, props.danger && styles.danger, busy() && styles.disabled]} />
+<View style={[styles.button, props.danger && styles.danger, busy() && styles.disabled]} />
 ```
 
 Define shared styles as constants outside components (with `as const`, so TypeScript keeps literal types such as `"row"`). There is no `StyleSheet.create`: a plain object is all it takes, and styles are parsed in Rust each time they are set, from objects nobody needs to register.
@@ -45,7 +45,7 @@ Define shared styles as constants outside components (with `as const`, so TypeSc
 A style expression that reads signals is rebuilt when they change, and nsh sends only the properties whose values differ:
 
 ```tsx
-<view style={{ backgroundColor: selected() ? "#ddf4ff" : "#ffffff", padding: 12 }} />
+<View style={{ backgroundColor: selected() ? "#ddf4ff" : "#ffffff", padding: 12 }} />
 ```
 
 When an element has both, `style` wins over `class`: classes are applied first, then the inline style on top.
@@ -89,6 +89,7 @@ Color properties accept CSS color strings:
 For dark mode, read [`colorScheme()`](../modules/nsh-device.md) from `nsh/device`, an accessor that follows the system appearance, or use Tailwind's `dark:` variant:
 
 ```tsx
+import { Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
 
 const palette = () =>
@@ -96,9 +97,9 @@ const palette = () =>
     ? { background: "#0d1117", text: "#e6edf3" }
     : { background: "#ffffff", text: "#1f2328" };
 
-<view style={{ flex: 1, backgroundColor: palette().background }}>
-  <text style={{ color: palette().text }}>Follows the system appearance</text>
-</view>
+<View style={{ flex: 1, backgroundColor: palette().background }}>
+  <Text style={{ color: palette().text }}>Follows the system appearance</Text>
+</View>
 ```
 
 The default text color is black in both appearances: set colors explicitly in apps that support dark mode.
@@ -106,7 +107,7 @@ The default text color is black in both appearances: set colors explicitly in ap
 ## Borders and corners
 
 ```tsx
-<view
+<View
   style={{
     borderWidth: 1,
     borderColor: "#d0d7de",
@@ -132,14 +133,14 @@ Three ways to cast a shadow:
 
 ```tsx
 // The shadow* properties
-<view style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
+<View style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
 
 // CSS box-shadow: several, comma separated, with spread and inset
-<view style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.12)" }} />
-<view style={{ boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)" }} />
+<View style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.12)" }} />
+<View style={{ boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)" }} />
 
 // Android's material elevation (a prop, not a style)
-<view android={{ elevation: 6 }} style={{ backgroundColor: "#ffffff", borderRadius: 12 }} />
+<View android={{ elevation: 6 }} style={{ backgroundColor: "#ffffff", borderRadius: 12 }} />
 ```
 
 `boxShadow` follows CSS: `offsetX offsetY blur spread color`, `inset` for inner shadows. Shadows follow the view's rounded shape.
@@ -152,9 +153,9 @@ Three ways to cast a shadow:
 `backgroundImage` takes CSS gradients, drawn over the background color. Several gradients are separated by commas.
 
 ```tsx
-<view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #54aeff, #8250df)" }} />
-<view style={{ backgroundImage: "radial-gradient(circle at top left, #fff8c5, #fd8c73)" }} />
-<view style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
+<View style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #54aeff, #8250df)" }} />
+<View style={{ backgroundImage: "radial-gradient(circle at top left, #fff8c5, #fd8c73)" }} />
+<View style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
 ```
 
 `experimental_backgroundImage` is accepted too, as an alias of `backgroundImage`. Text elements do not draw gradients on iOS.
@@ -168,8 +169,8 @@ Three ways to cast a shadow:
 | `mixBlendMode` | How the view blends with what is behind it: `"multiply"`, `"screen"`, `"overlay"`, ... |
 
 ```tsx
-<image src={photo} style={{ width: 120, height: 120, filter: "grayscale(1) contrast(1.2)" }} />
-<view style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 12, backgroundColor: "rgba(255,255,255,0.4)", backdropFilter: "blur(12px)" }} />
+<Image src={photo} style={{ width: 120, height: 120, filter: "grayscale(1) contrast(1.2)" }} />
+<View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 12, backgroundColor: "rgba(255,255,255,0.4)", backdropFilter: "blur(12px)" }} />
 ```
 
 Platform support differs:
@@ -194,9 +195,9 @@ Platform support differs:
 `transform` is a list of steps applied right to left, like CSS:
 
 ```tsx
-<view style={{ transform: [{ translateX: 20 }, { rotate: "-8deg" }, { scale: 0.9 }] }} />
-<view style={{ transform: [{ perspective: 600 }, { rotateY: "35deg" }], backfaceVisibility: "hidden" }} />
-<view style={{ transformOrigin: "top left", transform: [{ rotate: "30deg" }] }} />
+<View style={{ transform: [{ translateX: 20 }, { rotate: "-8deg" }, { scale: 0.9 }] }} />
+<View style={{ transform: [{ perspective: 600 }, { rotateY: "35deg" }], backfaceVisibility: "hidden" }} />
+<View style={{ transformOrigin: "top left", transform: [{ rotate: "30deg" }] }} />
 ```
 
 Steps: `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate` (`rotateZ`), `rotateX`, `rotateY`, `skewX`, `skewY`, `perspective`. `transformOrigin` takes keywords, percentages and lengths (`"top left"`, `"50% 0"`, `[10, 20]`); the default is the center. Transforms do not affect layout: siblings are placed as if the view were untransformed.
@@ -208,7 +209,7 @@ Android has no skew transforms.
 A view animates changes of its own style when you name what to animate. The animation runs natively; no JavaScript runs per frame.
 
 ```tsx
-<view
+<View
   onPress={() => open.set(!open())}
   style={{
     width: 150,
@@ -237,7 +238,7 @@ Sizes and positions are layout, not style, and do not transition; animate layout
 `animationName` runs one of Tailwind's built-in keyframe animations natively: `"spin"`, `"ping"`, `"pulse"` or `"bounce"`, with `animationDuration`, `animationDelay`, `animationTimingFunction` and `animationIterationCount` (a number or `"infinite"`):
 
 ```tsx
-<view style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: "#0969da", animationName: "spin", animationDuration: 1000, animationIterationCount: "infinite", animationTimingFunction: "linear" }} />
+<View style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: "#0969da", animationName: "spin", animationDuration: 1000, animationIterationCount: "infinite", animationTimingFunction: "linear" }} />
 ```
 
 ## Press feedback

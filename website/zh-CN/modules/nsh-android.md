@@ -12,7 +12,7 @@ order: 12
 import { BackHandler, isAvailable, setStatusBarBackgroundColor, Toast } from "nsh/android";
 ```
 
-元素和组件的 Android 专有*属性*不在这里：它们放在 `android={{…}}` 属性中（例如 `<view android={{ elevation: 4, ripple: … }} />`）。见[平台专有代码](../docs/platform-specific.md)。
+元素和组件的 Android 专有*属性*不在这里：它们放在 `android={{…}}` 属性中（例如 `<View android={{ elevation: 4, ripple: … }} />`）。见[平台专有代码](../docs/platform-specific.md)。
 
 ## isAvailable
 

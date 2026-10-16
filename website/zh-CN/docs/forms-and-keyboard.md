@@ -7,7 +7,7 @@ demo: guide-forms
 
 # 表单与键盘
 
-文本输入使用 `<input>` 元素：iOS 上是 UITextField 或 UITextView，Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理；应用通过事件拿到文本，也可以控制文本。nsh 还会自动让获得焦点的输入框保持在软键盘上方，并把键盘高度作为响应式的值提供给你，用于它自己处理不了的情况。
+文本输入使用 `<Input>` 元素：iOS 上是 UITextField 或 UITextView，Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理；应用通过事件拿到文本，也可以控制文本。nsh 还会自动让获得焦点的输入框保持在软键盘上方，并把键盘高度作为响应式的值提供给你，用于它自己处理不了的情况。
 
 如果需要符合移动端 UI 套件外观、带标签和清除按钮的输入框，见 [`TextField`](../components/text-field.md)。本页介绍底层的元素。
 
@@ -16,20 +16,20 @@ demo: guide-forms
 传入 `value` 时输入框是**受控**的：它显示 signal 中的内容，由你在 `onChangeText` 中更新 signal。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { Input, mount, signal, Text, View } from "nsh";
 
 function App() {
   const name = signal("");
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 60, gap: 8 }}>
-      <input
+    <View style={{ flex: 1, padding: 16, paddingTop: 60, gap: 8 }}>
+      <Input
         value={name()}
         onChangeText={(text) => name.set(text)}
         placeholder="Your name"
         style={{ fontSize: 17, borderWidth: 1, borderColor: "#d0d7de", borderRadius: 10, padding: 12 }}
       />
-      <text>Hello, {name() || "stranger"}</text>
-    </view>
+      <Text>Hello, {name() || "stranger"}</Text>
+    </View>
   );
 }
 
@@ -84,7 +84,7 @@ mount(App);
 输入框的样式与文本相同：`fontSize`、`color`、`fontFamily`、`textAlign`、`letterSpacing` 以及其余[文本样式](./text.md)，再加上边框、内边距和背景。Tailwind 的 `focus:` 变体在输入框获得焦点时生效：
 
 ```tsx
-<input class="rounded-lg border border-zinc-300 px-3 py-2 text-base focus:border-blue-500" placeholder="Search" />
+<Input class="rounded-lg border border-zinc-300 px-3 py-2 text-base focus:border-blue-500" placeholder="Search" />
 ```
 
 ## 键盘与自动填充
@@ -104,9 +104,9 @@ mount(App);
 `autoComplete` 告诉系统字段里装的是什么，系统就能提供已保存的姓名、地址、密码以及短信中的验证码。它接受以下取值：`"name"`、`"given-name"`、`"family-name"`、`"email"`、`"tel"`、`"username"`、`"current-password"`、`"new-password"`、`"one-time-code"`、`"street-address"`、`"postal-code"`、`"country"`、`"cc-number"`、`"cc-exp"`、`"cc-csc"`、`"url"`、`"birthdate-full"` 等，或 `"off"`。iOS 自己的名字（`"emailAddress"`、`"oneTimeCode"` 等）也可以用在 `autoComplete` 或 `ios={{ textContentType }}` 中。
 
 ```tsx
-<input keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" placeholder="E-mail" />
-<input secureTextEntry autoComplete="new-password" placeholder="Password" />
-<input keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} placeholder="Code" />
+<Input keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" placeholder="E-mail" />
+<Input secureTextEntry autoComplete="new-password" placeholder="Password" />
+<Input keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} placeholder="Code" />
 ```
 
 ## 回车键与在字段间切换
@@ -116,15 +116,15 @@ mount(App);
 要切换到下一个字段，保存输入框的 ref 并调用 `focus()`：
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { Input, mount, signal, View, type YNode } from "nsh";
 
 function SignIn() {
   const email = signal("");
   let password!: YNode;
   const submit = () => console.log("sign in", email());
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 60, gap: 12 }}>
-      <input
+    <View style={{ flex: 1, padding: 16, paddingTop: 60, gap: 12 }}>
+      <Input
         value={email()}
         onChangeText={(t) => email.set(t)}
         keyboardType="email-address"
@@ -134,8 +134,8 @@ function SignIn() {
         onSubmitEditing={() => password.focus()}
         placeholder="E-mail"
       />
-      <input ref={password} secureTextEntry returnKeyType="go" onSubmitEditing={submit} placeholder="Password" />
-    </view>
+      <Input ref={password} secureTextEntry returnKeyType="go" onSubmitEditing={submit} placeholder="Password" />
+    </View>
   );
 }
 
@@ -159,9 +159,10 @@ mount(SignIn);
 `nsh/ui/mobile` 中的 `Keyboard.dismiss()` 让当前拥有焦点的输入框失去焦点：
 
 ```tsx
+import { View } from "nsh";
 import { Keyboard } from "nsh/ui/mobile";
 
-<view onPress={() => Keyboard.dismiss()}>…</view>
+<View onPress={() => Keyboard.dismiss()}>…</View>
 ```
 
 ## 选区
@@ -173,14 +174,14 @@ const text = signal("Select part of this text");
 const range = signal({ start: 0, end: 0 });
 const selection = signal<{ start: number; end?: number } | undefined>(undefined);
 
-<input
+<Input
   value={text()}
   onChangeText={(t) => text.set(t)}
   selection={selection()}
   onSelectionChange={(r) => range.set(r)}
 />
-<text>Selected: "{text().slice(range().start, range().end)}"</text>
-<view onPress={() => selection.set({ start: 0, end: text().length })}><text>Select all</text></view>
+<Text>Selected: "{text().slice(range().start, range().end)}"</Text>
+<View onPress={() => selection.set({ start: 0, end: text().length })}><Text>Select all</Text></View>
 ```
 
 ## 自动增高的多行输入框
@@ -190,7 +191,7 @@ const selection = signal<{ start: number; end?: number } | undefined>(undefined)
 ```tsx
 const height = signal(0);
 
-<input
+<Input
   multiline
   placeholder="Write a comment"
   onContentSizeChange={(e) => height.set(Math.min(e.height, 120))}
@@ -204,14 +205,14 @@ const height = signal(0);
 
 ### 滚动视图内：自动处理
 
-当键盘弹出、而获得焦点的输入框位于 `<scroll>` 或 `List` 中时，nsh 会给滚动视图加上与键盘等高的底部 inset，并把输入框滚动到可见位置。这是原生完成的，不需要任何代码。长表单就是一个装满输入框的滚动视图：
+当键盘弹出、而获得焦点的输入框位于 `<Scroll>` 或 `List` 中时，nsh 会给滚动视图加上与键盘等高的底部 inset，并把输入框滚动到可见位置。这是原生完成的，不需要任何代码。长表单就是一个装满输入框的滚动视图：
 
 ```tsx
-<scroll style={{ flex: 1 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-  <view style={{ padding: 16, gap: 12 }}>
+<Scroll style={{ flex: 1 }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+  <View style={{ padding: 16, gap: 12 }}>
     {/* 输入框 */}
-  </view>
-</scroll>
+  </View>
+</Scroll>
 ```
 
 `keyboardDismissMode`（`"none"`、`"on-drag"`、`"interactive"`）让拖动表单时收起键盘；`keyboardShouldPersistTaps="handled"` 让键盘弹出时点击按钮能直接生效，而不只是收起键盘。见[滚动](./scrolling.md#滚动视图与键盘)。
@@ -221,7 +222,7 @@ const height = signal(0);
 固定在页面底部的消息栏不在滚动视图中，没有东西会移动它。用 `nsh/ui/mobile` 中的 `KeyboardAvoidingView` 包住页面：它会在底部让出与键盘等高的空间，并与键盘同步动画。
 
 ```tsx
-import { signal } from "nsh";
+import { Input, Scroll, signal, View } from "nsh";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 
 function ChatScreen() {
@@ -229,10 +230,10 @@ function ChatScreen() {
   const draft = signal("");
   return (
     <KeyboardAvoidingView style={{ flex: 1 }}>
-      <scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
+      <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
         {/* 消息 */}
-      </scroll>
-      <view
+      </Scroll>
+      <View
         style={{
           flexDirection: "row",
           padding: 8,
@@ -240,8 +241,8 @@ function ChatScreen() {
           paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
         }}
       >
-        <input value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Message" style={{ flex: 1 }} />
-      </view>
+        <Input value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Message" style={{ flex: 1 }} />
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -261,11 +262,12 @@ function ChatScreen() {
 `nsh/ui/mobile` 中的 `keyboard()` 是一个响应式的 `{ height, duration }`：键盘伸入 surface 的高度（隐藏时为 0，包含被它盖住的底部安全区域）以及它的动画时长（秒）。需要自定义行为时读取它，例如输入时隐藏浮动按钮，或调整面板尺寸。
 
 ```tsx
+import { View } from "nsh";
 import { keyboard } from "nsh/ui/mobile";
 
-<if when={keyboard().height === 0}>
-  <view style={{ position: "absolute", right: 16, bottom: 16 }}>…</view>
-</if>
+<If when={keyboard().height === 0}>
+  <View style={{ position: "absolute", right: 16, bottom: 16 }}>…</View>
+</If>
 ```
 
 ## 键盘上方的工具栏：InputAccessoryView
@@ -273,15 +275,15 @@ import { keyboard } from "nsh/ui/mobile";
 `nsh/ios` 中的 `InputAccessoryView` 会在引用它的输入框获得焦点时，在键盘顶部显示一个附着的工具栏，即 iOS 的 `inputAccessoryView`。它由原生跟随键盘移动，包括交互式收起键盘的过程。它在树中所处的位置不渲染任何内容；输入框通过 `nativeID` 引用它：
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { Input, signal, Text, View, type YNode } from "nsh";
 import { InputAccessoryView } from "nsh/ios";
 
 function Note() {
   const text = signal("");
   let input!: YNode;
   return (
-    <view style={{ padding: 16 }}>
-      <input
+    <View style={{ padding: 16 }}>
+      <Input
         ref={input}
         value={text()}
         onChangeText={(t) => text.set(t)}
@@ -289,12 +291,12 @@ function Note() {
         placeholder="A note"
       />
       <InputAccessoryView nativeID="note-bar" style={{ backgroundColor: "#f6f8fa" }}>
-        <view style={{ flexDirection: "row", alignItems: "center", padding: 8 }}>
-          <text style={{ flex: 1, color: "#57606a" }}>{text().length} characters</text>
-          <text onPress={() => input.blur()} style={{ color: "#0969da", fontWeight: "600" }}>Done</text>
-        </view>
+        <View style={{ flexDirection: "row", alignItems: "center", padding: 8 }}>
+          <Text style={{ flex: 1, color: "#57606a" }}>{text().length} characters</Text>
+          <Text onPress={() => input.blur()} style={{ color: "#0969da", fontWeight: "600" }}>Done</Text>
+        </View>
       </InputAccessoryView>
-    </view>
+    </View>
   );
 }
 ```
@@ -303,7 +305,7 @@ function Note() {
 
 ## 相关内容
 
-- [`input`](../elements/input.md)：元素参考。
+- [`Input`](../elements/input.md)：元素参考。
 - [`TextField`](../components/text-field.md)：带标签和清除按钮的输入框。
 - [`KeyboardAvoidingView`](../components/keyboard-avoiding-view.md) 与 [`Keyboard`](../components/keyboard.md)。
 - [`nsh/ios`](../modules/nsh-ios.md)：`InputAccessoryView`。

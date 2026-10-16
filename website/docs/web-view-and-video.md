@@ -13,7 +13,7 @@ order: 21
 | `WebView` | WKWebView | `android.webkit.WebView` |
 | `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` |
 
-The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Both are also available as the built-in elements `<web-view>` and `<video>`; importing the components gives you their types.
+The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Import them from `nsh/webview` and `nsh/video`.
 
 ## WebView
 
@@ -67,22 +67,22 @@ Events:
 The ref has `reload()`, `goBack()`, `goForward()`, `stopLoading()`, `injectJavaScript(script)` and `postMessage(data)`:
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 
 function Browser() {
   let web!: YNode;
   const nav = signal<WebViewNavigation | null>(null);
   const button = (label: string, enabled: boolean, action: () => void) => (
-    <text onPress={enabled ? action : undefined} style={{ padding: 12, color: enabled ? "#0969da" : "#8c959f" }}>
+    <Text onPress={enabled ? action : undefined} style={{ padding: 12, color: enabled ? "#0969da" : "#8c959f" }}>
       {label}
-    </text>
+    </Text>
   );
   return (
-    <view style={{ flex: 1, paddingTop: 50 }}>
-      <text numberOfLines={1} style={{ paddingHorizontal: 12, color: "#57606a" }}>
+    <View style={{ flex: 1, paddingTop: 50 }}>
+      <Text numberOfLines={1} style={{ paddingHorizontal: 12, color: "#57606a" }}>
         {nav()?.loading ? "Loading…" : nav()?.title ?? ""}
-      </text>
+      </Text>
       <WebView
         ref={web}
         source="https://developer.mozilla.org/"
@@ -90,12 +90,12 @@ function Browser() {
         onNavigationStateChange={(n) => nav.set(n)}
         ios={{ allowsBackForwardNavigationGestures: true }}
       />
-      <view style={{ flexDirection: "row", justifyContent: "space-around" }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
         {button("Back", !!nav()?.canGoBack, () => web.goBack())}
         {button("Forward", !!nav()?.canGoForward, () => web.goForward())}
         {button("Reload", true, () => web.reload())}
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
@@ -107,7 +107,7 @@ mount(Browser);
 Pages talk to the app with `window.ReactNativeWebView.postMessage(string)`, which arrives as `onMessage`. The app talks to the page with the ref's `postMessage(string)`, which arrives in the page as a `message` event on `window`. Messages are strings; send JSON for structured data.
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { WebView } from "nsh/webview";
 
 const page = `<!doctype html>
@@ -128,18 +128,18 @@ function App() {
   let web!: YNode;
   const last = signal("");
   return (
-    <view style={{ flex: 1, paddingTop: 50, gap: 12 }}>
+    <View style={{ flex: 1, paddingTop: 50, gap: 12 }}>
       <WebView
         ref={web}
         source={{ html: page }}
         style={{ height: 240 }}
         onMessage={(e) => last.set(JSON.parse(e.data).type)}
       />
-      <text onPress={() => web.postMessage("hi from nsh")} style={{ padding: 16, color: "#0969da" }}>
+      <Text onPress={() => web.postMessage("hi from nsh")} style={{ padding: 16, color: "#0969da" }}>
         Post to the page
-      </text>
-      <text style={{ paddingHorizontal: 16 }}>Last message: {last()}</text>
-    </view>
+      </Text>
+      <Text style={{ paddingHorizontal: 16 }}>Last message: {last()}</Text>
+    </View>
   );
 }
 
@@ -174,7 +174,7 @@ The check covers the web view's `source` and every top-level navigation the page
 ## Video
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 
 function Player() {
@@ -182,7 +182,7 @@ function Player() {
   const paused = signal(true);
   const time = signal("");
   return (
-    <view style={{ flex: 1, justifyContent: "center", padding: 16, gap: 12 }}>
+    <View style={{ flex: 1, justifyContent: "center", padding: 16, gap: 12 }}>
       <Video
         ref={video}
         source="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
@@ -193,16 +193,16 @@ function Player() {
         onProgress={(e) => time.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
         onEnd={() => paused.set(true)}
       />
-      <view style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
-        <text onPress={() => paused.set(!paused())} style={{ color: "#0969da", fontWeight: "600" }}>
+      <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+        <Text onPress={() => paused.set(!paused())} style={{ color: "#0969da", fontWeight: "600" }}>
           {paused() ? "Play" : "Pause"}
-        </text>
-        <text onPress={() => video.seek(0)} style={{ color: "#0969da" }}>
+        </Text>
+        <Text onPress={() => video.seek(0)} style={{ color: "#0969da" }}>
           Restart
-        </text>
-        <text style={{ color: "#57606a" }}>{time()}</text>
-      </view>
-    </view>
+        </Text>
+        <Text style={{ color: "#57606a" }}>{time()}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -235,24 +235,24 @@ Playback is controlled by props: set `paused`, `muted`, `volume` and `rate` from
 With `controls`, the platform draws its own play button, scrubber and full-screen button. Without, draw your own with views over or below the video; since the video is a native view in your layout, overlays work naturally:
 
 ```tsx
-<view style={{ height: 220 }}>
+<View style={{ height: 220 }}>
   <Video source={url} paused={paused()} style={{ flex: 1 }} />
-  <view
+  <View
     onPress={() => paused.set(!paused())}
     style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}
   >
-    <if when={paused()}>
-      <text style={{ fontSize: 48, color: "#ffffff" }}>▶</text>
-    </if>
-  </view>
-</view>
+    <If when={paused()}>
+      <Text style={{ fontSize: 48, color: "#ffffff" }}>▶</Text>
+    </If>
+  </View>
+</View>
 ```
 
 Video sources are network requests: with declared capabilities, the video's host must be allowed under `network` in `nsh.json`, as for `fetch` and remote images. A refused source shows nothing, and the refusal is logged once with the key to add.
 
 ## Related
 
-- [`web-view`](../elements/web-view.md) and [`video`](../elements/video.md): the element references.
+- [`WebView`](../elements/web-view.md) and [`Video`](../elements/video.md): the element references.
 - [`nsh/webview`](../modules/nsh-webview.md) and [`nsh/video`](../modules/nsh-video.md).
 - [Sandbox and capabilities](./sandbox-and-capabilities.md): `webview` and `network` grants.
 - [Native components](./native-components.md): embedding other native views your host app provides.

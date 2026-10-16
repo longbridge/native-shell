@@ -15,7 +15,7 @@ import { ActionSheet } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { ActionSheet, Button } from "nsh/ui/mobile";
 
 function App() {
@@ -31,10 +31,10 @@ function App() {
     chosen.set(options[i] ?? "dismissed");
   };
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <Button title="Share…" onPress={share} />
-      <text>{chosen()}</text>
-    </view>
+      <Text>{chosen()}</Text>
+    </View>
   );
 }
 

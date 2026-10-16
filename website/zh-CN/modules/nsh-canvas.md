@@ -13,7 +13,7 @@ demo: mod-canvas
 import { Canvas, CanvasGradient, CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 ```
 
-教程见[画布](../docs/canvas.md)，底层元素见 [`<canvas>`](../elements/canvas.md)。
+教程见[画布](../docs/canvas.md)，属性见 [`<Canvas>`](../elements/canvas.md)。
 
 ## Canvas
 
@@ -39,13 +39,13 @@ interface CanvasSize {
 通过样式给画布设置尺寸（`width` / `height`、`flex: 1`、`aspectRatio` 等）。坐标单位为点，原点在左上角。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 function App() {
   const values = signal([12, 30, 22, 48, 36, 60, 52, 75]);
   return (
-    <view style={{ flex: 1, padding: 24 }}>
+    <View style={{ flex: 1, padding: 24 }}>
       <Canvas
         style={{ height: 160 }}
         draw={(ctx, { width, height }) => {
@@ -59,8 +59,8 @@ function App() {
           ctx.stroke();
         }}
       />
-      <text onPress={() => values.update((v) => [...v.slice(1), Math.random() * 80])}>Next</text>
-    </view>
+      <Text onPress={() => values.update((v) => [...v.slice(1), Math.random() * 80])}>Next</Text>
+    </View>
   );
 }
 
@@ -73,6 +73,7 @@ mount(App);
 
 ```tsx
 import { createNativeValue, Easing } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
 
 const progress = createNativeValue(0);
 

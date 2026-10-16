@@ -12,7 +12,7 @@ order: 1
 import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/ui/mobile";
 ```
 
-它构建在[宿主元素](../elements/index.md)（`<view>`、`<text>`、`<input>` 等）之上。宿主元素是所有 UI 套件共用的基础构件，而这里的组件是用这些元素搭出来的、开箱即用的移动端外观。
+它构建在[宿主元素](../elements/index.md)（`<View>`、`<Text>`、`<Input>` 等）之上。宿主元素是所有 UI 套件共用的基础构件，而这里的组件是用这些元素搭出来的、开箱即用的移动端外观。
 
 ## 组件的工作方式
 

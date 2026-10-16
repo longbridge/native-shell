@@ -11,35 +11,41 @@ nsh apps describe their UI with JSX, but there is no React and no virtual DOM. n
 
 ## Elements
 
-Lowercase tags are built-in **host elements**, each backed by a native view:
+Every tag is PascalCase and names something in scope. The **host elements**, each backed by a native view, are components you import from nsh's modules; only `If` and `Each` are globals that need no import:
 
-| Tag | Native view | Page |
-|---|---|---|
-| `<view>` | `UIView` / `ViewGroup`: a box for layout, styling and touches | [view](../elements/view.md) |
-| `<text>` | A native text view; nested `<text>` elements are spans | [text](../elements/text.md) |
-| `<image>` | An image view (local assets and URLs) | [image](../elements/image.md) |
-| `<scroll>` | `UIScrollView` / `ScrollView` | [scroll](../elements/scroll.md) |
-| `<input>` | `UITextField` / `UITextView` / `EditText` | [input](../elements/input.md) |
-| `<list>` | A virtualized, recycling list (also `List` from `nsh/list`) | [list](../elements/list.md) |
-| `<canvas>`, `<web-view>`, `<video>`, `<modal>` | Typed through their modules' components (`Canvas`, `WebView`, ...) | [elements](../elements/index.md) |
-| `<if>`, `<each>` | Control flow, no view of its own | [control flow](../elements/control-flow.md) |
+| Tag | Import from | Native view | Page |
+|---|---|---|---|
+| `<View>` | `nsh` | `UIView` / `ViewGroup`: a box for layout, styling and touches | [View](../elements/view.md) |
+| `<Text>` | `nsh` | A native text view; nested `<Text>` elements are spans | [Text](../elements/text.md) |
+| `<Image>` | `nsh/image` | An image view (local assets and URLs) | [Image](../elements/image.md) |
+| `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
+| `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
+| `<List>` | `nsh/list` | A virtualized, recycling list | [List](../elements/list.md) |
+| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/ui/mobile` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
+| `<If>`, `<Each>` | nothing: globals | Control flow, no view of its own | [Control flow](../elements/control-flow.md) |
+
+```tsx
+import { mount, Text, View } from "nsh";
+import { Image } from "nsh/image";
+```
+
+Tags are PascalCase so that TypeScript checks each one against the binding it names: a lowercase tag is checked against one global type per name, so a generic component such as `List` or `Each` could not infer its rows' type from `each` / `of`, and an app's own components would not be typed at all. The imports cost nothing at run time: the compiler recognizes the primitives through their imports (aliases too) and makes the native element in place, so `<View>` is a direct call of the renderer and the import is dropped from the bundle.
 
 Props keep their camelCase names (`onPress`, `numberOfLines`, `backgroundColor`). Every element accepts `style`, `class` / `classList` ([Tailwind](./tailwind.md)), `ref`, touch handlers, accessibility props and `testID`; platform-only props go in `ios={{…}}` and `android={{…}}`, and only the current platform's object is sent:
 
 ```tsx
-<view android={{ elevation: 4, ripple: { color: "#0001" } }} style={{ borderRadius: 12 }} />
+<View android={{ elevation: 4, ripple: { color: "#0001" } }} style={{ borderRadius: 12 }} />
 ```
 
-An unknown lowercase tag is a build error that lists the built-ins:
+A lowercase tag is a build error that says what to write:
 
 ```text
-x unknown element <foo-bar> (built-in elements: view, text, image, scroll,
-| input, canvas, web-view, video, modal, input-accessory; `if`, `each`; or a
-| component in scope, by its name in kebab case)
+x lowercase tag <view>: tags are PascalCase components: write <View> and
+| `import { View } from "nsh"`
 ```
 
 > [!IMPORTANT]
-> Text is only displayed inside `<text>`. A string directly in a `<view>` creates no native view and is not shown.
+> Text is only displayed inside `<Text>`. A string directly in a `<View>` creates no native view and is not shown.
 
 ## Components
 
@@ -48,9 +54,9 @@ A component is a function that takes a props object and returns JSX:
 ```tsx
 function Badge(props: { label: string; color?: string }) {
   return (
-    <view style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: props.color ?? "#ddf4ff" }}>
-      <text style={{ fontSize: 13, fontWeight: "600" }}>{props.label}</text>
-    </view>
+    <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: props.color ?? "#ddf4ff" }}>
+      <Text style={{ fontSize: 13, fontWeight: "600" }}>{props.label}</Text>
+    </View>
   );
 }
 
@@ -63,12 +69,13 @@ A component may return an element, a string or number, an array, `null`, or a fu
 
 ```tsx
 import type { Component, JSX } from "nsh";
+import { Text, View } from "nsh";
 
 const Row: Component<{ title: string; children?: JSX.Element }> = (props) => (
-  <view style={{ flexDirection: "row", gap: 8 }}>
-    <text>{props.title}</text>
+  <View style={{ flexDirection: "row", gap: 8 }}>
+    <Text>{props.title}</Text>
     {props.children}
-  </view>
+  </View>
 );
 ```
 
@@ -77,11 +84,11 @@ const Row: Component<{ title: string; children?: JSX.Element }> = (props) => (
 The compiler decides for each expression in JSX whether it can change. An expression changes when it **calls a function or reads a property** (outside nested functions); everything else is set once:
 
 ```tsx
-<text>{count()}</text>              // follows count
-<text>{props.title}</text>          // follows the prop
-<text>{user.name}</text>            // re-read when something it depends on changes
-<text>{label}</text>                // a plain variable: set once
-<view style={{ opacity: busy() ? 0.5 : 1 }} />   // the style object is rebuilt when busy changes
+<Text>{count()}</Text>              // follows count
+<Text>{props.title}</Text>          // follows the prop
+<Text>{user.name}</Text>            // re-read when something it depends on changes
+<Text>{label}</Text>                // a plain variable: set once
+<View style={{ opacity: busy() ? 0.5 : 1 }} />   // the style object is rebuilt when busy changes
 ```
 
 A changing prop or child is a small native effect that sets that one prop or replaces that one child. Style objects are diffed in Rust, so rebuilding a style only sends the properties that changed.
@@ -96,12 +103,12 @@ A prop given a changing expression is passed as a getter: reading `props.title` 
 // Wrong: reads the prop once, when the component runs.
 function Title(props: { text: string }) {
   const { text } = props;
-  return <text>{text}</text>;
+  return <Text>{text}</Text>;
 }
 
 // Right: reads it in JSX, which follows it.
 function Title(props: { text: string }) {
-  return <text>{props.text}</text>;
+  return <Text>{props.text}</Text>;
 }
 ```
 
@@ -110,7 +117,7 @@ The same applies to default values: write `props.color ?? "#ddf4ff"` in the JSX 
 ```tsx
 function Price(props: { cents: number }) {
   const formatted = () => `$${(props.cents / 100).toFixed(2)}`;
-  return <text>{formatted()}</text>;
+  return <Text>{formatted()}</Text>;
 }
 ```
 
@@ -121,15 +128,15 @@ What you put between a component's tags arrives as `props.children`, a getter th
 ```tsx
 function Card(props: { title: string; children?: JSX.Element }) {
   return (
-    <view style={{ padding: 14, borderRadius: 12, backgroundColor: "#ffffff", gap: 8 }}>
-      <text style={{ fontWeight: "600" }}>{props.title}</text>
+    <View style={{ padding: 14, borderRadius: 12, backgroundColor: "#ffffff", gap: 8 }}>
+      <Text style={{ fontWeight: "600" }}>{props.title}</Text>
       {props.children}
-    </view>
+    </View>
   );
 }
 
 <Card title="Account">
-  <text>Signed in as {user().name}</text>
+  <Text>Signed in as {user().name}</Text>
 </Card>
 ```
 
@@ -137,36 +144,36 @@ Each read of `props.children` builds the children again (new native views). Read
 
 ```tsx
 function Repeat(props: { times: number; children: (i: number) => JSX.Element }) {
-  return <view>{Array.from({ length: props.times }, (_, i) => props.children(i))}</view>;
+  return <View>{Array.from({ length: props.times }, (_, i) => props.children(i))}</View>;
 }
 
-<Repeat times={3}>{(i) => <text>Row {i}</text>}</Repeat>
+<Repeat times={3}>{(i) => <Text>Row {i}</Text>}</Repeat>
 ```
 
 Fragments (`<>…</>`) group elements without a view.
 
 ## Control flow
 
-`<if>` and `<each>` are built-in control flow. They render no view of their own.
+`<If>` and `<Each>` are built-in control flow. They render no view of their own.
 
 ```tsx
-<if when={user()} else={<text>Signed out</text>}>
-  <text>Hello, {user()!.name}</text>
-</if>
+<If when={user()} else={<Text>Signed out</Text>}>
+  <Text>Hello, {user()!.name}</Text>
+</If>
 
-<each of={todos()} key={(t) => t.id}>
+<Each of={todos()} key={(t) => t.id}>
   {(todo, index) => (
-    <text>
+    <Text>
       {index() + 1}. {todo().title}
-    </text>
+    </Text>
   )}
-</each>
+</Each>
 ```
 
-- **`<if when else>`** renders its children while `when` is truthy, else the `else` element. It renders a branch again only when the condition's truthiness changes, not every time `when` is re-evaluated.
-- **`<each of key>`** renders its only child, a function, once per item. Rows are kept by `key(item)` (default: the item itself; objects by identity, primitives by value): when the array changes, kept rows are moved rather than rebuilt, and new rows are made only for new keys. The function receives **accessors**, `todo()` and `index()`, because a kept row's item and position can change.
+- **`<If when else>`** renders its children while `when` is truthy, else the `else` element. It renders a branch again only when the condition's truthiness changes, not every time `when` is re-evaluated.
+- **`<Each of key>`** renders its only child, a function, once per item. Rows are kept by `key(item)` (default: the item itself; objects by identity, primitives by value): when the array changes, kept rows are moved rather than rebuilt, and new rows are made only for new keys. The function receives **accessors**, `todo()` and `index()`, because a kept row's item and position can change.
 
-A ternary or `&&` in JSX also works (`{busy() ? <Spinner /> : <Content />}`), but it builds its branch again every time anything it reads changes. Prefer `<if>` when a branch is more than a few elements.
+A ternary or `&&` in JSX also works (`{busy() ? <Spinner /> : <Content />}`), but it builds its branch again every time anything it reads changes. Prefer `<If>` when a branch is more than a few elements.
 
 For long or infinite lists, use [`List`](./lists.md): it creates views only for the rows on screen and recycles them. See [Control flow](../elements/control-flow.md) for the details.
 
@@ -176,20 +183,21 @@ For long or infinite lists, use [`List`](./lists.md): it creates views only for 
 
 ```tsx
 import type { YNode } from "nsh";
+import { Input, Scroll, Text, View } from "nsh";
 
 function Search() {
   let input: YNode | undefined;
   return (
-    <view>
-      <input ref={input} placeholder="Search" />
-      <view onPress={() => input?.focus()}>
-        <text>Focus</text>
-      </view>
-    </view>
+    <View>
+      <Input ref={input} placeholder="Search" />
+      <View onPress={() => input?.focus()}>
+        <Text>Focus</Text>
+      </View>
+    </View>
   );
 }
 
-<scroll ref={(node) => (scroller = node)} />
+<Scroll ref={(node) => (scroller = node)} />
 ```
 
 The ref is set when the element is created, before the component returns, so it is available in [effects](./reactivity.md#effect) and event handlers. Calls are sent to the view in order with the changes made before them. Components from `nsh/ui/mobile` accept `ref` too.
@@ -199,15 +207,15 @@ The ref is set when the element is created, before the component returns, so it 
 Spread an object of props onto an element or a component with `{...props}`. Getters stay getters, so spread props keep following what they read. To take some props for yourself and pass the rest on, use `split`:
 
 ```tsx
-import { type InputProps, split } from "nsh";
+import { Input, type InputProps, split, Text, View } from "nsh";
 
 function Field(props: InputProps & { label: string }) {
   const [own, rest] = split(props, ["label"]);
   return (
-    <view style={{ gap: 4 }}>
-      <text>{own.label}</text>
-      <input style={{ borderWidth: 1, borderRadius: 8, padding: 8 }} {...rest} />
-    </view>
+    <View style={{ gap: 4 }}>
+      <Text>{own.label}</Text>
+      <Input style={{ borderWidth: 1, borderRadius: 8, padding: 8 }} {...rest} />
+    </View>
   );
 }
 
@@ -216,21 +224,21 @@ function Field(props: InputProps & { label: string }) {
 
 `split(props, keys)` returns `[picked, rest]`, both still reading through to the original props (destructuring `{ label, ...rest } = props` would read every prop once). Element props that come later in the JSX win over earlier ones.
 
-`<if>` and `<each>` take no spread props, and spread children (`{...items}`) are not supported: use `<each>` or an array expression.
+`<If>` and `<Each>` take no spread props, and spread children (`{...items}`) are not supported: use `<Each>` or an array expression.
 
 ## Tags and names
 
-A capitalized tag names a binding in scope, as usual: `<Badge />`, `<Theme.Provider>`. A component can also be written in **kebab case**: `WeatherPanel` is also `<weather-panel>`, and an imported `Button` is also `<button>`.
+A tag names a binding in scope, as usual: `<Badge />`, `<Theme.Provider>`, an imported `<Button>`. A tag that names nothing in scope is a build error, except `<If>` and `<Each>`, which are globals.
 
 ```tsx
 import { Button } from "nsh/ui/mobile";
 
-<button title="Save" onPress={save} />    // the Button component
+<Button title="Save" onPress={save} />
 ```
 
-Your bindings win over built-ins of the same name: a component named `Text` in scope makes `<text>` that component, and an imported `Modal` makes `<modal>` it. Name your components so they do not collide with the element names unless that is what you want. (Objects of functions imported from nsh's modules are not components: importing `Image` from `nsh/image` leaves `<image>` the element.)
+Your bindings win over the globals: a component named `Each` in scope makes `<Each>` that component. A primitive is recognized by its import, so `import { View as Box } from "nsh"` makes `<Box>` a view, and a component of your own named `Text` is just your component. The primitives are real components too: `const Tag = inline ? Text : View;` and then `<Tag>…</Tag>` works.
 
-Exported or imported components used in kebab case are typed in `.nsh/types/nsh/jsx-runtime.d.ts` after the next build, so the editor checks their props.
+Components are typed by their own declarations, like any TypeScript function: the editor checks a component's props wherever it is used, with nothing to generate.
 
 ## Mounting and the root
 
@@ -238,9 +246,9 @@ Exported or imported components used in kebab case are typed in `.nsh/types/nsh/
 
 ```tsx
 mount(() => (
-  <view style={{ flex: 1, backgroundColor: "#ffffff" }}>
+  <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
     <App />
-  </view>
+  </View>
 ));
 ```
 

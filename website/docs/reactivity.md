@@ -33,9 +33,9 @@ A read inside a tracking scope (JSX, `computed`, `effect`) subscribes that scope
 function Counter() {
   const count = signal(0);
   return (
-    <view onPress={() => count.update((n) => n + 1)}>
-      <text>Tapped {count()} times</text>
-    </view>
+    <View onPress={() => count.update((n) => n + 1)}>
+      <Text>Tapped {count()} times</Text>
+    </View>
   );
 }
 ```
@@ -63,7 +63,7 @@ todos().push(item);    // does not notify anyone
 todos.set(todos());    // still the same array: no change
 ```
 
-`<each>` keys rows by item, so replacing one item in a new array rebuilds only that row ([JSX and components](./jsx-and-components.md#control-flow)).
+`<Each>` keys rows by item, so replacing one item in a new array rebuilds only that row ([JSX and components](./jsx-and-components.md#control-flow)).
 
 ## computed
 
@@ -74,14 +74,14 @@ const price = signal(12);
 const quantity = signal(2);
 const total = computed(() => price() * quantity());
 
-<text>Total: {total()}</text>
+<Text>Total: {total()}</Text>
 ```
 
 Use `computed` when a derived value is read in several places or is expensive: it runs once per change however many readers it has, and readers are notified only when its result changes (`===`, or the `equals` option). For a cheap value read once, a plain function is enough:
 
 ```tsx
 const label = () => `${quantity()} items`;
-<text>{label()}</text>
+<Text>{label()}</Text>
 ```
 
 `fn` receives the previous value (`undefined` the first time), for values that accumulate:
@@ -104,7 +104,7 @@ function Search(props: { query: string }) {
       .then((r) => r.json())
       .then((data) => results.set(data.items));
   });
-  return <each of={results()}>{(item) => <text>{item()}</text>}</each>;
+  return <Each of={results()}>{(item) => <Text>{item()}</Text>}</Each>;
 }
 ```
 
@@ -131,7 +131,7 @@ function Clock() {
   const now = signal(Date.now());
   const id = setInterval(() => now.set(Date.now()), 1000);
   cleanup(() => clearInterval(id));       // when Clock is removed
-  return <text>{new Date(now()).toLocaleTimeString()}</text>;
+  return <Text>{new Date(now()).toLocaleTimeString()}</Text>;
 }
 
 effect(() => {
@@ -141,7 +141,7 @@ effect(() => {
 });
 ```
 
-A component goes away when it is no longer rendered: its `<if>` branch is hidden, its `<each>` row is removed, or its screen is popped. Everything it created (effects, computed values, cleanups, nested components) is disposed with it.
+A component goes away when it is no longer rendered: its `<If>` branch is hidden, its `<Each>` row is removed, or its screen is popped. Everything it created (effects, computed values, cleanups, nested components) is disposed with it.
 
 ## batch
 
@@ -181,7 +181,7 @@ const Theme = context<"light" | "dark">("light");
 
 function Label(props: { children: string }) {
   const theme = Theme();
-  return <text style={{ color: theme === "dark" ? "#ffffff" : "#1f2328" }}>{props.children}</text>;
+  return <Text style={{ color: theme === "dark" ? "#ffffff" : "#1f2328" }}>{props.children}</Text>;
 }
 
 mount(() => (
@@ -207,7 +207,7 @@ function App() {
 
 function Swatch() {
   const accent = Accent();
-  return <view onPress={() => accent.set("#8250df")} style={{ width: 40, height: 40, backgroundColor: accent() }} />;
+  return <View onPress={() => accent.set("#8250df")} style={{ width: 40, height: 40, backgroundColor: accent() }} />;
 }
 ```
 
@@ -221,8 +221,8 @@ Read a context in a component body (or in code that runs while components are be
 | `{expr}` or `prop={expr}` that calls or reads a property | Once, when the element is created | A signal it read changes; only that prop or child is updated |
 | `computed(fn)` | When created | A signal it read changes |
 | `effect(fn)` | After the elements of the current pass exist | A signal it read changes |
-| `<if when>` | When created | The truthiness of `when` changes |
-| `<each of>` row | When its key first appears | Never; its `item()` / `index()` accessors change instead |
+| `<If when>` | When created | The truthiness of `when` changes |
+| `<Each of>` row | When its key first appears | Never; its `item()` / `index()` accessors change instead |
 
 The environment is reactive the same way: `windowSize()`, `colorScheme()` and `fontScale()` from [`nsh/device`](../modules/nsh-device.md) and `safeArea()` / `keyboard()` from `nsh/ui/mobile` are accessors, so JSX that reads them follows rotation, dark mode or the keyboard.
 
@@ -235,11 +235,11 @@ The environment is reactive the same way: `windowSize()`, `colorScheme()` and `f
 ```tsx
 function Bad() {
   const n = count();           // read once
-  return <text>{n}</text>;     // never changes
+  return <Text>{n}</Text>;     // never changes
 }
 
 function Good() {
-  return <text>{count()}</text>;
+  return <Text>{count()}</Text>;
 }
 ```
 
@@ -253,6 +253,6 @@ function Good() {
 
 ## Related
 
-- [JSX and components](./jsx-and-components.md): props as getters, `<if>`, `<each>`.
+- [JSX and components](./jsx-and-components.md): props as getters, `<If>`, `<Each>`.
 - [`nsh` module reference](../modules/nsh.md): every function's signature.
 - [Animation](./animation.md): native values that animate on the UI thread without signals.

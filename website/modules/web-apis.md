@@ -246,7 +246,7 @@ url.href; // "https://api.example.com/v1/items?page=2&tag=new"
 
 The iterators of `URLSearchParams` (and of `Headers` and `FormData`) iterate over a snapshot taken when the iterator was created, and have the iterator helpers (`map`, `filter`, `toArray`, ...).
 
-`URL.createObjectURL(blob)` returns a `blob:` URL that `fetch` (with `GET`) can read until `revokeObjectURL` is called. Such URLs are understood by `fetch` only, not by `<image>` or other elements.
+`URL.createObjectURL(blob)` returns a `blob:` URL that `fetch` (with `GET`) can read until `revokeObjectURL` is called. Such URLs are understood by `fetch` only, not by `<Image>` or other elements.
 
 ## Text encoding
 

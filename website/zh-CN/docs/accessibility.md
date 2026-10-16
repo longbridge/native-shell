@@ -10,7 +10,7 @@ nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst �
 
 ## 无需任何操作就能得到的
 
-- **文本会被朗读。** `<text>` 是一个无障碍元素，标签就是它的文字。没有标签的视图会朗读其内部的文字。
+- **文本会被朗读。** `<Text>` 是一个无障碍元素，标签就是它的文字。没有标签的视图会朗读其内部的文字。
 - **可按压视图是元素。** 带 `onPress` 或 `onLongPress` 的视图默认是无障碍元素，激活它（在 VoiceOver 或 TalkBack 下双击）就会按下它。
 - **输入框是文本框**，带有占位文字、值和键盘。
 - **文字跟随用户的大小设置。** 见[文字大小](#文字大小)。
@@ -18,15 +18,15 @@ nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst �
 ## 标签、提示与角色
 
 ```tsx
-<view
+<View
   onPress={play}
   accessibilityRole="button"
   accessibilityLabel="Play"
   accessibilityHint="Starts the song"
   style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
 >
-  <text>▶</text>
-</view>
+  <Text>▶</Text>
+</View>
 ```
 
 | 属性 | 类型 | 说明 |
@@ -59,14 +59,14 @@ nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst �
 - `"image"` 用于有意义的图片，并加上标签；装饰性图片应当隐藏。
 
 ```tsx
-<text accessibilityRole="header" style={{ fontSize: 22, fontWeight: "700" }}>Settings</text>
+<Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: "700" }}>Settings</Text>
 ```
 
 ### 状态与值
 
 ```tsx
 // 用视图画出来的开关。
-<view
+<View
   onPress={() => on.set(!on())}
   accessibilityRole="switch"
   accessibilityLabel="Wi-Fi"
@@ -75,8 +75,8 @@ nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst �
   class="h-[31px] w-[51px] rounded-full p-0.5 transition-colors"
   classList={{ "bg-green-500": on(), "bg-zinc-300": !on() }}
 >
-  <view class="size-[27px] rounded-full bg-white transition-transform" classList={{ "translate-x-5": on() }} />
-</view>
+  <View class="size-[27px] rounded-full bg-white transition-transform" classList={{ "translate-x-5": on() }} />
+</View>
 ```
 
 `accessibilityState` 为 `{ disabled?, selected?, checked?: boolean | "mixed", busy?, expanded? }`。`disabled` 属性也意味着禁用状态。带 `min`、`max` 和 `now` 的 `accessibilityValue` 以百分比朗读；带 `text` 时按原文朗读（"3 of 10"、"Medium"）。
@@ -89,7 +89,7 @@ nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst �
 function Quantity() {
   const n = signal(1);
   return (
-    <view
+    <View
       accessible
       accessibilityRole="adjustable"
       accessibilityLabel="Quantity"
@@ -101,10 +101,10 @@ function Quantity() {
       }}
       style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
     >
-      <view onPress={() => n.update((v) => Math.max(0, v - 1))}><text>−</text></view>
-      <text>{n()}</text>
-      <view onPress={() => n.update((v) => v + 1)}><text>+</text></view>
-    </view>
+      <View onPress={() => n.update((v) => Math.max(0, v - 1))}><Text>−</Text></View>
+      <Text>{n()}</Text>
+      <View onPress={() => n.update((v) => v + 1)}><Text>+</Text></View>
+    </View>
   );
 }
 ```
@@ -123,12 +123,12 @@ function Quantity() {
 其他名称都成为自定义操作，以 `label`（或名称）列在 VoiceOver 的操作转子和 TalkBack 的操作菜单中。自定义操作是滑动删除之类手势的无障碍替代：
 
 ```tsx
-<view
+<View
   accessibilityActions={[{ name: "archive", label: "Archive" }, { name: "delete", label: "Delete" }]}
   onAccessibilityAction={(e) => (e.actionName === "archive" ? archive(mail.id) : remove(mail.id))}
 >
   …
-</view>
+</View>
 ```
 
 ## 分组与隐藏
@@ -136,17 +136,17 @@ function Quantity() {
 `accessible` 让一个视图成为一个整体元素：带标题、副标题和价格的卡片会一次读完，而不需要用户在三段文字之间来回轻扫。
 
 ```tsx
-<view accessible onPress={open} accessibilityRole="button" style={{ padding: 16 }}>
-  <text>Blue jacket</text>
-  <text>Size M</text>
-  <text>$120</text>
-</view>
+<View accessible onPress={open} accessibilityRole="button" style={{ padding: 16 }}>
+  <Text>Blue jacket</Text>
+  <Text>Size M</Text>
+  <Text>$120</Text>
+</View>
 ```
 
 隐藏没有信息量的东西：装饰性图片、分隔线、旁边文字已经表达了同样意思的图标。
 
 ```tsx
-<image src={decoration} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+<Image src={decoration} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
 ```
 
 `accessibilityElementsHidden`（iOS 的叫法）和 `importantForAccessibility="no-hide-descendants"`（Android 的叫法）在两个平台上都会隐藏子树；两者同时设置也没有坏处。
@@ -168,7 +168,7 @@ function Quantity() {
 在组件中优先使用响应式访问器：它们会更新读取它们的地方，而且不需要清理。
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { AccessibilityInfo, screenReaderEnabled } from "nsh/accessibility";
 
 function Upload() {
@@ -180,13 +180,13 @@ function Upload() {
     AccessibilityInfo.setAccessibilityFocus(result);
   };
   return (
-    <view style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       {/* 自动轮播在屏幕阅读器下很难使用：改为显示列表。 */}
-      <if when={!screenReaderEnabled()} else={<PhotoList />}>
+      <If when={!screenReaderEnabled()} else={<PhotoList />}>
         <PhotoCarousel />
-      </if>
-      <text ref={result}>{done() ? "Uploaded 3 photos" : "Uploading…"}</text>
-    </view>
+      </If>
+      <Text ref={result}>{done() ? "Uploaded 3 photos" : "Uploading…"}</Text>
+    </View>
   );
 }
 ```
@@ -208,6 +208,7 @@ function Upload() {
 当用户打开 iOS 的"减弱动态效果"或 Android 的"移除动画"时，`reduceMotion()` 为 `true`。nsh 不会自行关闭你的动画。用它，或 Tailwind 的 `motion-reduce:` 和 `motion-safe:` 变体，把大幅度的运动替换为淡入淡出或直接切换：
 
 ```tsx
+import { View } from "nsh";
 import { reduceMotion } from "nsh/accessibility";
 import { LayoutAnimation } from "nsh/animated";
 
@@ -216,8 +217,8 @@ const toggle = () => {
   expanded.set(!expanded());
 };
 
-<view onPress={open} class="transition active:scale-95 motion-reduce:transition-none" />
-<view class="motion-safe:animate-bounce" />
+<View onPress={open} class="transition active:scale-95 motion-reduce:transition-none" />
+<View class="motion-safe:animate-bounce" />
 ```
 
 ## 触摸目标
@@ -234,5 +235,5 @@ const toggle = () => {
 ## 相关内容
 
 - [`nsh/accessibility`](../modules/nsh-accessibility.md)：参考。
-- [`view`](../elements/view.md)：所有无障碍属性。
+- [`View`](../elements/view.md)：所有无障碍属性。
 - [动画](./animation.md#减少动态效果) 与 [设备与环境](./device-and-environment.md)。

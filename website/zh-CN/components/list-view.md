@@ -18,7 +18,7 @@ import { ListView } from "nsh/ui/mobile";
 和 `List` 一样，用 `each` 传入数据，用子函数渲染每一行：
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `Person ${i + 1}` }));
@@ -27,10 +27,10 @@ function App() {
   return (
     <ListView each={people} keyExtractor={(p) => String(p.id)}>
       {(person, index) => (
-        <view style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <text style={{ fontWeight: "600" }}>{person().name}</text>
-          <text style={{ color: "#737373" }}>{`#${index() + 1}`}</text>
-        </view>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontWeight: "600" }}>{person().name}</Text>
+          <Text style={{ color: "#737373" }}>{`#${index() + 1}`}</Text>
+        </View>
       )}
     </ListView>
   );
@@ -58,7 +58,7 @@ ListView 把每一行包进一个视图：水平内边距 16 pt，垂直内边�
 
 ```tsx
 <ListView variant="inset" each={settings} dividers={false}>
-  {(item) => <text>{item().label}</text>}
+  {(item) => <Text>{item().label}</Text>}
 </ListView>
 ```
 
@@ -70,13 +70,13 @@ ListView 接受 [List](../elements/list.md) 的数据类 props。布局（预估
 <ListView
   each={messages()}
   keyExtractor={(m) => m.id}
-  ListHeaderComponent={<text style={{ padding: 16, fontSize: 22, fontWeight: "700" }}>Inbox</text>}
-  ListEmptyComponent={<text style={{ padding: 16 }}>No messages</text>}
+  ListHeaderComponent={<Text style={{ padding: 16, fontSize: 22, fontWeight: "700" }}>Inbox</Text>}
+  ListEmptyComponent={<Text style={{ padding: 16 }}>No messages</Text>}
   refreshing={loading()}
   onRefresh={reload}
   onEndReached={loadMore}
 >
-  {(m) => <text numberOfLines={1}>{m().subject}</text>}
+  {(m) => <Text numberOfLines={1}>{m().subject}</Text>}
 </ListView>
 ```
 

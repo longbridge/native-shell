@@ -1,21 +1,21 @@
 ---
-title: input
+title: Input
 description: 原生文本输入框：受控与非受控文本、键盘、自动填充、选区、多行输入和焦点。
 order: 6
 demo: el-input
 ---
 
-# input
+# Input
 
-`<input>` 是原生文本输入框：iOS 和 Mac Catalyst 上是 UITextField（单行）或 UITextView（`multiline`），Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理。
+`<Input>` 是原生文本输入框：iOS 和 Mac Catalyst 上是 UITextField（单行）或 UITextView（`multiline`），Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理。
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 
 function NameField() {
   const name = signal("");
   return (
-    <input
+    <Input
       value={name()}
       onChangeText={(text) => name.set(text)}
       placeholder="你的名字"
@@ -81,7 +81,7 @@ function NameField() {
 | `inputAccessoryViewID` | `string` | 一个 `InputAccessoryView`（[`nsh/ios`](../modules/nsh-ios.md)）的 `nativeID`，输入框获得焦点时显示在键盘上方。 |
 
 ```tsx
-<input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />
+<Input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />
 ```
 
 ## 事件
@@ -99,7 +99,7 @@ function NameField() {
 
 ```tsx
 const height = signal(40);
-<input
+<Input
   multiline
   onContentSizeChange={(e) => height.set(Math.min(120, Math.max(40, e.height + 16)))}
   style={{ height: height(), paddingHorizontal: 12, paddingVertical: 8 }}
@@ -119,8 +119,8 @@ const height = signal(40);
 ```tsx
 let password!: YNode;
 <>
-  <input returnKeyType="next" onSubmitEditing={() => password.focus()} />
-  <input ref={password} secureTextEntry autoComplete="current-password" />
+  <Input returnKeyType="next" onSubmitEditing={() => password.focus()} />
+  <Input ref={password} secureTextEntry autoComplete="current-password" />
 </>;
 ```
 
@@ -128,6 +128,6 @@ let password!: YNode;
 
 ## 平台说明
 
-- [`<scroll>`](./scroll.md) 中的输入框会在原生侧自动避开键盘。其他位置请使用 `KeyboardAvoidingView`。
+- [`<Scroll>`](./scroll.md) 中的输入框会在原生侧自动避开键盘。其他位置请使用 `KeyboardAvoidingView`。
 - `disabled` 除了应用 `disabled:` 类，还会禁用输入框。
 - `inputAccessoryViewID` 在 Android 上无效，因为 Android 没有键盘附件栏。

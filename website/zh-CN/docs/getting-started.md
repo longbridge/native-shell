@@ -33,22 +33,22 @@ nsh init my-app
 ### 入口模块
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { SafeAreaView } from "nsh/ui/mobile";
 
 function App() {
   const count = signal(0);
   return (
     <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</text>
-      <view
+      <Text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</Text>
+      <View
         onPress={() => count.update((c) => c + 1)}
         activeOpacity={0.6}
         accessibilityRole="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
-        <text style={{ color: "white", fontSize: 17 }}>Tap</text>
-      </view>
+        <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -58,16 +58,16 @@ mount(App);
 
 逐行来看：
 
-- **`import { mount, signal } from "nsh"`**：`nsh` 是核心模块，提供 [signals](./reactivity.md)、`mount` 和其他响应式原语。它由原生运行时提供，不会被打包。
+- **`import { mount, signal, Text, View } from "nsh"`**：`nsh` 是核心模块，提供 [signals](./reactivity.md)、`mount`、其他响应式原语，以及宿主元素 `View` 和 `Text`。它由原生运行时提供，不会被打包。
 - **`import { SafeAreaView } from "nsh/ui/mobile"`**：移动端 UI 组件集。[`SafeAreaView`](../components/safe-area-view.md) 会为内容加上内边距，使其避开刘海、状态栏和 Home 指示条。
 - **`function App()`** 是一个组件：返回 JSX 的函数。它只运行**一次**。`signal(0)` 创建一个会随时间变化的值。
 - **`{count()}`** 在 JSX 中读取 signal。编译器看到这是一次调用，就让这段文本跟随该 signal：`count` 变化时，运行时只更新这一段文本，其他什么都不动。
-- **`<view onPress>`** 是一个响应按压的原生视图；`activeOpacity` 让它在按下时以原生方式变淡。小写标签（`view`、`text`、`image`、`scroll`、`input` 等）是 [宿主元素](../elements/index.md)。
+- **`<View onPress>`** 是一个响应按压的原生视图；`activeOpacity` 让它在按下时以原生方式变淡。`View`、`Text`、`Image`、`Scroll`、`Input` 等[宿主元素](../elements/index.md)和其他组件一样从 nsh 的模块导入；只有 `If` 和 `Each` 无需导入。
 - **`style={{ … }}`** 接受由 camelCase 样式属性组成的对象，数字的单位是点。布局是 flexbox，子元素默认按列排列（[布局](./layout.md)）。
 - **`mount(App)`** 把组件渲染到应用的界面上。
 
 > [!IMPORTANT]
-> 文本必须放在 `<text>` 中。直接写在 `<view>` 里的字符串（`<view>Hello</view>`）不会显示。
+> 文本必须放在 `<Text>` 中。直接写在 `<View>` 里的字符串（`<View>Hello</View>`）不会显示。
 
 ## 开发
 
@@ -105,7 +105,7 @@ nsh run my-app/App.tsx --target android
 保持 `nsh run` 运行，修改 `App.tsx` 中的按钮文字：
 
 ```tsx
-<text style={{ color: "white", fontSize: 17 }}>Add one</text>
+<Text style={{ color: "white", fontSize: 17 }}>Add one</Text>
 ```
 
 保存。CLI 重新构建并发送补丁；宿主重新运行变化的模块，并只重新渲染代码有变化的组件。这里变化的是 `App`，它持有 `count` signal，所以计数会归零。当你编辑的组件并不持有状态时，状态会被保留。把按钮移到单独的组件里：
@@ -113,9 +113,9 @@ nsh run my-app/App.tsx --target android
 ```tsx
 function TapButton(props: { onPress: () => void }) {
   return (
-    <view onPress={props.onPress} activeOpacity={0.6} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
-      <text style={{ color: "white", fontSize: 17 }}>Tap</text>
-    </view>
+    <View onPress={props.onPress} activeOpacity={0.6} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
+      <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
+    </View>
   );
 }
 ```

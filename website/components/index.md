@@ -13,7 +13,7 @@ keyboard, the status bar, system dialogs and navigation. Import what you need:
 import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/ui/mobile";
 ```
 
-Use it on top of the [host elements](../elements/index.md) (`<view>`, `<text>`, `<input>`, ...). The elements are
+Use it on top of the [host elements](../elements/index.md) (`<View>`, `<Text>`, `<Input>`, ...). The elements are
 the building blocks every UI set uses. The components are a finished mobile look built from those elements.
 
 ## How the components work

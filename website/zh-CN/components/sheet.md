@@ -18,20 +18,20 @@ import { Sheet } from "nsh/ui/mobile";
 `Sheet` 是受控组件：`open` 为 true 时显示。用户关闭它时会调用 `onClose`，由你把 `open` 设为 false：
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, Sheet } from "nsh/ui/mobile";
 
 function App() {
   const open = signal(false);
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48 }}>
       <Button title="Share" onPress={() => open.set(true)} />
       <Sheet open={open()} onClose={() => open.set(false)}>
-        <text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</text>
+        <Text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</Text>
         <Button title="Copy link" variant="secondary" onPress={() => open.set(false)} />
         <Button title="Done" onPress={() => open.set(false)} />
       </Sheet>
-    </view>
+    </View>
   );
 }
 
@@ -55,8 +55,8 @@ mount(App);
 
 ```tsx
 <Sheet open={picking()} onClose={() => picking.set(false)}>
-  <text style={{ fontSize: 17, fontWeight: "600" }}>Choose a city</text>
-  <view style={{ height: 320 }}>
+  <Text style={{ fontSize: 17, fontWeight: "600" }}>Choose a city</Text>
+  <View style={{ height: 320 }}>
     <SelectList
       options={cities}
       value={city()}
@@ -65,7 +65,7 @@ mount(App);
         picking.set(false);
       }}
     />
-  </view>
+  </View>
 </Sheet>
 ```
 

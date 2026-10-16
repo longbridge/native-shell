@@ -56,19 +56,20 @@ each one.
 ### 3. Fine-grained updates
 
 Components run **once**. Afterwards, only the bindings that read a signal run again when it changes: a text, a style
-property, a branch of `<if>`, the rows of `<each>`. Nothing re-renders a whole subtree to find out what changed.
+property, a branch of `<If>`, the rows of `<Each>`. Nothing re-renders a whole subtree to find out what changed.
 
 ```tsx
 import type { Accessor } from "nsh";
+import { Text } from "nsh";
 
 type Quote = { price: number; change: number };
 
 function Price(props: { quote: Accessor<Quote> }) {
   // Runs once. When quote() changes, only the text and the color update.
   return (
-    <text style={{ color: props.quote().change < 0 ? "#cf222e" : "#1a7f37" }}>
+    <Text style={{ color: props.quote().change < 0 ? "#cf222e" : "#1a7f37" }}>
       {props.quote().price.toFixed(2)}
-    </text>
+    </Text>
   );
 }
 ```
@@ -77,15 +78,15 @@ function Price(props: { quote: Accessor<Quote> }) {
 
 - Read signals where they are used (inside JSX expressions, `computed`, `effect`), not at the top of a component, so
   the narrowest binding updates.
-- Use `<each>` (rows kept by key) or [`List`](./lists.md) for collections; a plain `.map()` in JSX creates every row
+- Use `<Each>` (rows kept by key) or [`List`](./lists.md) for collections; a plain `.map()` in JSX creates every row
   again on each change.
 - Derive values with `computed` when several bindings use them, so they are computed once per change.
 
 Appending a fourth item to a three-item list, as `nsh trace` shows it:
 
 ```tsx
-{items().map((n) => <text>{`row ${n}`}</text>)}                   // 22 mount items: 3 views removed, 4 created
-<each of={items()}>{(n) => <text>{`row ${n()}`}</text>}</each>      // 4 mount items: 1 view created
+{items().map((n) => <Text>{`row ${n}`}</Text>)}                   // 22 mount items: 3 views removed, 4 created
+<Each of={items()}>{(n) => <Text>{`row ${n()}`}</Text>}</Each>      // 4 mount items: 1 view created
 ```
 
 See [Reactivity](./reactivity.md).
@@ -102,11 +103,13 @@ An animation driven from JS (a signal written in `requestAnimationFrame`) costs 
 stutters when the engine thread is busy. [`nsh/animated`](./animation.md) runs animations natively instead:
 
 ```tsx
+import { View } from "nsh";
 import { createNativeValue } from "nsh/animated";
+import { List } from "nsh/list";
 
 const scrollY = createNativeValue(0);
 
-<view
+<View
   style={{
     opacity: scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 0.35] }),
     transform: [{ translateY: scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, -6] }) }],

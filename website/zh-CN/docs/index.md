@@ -48,28 +48,28 @@ native-shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 模块用 TypeScript 和 JSX 编写：
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function Counter() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
-      <text style={{ fontSize: 48, fontWeight: "700" }}>{count()}</text>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
+      <Text style={{ fontSize: 48, fontWeight: "700" }}>{count()}</Text>
+      <View
         onPress={() => count.update((n) => n + 1)}
         activeOpacity={0.6}
         class="rounded-lg bg-blue-600 px-5 py-3"
       >
-        <text class="text-white text-lg">Tap</text>
-      </view>
-    </view>
+        <Text class="text-white text-lg">Tap</Text>
+      </View>
+    </View>
   );
 }
 
 mount(Counter);
 ```
 
-`<view>` 会变成 `UIView` 或 Android 的 `ViewGroup`，`<text>` 变成原生文本视图，按钮的按压反馈（`activeOpacity`）在主线程上完成，不需要往返 JavaScript。点击时，`count.update` 只修改一个信号，只有读取 `count()` 的那段文本会更新：组件函数不会重新执行。
+`<View>` 会变成 `UIView` 或 Android 的 `ViewGroup`，`<Text>` 变成原生文本视图，按钮的按压反馈（`activeOpacity`）在主线程上完成，不需要往返 JavaScript。点击时，`count.update` 只修改一个信号，只有读取 `count()` 的那段文本会更新：组件函数不会重新执行。
 
 宿主应用只需几行原生代码就能显示它（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)）：
 

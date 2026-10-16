@@ -22,7 +22,7 @@ See [Animation](../docs/animation.md) for the guide.
 | `opacity` | `style={{ opacity: value }}` |
 | `backgroundColor` | `style={{ backgroundColor: value.interpolate({ inputRange: [0, 1], outputRange: ["#fff", "#000"] }) }}` |
 | `transform` | `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY`, `rotateZ` steps: `transform: [{ translateX: value }]` |
-| Scroll position | `<scroll scrollValue={value}>` and `<List scrollValue={value}>` write the scroll offset into it each frame |
+| Scroll position | `<Scroll scrollValue={value}>` and `<List scrollValue={value}>` write the scroll offset into it each frame |
 | Gestures | `pan={{ x, y }}`, `pinch={{ scale }}`, `rotation={{ angle }}` on any element: the gesture writes the values directly (see [Touch and gestures](../docs/touch-and-gestures.md)) |
 | Canvas | Any number or color argument of a [canvas](./nsh-canvas.md) drawing call |
 
@@ -37,7 +37,7 @@ function createNativeValue(value?: number): NativeValue;
 Creates a native value starting at `value` (default `0`).
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
@@ -48,10 +48,10 @@ function App() {
     x.spring(right ? 200 : 0);
   };
   return (
-    <view style={{ flex: 1, padding: 24, paddingTop: 48, gap: 16 }}>
-      <view style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#6366f1", transform: [{ translateX: x }] }} />
-      <text onPress={toggle}>Move</text>
-    </view>
+    <View style={{ flex: 1, padding: 24, paddingTop: 48, gap: 16 }}>
+      <View style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#6366f1", transform: [{ translateX: x }] }} />
+      <Text onPress={toggle}>Move</Text>
+    </View>
   );
 }
 
@@ -126,8 +126,8 @@ A node of the native animation graph: a `NativeValue`, or a value derived from o
 const scroll = createNativeValue(0);
 const header = scroll.diffClamp(0, 44);
 
-<scroll scrollValue={scroll} style={{ flex: 1 }}>{/* rows */}</scroll>
-<view style={{ height: 44, transform: [{ translateY: header.mul(-1) }] }} />
+<Scroll scrollValue={scroll} style={{ flex: 1 }}>{/* rows */}</Scroll>
+<View style={{ height: 44, transform: [{ translateY: header.mul(-1) }] }} />
 ```
 
 ```ts
@@ -295,10 +295,10 @@ const toggle = () => {
   open.update((o) => !o);
 };
 
-<view>
-  <text onPress={toggle}>Details</text>
-  <if when={open()}>
-    <text>Shown with a spring.</text>
-  </if>
-</view>
+<View>
+  <Text onPress={toggle}>Details</Text>
+  <If when={open()}>
+    <Text>Shown with a spring.</Text>
+  </If>
+</View>
 ```

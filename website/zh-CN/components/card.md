@@ -16,20 +16,20 @@ import { Card } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48 }}>
       <Card
-        header={<text>Weekly summary</text>}
+        header={<Text>Weekly summary</Text>}
         footer={<Button title="Details" variant="plain" onPress={() => console.log("details")} />}
       >
-        <text>You walked 42 km this week.</text>
-        <text>That is 8 km more than last week.</text>
+        <Text>You walked 42 km this week.</Text>
+        <Text>That is 8 km more than last week.</Text>
       </Card>
-    </view>
+    </View>
   );
 }
 
@@ -38,7 +38,7 @@ mount(App);
 
 ## 布局
 
-- **页眉**：左右和顶部各有 16 pt 内边距。页眉中的文字为 semibold，字号比主题的 `font.size` 大 1 pt，所以一个普通的 `<text>` 就能当标题用。页眉可以是任意 JSX，比如一行头像加姓名。
+- **页眉**：左右和顶部各有 16 pt 内边距。页眉中的文字为 semibold，字号比主题的 `font.size` 大 1 pt，所以一个普通的 `<Text>` 就能当标题用。页眉可以是任意 JSX，比如一行头像加姓名。
 - **内容**：子元素纵向排列，间距 8 pt。有页眉时，内容顶部内边距为 8 pt，左右和底部为 16 pt；没有页眉时，四周都是 16 pt。
 - **页脚**：靠末端对齐的一行，间距 8 pt，水平内边距 16 pt，垂直内边距 12 pt，上方有一条分隔线。操作按钮放在这里。
 
@@ -46,23 +46,23 @@ mount(App);
 <Card
   variant="outlined"
   header={
-    <view style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <view style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
-      <text>Ada Lovelace</text>
-    </view>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
+      <Text>Ada Lovelace</Text>
+    </View>
   }
   footer={
-    <view style={{ flexDirection: "row", gap: 8 }}>
+    <View style={{ flexDirection: "row", gap: 8 }}>
       <Button title="Ignore" variant="plain" onPress={ignore} />
       <Button title="Reply" onPress={reply} />
-    </view>
+    </View>
   }
 >
-  <text>Can we move the meeting to Thursday?</text>
+  <Text>Can we move the meeting to Thursday?</Text>
 </Card>
 ```
 
-页眉和页脚只在你传入时存在：`header={cond() ? <text>…</text> : undefined}` 会添加或移除页眉，内容的内边距也会随之调整。
+页眉和页脚只在你传入时存在：`header={cond() ? <Text>…</Text> : undefined}` 会添加或移除页眉，内容的内边距也会随之调整。
 
 ## 变体
 

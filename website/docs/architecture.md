@@ -96,14 +96,14 @@ Three properties follow from this design:
 Text is often the most expensive part of a UI. nsh lays it out on the engine thread with the platform's own text
 engine, so it looks exactly like native text:
 
-1. **prepare**: a `<text>` and its nested spans become one attributed string (CoreText on Apple platforms,
+1. **prepare**: a `<Text>` and its nested spans become one attributed string (CoreText on Apple platforms,
    `PrecomputedText` / `StaticLayout` on Android);
 2. **measure** at the widths layout asks for; measurements are cached by content and width, so a color-only change does
    not measure again;
 3. **layout** at the final size.
 
-The main thread receives the immutable result and only draws it. A text nested in a `<text>` is a span, not a view;
-strings outside `<text>` render nothing.
+The main thread receives the immutable result and only draws it. A text nested in a `<Text>` is a span, not a view;
+strings outside `<Text>` render nothing.
 
 ## Lists
 

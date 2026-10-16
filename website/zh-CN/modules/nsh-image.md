@@ -1,19 +1,25 @@
 ---
 title: nsh/image
-description: Image.getSize 和 Image.prefetch：获取图片信息和预加载图片。
+description: Image：显示图片的元素，以及用于获取图片信息和预加载的 Image.getSize 与 Image.prefetch。
 order: 8
 ---
 
 # nsh/image
 
-`nsh/image` 向原生图片加载器查询图片信息：尺寸，以及在显示之前预先加载。图片本身用 [`<image>`](../elements/image.md) 元素显示。
+`nsh/image` 导出 `Image`，即显示图片的 [`<Image>`](../elements/image.md) 元素。同一个 `Image` 还可以在不显示图片的情况下向原生图片加载器查询图片信息：尺寸，以及在显示之前预先加载。
 
 ```ts
 import { Image, type ImageSize } from "nsh/image";
 ```
 
-> [!NOTE]
-> 从 `nsh/image` 导入 `Image` 不会改变 `<image>` 元素：`Image` 是一个函数集合对象，不是组件，所以 `<image src=…>` 仍然是宿主元素。
+`Image` 是一个带有两个函数的组件：`<Image src=…>` 渲染原生图片视图（编译器像处理 `<View>` 一样就地创建它），`Image.getSize` / `Image.prefetch` 则直接在它上面调用。
+
+```ts
+const Image: ((props: ImageProps) => YNode) & {
+  getSize(source: string | { uri: string }): Promise<ImageSize>;
+  prefetch(source: string | { uri: string }): Promise<boolean>;
+};
+```
 
 教程见[图片与资源](../docs/images-and-assets.md)。
 
@@ -28,7 +34,7 @@ interface ImageSize {
 }
 ```
 
-加载图片，并 resolve 为它的像素尺寸（源图片的尺寸，而不是降采样后的副本）。加载的数据会保留在内存中，接下来显示它的 `<image>` 不会再次下载。图片无法加载时 Promise 会 reject。
+加载图片，并 resolve 为它的像素尺寸（源图片的尺寸，而不是降采样后的副本）。加载的数据会保留在内存中，接下来显示它的 `<Image>` 不会再次下载。图片无法加载时 Promise 会 reject。
 
 ```tsx
 import { signal } from "nsh";
@@ -39,7 +45,7 @@ const ratio = signal(1);
 
 Image.getSize(url).then(({ width, height }) => ratio.set(width / height));
 
-<image src={url} style={{ width: "100%", aspectRatio: ratio() }} />;
+<Image src={url} style={{ width: "100%", aspectRatio: ratio() }} />;
 ```
 
 ## Image.prefetch
@@ -57,8 +63,8 @@ next.forEach((p) => Image.prefetch(p.url));
 
 ## 相关内容
 
-- [`<image>`](../elements/image.md)：`src`、`resizeMode`、`defaultSource`、`onLoad`、`onProgress`、`onError` 等属性。
-- 导入图片文件（`import logo from "./logo.png"`）会得到一个 `ImageAsset`（`{ uri, width, height }`，尺寸单位为点），`<image src>` 和画布的 `drawImage` 都接受它。
+- [`<Image>`](../elements/image.md)：`src`、`resizeMode`、`defaultSource`、`onLoad`、`onProgress`、`onError` 等属性。
+- 导入图片文件（`import logo from "./logo.png"`）会得到一个 `ImageAsset`（`{ uri, width, height }`，尺寸单位为点），`<Image src>` 和画布的 `drawImage` 都接受它。
 
 > [!NOTE]
 > 如果应用在 `nsh.json` 中声明了 `capabilities`，对远程 URL 调用 `getSize` 和 `prefetch` 需要像 `fetch` 一样在 `network` 中允许。见[沙箱与权限](../docs/sandbox-and-capabilities.md)。

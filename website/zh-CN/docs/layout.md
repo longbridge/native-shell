@@ -25,14 +25,14 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 | `position` | `"relative"` | `static` |
 
 ```tsx
-<view style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16 }}>
-  <image src={avatar} style={{ width: 40, height: 40, borderRadius: 20 }} />
-  <view style={{ flex: 1, gap: 2 }}>
-    <text style={{ fontWeight: "600" }}>{props.name}</text>
-    <text style={{ color: "#6e7781" }} numberOfLines={1}>{props.message}</text>
-  </view>
-  <text style={{ color: "#6e7781" }}>{props.time}</text>
-</view>
+<View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16 }}>
+  <Image src={avatar} style={{ width: 40, height: 40, borderRadius: 20 }} />
+  <View style={{ flex: 1, gap: 2 }}>
+    <Text style={{ fontWeight: "600" }}>{props.name}</Text>
+    <Text style={{ color: "#6e7781" }} numberOfLines={1}>{props.message}</Text>
+  </View>
+  <Text style={{ color: "#6e7781" }}>{props.time}</Text>
+</View>
 ```
 
 | 属性 | 取值 |
@@ -50,11 +50,11 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 `flex` 只取一个数字，不是 CSS 简写：正数 `n` 表示按 `n` 增长、按 1 收缩、基准尺寸为 0，因此 `flex: 1` 的兄弟元素无论内容多少都会平分空间；`flex: 0`（默认值）让视图按内容确定大小；负数表示按该值收缩，直到最小尺寸。
 
 ```tsx
-<view style={{ flexDirection: "row", gap: 8 }}>
-  <view style={{ flex: 1, height: 36, backgroundColor: "#c8e1ff" }} />   {/* one share */}
-  <view style={{ flex: 2, height: 36, backgroundColor: "#79b8ff" }} />   {/* two shares */}
-  <view style={{ width: 36, height: 36, backgroundColor: "#0366d6" }} /> {/* fixed */}
-</view>
+<View style={{ flexDirection: "row", gap: 8 }}>
+  <View style={{ flex: 1, height: 36, backgroundColor: "#c8e1ff" }} />   {/* one share */}
+  <View style={{ flex: 2, height: 36, backgroundColor: "#79b8ff" }} />   {/* two shares */}
+  <View style={{ width: 36, height: 36, backgroundColor: "#0366d6" }} /> {/* fixed */}
+</View>
 ```
 
 由于最小尺寸默认为 0，行内 `flex: 1` 的文字会收缩并换行，而不会把兄弟元素挤出去。
@@ -77,7 +77,7 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 `aspectRatio` 根据已知的一边计算另一边：
 
 ```tsx
-<view style={{ width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000000" }} />
+<View style={{ width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000000" }} />
 ```
 
 从文件导入的图片有自然尺寸，未指定尺寸时按自然尺寸布局（[图片与资源](./images-and-assets.md)）。远程图片在加载完成前没有尺寸：请为它们指定尺寸。
@@ -87,12 +87,12 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 `display: "grid"` 把子元素排进 CSS 网格轨道：
 
 ```tsx
-<view style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-  <view style={{ gridColumn: "span 2", height: 60, backgroundColor: "#d8b9ff" }} />
-  <view style={{ height: 60, backgroundColor: "#b083f0" }} />
-  <view style={{ gridRow: "span 2", backgroundColor: "#8250df" }} />
-  <view style={{ gridColumn: "2 / 4", height: 60, backgroundColor: "#6639ba" }} />
-</view>
+<View style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+  <View style={{ gridColumn: "span 2", height: 60, backgroundColor: "#d8b9ff" }} />
+  <View style={{ height: 60, backgroundColor: "#b083f0" }} />
+  <View style={{ gridRow: "span 2", backgroundColor: "#8250df" }} />
+  <View style={{ gridColumn: "2 / 4", height: 60, backgroundColor: "#6639ba" }} />
+</View>
 ```
 
 | 属性 | 取值 |
@@ -111,12 +111,12 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 `position: "absolute"` 让视图脱离文档流，并根据 `top`、`right`、`bottom`、`left` 相对父元素定位：
 
 ```tsx
-<view style={{ height: 200 }}>
-  <image src={cover} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
-  <view style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}>
-    <text style={{ color: "#ffffff", fontWeight: "700" }}>Caption</text>
-  </view>
-</view>
+<View style={{ height: 200 }}>
+  <Image src={cover} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+  <View style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}>
+    <Text style={{ color: "#ffffff", fontWeight: "700" }}>Caption</Text>
+  </View>
+</View>
 ```
 
 偏移量接受点和百分比。同时设置了 `left` 和 `right`（或 `top` 和 `bottom`）而没有设置尺寸的视图，会在两者之间拉伸。靠后的兄弟元素绘制在靠前的之上；`zIndex` 可以改变这个顺序。
@@ -128,17 +128,18 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 ```tsx
 const width = signal(0);
 
-<view onLayout={(e) => width.set(e.width)}>
-  <text>{width()} points wide</text>
-</view>
+<View onLayout={(e) => width.set(e.width)}>
+  <Text>{width()} points wide</Text>
+</View>
 ```
 
 事件内容为 `{ x, y, width, height }`，单位是点。要获取整个窗口的大小，读取 [`nsh/device`](../modules/nsh-device.md) 中的 `windowSize()`，这个访问器会跟随旋转和窗口缩放变化：
 
 ```tsx
+import { View } from "nsh";
 import { windowSize } from "nsh/device";
 
-<view style={{ flexDirection: windowSize().width > 600 ? "row" : "column" }} />
+<View style={{ flexDirection: windowSize().width > 600 ? "row" : "column" }} />
 ```
 
 Tailwind 的断点（`sm:`、`md:` 等）以及 `portrait:` / `landscape:` 不用写代码就能达到同样的效果。
@@ -157,15 +158,16 @@ Tailwind 的断点（`sm:`、`md:` 等）以及 `portrait:` / `landscape:` 不�
 - `textAlign: "auto"` 的文字右对齐，原生控件也会镜像。
 
 ```tsx
+import { Text, View } from "nsh";
 import { I18nManager } from "nsh/device";
 
-<view style={{ flexDirection: "row", gap: 8 }}>
-  <view style={{ marginStart: 16, borderTopStartRadius: 12, width: 44, height: 44, backgroundColor: "#54aeff" }} />
-</view>
+<View style={{ flexDirection: "row", gap: 8 }}>
+  <View style={{ marginStart: 16, borderTopStartRadius: 12, width: 44, height: 44, backgroundColor: "#54aeff" }} />
+</View>
 
-<view onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
-  <text>{I18nManager.isRTL ? "Right to left" : "Left to right"}</text>
-</view>
+<View onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
+  <Text>{I18nManager.isRTL ? "Right to left" : "Left to right"}</Text>
+</View>
 ```
 
 `I18nManager.isRTL` 是响应式的，修改会立即生效，无需重启。`direction` 样式（`"inherit"`、`"ltr"`、`"rtl"`）可以为单个视图及其子元素覆盖方向。在 Android 上，嵌入 nsh 的应用需要在 manifest 中设置 `android:supportsRtl="true"`，原生控件才会镜像。

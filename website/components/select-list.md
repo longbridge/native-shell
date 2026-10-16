@@ -18,7 +18,7 @@ import { SelectList } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { SelectList } from "nsh/ui/mobile";
 
 const languages = ["English", "Deutsch", "Español", "Français", "日本語", "中文"];
@@ -26,10 +26,10 @@ const languages = ["English", "Deutsch", "Español", "Français", "日本語", "
 function App() {
   const chosen = signal<number | null>(0);
   return (
-    <view style={{ flex: 1, paddingTop: 48 }}>
-      <text style={{ padding: 16 }}>{`Language: ${chosen() === null ? "none" : languages[chosen()!]}`}</text>
+    <View style={{ flex: 1, paddingTop: 48 }}>
+      <Text style={{ padding: 16 }}>{`Language: ${chosen() === null ? "none" : languages[chosen()!]}`}</Text>
       <SelectList options={languages} value={chosen()} onSelect={(i) => chosen.set(i)} />
-    </view>
+    </View>
   );
 }
 
@@ -40,9 +40,9 @@ SelectList fills its parent (`flex: 1`). To show it inside a scroll view or next
 with a fixed height:
 
 ```tsx
-<view style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
+<View style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
   <SelectList options={cities} onSelect={(i) => console.log(cities[i])} />
-</view>
+</View>
 ```
 
 ## Controlled and uncontrolled

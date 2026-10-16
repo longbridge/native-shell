@@ -1,24 +1,24 @@
 ---
-title: scroll
+title: Scroll
 description: "The native scroll view: vertical and horizontal scrolling, paging and snapping, pull to refresh, zooming and scroll events."
 order: 5
 demo: el-scroll
 ---
 
-# scroll
+# Scroll
 
-`<scroll>` is a native scroll view (UIScrollView on iOS and Mac Catalyst, a ScrollView on Android). It lays out all its
+`<Scroll>` is a native scroll view (UIScrollView on iOS and Mac Catalyst, a ScrollView on Android). It lays out all its
 children as its content and scrolls them natively: scrolling, flinging, bouncing and snapping never wait for JS.
 
 ```tsx
-<scroll style={{ flex: 1 }}>
-  <view style={{ padding: 16, gap: 8 }}>
-    <each of={rows}>{(row) => <text>{row().title}</text>}</each>
-  </view>
-</scroll>
+<Scroll style={{ flex: 1 }}>
+  <View style={{ padding: 16, gap: 8 }}>
+    <Each of={rows}>{(row) => <Text>{row().title}</Text>}</Each>
+  </View>
+</Scroll>
 ```
 
-`<scroll>` creates every child, which suits pages of moderate size. For long or unbounded data use a
+`<Scroll>` creates every child, which suits pages of moderate size. For long or unbounded data use a
 [list](./list.md): it creates only the rows near the viewport and recycles them.
 
 A scroll view must have a bounded size along its axis: give it `flex: 1` (or a `height`) inside a container that has
@@ -64,9 +64,9 @@ async function reload() {
   refreshing.set(false);
 }
 
-<scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>
+<Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>
   …
-</scroll>;
+</Scroll>;
 ```
 
 ### Zooming
@@ -85,9 +85,9 @@ ways. Lists do not zoom.
 
 ```tsx
 let photo!: YNode;
-<scroll ref={photo} maximumZoomScale={4} centerContent style={{ flex: 1, backgroundColor: "#000" }}>
-  <image src={picture} style={{ width: 390, height: 520 }} onPress={() => photo.zoomTo({ scale: 1, animated: true })} />
-</scroll>;
+<Scroll ref={photo} maximumZoomScale={4} centerContent style={{ flex: 1, backgroundColor: "#000" }}>
+  <Image src={picture} style={{ width: 390, height: 520 }} onPress={() => photo.zoomTo({ scale: 1, animated: true })} />
+</Scroll>;
 ```
 
 ## Events
@@ -117,7 +117,7 @@ size, the viewport size and the zoom scale (1 unless the view zooms).
 
 ```tsx
 let scroller!: YNode;
-<scroll ref={scroller}>…</scroll>;
+<Scroll ref={scroller}>…</Scroll>;
 scroller.scrollTo({ y: 0, animated: true });
 ```
 

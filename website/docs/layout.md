@@ -25,14 +25,14 @@ A view lays out its children with flexbox. The defaults differ from the web's:
 | `position` | `"relative"` | `static` |
 
 ```tsx
-<view style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16 }}>
-  <image src={avatar} style={{ width: 40, height: 40, borderRadius: 20 }} />
-  <view style={{ flex: 1, gap: 2 }}>
-    <text style={{ fontWeight: "600" }}>{props.name}</text>
-    <text style={{ color: "#6e7781" }} numberOfLines={1}>{props.message}</text>
-  </view>
-  <text style={{ color: "#6e7781" }}>{props.time}</text>
-</view>
+<View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16 }}>
+  <Image src={avatar} style={{ width: 40, height: 40, borderRadius: 20 }} />
+  <View style={{ flex: 1, gap: 2 }}>
+    <Text style={{ fontWeight: "600" }}>{props.name}</Text>
+    <Text style={{ color: "#6e7781" }} numberOfLines={1}>{props.message}</Text>
+  </View>
+  <Text style={{ color: "#6e7781" }}>{props.time}</Text>
+</View>
 ```
 
 | Property | Values |
@@ -50,11 +50,11 @@ A view lays out its children with flexbox. The defaults differ from the web's:
 `flex` takes one number and is not the CSS shorthand: a positive number `n` means grow by `n`, shrink by 1 and start from a basis of 0, so `flex: 1` siblings share the space equally whatever their content; `flex: 0` (the default) sizes the view to its content; a negative number shrinks it by that much down to its minimum.
 
 ```tsx
-<view style={{ flexDirection: "row", gap: 8 }}>
-  <view style={{ flex: 1, height: 36, backgroundColor: "#c8e1ff" }} />   {/* one share */}
-  <view style={{ flex: 2, height: 36, backgroundColor: "#79b8ff" }} />   {/* two shares */}
-  <view style={{ width: 36, height: 36, backgroundColor: "#0366d6" }} /> {/* fixed */}
-</view>
+<View style={{ flexDirection: "row", gap: 8 }}>
+  <View style={{ flex: 1, height: 36, backgroundColor: "#c8e1ff" }} />   {/* one share */}
+  <View style={{ flex: 2, height: 36, backgroundColor: "#79b8ff" }} />   {/* two shares */}
+  <View style={{ width: 36, height: 36, backgroundColor: "#0366d6" }} /> {/* fixed */}
+</View>
 ```
 
 Because minimum sizes default to 0, a `flex: 1` text in a row shrinks and wraps instead of pushing its siblings out.
@@ -77,7 +77,7 @@ Without a size, a view is as big as its content (plus padding), stretched across
 `aspectRatio` sizes the other dimension from the one that is known:
 
 ```tsx
-<view style={{ width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000000" }} />
+<View style={{ width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000000" }} />
 ```
 
 Images imported from files have a natural size and lay out at it when no size is given ([Images and assets](./images-and-assets.md)). Remote images have no size until they load: give them one.
@@ -87,12 +87,12 @@ Images imported from files have a natural size and lay out at it when no size is
 `display: "grid"` lays out children in CSS grid tracks:
 
 ```tsx
-<view style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-  <view style={{ gridColumn: "span 2", height: 60, backgroundColor: "#d8b9ff" }} />
-  <view style={{ height: 60, backgroundColor: "#b083f0" }} />
-  <view style={{ gridRow: "span 2", backgroundColor: "#8250df" }} />
-  <view style={{ gridColumn: "2 / 4", height: 60, backgroundColor: "#6639ba" }} />
-</view>
+<View style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+  <View style={{ gridColumn: "span 2", height: 60, backgroundColor: "#d8b9ff" }} />
+  <View style={{ height: 60, backgroundColor: "#b083f0" }} />
+  <View style={{ gridRow: "span 2", backgroundColor: "#8250df" }} />
+  <View style={{ gridColumn: "2 / 4", height: 60, backgroundColor: "#6639ba" }} />
+</View>
 ```
 
 | Property | Values |
@@ -111,12 +111,12 @@ Images imported from files have a natural size and lay out at it when no size is
 `position: "absolute"` takes a view out of the flow and places it by `top`, `right`, `bottom` and `left`, relative to its parent:
 
 ```tsx
-<view style={{ height: 200 }}>
-  <image src={cover} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
-  <view style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}>
-    <text style={{ color: "#ffffff", fontWeight: "700" }}>Caption</text>
-  </view>
-</view>
+<View style={{ height: 200 }}>
+  <Image src={cover} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+  <View style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}>
+    <Text style={{ color: "#ffffff", fontWeight: "700" }}>Caption</Text>
+  </View>
+</View>
 ```
 
 Offsets accept points and percentages. A view with `left` and `right` (or `top` and `bottom`) and no size stretches between them. Later siblings are drawn above earlier ones; `zIndex` changes the order.
@@ -128,17 +128,18 @@ Offsets accept points and percentages. A view with `left` and `right` (or `top` 
 ```tsx
 const width = signal(0);
 
-<view onLayout={(e) => width.set(e.width)}>
-  <text>{width()} points wide</text>
-</view>
+<View onLayout={(e) => width.set(e.width)}>
+  <Text>{width()} points wide</Text>
+</View>
 ```
 
 The event is `{ x, y, width, height }` in points. For the whole window, read `windowSize()` from [`nsh/device`](../modules/nsh-device.md), an accessor that follows rotation and window resizing:
 
 ```tsx
+import { View } from "nsh";
 import { windowSize } from "nsh/device";
 
-<view style={{ flexDirection: windowSize().width > 600 ? "row" : "column" }} />
+<View style={{ flexDirection: windowSize().width > 600 ? "row" : "column" }} />
 ```
 
 Tailwind's breakpoints (`sm:`, `md:`, ...) and `portrait:` / `landscape:` give the same result without code.
@@ -157,15 +158,16 @@ The root view covers the whole screen, under the status bar and the home indicat
 - text with `textAlign: "auto"` aligns right, and native controls mirror.
 
 ```tsx
+import { Text, View } from "nsh";
 import { I18nManager } from "nsh/device";
 
-<view style={{ flexDirection: "row", gap: 8 }}>
-  <view style={{ marginStart: 16, borderTopStartRadius: 12, width: 44, height: 44, backgroundColor: "#54aeff" }} />
-</view>
+<View style={{ flexDirection: "row", gap: 8 }}>
+  <View style={{ marginStart: 16, borderTopStartRadius: 12, width: 44, height: 44, backgroundColor: "#54aeff" }} />
+</View>
 
-<view onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
-  <text>{I18nManager.isRTL ? "Right to left" : "Left to right"}</text>
-</view>
+<View onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
+  <Text>{I18nManager.isRTL ? "Right to left" : "Left to right"}</Text>
+</View>
 ```
 
 `I18nManager.isRTL` is reactive and changes apply at once, without a restart. The `direction` style (`"inherit"`, `"ltr"`, `"rtl"`) overrides the direction for one view and its children. On Android, apps that embed nsh need `android:supportsRtl="true"` in their manifest for native controls to mirror.

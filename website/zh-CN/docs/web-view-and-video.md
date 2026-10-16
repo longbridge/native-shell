@@ -13,7 +13,7 @@ order: 21
 | `WebView` | WKWebView | `android.webkit.WebView` |
 | `Video` | AVPlayerLayer；设置 `controls` 时为 AVPlayerViewController | TextureView 上的 MediaPlayer；设置 `controls` 时为 MediaController |
 
-它们背后的框架（WebKit、AVFoundation）在应用第一次用到时才加载，所以从不显示网页或视频的应用不会在启动时为它们付出代价。两者也可以作为内置元素 `<web-view>` 和 `<video>` 使用；导入组件可以获得它们的类型。
+它们背后的框架（WebKit、AVFoundation）在应用第一次用到时才加载，所以从不显示网页或视频的应用不会在启动时为它们付出代价。请从 `nsh/webview` 和 `nsh/video` 导入它们。
 
 ## WebView
 
@@ -67,22 +67,22 @@ mount(App);
 ref 提供 `reload()`、`goBack()`、`goForward()`、`stopLoading()`、`injectJavaScript(script)` 和 `postMessage(data)`：
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 
 function Browser() {
   let web!: YNode;
   const nav = signal<WebViewNavigation | null>(null);
   const button = (label: string, enabled: boolean, action: () => void) => (
-    <text onPress={enabled ? action : undefined} style={{ padding: 12, color: enabled ? "#0969da" : "#8c959f" }}>
+    <Text onPress={enabled ? action : undefined} style={{ padding: 12, color: enabled ? "#0969da" : "#8c959f" }}>
       {label}
-    </text>
+    </Text>
   );
   return (
-    <view style={{ flex: 1, paddingTop: 50 }}>
-      <text numberOfLines={1} style={{ paddingHorizontal: 12, color: "#57606a" }}>
+    <View style={{ flex: 1, paddingTop: 50 }}>
+      <Text numberOfLines={1} style={{ paddingHorizontal: 12, color: "#57606a" }}>
         {nav()?.loading ? "Loading…" : nav()?.title ?? ""}
-      </text>
+      </Text>
       <WebView
         ref={web}
         source="https://developer.mozilla.org/"
@@ -90,12 +90,12 @@ function Browser() {
         onNavigationStateChange={(n) => nav.set(n)}
         ios={{ allowsBackForwardNavigationGestures: true }}
       />
-      <view style={{ flexDirection: "row", justifyContent: "space-around" }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
         {button("Back", !!nav()?.canGoBack, () => web.goBack())}
         {button("Forward", !!nav()?.canGoForward, () => web.goForward())}
         {button("Reload", true, () => web.reload())}
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
@@ -107,7 +107,7 @@ mount(Browser);
 页面通过 `window.ReactNativeWebView.postMessage(string)` 向应用发消息，应用收到 `onMessage`。应用通过 ref 的 `postMessage(string)` 向页面发消息，页面在 `window` 上收到 `message` 事件。消息是字符串；结构化数据请发送 JSON。
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { WebView } from "nsh/webview";
 
 const page = `<!doctype html>
@@ -128,18 +128,18 @@ function App() {
   let web!: YNode;
   const last = signal("");
   return (
-    <view style={{ flex: 1, paddingTop: 50, gap: 12 }}>
+    <View style={{ flex: 1, paddingTop: 50, gap: 12 }}>
       <WebView
         ref={web}
         source={{ html: page }}
         style={{ height: 240 }}
         onMessage={(e) => last.set(JSON.parse(e.data).type)}
       />
-      <text onPress={() => web.postMessage("hi from nsh")} style={{ padding: 16, color: "#0969da" }}>
+      <Text onPress={() => web.postMessage("hi from nsh")} style={{ padding: 16, color: "#0969da" }}>
         Post to the page
-      </text>
-      <text style={{ paddingHorizontal: 16 }}>Last message: {last()}</text>
-    </view>
+      </Text>
+      <Text style={{ paddingHorizontal: 16 }}>Last message: {last()}</Text>
+    </View>
   );
 }
 
@@ -174,7 +174,7 @@ mount(App);
 ## Video
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 
 function Player() {
@@ -182,7 +182,7 @@ function Player() {
   const paused = signal(true);
   const time = signal("");
   return (
-    <view style={{ flex: 1, justifyContent: "center", padding: 16, gap: 12 }}>
+    <View style={{ flex: 1, justifyContent: "center", padding: 16, gap: 12 }}>
       <Video
         ref={video}
         source="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
@@ -193,16 +193,16 @@ function Player() {
         onProgress={(e) => time.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
         onEnd={() => paused.set(true)}
       />
-      <view style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
-        <text onPress={() => paused.set(!paused())} style={{ color: "#0969da", fontWeight: "600" }}>
+      <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+        <Text onPress={() => paused.set(!paused())} style={{ color: "#0969da", fontWeight: "600" }}>
           {paused() ? "Play" : "Pause"}
-        </text>
-        <text onPress={() => video.seek(0)} style={{ color: "#0969da" }}>
+        </Text>
+        <Text onPress={() => video.seek(0)} style={{ color: "#0969da" }}>
           Restart
-        </text>
-        <text style={{ color: "#57606a" }}>{time()}</text>
-      </view>
-    </view>
+        </Text>
+        <Text style={{ color: "#57606a" }}>{time()}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -235,24 +235,24 @@ mount(Player);
 设置 `controls` 时，平台会绘制自己的播放按钮、进度条和全屏按钮。不设置时，用视图在视频上方或下方画你自己的控件；由于视频是布局中的原生视图，覆盖层可以自然地叠在上面：
 
 ```tsx
-<view style={{ height: 220 }}>
+<View style={{ height: 220 }}>
   <Video source={url} paused={paused()} style={{ flex: 1 }} />
-  <view
+  <View
     onPress={() => paused.set(!paused())}
     style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}
   >
-    <if when={paused()}>
-      <text style={{ fontSize: 48, color: "#ffffff" }}>▶</text>
-    </if>
-  </view>
-</view>
+    <If when={paused()}>
+      <Text style={{ fontSize: 48, color: "#ffffff" }}>▶</Text>
+    </If>
+  </View>
+</View>
 ```
 
 视频来源是网络请求：声明了能力时，视频所在的主机必须在 `nsh.json` 的 `network` 下得到允许，与 `fetch` 和远程图片相同。被拒绝的来源不显示任何内容，并且会记录一次日志，指出需要添加的键。
 
 ## 相关内容
 
-- [`web-view`](../elements/web-view.md) 与 [`video`](../elements/video.md)：元素参考。
+- [`WebView`](../elements/web-view.md) 与 [`Video`](../elements/video.md)：元素参考。
 - [`nsh/webview`](../modules/nsh-webview.md) 与 [`nsh/video`](../modules/nsh-video.md)。
 - [沙箱与能力声明](./sandbox-and-capabilities.md)：`webview` 与 `network` 授权。
 - [原生组件](./native-components.md)：嵌入宿主应用提供的其他原生视图。

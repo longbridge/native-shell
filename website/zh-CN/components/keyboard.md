@@ -21,16 +21,16 @@ Keyboard.dismiss(): void
 让当前获得焦点的输入框失去焦点，从而收起键盘。没有输入框获得焦点时不做任何事。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 import { Button, Keyboard, TextField } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <TextField label="Name" value={name()} onChange={(v) => name.set(v)} />
       <Button title="Done" onPress={() => Keyboard.dismiss()} />
-    </view>
+    </View>
   );
 }
 
@@ -49,12 +49,13 @@ keyboard: Accessor<{ height: number; duration: number }>
 `keyboard()` 返回软键盘覆盖在 nsh 界面上的高度（单位为 pt，键盘隐藏时为 0），以及键盘弹出或收起动画的时长（单位为秒）。它是响应式的：读取它的 effect 或 JSX 表达式会在键盘弹出、收起或高度变化时重新运行。
 
 ```tsx
+import { Input, View } from "nsh";
 import { keyboard, useSafeAreaInsets } from "nsh/ui/mobile";
 
 function MessageBar() {
   const insets = useSafeAreaInsets();
   return (
-    <view
+    <View
       style={{
         flexDirection: "row",
         padding: 8,
@@ -62,8 +63,8 @@ function MessageBar() {
         paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
       }}
     >
-      <input placeholder="Message" style={{ flex: 1 }} />
-    </view>
+      <Input placeholder="Message" style={{ flex: 1 }} />
+    </View>
   );
 }
 ```

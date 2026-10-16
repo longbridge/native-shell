@@ -135,12 +135,10 @@ error iPhone 16 Pro js uncaught exception: TypeError: cannot read property 'id' 
 error build failed:
 App.tsx
 
-  x unknown element <buton> (built-in elements: view, text, image, scroll,
-  | input, canvas, web-view, video, modal, input-accessory; `if`, `each`; or a
-  | component in scope, by its name in kebab case)
+  x <Buton> names nothing in scope
    ,-[3:11]
  2 | function App() {
- 3 |   return <buton />;
+ 3 |   return <Buton />;
    :           ^^^^^
  4 | }
 ```

@@ -13,25 +13,25 @@ Pick the highest level that does the job: the higher the level, the less work cr
 
 ## Presses
 
-Every element accepts the press handlers; there is no separate "touchable" component. Put `onPress` on a `<view>`, a `<text>`, an `<image>` or anything else.
+Every element accepts the press handlers; there is no separate "touchable" component. Put `onPress` on a `<View>`, a `<Text>`, an `<Image>` or anything else.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function App() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         onPress={() => count.update((n) => n + 1)}
         onLongPress={() => count.set(0)}
         activeOpacity={0.6}
         accessibilityRole="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
-        <text style={{ color: "#ffffff", fontWeight: "600" }}>Pressed {count()} times</text>
-      </view>
-    </view>
+        <Text style={{ color: "#ffffff", fontWeight: "600" }}>Pressed {count()} times</Text>
+      </View>
+    </View>
   );
 }
 
@@ -53,7 +53,7 @@ How presses behave:
 - **Inside a scroll view, the press waits about 130 ms** before it starts (and shows feedback), so a drag that begins on a button scrolls instead of pressing it.
 - **Sliding off cancels.** Moving the finger out of the view ends the press with `onPressOut` and no `onPress`.
 - **`disabled` removes the press listeners** from what is mounted, so the view shows no feedback at all, and `disabled:` classes apply (`class="disabled:opacity-40"`).
-- **Nested `<text>` spans with `onPress` are links.** The paragraph is one native view; the press goes to the span under the finger. See [Text](./text.md).
+- **Nested `<Text>` spans with `onPress` are links.** The paragraph is one native view; the press goes to the span under the finger. See [Text](./text.md).
 
 ## Press feedback
 
@@ -67,17 +67,17 @@ Press feedback is drawn by the platform the moment the finger touches down, with
 | `android={{ ripple }}` | `{ color?, borderless?, radius?, foreground? }` | | Android's material ripple. Ignored on iOS. |
 
 ```tsx
-<view onPress={open} activeOpacity={0.5}>…</view>
+<View onPress={open} activeOpacity={0.5}>…</View>
 
-<view onPress={open} underlayColor="#ddf4ff" style={{ padding: 16 }}>…</view>
+<View onPress={open} underlayColor="#ddf4ff" style={{ padding: 16 }}>…</View>
 
-<view
+<View
   onPress={open}
   activeOpacity={0.6}
   android={{ ripple: { color: "rgba(9,105,218,0.3)" } }}
 >
   …
-</view>
+</View>
 ```
 
 A borderless ripple spreads outside the view, which suits icon buttons: `android={{ ripple: { borderless: true, radius: 24 } }}`. Combining `activeOpacity` with a ripple is common: iOS uses the opacity, Android the ripple. See [Platform-specific code](./platform-specific.md).
@@ -85,12 +85,12 @@ A borderless ripple spreads outside the view, which suits icon buttons: `android
 The `active:` Tailwind variant is the third option. It applies classes while the view is pressed, and with a `transition` class the change animates:
 
 ```tsx
-<view
+<View
   onPress={save}
   class="rounded-xl bg-emerald-600 p-4 transition active:scale-95 active:bg-emerald-800"
 >
-  <text class="font-semibold text-white">Save</text>
-</view>
+  <Text class="font-semibold text-white">Save</Text>
+</View>
 ```
 
 ## Hit areas: hitSlop
@@ -98,8 +98,8 @@ The `active:` Tailwind variant is the third option. It applies classes while the
 `hitSlop` extends the area that takes touches beyond the view's bounds, without changing its layout. Use it for small targets such as close buttons and toggles.
 
 ```tsx
-<view hitSlop={12} onPress={close} style={{ width: 20, height: 20 }}>…</view>
-<view hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} onPress={next}>…</view>
+<View hitSlop={12} onPress={close} style={{ width: 20, height: 20 }}>…</View>
+<View hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} onPress={next}>…</View>
 ```
 
 | Prop | Type | Description |
@@ -122,15 +122,15 @@ Keep the extended area inside the parent's bounds (give the small view some marg
 The typical uses: an overlay that must not block what is under it (`"none"`), a full-screen container whose empty space should let touches through to the content behind while its buttons still work (`"box-none"`), and a row that should take a press even when the finger lands on a child (`"box-only"`).
 
 ```tsx
-<view style={{ flex: 1 }}>
+<View style={{ flex: 1 }}>
   <Map />
   {/* A floating toolbar: the empty area passes touches to the map. */}
-  <view pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", padding: 16 }}>
-    <view onPress={locate} style={{ alignSelf: "flex-end", padding: 12, borderRadius: 24, backgroundColor: "#ffffff" }}>
-      <text>Locate</text>
-    </view>
-  </view>
-</view>
+  <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, justifyContent: "flex-end", padding: 16 }}>
+    <View onPress={locate} style={{ alignSelf: "flex-end", padding: 12, borderRadius: 24, backgroundColor: "#ffffff" }}>
+      <Text>Locate</Text>
+    </View>
+  </View>
+</View>
 ```
 
 The Tailwind classes `pointer-events-none` and `pointer-events-auto` set the same thing; an explicit prop wins over the class.
@@ -140,15 +140,15 @@ The Tailwind classes `pointer-events-none` and `pointer-events-auto` set the sam
 For drags, pinches and rotations that move something on screen, bind [native values](./animation.md#native-values) to the gesture. The platform's gesture recognizer writes the values on the UI thread and the views bound to them move in the same frame; JS is told when the gesture starts and ends.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
   const x = createNativeValue(0);
   const y = createNativeValue(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         pan={{ x, y }}
         onPanEnd={(e) => {
           // Spring back, starting at the speed the finger let go with.
@@ -157,7 +157,7 @@ function App() {
         }}
         style={{ width: 120, height: 120, borderRadius: 24, backgroundColor: "#8250df", transform: [{ translateX: x }, { translateY: y }] }}
       />
-    </view>
+    </View>
   );
 }
 
@@ -184,7 +184,7 @@ What the native side does for you:
 
 ```tsx
 // A card that snaps to the left or right edge.
-<view
+<View
   pan={{ x }}
   onPanEnd={(e) => {
     const projected = (e.valueX ?? 0) + e.velocityX * 0.2;
@@ -224,7 +224,7 @@ Each handler gets a `GestureResponderEvent`:
 | `stopPropagation()` | Views further out do not see this touch event. |
 
 ```tsx
-<view
+<View
   onTouchStart={(e) => console.log("down", e.locationX, e.locationY, e.touches.length)}
   onTouchMove={(e) => console.log("move", e.pageX, e.pageY)}
   onTouchEnd={() => console.log("up")}
@@ -302,7 +302,7 @@ How it runs: a view with any touch or responder handler listens to touches nativ
 `PanResponder` from `nsh/gesture` wraps the responder system and adds the gesture state: distance from the start, velocity, the number of fingers. Spread its `panHandlers` on a view.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 import { PanResponder } from "nsh/gesture";
 
 function Ball() {
@@ -317,7 +317,7 @@ function Ball() {
     onPanResponderRelease: (_, g) => console.log("released at", g.vx, g.vy, "pt/ms"),
   });
   return (
-    <view
+    <View
       {...responder.panHandlers}
       style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: "#0969da", transform: [{ translateX: pos().x }, { translateY: pos().y }] }}
     />
@@ -349,7 +349,7 @@ The main thread never waits for JS. When the system needs an answer on the spot 
 
 ## Related
 
-- [`view`](../elements/view.md): every touch prop on the basic element.
+- [`View`](../elements/view.md): every touch prop on the basic element.
 - [Animation](./animation.md): native values, springs and decay for gesture-driven motion.
 - [Scrolling](./scrolling.md): `keyboardShouldPersistTaps`, scroll views and nested gestures.
 - [`nsh/gesture`](../modules/nsh-gesture.md): the `PanResponder` reference.

@@ -115,7 +115,7 @@ the same machine, look at the minimum of several runs, and trust the op and item
 nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0
 ```
 
-Scrolls the first `<scroll>` or `List` 10 points per frame and prints each frame's batch:
+Scrolls the first `<Scroll>` or `List` 10 points per frame and prints each frame's batch:
 
 ```text
  info nsh::perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
@@ -193,9 +193,9 @@ To guard performance, record the item counts of a few interactions (the `── 
 Espresso / UI Automator, Appium, Maestro), give views a `testID`:
 
 ```tsx
-<view testID="add-to-cart" onPress={add} style={{ padding: 12 }}>
-  <text testID="cart-count">{`${count()} items`}</text>
-</view>
+<View testID="add-to-cart" onPress={add} style={{ padding: 12 }}>
+  <Text testID="cart-count">{`${count()} items`}</Text>
+</View>
 ```
 
 | Platform | Where `testID` goes |

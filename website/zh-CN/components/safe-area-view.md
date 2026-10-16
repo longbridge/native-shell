@@ -15,13 +15,13 @@ import { SafeAreaView } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text } from "nsh";
 import { SafeAreaView } from "nsh/ui/mobile";
 
 function App() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff8c5", padding: 16 }}>
-      <text style={{ fontSize: 24, fontWeight: "700" }}>Never under the notch</text>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>Never under the notch</Text>
     </SafeAreaView>
   );
 }
@@ -67,14 +67,15 @@ inset 会**叠加**在视图自身的内边距上。在上面的例子里，内�
 | `useSafeAreaInsets()` | 在组件中调用。返回该组件所在位置的 inset 的 accessor：最近的页面（标题栏下方）的、最近的模态框的，否则为 surface 的安全区域。与 SafeAreaView 使用的 inset 相同。 |
 
 ```tsx
+import { Text, View } from "nsh";
 import { useSafeAreaInsets } from "nsh/ui/mobile";
 
 function BottomBar() {
   const insets = useSafeAreaInsets();
   return (
-    <view style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
-      <text>Bottom bar</text>
-    </view>
+    <View style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
+      <Text>Bottom bar</Text>
+    </View>
   );
 }
 ```

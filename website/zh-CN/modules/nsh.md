@@ -6,10 +6,10 @@ order: 2
 
 # nsh
 
-`nsh` 是核心模块：响应式 API（signal、computed、effect、context）、`mount`，以及元素、样式和事件的 TypeScript 类型。响应式图本身以 Rust 原生运行；读取一个 signal 是一次对运行时的调用，只需几纳秒，只有你自己写的闭包会在 JavaScript 解释器中执行。
+`nsh` 是核心模块：响应式 API（signal、computed、effect、context）、`mount`、宿主元素 `View`、`Text`、`Scroll` 和 `Input`，以及元素、样式和事件的 TypeScript 类型。响应式图本身以 Rust 原生运行；读取一个 signal 是一次对运行时的调用，只需几纳秒，只有你自己写的闭包会在 JavaScript 解释器中执行。
 
 ```ts
-import { batch, cleanup, computed, context, effect, mount, signal, split, untracked } from "nsh";
+import { batch, cleanup, computed, context, effect, Input, mount, Scroll, signal, split, Text, untracked, View } from "nsh";
 ```
 
 nsh 的响应式模型与 SolidJS 相同：组件函数只运行**一次**，界面中读取了 signal 的部分会在 signal 变化时就地更新。组件不会重新渲染，也没有虚拟 DOM。教程见[响应式](../docs/reactivity.md)。
@@ -35,15 +35,15 @@ interface SignalOptions<T> {
 signal 保存一个值。调用它会读取该值；如果处在追踪作用域内（JSX 表达式、`computed`、`effect`），该作用域会订阅它。`set` 和 `update` 写入新值，所有读过它的地方随之更新。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function Counter() {
   const count = signal(0);
   return (
-    <view style={{ padding: 24, gap: 12 }}>
-      <text>Count: {count()}</text>
-      <text onPress={() => count.update((n) => n + 1)}>Add one</text>
-    </view>
+    <View style={{ padding: 24, gap: 12 }}>
+      <Text>Count: {count()}</Text>
+      <Text onPress={() => count.update((n) => n + 1)}>Add one</Text>
+    </View>
   );
 }
 
@@ -138,7 +138,7 @@ function Clock() {
   const now = signal(new Date());
   const timer = setInterval(() => now.set(new Date()), 1000);
   cleanup(() => clearInterval(timer));
-  return <text>{now().toLocaleTimeString()}</text>;
+  return <Text>{now().toLocaleTimeString()}</Text>;
 }
 ```
 
@@ -155,22 +155,22 @@ interface Context<T> extends Accessor<T> {
 组件向其渲染的所有后代（无论多深）提供的值。调用 context（`Theme()`）读取最近的 Provider 提供的值，没有 Provider 时得到 `defaultValue`。
 
 ```tsx
-import { context, mount, signal } from "nsh";
+import { context, mount, signal, Text, View } from "nsh";
 
 const Theme = context<"light" | "dark">("light");
 
 function Label(props: { text: string }) {
-  return <text style={{ color: Theme() === "dark" ? "#fff" : "#000" }}>{props.text}</text>;
+  return <Text style={{ color: Theme() === "dark" ? "#fff" : "#000" }}>{props.text}</Text>;
 }
 
 function App() {
   const dark = signal(false);
   return (
     <Theme.Provider value={dark() ? "dark" : "light"}>
-      <view style={{ flex: 1, padding: 24, backgroundColor: dark() ? "#000" : "#fff" }}>
+      <View style={{ flex: 1, padding: 24, backgroundColor: dark() ? "#000" : "#fff" }}>
         <Label text="Hello" />
-        <text onPress={() => dark.update((d) => !d)}>Toggle</text>
-      </view>
+        <Text onPress={() => dark.update((d) => !d)}>Toggle</Text>
+      </View>
     </Theme.Provider>
   );
 }
@@ -202,18 +202,29 @@ function split<T extends object, K extends readonly (keyof T)[]>(
 把 props 对象拆成 `keys` 中列出的属性和其余属性。两部分都保持响应式：会变化的属性是 getter，`split` 会保留这些 getter。适用于组件自己处理一部分 props、把其余部分透传下去的场景。直接解构 props（`const { label } = props`）只会读取一次，之后的更新就丢失了。
 
 ```tsx
-import { type InputProps, split } from "nsh";
+import { Input, type InputProps, split, Text, View } from "nsh";
 
 function LabeledInput(props: InputProps & { label: string }) {
   const [own, rest] = split(props, ["label"]);
   return (
-    <view style={{ gap: 4 }}>
-      <text>{own.label}</text>
-      <input {...rest} />
-    </view>
+    <View style={{ gap: 4 }}>
+      <Text>{own.label}</Text>
+      <Input {...rest} />
+    </View>
   );
 }
 ```
+
+## View、Text、Scroll、Input
+
+```ts
+function View(props: ViewProps): YNode;
+function Text(props: TextProps): YNode;
+function Scroll(props: ScrollProps): YNode;
+function Input(props: InputProps): YNode;
+```
+
+`nsh` 导出的宿主元素，写作标签：`<View>`、`<Text>`、`<Scroll>`、`<Input>`。当标签通过导入（包括别名）指向它们之一时，编译器会就地创建原生视图，所以导入它们在运行时没有任何开销。它们也是普通的组件，可以作为值传递（`const Tag = inline ? Text : View`）。其他元素来自各自的模块：`Image` 来自 [`nsh/image`](./nsh-image.md)，`List` 来自 [`nsh/list`](./nsh-list.md)，`Canvas`、`WebView` 和 `Video` 来自各自的模块。它们的属性见[元素](../elements/index.md)。
 
 ## 类型
 
@@ -226,7 +237,7 @@ function LabeledInput(props: InputProps & { label: string }) {
 | `SignalOptions<T>` | `signal` 和 `computed` 的选项（`equals`） |
 | `Context<T>` | `context` 的返回值 |
 | `Component<P>` | `(props: P) => JSX.Element` |
-| `JSX` | JSX 命名空间（`JSX.Element`、`JSX.IntrinsicElements`） |
+| `JSX` | JSX 命名空间（`JSX.Element`） |
 | `YNode` | `ref` 拿到的对象：聚焦、滚动等命令。见[元素](../elements/index.md) |
 | `ViewProps`、`TextProps`、`ImageProps`、`ScrollProps`、`InputProps`、`CommonProps`、`TouchProps` | 宿主元素的属性 |
 | `ViewStyle`、`TextStyle`、`ImageStyle`、`LayoutStyle`、`StyleProp<T>` | 样式对象；见[样式参考](./style-reference.md) |
@@ -246,5 +257,5 @@ const onPress = (e: GestureResponderEvent) => field?.focus();
 `StyleProp<T>` 接受单个样式，或一个从左到右合并的样式列表（假值会被跳过）：
 
 ```tsx
-<view style={[styles.card, selected() && styles.selected]} />
+<View style={[styles.card, selected() && styles.selected]} />
 ```

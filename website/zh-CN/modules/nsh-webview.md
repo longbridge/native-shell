@@ -12,7 +12,7 @@ order: 13
 import { WebView, type WebViewNavigation, type WebViewProps } from "nsh/webview";
 ```
 
-教程见[网页视图与视频](../docs/web-view-and-video.md)，底层元素见 [`<web-view>`](../elements/web-view.md)。
+教程见[网页视图与视频](../docs/web-view-and-video.md)，属性见 [`<WebView>`](../elements/web-view.md)。
 
 ## WebView
 
@@ -26,21 +26,21 @@ interface WebViewProps extends Omit<ViewProps, "children" | "ios">, WebViewHostP
 ```
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 
 function Browser() {
   const nav = signal<WebViewNavigation | null>(null);
   let web!: YNode;
   return (
-    <view style={{ flex: 1 }}>
-      <view style={{ flexDirection: "row", gap: 16, padding: 12 }}>
-        <text onPress={() => web.goBack()} style={{ opacity: nav()?.canGoBack ? 1 : 0.4 }}>Back</text>
-        <text onPress={() => web.reload()}>Reload</text>
-        <text numberOfLines={1} style={{ flex: 1 }}>{nav()?.title ?? ""}</text>
-      </view>
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", gap: 16, padding: 12 }}>
+        <Text onPress={() => web.goBack()} style={{ opacity: nav()?.canGoBack ? 1 : 0.4 }}>Back</Text>
+        <Text onPress={() => web.reload()}>Reload</Text>
+        <Text numberOfLines={1} style={{ flex: 1 }}>{nav()?.title ?? ""}</Text>
+      </View>
       <WebView ref={web} source="https://example.com" style={{ flex: 1 }} onNavigationStateChange={(n) => nav.set(n)} />
-    </view>
+    </View>
   );
 }
 
@@ -110,7 +110,7 @@ let web!: YNode;
 const message = signal("");
 
 <WebView ref={web} source={{ html: page }} style={{ height: 200 }} onMessage={(e) => message.set(e.data)} />
-<text onPress={() => web.postMessage("hi from the app")}>Post to the page</text>
+<Text onPress={() => web.postMessage("hi from the app")}>Post to the page</Text>
 ```
 
 ## 权限

@@ -1,17 +1,17 @@
 ---
-title: video
-description: "The video element and the Video component: native video playback with your own or the system's controls."
+title: Video
+description: "The Video component: native video playback with your own or the system's controls."
 order: 10
 ---
 
-# video
+# Video
 
 A video view plays a video file or stream with the platform's player: AVPlayer on iOS and Mac Catalyst, MediaPlayer on
 Android. Playback is controlled with props (`paused`, `muted`, `rate`, …), so the player follows your state like any
 other view.
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 
 function Player() {
@@ -19,7 +19,7 @@ function Player() {
   const time = signal("");
   let video!: YNode;
   return (
-    <view style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       <Video
         ref={video}
         source="https://example.com/clip.mp4"
@@ -29,20 +29,18 @@ function Player() {
         style={{ height: 220, backgroundColor: "#000000" }}
         onProgress={(e) => time.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
       />
-      <view style={{ flexDirection: "row", gap: 16 }}>
-        <text onPress={() => paused.set(!paused())}>{paused() ? "Play" : "Pause"}</text>
-        <text onPress={() => video.seek(0)}>Restart</text>
-        <text>{time()}</text>
-      </view>
-    </view>
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Text onPress={() => paused.set(!paused())}>{paused() ? "Play" : "Pause"}</Text>
+        <Text onPress={() => video.seek(0)}>Restart</Text>
+        <Text>{time()}</Text>
+      </View>
+    </View>
   );
 }
 ```
 
-## `Video` and `<video>`
-
-`Video` from [`nsh/video`](../modules/nsh-video.md) is the typed form of the `<video>` tag: the same element with
-checked props and a required `source`. Prefer `Video`. See the [web view and video guide](../docs/web-view-and-video.md).
+`Video` comes from [`nsh/video`](../modules/nsh-video.md); `source` is required. See the
+[web view and video guide](../docs/web-view-and-video.md).
 
 ## Props
 

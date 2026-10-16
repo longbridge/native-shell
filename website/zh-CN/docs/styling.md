@@ -10,7 +10,7 @@ demo: guide-styling
 每个元素都接受 `style` 属性：一个由 camelCase 属性组成的对象，包括盒阴影、渐变、滤镜、轮廓线、过渡和 grid 等 CSS 能力。样式在 Rust 中解析，只有变化了的属性才会发送给原生视图。你也可以用 [Tailwind 类名](./tailwind.md)设置样式，两者最终得到的是相同的原生样式。
 
 ```tsx
-<view
+<View
   style={{
     padding: 16,
     borderRadius: 12,
@@ -20,8 +20,8 @@ demo: guide-styling
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
   }}
 >
-  <text style={{ fontSize: 17, fontWeight: "600", color: "#1f2328" }}>Card</text>
-</view>
+  <Text style={{ fontSize: 17, fontWeight: "600", color: "#1f2328" }}>Card</Text>
+</View>
 ```
 
 本页介绍样式如何组合以及各种视觉属性。布局属性（flexbox、grid、尺寸、位置）见[布局](./layout.md)，文本属性见[文本](./text.md)，所有属性及其类型列在[样式参考](../modules/style-reference.md)中。
@@ -37,7 +37,7 @@ const styles = {
   danger: { backgroundColor: "#cf222e" },
 } as const;
 
-<view style={[styles.button, props.danger && styles.danger, busy() && styles.disabled]} />
+<View style={[styles.button, props.danger && styles.danger, busy() && styles.disabled]} />
 ```
 
 把共享的样式定义为组件外部的常量（加上 `as const`，让 TypeScript 保留 `"row"` 这样的字面量类型）。没有 `StyleSheet.create`：一个普通对象就够了，样式在每次设置时由 Rust 解析，对象无需事先注册。
@@ -45,7 +45,7 @@ const styles = {
 读取 signal 的样式表达式会在 signal 变化时重建，nsh 只发送值不同的属性：
 
 ```tsx
-<view style={{ backgroundColor: selected() ? "#ddf4ff" : "#ffffff", padding: 12 }} />
+<View style={{ backgroundColor: selected() ? "#ddf4ff" : "#ffffff", padding: 12 }} />
 ```
 
 元素同时有 `style` 和 `class` 时，`style` 优先：先应用类名，再在其上叠加内联样式。
@@ -89,6 +89,7 @@ nsh 的默认值与 Web 不同：
 要支持深色模式，可以读取 `nsh/device` 中的 [`colorScheme()`](../modules/nsh-device.md)（一个跟随系统外观的访问器），或使用 Tailwind 的 `dark:` 变体：
 
 ```tsx
+import { Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
 
 const palette = () =>
@@ -96,9 +97,9 @@ const palette = () =>
     ? { background: "#0d1117", text: "#e6edf3" }
     : { background: "#ffffff", text: "#1f2328" };
 
-<view style={{ flex: 1, backgroundColor: palette().background }}>
-  <text style={{ color: palette().text }}>Follows the system appearance</text>
-</view>
+<View style={{ flex: 1, backgroundColor: palette().background }}>
+  <Text style={{ color: palette().text }}>Follows the system appearance</Text>
+</View>
 ```
 
 两种外观下默认文本颜色都是黑色：支持深色模式的应用需要显式设置颜色。
@@ -106,7 +107,7 @@ const palette = () =>
 ## 边框与圆角
 
 ```tsx
-<view
+<View
   style={{
     borderWidth: 1,
     borderColor: "#d0d7de",
@@ -132,14 +133,14 @@ const palette = () =>
 
 ```tsx
 // The shadow* properties
-<view style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
+<View style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
 
 // CSS box-shadow: several, comma separated, with spread and inset
-<view style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.12)" }} />
-<view style={{ boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)" }} />
+<View style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.12)" }} />
+<View style={{ boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)" }} />
 
 // Android's material elevation (a prop, not a style)
-<view android={{ elevation: 6 }} style={{ backgroundColor: "#ffffff", borderRadius: 12 }} />
+<View android={{ elevation: 6 }} style={{ backgroundColor: "#ffffff", borderRadius: 12 }} />
 ```
 
 `boxShadow` 遵循 CSS 语法：`offsetX offsetY blur spread color`，`inset` 表示内阴影。阴影会贴合视图的圆角形状。
@@ -152,9 +153,9 @@ const palette = () =>
 `backgroundImage` 接受 CSS 渐变，绘制在背景色之上。多个渐变用逗号分隔。
 
 ```tsx
-<view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #54aeff, #8250df)" }} />
-<view style={{ backgroundImage: "radial-gradient(circle at top left, #fff8c5, #fd8c73)" }} />
-<view style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
+<View style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #54aeff, #8250df)" }} />
+<View style={{ backgroundImage: "radial-gradient(circle at top left, #fff8c5, #fd8c73)" }} />
+<View style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
 ```
 
 也接受 `experimental_backgroundImage`，它是 `backgroundImage` 的别名。在 iOS 上，文本元素不绘制渐变。
@@ -168,8 +169,8 @@ const palette = () =>
 | `mixBlendMode` | 视图与其背后内容的混合方式：`"multiply"`、`"screen"`、`"overlay"` 等 |
 
 ```tsx
-<image src={photo} style={{ width: 120, height: 120, filter: "grayscale(1) contrast(1.2)" }} />
-<view style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 12, backgroundColor: "rgba(255,255,255,0.4)", backdropFilter: "blur(12px)" }} />
+<Image src={photo} style={{ width: 120, height: 120, filter: "grayscale(1) contrast(1.2)" }} />
+<View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 12, backgroundColor: "rgba(255,255,255,0.4)", backdropFilter: "blur(12px)" }} />
 ```
 
 各平台的支持情况不同：
@@ -194,9 +195,9 @@ const palette = () =>
 `transform` 是一个步骤列表，与 CSS 一样从右到左应用：
 
 ```tsx
-<view style={{ transform: [{ translateX: 20 }, { rotate: "-8deg" }, { scale: 0.9 }] }} />
-<view style={{ transform: [{ perspective: 600 }, { rotateY: "35deg" }], backfaceVisibility: "hidden" }} />
-<view style={{ transformOrigin: "top left", transform: [{ rotate: "30deg" }] }} />
+<View style={{ transform: [{ translateX: 20 }, { rotate: "-8deg" }, { scale: 0.9 }] }} />
+<View style={{ transform: [{ perspective: 600 }, { rotateY: "35deg" }], backfaceVisibility: "hidden" }} />
+<View style={{ transformOrigin: "top left", transform: [{ rotate: "30deg" }] }} />
 ```
 
 可用步骤：`translateX`、`translateY`、`scale`、`scaleX`、`scaleY`、`rotate`（`rotateZ`）、`rotateX`、`rotateY`、`skewX`、`skewY`、`perspective`。`transformOrigin` 接受关键字、百分比和长度（`"top left"`、`"50% 0"`、`[10, 20]`），默认为中心。变换不影响布局：兄弟视图的位置按视图未变换时计算。
@@ -208,7 +209,7 @@ Android 不支持斜切（skew）变换。
 只要指明要动画的属性，视图就会为自身样式的变化播放动画。动画在原生侧运行，每一帧都不会执行 JavaScript。
 
 ```tsx
-<view
+<View
   onPress={() => open.set(!open())}
   style={{
     width: 150,
@@ -237,7 +238,7 @@ Android 不支持斜切（skew）变换。
 `animationName` 以原生方式运行 Tailwind 内置的关键帧动画之一：`"spin"`、`"ping"`、`"pulse"` 或 `"bounce"`，配合 `animationDuration`、`animationDelay`、`animationTimingFunction` 和 `animationIterationCount`（数字或 `"infinite"`）：
 
 ```tsx
-<view style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: "#0969da", animationName: "spin", animationDuration: 1000, animationIterationCount: "infinite", animationTimingFunction: "linear" }} />
+<View style={{ width: 24, height: 24, borderRadius: 4, backgroundColor: "#0969da", animationName: "spin", animationDuration: 1000, animationIterationCount: "infinite", animationTimingFunction: "linear" }} />
 ```
 
 ## 按压反馈

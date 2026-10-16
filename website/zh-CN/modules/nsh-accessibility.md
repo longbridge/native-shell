@@ -21,9 +21,9 @@ const screenReaderEnabled: Accessor<boolean>;
 屏幕阅读器（VoiceOver、TalkBack）是否正在运行。响应式：用户开启或关闭屏幕阅读器时，读取它的地方会更新。
 
 ```tsx
-<if when={!screenReaderEnabled()} else={<text onPress={next}>Next photo</text>}>
-  <text>Swipe for the next photo</text>
-</if>
+<If when={!screenReaderEnabled()} else={<Text onPress={next}>Next photo</Text>}>
+  <Text>Swipe for the next photo</Text>
+</If>
 ```
 
 ## reduceMotion
@@ -67,7 +67,7 @@ const AccessibilityInfo: {
 | `addEventListener(event, listener)` | 设置变化时以新值调用 `listener`；返回一个可 `remove()` 的订阅。 |
 
 ```tsx
-import { cleanup, type YNode } from "nsh";
+import { cleanup, Text, View, type YNode } from "nsh";
 import { AccessibilityInfo } from "nsh/accessibility";
 
 function Saved() {
@@ -79,10 +79,10 @@ function Saved() {
   const sub = AccessibilityInfo.addEventListener("screenReaderChanged", (on) => console.log("screen reader", on));
   cleanup(() => sub.remove());
   return (
-    <view style={{ gap: 8 }}>
-      <text onPress={save} accessibilityRole="button">Save</text>
-      <text ref={note}>Your changes are kept on this device.</text>
-    </view>
+    <View style={{ gap: 8 }}>
+      <Text onPress={save} accessibilityRole="button">Save</Text>
+      <Text ref={note}>Your changes are kept on this device.</Text>
+    </View>
   );
 }
 ```

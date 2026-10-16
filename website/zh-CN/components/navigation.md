@@ -18,7 +18,7 @@ import { createNavigator, Modal, Screen, Stack } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Button, createNavigator, Screen, Stack } from "nsh/ui/mobile";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
@@ -28,9 +28,9 @@ const nav = createNavigator<Route>({ name: "home" });
 function Home() {
   return (
     <Screen title="Inbox">
-      <view style={{ flex: 1, padding: 16 }}>
+      <View style={{ flex: 1, padding: 16 }}>
         <Button title="Open message 1" onPress={() => nav.push({ name: "detail", id: 1 })} />
-      </view>
+      </View>
     </Screen>
   );
 }
@@ -38,9 +38,9 @@ function Home() {
 function Detail(props: { id: number }) {
   return (
     <Screen title={`Message ${props.id}`}>
-      <view style={{ flex: 1, padding: 16 }}>
+      <View style={{ flex: 1, padding: 16 }}>
         <Button title="Back" variant="secondary" onPress={() => nav.pop()} />
-      </view>
+      </View>
     </Screen>
   );
 }
@@ -115,9 +115,9 @@ const depth = () => nav.routes().length;
   headerTintColor="#ffffff"
   headerBackgroundColor="#1a7f37"
   headerTitleColor="#ffffff"
-  headerRight={<text onPress={edit} style={{ color: "#ffffff", fontSize: 17 }}>Edit</text>}
+  headerRight={<Text onPress={edit} style={{ color: "#ffffff", fontSize: 17 }}>Edit</Text>}
 >
-  <scroll style={{ flex: 1 }}>…</scroll>
+  <Scroll style={{ flex: 1 }}>…</Scroll>
 </Screen>
 ```
 
@@ -148,7 +148,7 @@ const depth = () => nav.routes().length;
 
 ```tsx
 <Screen title="Large title" ios={{ headerLargeTitle: true }}>
-  <scroll style={{ flex: 1 }}>…</scroll>
+  <Scroll style={{ flex: 1 }}>…</Scroll>
 </Screen>
 ```
 
@@ -159,7 +159,7 @@ const depth = () => nav.routes().length;
 `preventBack` 让用户停留在当前页面，例如表单中有未保存的修改时。它为 true 时，侧滑返回被关闭，标题栏的返回按钮和 Android 返回键会调用 `onBackRequest` 而不是弹出页面。询问用户后，再由你自己弹出：
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 import { Alert, Screen } from "nsh/ui/mobile";
 
 function EditNote() {
@@ -173,7 +173,7 @@ function EditNote() {
   };
   return (
     <Screen title="Edit" preventBack={text().length > 0} onBackRequest={confirm}>
-      <input value={text()} onChangeText={(v) => text.set(v)} placeholder="A note" />
+      <Input value={text()} onChangeText={(v) => text.set(v)} placeholder="A note" />
     </Screen>
   );
 }
@@ -191,21 +191,21 @@ function EditNote() {
 `Modal` 在所有内容之上（包括栈的标题栏）展示内容，位于它自己的原生窗口层中。`visible` 为 true（默认）时显示，并且它是受控的：用户请求关闭时会调用 `onRequestClose`，由你把 `visible` 设为 false。
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
 
 function Settings() {
   const open = signal(false);
   return (
-    <view>
+    <View>
       <Button title="About" onPress={() => open.set(true)} />
       <Modal visible={open()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => open.set(false)}>
         <SafeAreaView style={{ flex: 1, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 24, fontWeight: "700" }}>About</text>
+          <Text style={{ fontSize: 24, fontWeight: "700" }}>About</Text>
           <Button title="Close" onPress={() => open.set(false)} />
         </SafeAreaView>
       </Modal>
-    </view>
+    </View>
   );
 }
 ```
@@ -228,12 +228,12 @@ Modal 会把自己的安全区边距提供给其内容，因此其中的 [SafeAr
 
 ```tsx
 <Modal visible={open()} transparent animationType="fade" onRequestClose={close}>
-  <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-    <view style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
-      <text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</text>
+  <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+    <View style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</Text>
       <Button title="OK" onPress={close} />
-    </view>
-  </view>
+    </View>
+  </View>
 </Modal>
 ```
 

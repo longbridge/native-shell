@@ -1,26 +1,26 @@
 ---
-title: if / each
-description: 内置的控制流标签：<if> 按条件渲染一个分支，<each> 为数组的每一项渲染一个带 key 的行。
+title: If / Each
+description: 控制流组件：<If> 按条件渲染一个分支，<Each> 为数组的每一项渲染一个带 key 的行。
 order: 12
 demo: el-control-flow
 ---
 
-# if / each
+# If / Each
 
-`<if>` 和 `<each>` 是用于条件内容和重复内容的内置标签。它们不创建原生视图，只决定哪些元素存在。两者都会被编译成对原生渲染器的调用，只更新发生变化的部分：`<if>` 在条件的真假发生变化时切换分支，`<each>` 按 key 增加、移动和删除行，而不是重建整个列表。
+`<If>` 和 `<Each>` 是用于条件内容和重复内容的组件。它们不创建原生视图，只决定哪些元素存在。两者都会被编译成对原生渲染器的调用，只更新发生变化的部分：`<If>` 在条件的真假发生变化时切换分支，`<Each>` 按 key 增加、移动和删除行，而不是重建整个列表。
 
 ```tsx
-<view>
-  <if when={user()} else={<text>Signed out</text>}>
-    <text>Hello, {user()!.name}</text>
-  </if>
-  <each of={todos()}>{(todo) => <text>{todo().title}</text>}</each>
-</view>
+<View>
+  <If when={user()} else={<Text>Signed out</Text>}>
+    <Text>Hello, {user()!.name}</Text>
+  </If>
+  <Each of={todos()}>{(todo) => <Text>{todo().title}</Text>}</Each>
+</View>
 ```
 
-它们无需导入。在 JSX 表达式里仍然可以使用普通 JavaScript（`cond ? a : b`、`items.map(…)`），但这些写法会在其读取的值变化时重建元素；`<if>` 和 `<each>` 则会保留不变的元素。
+它们是全局组件，无需导入（作用域中同名的绑定会取代它们）。在 JSX 表达式里仍然可以使用普通 JavaScript（`cond ? a : b`、`items.map(…)`），但这些写法会在其读取的值变化时重建元素；`<If>` 和 `<Each>` 则会保留不变的元素。
 
-## `<if>`
+## `<If>`
 
 `when` 为真值时渲染子元素，否则渲染 `else` 元素（或什么都不渲染）。
 
@@ -35,12 +35,12 @@ demo: el-control-flow
 ```tsx
 const loading = signal(true);
 
-<if when={!loading()} else={<text style={{ color: "#6e7781" }}>Loading…</text>}>
+<If when={!loading()} else={<Text style={{ color: "#6e7781" }}>Loading…</Text>}>
   <Profile />
-</if>;
+</If>;
 ```
 
-## `<each>`
+## `<Each>`
 
 为 `of` 的每一项渲染 `children(item, index)`。
 
@@ -61,14 +61,14 @@ interface Todo {
 
 const todos = signal<Todo[]>([]);
 
-<each of={todos()} key={(t: Todo) => t.id}>
+<Each of={todos()} key={(t: Todo) => t.id}>
   {(todo, index) => (
-    <view style={{ flexDirection: "row", gap: 8 }}>
-      <text>{index() + 1}.</text>
-      <text style={{ textDecorationLine: todo().done ? "line-through" : "none" }}>{todo().title}</text>
-    </view>
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      <Text>{index() + 1}.</Text>
+      <Text style={{ textDecorationLine: todo().done ? "line-through" : "none" }}>{todo().title}</Text>
+    </View>
   )}
-</each>;
+</Each>;
 ```
 
 ### 如何选择 key
@@ -78,10 +78,10 @@ const todos = signal<Todo[]>([]);
 - 每一行都有自己的 owner：在行中创建的 effect 和清理函数会在行被删除时结束。
 
 > [!NOTE]
-> `<each>` 标签不是泛型的，TypeScript 无法从 `of` 推断条目类型。请给 `key` 的参数加上类型注解，或在行中做类型断言（`todo() as Todo`）。
+> `Each` 是泛型组件：TypeScript 会从 `of` 推断条目类型，所以行函数中的 `todo()` 和 `key` 的参数无需类型注解就有类型。
 
-## `<each>` 还是列表
+## `<Each>` 还是列表
 
-`<each>` 会创建每一行。对于几十到几百个条目，放在 `<view>` 或 [`<scroll>`](./scroll.md) 里正合适。对于很长或无上限的数据，请使用[列表](./list.md)：它只创建视口附近的行并复用它们。
+`<Each>` 会创建每一行。对于几十到几百个条目，放在 `<View>` 或 [`<Scroll>`](./scroll.md) 里正合适。对于很长或无上限的数据，请使用[列表](./list.md)：它只创建视口附近的行并复用它们。
 
 表达式如何更新，参见 [JSX 与组件](../docs/jsx-and-components.md) 和[响应式](../docs/reactivity.md)。

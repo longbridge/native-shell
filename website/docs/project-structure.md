@@ -132,10 +132,10 @@ nsh does not need `node_modules`. Instead, every command that builds the app (`i
 
 | File in `.nsh/types/nsh/` | Declares |
 |---|---|
-| `index.d.ts` | `nsh`: `signal`, `computed`, `effect`, `mount`, ... and re-exports the types below |
+| `index.d.ts` | `nsh`: `signal`, `computed`, `effect`, `mount`, `View`, `Text`, ... and re-exports the types below |
 | `types.d.ts` | Styles (`ViewStyle`, `TextStyle`, ...), every element's props and events, `YNode` (what a `ref` receives) |
-| `jsx-runtime.d.ts` | The JSX namespace: the built-in elements, `<if>` / `<each>`, and your kebab-case components |
-| `globals.d.ts` | `console`, timers, `requestAnimationFrame`, `fetch` and the other [web APIs](../modules/web-apis.md) |
+| `jsx-runtime.d.ts` | The JSX runtime TypeScript resolves through `jsxImportSource` (the `JSX` namespace) |
+| `globals.d.ts` | `If` and `Each`; `console`, timers, `requestAnimationFrame`, `fetch` and the other [web APIs](../modules/web-apis.md) |
 | `assets.d.ts` | What importing an image or font gives |
 | `list.d.ts`, `animated.d.ts`, `device.d.ts`, ... | One file per module (`nsh/list`, `nsh/animated`, `nsh/device`, ...) |
 | `ui/mobile.d.ts` | `nsh/ui/mobile` |
@@ -162,7 +162,7 @@ Imports of `nsh` and `nsh/...` are not bundled: the runtime provides them native
 
 | Module | What it has |
 |---|---|
-| `nsh` | Reactivity (`signal`, `computed`, `effect`, ...), `mount`, `split`, `context` ([reference](../modules/nsh.md)) |
+| `nsh` | Reactivity (`signal`, `computed`, `effect`, ...), `mount`, `split`, `context`; `View`, `Text`, `Scroll`, `Input` ([reference](../modules/nsh.md)) |
 | `nsh/ui/mobile` | The mobile UI set: components, navigation, alerts, safe area ([Components](../components/index.md)) |
 | `nsh/list` | `List`: virtualized, recycling lists |
 | `nsh/animated` | Native animations |
@@ -170,7 +170,7 @@ Imports of `nsh` and `nsh/...` are not bundled: the runtime provides them native
 | `nsh/gesture` | `PanResponder` |
 | `nsh/device` | `Platform`, `windowSize`, `colorScheme`, `fontScale`, `PixelRatio`, `I18nManager` |
 | `nsh/accessibility` | Screen reader and reduce motion state, announcements |
-| `nsh/image` | `Image.getSize`, `Image.prefetch` |
+| `nsh/image` | `Image` (the element), `Image.getSize`, `Image.prefetch` |
 | `nsh/webview`, `nsh/video` | `WebView`, `Video` |
 | `nsh/native` | Components the embedding app registers |
 | `nsh/ios`, `nsh/android` | Platform-only APIs |
@@ -188,11 +188,13 @@ nsh needs nothing from npm, but the bundler resolves bare imports from a `node_m
 Images and fonts are imported like modules. The bundler records each imported file and ships it with the app: `nsh build` copies them to `out/assets/`, `nsh package` puts them in the app, and during development the dev server serves them.
 
 ```tsx
+import { Text } from "nsh";
+import { Image } from "nsh/image";
 import logo from "./assets/logo@2x.png";   // { uri: "asset:/assets/logo@2x.png", width: 64, height: 64 }
 import Inter from "./assets/Inter.ttf";     // "Inter"
 
-<image src={logo} />
-<text style={{ fontFamily: Inter }}>Hello</text>
+<Image src={logo} />
+<Text style={{ fontFamily: Inter }}>Hello</Text>
 ```
 
 | Extension | Import gives |

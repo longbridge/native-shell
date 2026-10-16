@@ -19,15 +19,15 @@ import { StatusBar } from "nsh/ui/mobile";
 A rendered `StatusBar` takes up no space. Its setting applies while it is mounted:
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { StatusBar } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
+    <View style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
       <StatusBar barStyle="light-content" />
-      <text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</text>
-    </view>
+      <Text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</Text>
+    </View>
   );
 }
 

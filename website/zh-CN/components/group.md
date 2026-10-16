@@ -16,27 +16,27 @@ import { Group } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Group } from "nsh/ui/mobile";
 
 function App() {
   const sounds = signal(true);
   return (
-    <view style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 48 }}>
       <Group
-        header={<text>NOTIFICATIONS</text>}
-        footer={<text>Sounds play for new messages only.</text>}
+        header={<Text>NOTIFICATIONS</Text>}
+        footer={<Text>Sounds play for new messages only.</Text>}
       >
-        <text>Show previews</text>
-        <view
+        <Text>Show previews</Text>
+        <View
           onPress={() => sounds.set(!sounds())}
           style={{ flexDirection: "row", justifyContent: "space-between" }}
         >
-          <text>Sounds</text>
-          <text>{sounds() ? "On" : "Off"}</text>
-        </view>
+          <Text>Sounds</Text>
+          <Text>{sounds() ? "On" : "Off"}</Text>
+        </View>
       </Group>
-    </view>
+    </View>
   );
 }
 
@@ -47,18 +47,18 @@ mount(App);
 
 Group 把每个子元素包进一行：水平内边距 16 pt，垂直内边距 12 pt，最小高度 44 pt（舒适触控目标的最小尺寸）。内容垂直居中。除第一行外，每一行顶部都有一条 1 pt 的分隔线。
 
-行的内容就是你传入的内容：要在一行里放标签和值，就放一个 `flexDirection: "row"` 的 `<view>`；要让这一行可按，就在该视图上加 `onPress`。子元素增加或删除时（比如通过 [`<if>` 或 `<each>`](../elements/control-flow.md)），分组会相应更新行和分隔线。
+行的内容就是你传入的内容：要在一行里放标签和值，就放一个 `flexDirection: "row"` 的 `<View>`；要让这一行可按，就在该视图上加 `onPress`。子元素增加或删除时（比如通过 [`<If>` 或 `<Each>`](../elements/control-flow.md)），分组会相应更新行和分隔线。
 
 ```tsx
-<Group header={<text>DEVICES</text>}>
-  <each of={devices()}>
+<Group header={<Text>DEVICES</Text>}>
+  <Each of={devices()}>
     {(device) => (
-      <view style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <text>{device().name}</text>
-        <text style={{ color: "#737373" }}>{device().status}</text>
-      </view>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text>{device().name}</Text>
+        <Text style={{ color: "#737373" }}>{device().status}</Text>
+      </View>
     )}
-  </each>
+  </Each>
 </Group>
 ```
 

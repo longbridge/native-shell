@@ -1,23 +1,23 @@
 ---
-title: scroll
+title: Scroll
 description: 原生滚动视图：纵向和横向滚动、分页与吸附、下拉刷新、缩放以及滚动事件。
 order: 5
 demo: el-scroll
 ---
 
-# scroll
+# Scroll
 
-`<scroll>` 是原生滚动视图（iOS 和 Mac Catalyst 上是 UIScrollView，Android 上是 ScrollView）。它把所有子元素作为内容进行布局，并在原生侧滚动：滚动、惯性滑动、回弹和吸附都不需要等待 JS。
+`<Scroll>` 是原生滚动视图（iOS 和 Mac Catalyst 上是 UIScrollView，Android 上是 ScrollView）。它把所有子元素作为内容进行布局，并在原生侧滚动：滚动、惯性滑动、回弹和吸附都不需要等待 JS。
 
 ```tsx
-<scroll style={{ flex: 1 }}>
-  <view style={{ padding: 16, gap: 8 }}>
-    <each of={rows}>{(row) => <text>{row().title}</text>}</each>
-  </view>
-</scroll>
+<Scroll style={{ flex: 1 }}>
+  <View style={{ padding: 16, gap: 8 }}>
+    <Each of={rows}>{(row) => <Text>{row().title}</Text>}</Each>
+  </View>
+</Scroll>
 ```
 
-`<scroll>` 会创建所有子元素，适合中等规模的页面。对于很长或数量不定的数据，请使用[列表](./list.md)：它只创建视口附近的行，并复用它们。
+`<Scroll>` 会创建所有子元素，适合中等规模的页面。对于很长或数量不定的数据，请使用[列表](./list.md)：它只创建视口附近的行，并复用它们。
 
 滚动视图在滚动方向上必须有确定的尺寸：在有尺寸的容器中给它 `flex: 1`（或 `height`）。其内容按滚动视图的宽度（`horizontal` 时为高度）布局，高度（宽度）按需增长。
 
@@ -61,9 +61,9 @@ async function reload() {
   refreshing.set(false);
 }
 
-<scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>
+<Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>
   …
-</scroll>;
+</Scroll>;
 ```
 
 ### 缩放
@@ -81,9 +81,9 @@ async function reload() {
 
 ```tsx
 let photo!: YNode;
-<scroll ref={photo} maximumZoomScale={4} centerContent style={{ flex: 1, backgroundColor: "#000" }}>
-  <image src={picture} style={{ width: 390, height: 520 }} onPress={() => photo.zoomTo({ scale: 1, animated: true })} />
-</scroll>;
+<Scroll ref={photo} maximumZoomScale={4} centerContent style={{ flex: 1, backgroundColor: "#000" }}>
+  <Image src={picture} style={{ width: 390, height: 520 }} onPress={() => photo.zoomTo({ scale: 1, animated: true })} />
+</Scroll>;
 ```
 
 ## 事件
@@ -110,7 +110,7 @@ let photo!: YNode;
 
 ```tsx
 let scroller!: YNode;
-<scroll ref={scroller}>…</scroll>;
+<Scroll ref={scroller}>…</Scroll>;
 scroller.scrollTo({ y: 0, animated: true });
 ```
 

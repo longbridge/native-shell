@@ -11,35 +11,41 @@ nsh 应用用 JSX 描述界面，但其中没有 React，也没有虚拟 DOM。n
 
 ## 元素
 
-小写标签是内置的**宿主元素**，每个都对应一个原生视图：
+每个标签都使用 PascalCase，并指向作用域中的某个绑定。**宿主元素**各自对应一个原生视图，它们是从 nsh 模块导入的组件；只有 `If` 和 `Each` 是无需导入的全局组件：
 
-| 标签 | 原生视图 | 页面 |
-|---|---|---|
-| `<view>` | `UIView` / `ViewGroup`：用于布局、样式和触摸的盒子 | [view](../elements/view.md) |
-| `<text>` | 原生文本视图；嵌套的 `<text>` 元素是其中的片段（span） | [text](../elements/text.md) |
-| `<image>` | 图片视图（本地资源和 URL） | [image](../elements/image.md) |
-| `<scroll>` | `UIScrollView` / `ScrollView` | [scroll](../elements/scroll.md) |
-| `<input>` | `UITextField` / `UITextView` / `EditText` | [input](../elements/input.md) |
-| `<list>` | 虚拟化、可复用单元格的列表（也可用 `nsh/list` 中的 `List`） | [list](../elements/list.md) |
-| `<canvas>`、`<web-view>`、`<video>`、`<modal>` | 通过各自模块中的组件获得类型（`Canvas`、`WebView` 等） | [元素](../elements/index.md) |
-| `<if>`、`<each>` | 控制流，本身不产生视图 | [控制流](../elements/control-flow.md) |
+| 标签 | 导入自 | 原生视图 | 页面 |
+|---|---|---|---|
+| `<View>` | `nsh` | `UIView` / `ViewGroup`：用于布局、样式和触摸的盒子 | [View](../elements/view.md) |
+| `<Text>` | `nsh` | 原生文本视图；嵌套的 `<Text>` 元素是其中的片段（span） | [Text](../elements/text.md) |
+| `<Image>` | `nsh/image` | 图片视图（本地资源和 URL） | [Image](../elements/image.md) |
+| `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
+| `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
+| `<List>` | `nsh/list` | 虚拟化、可复用单元格的列表 | [List](../elements/list.md) |
+| `<Canvas>`、`<WebView>`、`<Video>`、`<Modal>` | `nsh/canvas`、`nsh/webview`、`nsh/video`、`nsh/ui/mobile` | 绘图、网页、视频播放器、弹出层 | [元素](../elements/index.md) |
+| `<If>`、`<Each>` | 无：全局组件 | 控制流，本身不产生视图 | [控制流](../elements/control-flow.md) |
+
+```tsx
+import { mount, Text, View } from "nsh";
+import { Image } from "nsh/image";
+```
+
+标签使用 PascalCase，是为了让 TypeScript 按每个标签所指的绑定来检查它：小写标签只能对照每个名称一个的全局类型来检查，于是 `List`、`Each` 这类泛型组件无法从 `each` / `of` 推断出行的类型，应用自己的组件也完全没有类型。这些导入在运行时没有任何开销：编译器通过导入（包括别名）识别原语并就地创建原生元素，所以 `<View>` 是对渲染器的直接调用，导入会从 bundle 中去掉。
 
 props 保留 camelCase 命名（`onPress`、`numberOfLines`、`backgroundColor`）。每个元素都接受 `style`、`class` / `classList`（[Tailwind](./tailwind.md)）、`ref`、触摸处理函数、无障碍属性和 `testID`；仅限某个平台的 props 放在 `ios={{…}}` 和 `android={{…}}` 中，只有当前平台的对象会被发送：
 
 ```tsx
-<view android={{ elevation: 4, ripple: { color: "#0001" } }} style={{ borderRadius: 12 }} />
+<View android={{ elevation: 4, ripple: { color: "#0001" } }} style={{ borderRadius: 12 }} />
 ```
 
-未知的小写标签会导致构建错误，错误信息会列出所有内置元素：
+小写标签会导致构建错误，错误信息会告诉你应该怎么写：
 
 ```text
-x unknown element <foo-bar> (built-in elements: view, text, image, scroll,
-| input, canvas, web-view, video, modal, input-accessory; `if`, `each`; or a
-| component in scope, by its name in kebab case)
+x lowercase tag <view>: tags are PascalCase components: write <View> and
+| `import { View } from "nsh"`
 ```
 
 > [!IMPORTANT]
-> 文本只有放在 `<text>` 中才会显示。直接写在 `<view>` 里的字符串不会创建原生视图，也不会显示。
+> 文本只有放在 `<Text>` 中才会显示。直接写在 `<View>` 里的字符串不会创建原生视图，也不会显示。
 
 ## 组件
 
@@ -48,9 +54,9 @@ x unknown element <foo-bar> (built-in elements: view, text, image, scroll,
 ```tsx
 function Badge(props: { label: string; color?: string }) {
   return (
-    <view style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: props.color ?? "#ddf4ff" }}>
-      <text style={{ fontSize: 13, fontWeight: "600" }}>{props.label}</text>
-    </view>
+    <View style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: props.color ?? "#ddf4ff" }}>
+      <Text style={{ fontSize: 13, fontWeight: "600" }}>{props.label}</Text>
+    </View>
   );
 }
 
@@ -63,12 +69,13 @@ function Badge(props: { label: string; color?: string }) {
 
 ```tsx
 import type { Component, JSX } from "nsh";
+import { Text, View } from "nsh";
 
 const Row: Component<{ title: string; children?: JSX.Element }> = (props) => (
-  <view style={{ flexDirection: "row", gap: 8 }}>
-    <text>{props.title}</text>
+  <View style={{ flexDirection: "row", gap: 8 }}>
+    <Text>{props.title}</Text>
     {props.children}
-  </view>
+  </View>
 );
 ```
 
@@ -77,11 +84,11 @@ const Row: Component<{ title: string; children?: JSX.Element }> = (props) => (
 编译器会为 JSX 中的每个表达式判断它是否可能变化。表达式只要**调用函数或读取属性**（嵌套函数之外），就被视为会变化；其余的只设置一次：
 
 ```tsx
-<text>{count()}</text>              // follows count
-<text>{props.title}</text>          // follows the prop
-<text>{user.name}</text>            // re-read when something it depends on changes
-<text>{label}</text>                // a plain variable: set once
-<view style={{ opacity: busy() ? 0.5 : 1 }} />   // the style object is rebuilt when busy changes
+<Text>{count()}</Text>              // follows count
+<Text>{props.title}</Text>          // follows the prop
+<Text>{user.name}</Text>            // re-read when something it depends on changes
+<Text>{label}</Text>                // a plain variable: set once
+<View style={{ opacity: busy() ? 0.5 : 1 }} />   // the style object is rebuilt when busy changes
 ```
 
 会变化的 prop 或子节点对应一个很小的原生 effect，只设置那一个 prop 或替换那一个子节点。样式对象在 Rust 中做 diff，所以重建样式时只会发送真正变化的属性。
@@ -96,12 +103,12 @@ const Row: Component<{ title: string; children?: JSX.Element }> = (props) => (
 // Wrong: reads the prop once, when the component runs.
 function Title(props: { text: string }) {
   const { text } = props;
-  return <text>{text}</text>;
+  return <Text>{text}</Text>;
 }
 
 // Right: reads it in JSX, which follows it.
 function Title(props: { text: string }) {
-  return <text>{props.text}</text>;
+  return <Text>{props.text}</Text>;
 }
 ```
 
@@ -110,7 +117,7 @@ function Title(props: { text: string }) {
 ```tsx
 function Price(props: { cents: number }) {
   const formatted = () => `$${(props.cents / 100).toFixed(2)}`;
-  return <text>{formatted()}</text>;
+  return <Text>{formatted()}</Text>;
 }
 ```
 
@@ -121,15 +128,15 @@ function Price(props: { cents: number }) {
 ```tsx
 function Card(props: { title: string; children?: JSX.Element }) {
   return (
-    <view style={{ padding: 14, borderRadius: 12, backgroundColor: "#ffffff", gap: 8 }}>
-      <text style={{ fontWeight: "600" }}>{props.title}</text>
+    <View style={{ padding: 14, borderRadius: 12, backgroundColor: "#ffffff", gap: 8 }}>
+      <Text style={{ fontWeight: "600" }}>{props.title}</Text>
       {props.children}
-    </view>
+    </View>
   );
 }
 
 <Card title="Account">
-  <text>Signed in as {user().name}</text>
+  <Text>Signed in as {user().name}</Text>
 </Card>
 ```
 
@@ -137,36 +144,36 @@ function Card(props: { title: string; children?: JSX.Element }) {
 
 ```tsx
 function Repeat(props: { times: number; children: (i: number) => JSX.Element }) {
-  return <view>{Array.from({ length: props.times }, (_, i) => props.children(i))}</view>;
+  return <View>{Array.from({ length: props.times }, (_, i) => props.children(i))}</View>;
 }
 
-<Repeat times={3}>{(i) => <text>Row {i}</text>}</Repeat>
+<Repeat times={3}>{(i) => <Text>Row {i}</Text>}</Repeat>
 ```
 
 Fragment（`<>…</>`）可以把多个元素组合在一起而不产生视图。
 
 ## 控制流
 
-`<if>` 和 `<each>` 是内置的控制流，本身不渲染视图。
+`<If>` 和 `<Each>` 是内置的控制流，本身不渲染视图。
 
 ```tsx
-<if when={user()} else={<text>Signed out</text>}>
-  <text>Hello, {user()!.name}</text>
-</if>
+<If when={user()} else={<Text>Signed out</Text>}>
+  <Text>Hello, {user()!.name}</Text>
+</If>
 
-<each of={todos()} key={(t) => t.id}>
+<Each of={todos()} key={(t) => t.id}>
   {(todo, index) => (
-    <text>
+    <Text>
       {index() + 1}. {todo().title}
-    </text>
+    </Text>
   )}
-</each>
+</Each>
 ```
 
-- **`<if when else>`** 在 `when` 为真值时渲染子元素，否则渲染 `else` 元素。只有当条件的真假发生变化时才会重新渲染分支，而不是每次重新计算 `when` 都渲染。
-- **`<each of key>`** 为每一项渲染它唯一的子节点（一个函数）。行按 `key(item)` 保留（默认是项本身：对象按引用，原始值按值）：数组变化时，保留下来的行会被移动而不是重建，只有新的 key 才会创建新行。函数接收的是**访问器** `todo()` 和 `index()`，因为保留下来的行，其对应的项和位置都可能改变。
+- **`<If when else>`** 在 `when` 为真值时渲染子元素，否则渲染 `else` 元素。只有当条件的真假发生变化时才会重新渲染分支，而不是每次重新计算 `when` 都渲染。
+- **`<Each of key>`** 为每一项渲染它唯一的子节点（一个函数）。行按 `key(item)` 保留（默认是项本身：对象按引用，原始值按值）：数组变化时，保留下来的行会被移动而不是重建，只有新的 key 才会创建新行。函数接收的是**访问器** `todo()` 和 `index()`，因为保留下来的行，其对应的项和位置都可能改变。
 
-在 JSX 中使用三元表达式或 `&&` 也可以（`{busy() ? <Spinner /> : <Content />}`），但只要它读取的任何值变化，就会重建分支。分支包含较多元素时，优先使用 `<if>`。
+在 JSX 中使用三元表达式或 `&&` 也可以（`{busy() ? <Spinner /> : <Content />}`），但只要它读取的任何值变化，就会重建分支。分支包含较多元素时，优先使用 `<If>`。
 
 对于很长或无限的列表，使用 [`List`](./lists.md)：它只为屏幕上的行创建视图，并复用这些视图。详见[控制流](../elements/control-flow.md)。
 
@@ -176,20 +183,21 @@ Fragment（`<>…</>`）可以把多个元素组合在一起而不产生视图�
 
 ```tsx
 import type { YNode } from "nsh";
+import { Input, Scroll, Text, View } from "nsh";
 
 function Search() {
   let input: YNode | undefined;
   return (
-    <view>
-      <input ref={input} placeholder="Search" />
-      <view onPress={() => input?.focus()}>
-        <text>Focus</text>
-      </view>
-    </view>
+    <View>
+      <Input ref={input} placeholder="Search" />
+      <View onPress={() => input?.focus()}>
+        <Text>Focus</Text>
+      </View>
+    </View>
   );
 }
 
-<scroll ref={(node) => (scroller = node)} />
+<Scroll ref={(node) => (scroller = node)} />
 ```
 
 ref 在元素创建时就被设置，早于组件返回，因此在 [effect](./reactivity.md#effect) 和事件处理函数中都可以使用。调用会按顺序发送给视图，排在它之前的修改之后。`nsh/ui/mobile` 中的组件同样接受 `ref`。
@@ -199,15 +207,15 @@ ref 在元素创建时就被设置，早于组件返回，因此在 [effect](./r
 用 `{...props}` 把一个 props 对象展开到元素或组件上。getter 仍然是 getter，所以展开的 props 会继续跟随它们读取的值。如果要自己取走一部分 props、把其余的继续传下去，使用 `split`：
 
 ```tsx
-import { type InputProps, split } from "nsh";
+import { Input, type InputProps, split, Text, View } from "nsh";
 
 function Field(props: InputProps & { label: string }) {
   const [own, rest] = split(props, ["label"]);
   return (
-    <view style={{ gap: 4 }}>
-      <text>{own.label}</text>
-      <input style={{ borderWidth: 1, borderRadius: 8, padding: 8 }} {...rest} />
-    </view>
+    <View style={{ gap: 4 }}>
+      <Text>{own.label}</Text>
+      <Input style={{ borderWidth: 1, borderRadius: 8, padding: 8 }} {...rest} />
+    </View>
   );
 }
 
@@ -216,21 +224,21 @@ function Field(props: InputProps & { label: string }) {
 
 `split(props, keys)` 返回 `[picked, rest]`，两者都仍然读取原始 props（而解构 `{ label, ...rest } = props` 会把每个 prop 都读取一次）。在 JSX 中靠后的元素 props 会覆盖靠前的。
 
-`<if>` 和 `<each>` 不接受展开 props，也不支持展开子节点（`{...items}`）：请使用 `<each>` 或数组表达式。
+`<If>` 和 `<Each>` 不接受展开 props，也不支持展开子节点（`{...items}`）：请使用 `<Each>` 或数组表达式。
 
 ## 标签与名称
 
-大写开头的标签和平常一样，指向作用域中的绑定：`<Badge />`、`<Theme.Provider>`。组件也可以用 **kebab-case** 书写：`WeatherPanel` 也可以写成 `<weather-panel>`，导入的 `Button` 也可以写成 `<button>`。
+标签和平常一样，指向作用域中的绑定：`<Badge />`、`<Theme.Provider>`、导入的 `<Button>`。指向作用域中不存在的名称的标签会导致构建错误，全局的 `<If>` 和 `<Each>` 除外。
 
 ```tsx
 import { Button } from "nsh/ui/mobile";
 
-<button title="Save" onPress={save} />    // the Button component
+<Button title="Save" onPress={save} />
 ```
 
-你的绑定优先于同名的内置元素：作用域中名为 `Text` 的组件会让 `<text>` 指向这个组件，导入的 `Modal` 也会让 `<modal>` 指向它。除非你正是想这样，否则组件命名应避免与元素名冲突。（从 nsh 模块导入的函数对象不是组件：从 `nsh/image` 导入 `Image` 后，`<image>` 仍然是元素。）
+你的绑定优先于全局组件：作用域中名为 `Each` 的组件会让 `<Each>` 指向这个组件。原语通过导入识别，所以 `import { View as Box } from "nsh"` 会让 `<Box>` 成为视图，而你自己名为 `Text` 的组件就只是你的组件。原语本身也是真正的组件：`const Tag = inline ? Text : View;` 之后写 `<Tag>…</Tag>` 也可以。
 
-以 kebab-case 使用的导出或导入组件，会在下一次构建后在 `.nsh/types/nsh/jsx-runtime.d.ts` 中获得类型，编辑器就能检查它们的 props。
+组件和任何 TypeScript 函数一样由自己的声明获得类型：无论在哪里使用，编辑器都会检查组件的 props，无需生成任何东西。
 
 ## 挂载与根视图
 
@@ -238,9 +246,9 @@ import { Button } from "nsh/ui/mobile";
 
 ```tsx
 mount(() => (
-  <view style={{ flex: 1, backgroundColor: "#ffffff" }}>
+  <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
     <App />
-  </view>
+  </View>
 ));
 ```
 

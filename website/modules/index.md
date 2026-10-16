@@ -28,13 +28,13 @@ Types are generated from the runtime: `nsh init`, `nsh build`, `nsh dev` and `ns
 
 | Module | Exports | Page |
 |---|---|---|
-| `nsh` | `signal`, `computed`, `effect`, `batch`, `untracked`, `cleanup`, `context`, `split`, `mount`; the types of elements, styles, events and JSX (`YNode`, `ViewStyle`, ...) | [nsh](./nsh.md) |
+| `nsh` | `signal`, `computed`, `effect`, `batch`, `untracked`, `cleanup`, `context`, `split`, `mount`; `View`, `Text`, `Scroll`, `Input`; the types of elements, styles, events and JSX (`YNode`, `ViewStyle`, ...) | [nsh](./nsh.md) |
 | `nsh/animated` | `createNativeValue`, `NativeValue`, `NativeNode`, `Animated`, `Easing`, `LayoutAnimation` | [nsh/animated](./nsh-animated.md) |
 | `nsh/list` | `List` (virtualized, recycling list) | [nsh/list](./nsh-list.md) |
 | `nsh/canvas` | `Canvas`, `Path2D`, `CanvasRenderingContext2D`, `CanvasGradient` | [nsh/canvas](./nsh-canvas.md) |
 | `nsh/device` | `windowSize`, `colorScheme`, `fontScale`, `Platform`, `PixelRatio`, `I18nManager` | [nsh/device](./nsh-device.md) |
 | `nsh/gesture` | `PanResponder` | [nsh/gesture](./nsh-gesture.md) |
-| `nsh/image` | `Image.getSize`, `Image.prefetch` | [nsh/image](./nsh-image.md) |
+| `nsh/image` | `Image` (the element), `Image.getSize`, `Image.prefetch` | [nsh/image](./nsh-image.md) |
 | `nsh/native` | `nativeComponent` (components the embedding app registers) | [nsh/native](./nsh-native.md) |
 | `nsh/accessibility` | `AccessibilityInfo`, `screenReaderEnabled`, `reduceMotion` | [nsh/accessibility](./nsh-accessibility.md) |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | [nsh/ios](./nsh-ios.md) |
@@ -53,4 +53,4 @@ Reference pages that are not modules:
 
 ## Host elements
 
-Lowercase JSX tags such as `<view>`, `<text>`, `<image>`, `<scroll>` and `<input>` are not imported: they are built into the JSX compiler. Their props are documented under [Elements](../elements/index.md).
+The host elements are components imported like everything else: `View`, `Text`, `Scroll` and `Input` from `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas`, `WebView`, `Video` from their modules, `Modal` from `nsh/ui/mobile`, `InputAccessoryView` from `nsh/ios`. Only `If` and `Each` are globals. The compiler makes the elements in place, so the imports cost nothing at run time. Their props are documented under [Elements](../elements/index.md).

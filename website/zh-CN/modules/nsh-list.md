@@ -12,7 +12,7 @@ order: 4
 import { List, type ListProps, type ViewToken, type ViewabilityConfig } from "nsh/list";
 ```
 
-教程见[列表](../docs/lists.md)，底层元素见 [`<list>`](../elements/list.md)。
+教程见[列表](../docs/lists.md)，元素的属性见 [`<List>`](../elements/list.md)。
 
 ## List
 
@@ -21,7 +21,7 @@ function List<T>(props: ListProps<T>): YNode;
 ```
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { List } from "nsh/list";
 
 const contacts = Array.from({ length: 1000 }, (_, i) => ({ id: String(i), name: `Contact ${i}` }));
@@ -30,9 +30,9 @@ function App() {
   return (
     <List each={contacts} estimatedItemSize={48} style={{ flex: 1 }}>
       {(item, index) => (
-        <view style={{ height: 48, paddingHorizontal: 16, justifyContent: "center", backgroundColor: index() % 2 ? "#f8fafc" : "#fff" }}>
-          <text>{item().name}</text>
-        </view>
+        <View style={{ height: 48, paddingHorizontal: 16, justifyContent: "center", backgroundColor: index() % 2 ? "#f8fafc" : "#fff" }}>
+          <Text>{item().name}</Text>
+        </View>
       )}
     </List>
   );
@@ -50,7 +50,7 @@ mount(App);
 
 ## 属性
 
-`ListProps<T>` 由列表自己的属性和与 `<scroll>` 共用的滚动属性组成。
+`ListProps<T>` 由列表自己的属性和与 `<Scroll>` 共用的滚动属性组成。
 
 ### 数据与渲染
 
@@ -149,18 +149,18 @@ interface ViewabilityConfig {
 | `scrollTo({ x?, y?, animated? })` | 滚动到某个偏移。 |
 
 ```tsx
-import { type YNode } from "nsh";
+import { Text, View, type YNode } from "nsh";
 import { List } from "nsh/list";
 
 let list!: YNode;
 
-<view style={{ flex: 1 }}>
-  <text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</text>
+<View style={{ flex: 1 }}>
+  <Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</Text>
   <List ref={list} each={items} numColumns={3} estimatedItemSize={90} style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, gap: 8 }}>
-    {(item) => <view style={{ height: 90, backgroundColor: "#e0e7ff" }}><text>{item().title}</text></view>}
+    {(item) => <View style={{ height: 90, backgroundColor: "#e0e7ff" }}><Text>{item().title}</Text></View>}
   </List>
-</view>
+</View>
 ```
 
 ## 示例
@@ -179,9 +179,9 @@ let list!: YNode;
   onEndReachedThreshold={0.5}
 >
   {(m) => (
-    <view style={{ alignSelf: m().mine ? "flex-end" : "flex-start", maxWidth: "75%", padding: 10, borderRadius: 14, backgroundColor: m().mine ? "#6366f1" : "#e2e8f0" }}>
-      <text style={{ color: m().mine ? "#fff" : "#0f172a" }}>{m().text}</text>
-    </view>
+    <View style={{ alignSelf: m().mine ? "flex-end" : "flex-start", maxWidth: "75%", padding: 10, borderRadius: 14, backgroundColor: m().mine ? "#6366f1" : "#e2e8f0" }}>
+      <Text style={{ color: m().mine ? "#fff" : "#0f172a" }}>{m().text}</Text>
+    </View>
   )}
 </List>
 ```
@@ -197,7 +197,7 @@ const refresh = async () => {
 };
 
 <List each={items()} refreshing={refreshing()} onRefresh={refresh} style={{ flex: 1 }}>
-  {(item) => <text style={{ padding: 16 }}>{item().title}</text>}
+  {(item) => <Text style={{ padding: 16 }}>{item().title}</Text>}
 </List>
 ```
 

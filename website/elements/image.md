@@ -1,26 +1,28 @@
 ---
-title: image
+title: Image
 description: The element that shows a bundled or remote image, with placeholders, blur, fades, tinting and load events.
 order: 4
 ---
 
-# image
+# Image
 
-`<image>` shows a picture from the app's assets or from a URL. Images are downloaded and decoded off the main thread,
+`<Image>`, imported from [`nsh/image`](../modules/nsh-image.md), shows a picture from the app's assets or from a URL. Images are downloaded and decoded off the main thread,
 downsampled to the size the view shows them at, and cached in memory. Animated GIF, WebP and APNG images play.
 
 ```tsx
+import { View } from "nsh";
+import { Image } from "nsh/image";
 import logo from "./assets/logo.png";
 
-<view style={{ flexDirection: "row", gap: 12 }}>
-  <image src={logo} />
-  <image
+<View style={{ flexDirection: "row", gap: 12 }}>
+  <Image src={logo} />
+  <Image
     src="https://example.com/avatar.jpg"
     defaultSource={logo}
     resizeMode="cover"
     style={{ width: 64, height: 64, borderRadius: 32 }}
   />
-</view>;
+</View>;
 ```
 
 An imported asset knows its size: without a `width` or `height` the image takes it, and with only one of them the other
@@ -65,7 +67,7 @@ Besides the [common props](./index.md#common-props) (with `style` typed as `Imag
 `ImageStyle` adds `tintColor` to the view styles: it recolors a template image (an icon drawn in one color).
 
 ```tsx
-<image src={icon} style={{ width: 24, height: 24, tintColor: "#0969da" }} />
+<Image src={icon} style={{ width: 24, height: 24, tintColor: "#0969da" }} />
 ```
 
 ## Events
@@ -80,7 +82,7 @@ Besides the [common props](./index.md#common-props) (with `style` typed as `Imag
 
 ```tsx
 const state = signal("loading");
-<image
+<Image
   src={url}
   style={{ width: "100%", aspectRatio: 16 / 9 }}
   onLoad={(e) => state.set(`${e.width}×${e.height} px`)}
@@ -88,8 +90,8 @@ const state = signal("loading");
 />;
 ```
 
-To know an image's size or load it before showing it, use `Image.getSize(uri)` and `Image.prefetch(uri)` from
-[`nsh/image`](../modules/nsh-image.md). Importing `Image` from `nsh/image` does not replace the `<image>` element.
+To know an image's size or load it before showing it, call `Image.getSize(uri)` and `Image.prefetch(uri)`: the same
+`Image` from [`nsh/image`](../modules/nsh-image.md) that renders the element carries them.
 
 ## Ref methods
 

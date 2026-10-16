@@ -16,7 +16,7 @@ import { SelectList } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { SelectList } from "nsh/ui/mobile";
 
 const languages = ["English", "Deutsch", "Español", "Français", "日本語", "中文"];
@@ -24,10 +24,10 @@ const languages = ["English", "Deutsch", "Español", "Français", "日本語", "
 function App() {
   const chosen = signal<number | null>(0);
   return (
-    <view style={{ flex: 1, paddingTop: 48 }}>
-      <text style={{ padding: 16 }}>{`Language: ${chosen() === null ? "none" : languages[chosen()!]}`}</text>
+    <View style={{ flex: 1, paddingTop: 48 }}>
+      <Text style={{ padding: 16 }}>{`Language: ${chosen() === null ? "none" : languages[chosen()!]}`}</Text>
       <SelectList options={languages} value={chosen()} onSelect={(i) => chosen.set(i)} />
-    </view>
+    </View>
   );
 }
 
@@ -37,9 +37,9 @@ mount(App);
 SelectList 会填满父视图（`flex: 1`）。如果要把它放在滚动视图里或与其他内容并排，请给它一个固定高度的父视图：
 
 ```tsx
-<view style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
+<View style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
   <SelectList options={cities} onSelect={(i) => console.log(cities[i])} />
-</view>
+</View>
 ```
 
 ## 受控与非受控

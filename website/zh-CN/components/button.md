@@ -16,16 +16,16 @@ import { Button } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button } from "nsh/ui/mobile";
 
 function App() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, padding: 16, gap: 12, justifyContent: "center" }}>
-      <text>{`Pressed ${count()} times`}</text>
+    <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: "center" }}>
+      <Text>{`Pressed ${count()} times`}</Text>
       <Button title="Press me" onPress={() => count.set(count() + 1)} />
-    </view>
+    </View>
   );
 }
 
@@ -35,10 +35,10 @@ mount(App);
 按钮把标签居中排成一行，水平内边距 16 pt，垂直内边距 12 pt。和其他视图一样，在纵向排列的容器中它会拉伸到容器宽度。传入 `class` 或 `style` 可以改变尺寸或圆角：
 
 ```tsx
-<view style={{ flexDirection: "row", gap: 8 }}>
+<View style={{ flexDirection: "row", gap: 8 }}>
   <Button class="flex-1" title="Cancel" variant="secondary" onPress={cancel} />
   <Button class="flex-1" title="Save" onPress={save} />
-</view>
+</View>
 ```
 
 <a id="variants"></a>

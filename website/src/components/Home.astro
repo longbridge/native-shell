@@ -148,11 +148,11 @@ const cm = (s: string) => `<span class="c-c">${s}</span>`;
 const ty = (s: string) => `<span class="c-t">${s}</span>`;
 const snippets: Record<string, string> = {
   ai: [
-    `${k('import')} { mount, signal } ${k('from')} ${st('"nsh"')};`,
+    `${k('import')} { mount, signal, View } ${k('from')} ${st('"nsh"')};`,
     ``,
     `${k('function')} ${fn('Answer')}() {`,
     `  ${k('const')} range = ${fn('signal')}(${st('"1W"')});`,
-    `  ${k('return')} &lt;${ty('view')} class=${st('"gap-3 p-4"')}&gt;…&lt;/${ty('view')}&gt;;`,
+    `  ${k('return')} &lt;${ty('View')} class=${st('"gap-3 p-4"')}&gt;…&lt;/${ty('View')}&gt;;`,
     `}`,
     `${fn('mount')}(Answer);`,
   ].join('\n'),

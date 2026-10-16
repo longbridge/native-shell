@@ -1,30 +1,30 @@
 ---
-title: if / each
-description: "The built-in control flow tags: <if> renders a branch by a condition, <each> renders a keyed row per item of an array."
+title: If / Each
+description: "The control flow components: <If> renders a branch by a condition, <Each> renders a keyed row per item of an array."
 order: 12
 demo: el-control-flow
 ---
 
-# if / each
+# If / Each
 
-`<if>` and `<each>` are built-in tags for conditional and repeated content. They create no native view; they decide which
-elements exist. Both are compiled into calls to the native renderer, which updates only what changed: `<if>` swaps a
-branch when the condition's truthiness changes, `<each>` adds, moves and removes rows by key instead of rebuilding the
+`<If>` and `<Each>` are the components for conditional and repeated content. They create no native view; they decide which
+elements exist. Both are compiled into calls to the native renderer, which updates only what changed: `<If>` swaps a
+branch when the condition's truthiness changes, `<Each>` adds, moves and removes rows by key instead of rebuilding the
 list.
 
 ```tsx
-<view>
-  <if when={user()} else={<text>Signed out</text>}>
-    <text>Hello, {user()!.name}</text>
-  </if>
-  <each of={todos()}>{(todo) => <text>{todo().title}</text>}</each>
-</view>
+<View>
+  <If when={user()} else={<Text>Signed out</Text>}>
+    <Text>Hello, {user()!.name}</Text>
+  </If>
+  <Each of={todos()}>{(todo) => <Text>{todo().title}</Text>}</Each>
+</View>
 ```
 
-They need no import. Inside JSX expressions you can still use plain JavaScript (`cond ? a : b`, `items.map(…)`), but those
-rebuild their elements every time what they read changes; `<if>` and `<each>` keep the elements that stay.
+They are globals: they need no import (a binding of the same name in scope takes their place). Inside JSX expressions you can still use plain JavaScript (`cond ? a : b`, `items.map(…)`), but those
+rebuild their elements every time what they read changes; `<If>` and `<Each>` keep the elements that stay.
 
-## `<if>`
+## `<If>`
 
 Renders its children while `when` is truthy, else the `else` element (or nothing).
 
@@ -41,12 +41,12 @@ own.
 ```tsx
 const loading = signal(true);
 
-<if when={!loading()} else={<text style={{ color: "#6e7781" }}>Loading…</text>}>
+<If when={!loading()} else={<Text style={{ color: "#6e7781" }}>Loading…</Text>}>
   <Profile />
-</if>;
+</If>;
 ```
 
-## `<each>`
+## `<Each>`
 
 Renders `children(item, index)` for each item of `of`.
 
@@ -69,14 +69,14 @@ interface Todo {
 
 const todos = signal<Todo[]>([]);
 
-<each of={todos()} key={(t: Todo) => t.id}>
+<Each of={todos()} key={(t: Todo) => t.id}>
   {(todo, index) => (
-    <view style={{ flexDirection: "row", gap: 8 }}>
-      <text>{index() + 1}.</text>
-      <text style={{ textDecorationLine: todo().done ? "line-through" : "none" }}>{todo().title}</text>
-    </view>
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      <Text>{index() + 1}.</Text>
+      <Text style={{ textDecorationLine: todo().done ? "line-through" : "none" }}>{todo().title}</Text>
+    </View>
   )}
-</each>;
+</Each>;
 ```
 
 ### Choosing a key
@@ -87,12 +87,12 @@ const todos = signal<Todo[]>([]);
 - Each row has its own owner: effects and cleanups created in a row end when the row is removed.
 
 > [!NOTE]
-> The `<each>` tag is not generic, so TypeScript cannot infer the item type from `of`. Annotate the `key` parameter, or
-> cast in the row (`todo() as Todo`).
+> `Each` is generic: TypeScript infers the item type from `of`, so the row function's `todo()` and the `key` parameter
+> are typed without annotations.
 
-## `<each>` or a list
+## `<Each>` or a list
 
-`<each>` creates every row. That is right for tens or a few hundred items, in a `<view>` or a [`<scroll>`](./scroll.md).
+`<Each>` creates every row. That is right for tens or a few hundred items, in a `<View>` or a [`<Scroll>`](./scroll.md).
 For long or unbounded data, use a [list](./list.md): it creates only the rows near the viewport and recycles them.
 
 See [JSX and components](../docs/jsx-and-components.md) and [reactivity](../docs/reactivity.md) for how expressions

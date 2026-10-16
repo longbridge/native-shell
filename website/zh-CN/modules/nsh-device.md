@@ -25,7 +25,7 @@ const windowSize: Accessor<{ width: number; height: number }>;
 ```tsx
 const wide = () => windowSize().width >= 600;
 
-<view style={{ flexDirection: wide() ? "row" : "column" }}>{/* ... */}</view>
+<View style={{ flexDirection: wide() ? "row" : "column" }}>{/* ... */}</View>
 ```
 
 ## colorScheme
@@ -39,7 +39,7 @@ const colorScheme: Accessor<"light" | "dark">;
 ```tsx
 const dark = () => colorScheme() === "dark";
 
-<view style={{ flex: 1, backgroundColor: dark() ? "#000" : "#fff" }} />
+<View style={{ flex: 1, backgroundColor: dark() ? "#000" : "#fff" }} />
 ```
 
 ## fontScale
@@ -159,9 +159,9 @@ const I18nManager: {
 | `getConstants()` | `{ isRTL, doLeftAndRightSwapInRTL }`。 |
 
 ```tsx
-<text onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
+<Text onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
   {I18nManager.isRTL ? "Right to left" : "Left to right"}
-</text>
+</Text>
 ```
 
 ## 相关内容

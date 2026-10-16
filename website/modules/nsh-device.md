@@ -25,7 +25,7 @@ The size of the surface in points: the window, or the embedded `NshAppView` / `N
 ```tsx
 const wide = () => windowSize().width >= 600;
 
-<view style={{ flexDirection: wide() ? "row" : "column" }}>{/* ... */}</view>
+<View style={{ flexDirection: wide() ? "row" : "column" }}>{/* ... */}</View>
 ```
 
 ## colorScheme
@@ -39,7 +39,7 @@ The system appearance. Reactive. Tailwind's `dark:` variant follows it too (see 
 ```tsx
 const dark = () => colorScheme() === "dark";
 
-<view style={{ flex: 1, backgroundColor: dark() ? "#000" : "#fff" }} />
+<View style={{ flex: 1, backgroundColor: dark() ? "#000" : "#fff" }} />
 ```
 
 ## fontScale
@@ -159,9 +159,9 @@ Right-to-left layout. In right-to-left layout, rows run from the right, and `lef
 | `getConstants()` | `{ isRTL, doLeftAndRightSwapInRTL }`. |
 
 ```tsx
-<text onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
+<Text onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}>
   {I18nManager.isRTL ? "Right to left" : "Left to right"}
-</text>
+</Text>
 ```
 
 ## Related

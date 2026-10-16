@@ -103,7 +103,7 @@ release 构建（所有并非从开发服务器加载的代码）在加载时会
 
 ### `network`
 
-涵盖 `fetch`（包括每一次重定向）、远程图片（`<image>`、`defaultSource`、canvas 图片、`Image.getSize` /
+涵盖 `fetch`（包括每一次重定向）、远程图片（`<Image>`、`defaultSource`、canvas 图片、`Image.getSize` /
 `Image.prefetch`）以及视频源。
 
 | 键 | 类型 | 说明 |

@@ -12,7 +12,7 @@ order: 14
 import { Video, type VideoProps } from "nsh/video";
 ```
 
-See [Web view and video](../docs/web-view-and-video.md) for the guide and [`<video>`](../elements/video.md) for the element underneath.
+See [Web view and video](../docs/web-view-and-video.md) for the guide and [`<Video>`](../elements/video.md) for its props.
 
 ## Video
 
@@ -25,7 +25,7 @@ interface VideoProps extends Omit<ViewProps, "children">, VideoHostProps {
 ```
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 
 function Player() {
@@ -33,7 +33,7 @@ function Player() {
   const time = signal("");
   let video!: YNode;
   return (
-    <view style={{ flex: 1, padding: 16, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, gap: 12 }}>
       <Video
         ref={video}
         source="https://example.com/clip.mp4"
@@ -44,12 +44,12 @@ function Player() {
         style={{ height: 220, borderRadius: 8, overflow: "hidden", backgroundColor: "#000" }}
         onProgress={(e) => time.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
       />
-      <view style={{ flexDirection: "row", gap: 16 }}>
-        <text onPress={() => paused.update((p) => !p)}>{paused() ? "Play" : "Pause"}</text>
-        <text onPress={() => video.seek(0)}>Restart</text>
-        <text>{time()}</text>
-      </view>
-    </view>
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Text onPress={() => paused.update((p) => !p)}>{paused() ? "Play" : "Pause"}</Text>
+        <Text onPress={() => video.seek(0)}>Restart</Text>
+        <Text>{time()}</Text>
+      </View>
+    </View>
   );
 }
 

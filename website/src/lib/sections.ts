@@ -23,8 +23,8 @@ export const SECTIONS: Section[] = [
     id: 'elements',
     label: { en: 'Elements', 'zh-CN': '元素' },
     blurb: {
-      en: 'The host elements every UI is built from — view, text, image, scroll views, lists — and their props.',
-      'zh-CN': '构成所有界面的宿主元素——view、text、image、滚动视图、列表——及其属性。',
+      en: 'The host elements every UI is built from — View, Text, Image, scroll views, lists — and their props.',
+      'zh-CN': '构成所有界面的宿主元素——View、Text、Image、滚动视图、列表——及其属性。',
     },
   },
   {

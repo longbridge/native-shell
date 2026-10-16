@@ -23,13 +23,13 @@ There are four tools, from the simplest to the most flexible:
 Give a view `transitionProperty` and `transitionDuration`, and later changes to those properties animate natively from what is on screen to the new value.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 
 function App() {
   const on = signal(false);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         onPress={() => on.set(!on())}
         style={{
           width: 100,
@@ -42,7 +42,7 @@ function App() {
           transitionTimingFunction: "ease-in-out",
         }}
       />
-    </view>
+    </View>
   );
 }
 
@@ -61,9 +61,9 @@ Properties that transition, by group: **colors** (background, border, outline, s
 With Tailwind, the same thing is `transition` (colors, opacity, shadows and transforms), `transition-all`, `transition-colors`, `transition-opacity`, `transition-transform`, `transition-shadow`, with `duration-*`, `delay-*` and `ease-*`. Combined with the `active:` variant it gives pressed states that animate:
 
 ```tsx
-<view onPress={save} class="rounded-xl bg-blue-600 px-5 py-3 transition duration-150 active:scale-95 active:bg-blue-800">
-  <text class="font-semibold text-white">Save</text>
-</view>
+<View onPress={save} class="rounded-xl bg-blue-600 px-5 py-3 transition duration-150 active:scale-95 active:bg-blue-800">
+  <Text class="font-semibold text-white">Save</Text>
+</View>
 ```
 
 A transition starts from the value currently on screen, so changing the target again mid-way turns smoothly.
@@ -73,8 +73,8 @@ A transition starts from the value currently on screen, so changing the target a
 Four built-in keyframe animations run natively, forever by default: `spin` (one turn clockwise), `ping` (scales up to 2× and fades out), `pulse` (fades to half opacity and back) and `bounce` (jumps up by a quarter of its height and lands).
 
 ```tsx
-<view class="size-8 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
-<view class="h-4 w-40 rounded bg-zinc-200 animate-pulse" />
+<View class="size-8 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
+<View class="h-4 w-40 rounded bg-zinc-200 animate-pulse" />
 ```
 
 | Style | Type | Description |
@@ -92,16 +92,16 @@ Tailwind: `animate-spin`, `animate-ping`, `animate-pulse`, `animate-bounce`, `an
 A native value is a number that lives on the UI thread. Create one with `createNativeValue` from `nsh/animated`, bind it to styles, and animate it; the bound views follow it every frame without re-rendering.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 
 function App() {
   const x = createNativeValue(0);
   const opacity = createNativeValue(1);
   return (
-    <view style={{ flex: 1, justifyContent: "center", padding: 24, gap: 24 }}>
-      <view style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#0969da", opacity, transform: [{ translateX: x }] }} />
-      <view
+    <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 24 }}>
+      <View style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#0969da", opacity, transform: [{ translateX: x }] }} />
+      <View
         onPress={async () => {
           await x.timing(240, { duration: 600, easing: Easing.out(Easing.cubic) });
           await opacity.timing(0.3, { duration: 200 });
@@ -109,9 +109,9 @@ function App() {
           opacity.timing(1);
         }}
       >
-        <text style={{ color: "#0969da" }}>Play</text>
-      </view>
-    </view>
+        <Text style={{ color: "#0969da" }}>Play</Text>
+      </View>
+    </View>
   );
 }
 
@@ -140,7 +140,7 @@ x.spring(200, { stiffness: 180, damping: 8 });   // wobbly
 x.spring(200, { stiffness: 400, damping: 30 });  // stiff, no overshoot
 
 // A fling that coasts to a stop, from a pan's release velocity.
-<view pan={{ x }} onPanEnd={(e) => x.decay({ velocity: e.velocityX })} />
+<View pan={{ x }} onPanEnd={(e) => x.decay({ velocity: e.velocityX })} />
 ```
 
 ### Interpolation
@@ -150,7 +150,7 @@ x.spring(200, { stiffness: 400, damping: 30 });  // stiff, no overshoot
 ```tsx
 const t = createNativeValue(0);
 
-<view
+<View
   style={{
     backgroundColor: t.interpolate({ inputRange: [0, 1, 2], outputRange: ["#54aeff", "#8250df", "#cf222e"] }),
     opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
@@ -183,8 +183,8 @@ Nodes combine with arithmetic, also natively: `a.add(b)`, `a.sub(b)`, `a.mul(b)`
 const scroll = createNativeValue(0);
 const header = scroll.diffClamp(0, 56);
 
-<scroll style={{ flex: 1 }} scrollValue={scroll}>…</scroll>
-<view style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</view>
+<Scroll style={{ flex: 1 }} scrollValue={scroll}>…</Scroll>
+<View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</View>
 ```
 
 ## Composite animations
@@ -311,11 +311,12 @@ Reach for `requestAnimationFrame` (a global, following the display) only for wha
 When the user asks for less motion (iOS "Reduce Motion", Android "Remove animations"), `reduceMotion()` from `nsh/accessibility` is `true` and the `motion-reduce:` / `motion-safe:` Tailwind variants apply. nsh does not turn your animations off by itself; use them to choose a calmer alternative:
 
 ```tsx
+import { View } from "nsh";
 import { reduceMotion } from "nsh/accessibility";
 
 const open = () => (reduceMotion() ? panel.set(0) : panel.spring(0));
 
-<view class="motion-safe:animate-bounce" />
+<View class="motion-safe:animate-bounce" />
 ```
 
 See [Accessibility](./accessibility.md#reduced-motion).

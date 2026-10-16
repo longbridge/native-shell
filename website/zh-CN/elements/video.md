@@ -1,15 +1,15 @@
 ---
-title: video
-description: video 元素与 Video 组件：原生视频播放，可使用自定义控件或系统控件。
+title: Video
+description: Video 组件：原生视频播放，可使用自定义控件或系统控件。
 order: 10
 ---
 
-# video
+# Video
 
 视频视图用平台自带的播放器播放视频文件或视频流：iOS 和 Mac Catalyst 上是 AVPlayer，Android 上是 MediaPlayer。播放通过属性控制（`paused`、`muted`、`rate` 等），因此播放器会像其他视图一样跟随你的状态。
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 
 function Player() {
@@ -17,7 +17,7 @@ function Player() {
   const time = signal("");
   let video!: YNode;
   return (
-    <view style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       <Video
         ref={video}
         source="https://example.com/clip.mp4"
@@ -27,19 +27,17 @@ function Player() {
         style={{ height: 220, backgroundColor: "#000000" }}
         onProgress={(e) => time.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
       />
-      <view style={{ flexDirection: "row", gap: 16 }}>
-        <text onPress={() => paused.set(!paused())}>{paused() ? "Play" : "Pause"}</text>
-        <text onPress={() => video.seek(0)}>Restart</text>
-        <text>{time()}</text>
-      </view>
-    </view>
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Text onPress={() => paused.set(!paused())}>{paused() ? "Play" : "Pause"}</Text>
+        <Text onPress={() => video.seek(0)}>Restart</Text>
+        <Text>{time()}</Text>
+      </View>
+    </View>
   );
 }
 ```
 
-## `Video` 与 `<video>`
-
-[`nsh/video`](../modules/nsh-video.md) 的 `Video` 是 `<video>` 标签的带类型版本：同一个元素，属性经过类型检查，且 `source` 必填。优先使用 `Video`。另见 [Web view 与视频指南](../docs/web-view-and-video.md)。
+`Video` 从 [`nsh/video`](../modules/nsh-video.md) 导入，`source` 必填。另见 [Web view 与视频指南](../docs/web-view-and-video.md)。
 
 ## 属性
 

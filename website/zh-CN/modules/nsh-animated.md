@@ -22,7 +22,7 @@ import { Animated, createNativeValue, Easing, LayoutAnimation, NativeNode, Nativ
 | `opacity` | `style={{ opacity: value }}` |
 | `backgroundColor` | `style={{ backgroundColor: value.interpolate({ inputRange: [0, 1], outputRange: ["#fff", "#000"] }) }}` |
 | `transform` | `translateX`、`translateY`、`scale`、`scaleX`、`scaleY`、`rotate`、`rotateX`、`rotateY`、`rotateZ`：`transform: [{ translateX: value }]` |
-| 滚动位置 | `<scroll scrollValue={value}>` 和 `<List scrollValue={value}>` 每帧把滚动偏移写入该值 |
+| 滚动位置 | `<Scroll scrollValue={value}>` 和 `<List scrollValue={value}>` 每帧把滚动偏移写入该值 |
 | 手势 | 任意元素上的 `pan={{ x, y }}`、`pinch={{ scale }}`、`rotation={{ angle }}`：手势直接写入这些值（见[触摸与手势](../docs/touch-and-gestures.md)） |
 | 画布 | [画布](./nsh-canvas.md)绘制调用中的任意数字或颜色参数 |
 
@@ -37,7 +37,7 @@ function createNativeValue(value?: number): NativeValue;
 创建一个初始值为 `value`（默认 `0`）的原生值。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
@@ -48,10 +48,10 @@ function App() {
     x.spring(right ? 200 : 0);
   };
   return (
-    <view style={{ flex: 1, padding: 24, paddingTop: 48, gap: 16 }}>
-      <view style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#6366f1", transform: [{ translateX: x }] }} />
-      <text onPress={toggle}>Move</text>
-    </view>
+    <View style={{ flex: 1, padding: 24, paddingTop: 48, gap: 16 }}>
+      <View style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#6366f1", transform: [{ translateX: x }] }} />
+      <Text onPress={toggle}>Move</Text>
+    </View>
   );
 }
 
@@ -126,8 +126,8 @@ type Extrapolation = "extend" | "clamp" | "identity";
 const scroll = createNativeValue(0);
 const header = scroll.diffClamp(0, 44);
 
-<scroll scrollValue={scroll} style={{ flex: 1 }}>{/* rows */}</scroll>
-<view style={{ height: 44, transform: [{ translateY: header.mul(-1) }] }} />
+<Scroll scrollValue={scroll} style={{ flex: 1 }}>{/* rows */}</Scroll>
+<View style={{ height: 44, transform: [{ translateY: header.mul(-1) }] }} />
 ```
 
 ```ts
@@ -295,10 +295,10 @@ const toggle = () => {
   open.update((o) => !o);
 };
 
-<view>
-  <text onPress={toggle}>Details</text>
-  <if when={open()}>
-    <text>Shown with a spring.</text>
-  </if>
-</view>
+<View>
+  <Text onPress={toggle}>Details</Text>
+  <If when={open()}>
+    <Text>Shown with a spring.</Text>
+  </If>
+</View>
 ```

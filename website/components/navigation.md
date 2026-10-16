@@ -20,7 +20,7 @@ This page is the API reference. For a walkthrough, see the [Navigation guide](..
 ## Usage
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Button, createNavigator, Screen, Stack } from "nsh/ui/mobile";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
@@ -30,9 +30,9 @@ const nav = createNavigator<Route>({ name: "home" });
 function Home() {
   return (
     <Screen title="Inbox">
-      <view style={{ flex: 1, padding: 16 }}>
+      <View style={{ flex: 1, padding: 16 }}>
         <Button title="Open message 1" onPress={() => nav.push({ name: "detail", id: 1 })} />
-      </view>
+      </View>
     </Screen>
   );
 }
@@ -40,9 +40,9 @@ function Home() {
 function Detail(props: { id: number }) {
   return (
     <Screen title={`Message ${props.id}`}>
-      <view style={{ flex: 1, padding: 16 }}>
+      <View style={{ flex: 1, padding: 16 }}>
         <Button title="Back" variant="secondary" onPress={() => nav.pop()} />
-      </view>
+      </View>
     </Screen>
   );
 }
@@ -124,9 +124,9 @@ The child function receives the route value itself and an accessor of its positi
   headerTintColor="#ffffff"
   headerBackgroundColor="#1a7f37"
   headerTitleColor="#ffffff"
-  headerRight={<text onPress={edit} style={{ color: "#ffffff", fontSize: 17 }}>Edit</text>}
+  headerRight={<Text onPress={edit} style={{ color: "#ffffff", fontSize: 17 }}>Edit</Text>}
 >
-  <scroll style={{ flex: 1 }}>…</scroll>
+  <Scroll style={{ flex: 1 }}>…</Scroll>
 </Screen>
 ```
 
@@ -160,7 +160,7 @@ and the status bar.
 
 ```tsx
 <Screen title="Large title" ios={{ headerLargeTitle: true }}>
-  <scroll style={{ flex: 1 }}>…</scroll>
+  <Scroll style={{ flex: 1 }}>…</Scroll>
 </Screen>
 ```
 
@@ -171,7 +171,7 @@ off, and the header's back button and the Android back button call `onBackReques
 then pop yourself:
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 import { Alert, Screen } from "nsh/ui/mobile";
 
 function EditNote() {
@@ -185,7 +185,7 @@ function EditNote() {
   };
   return (
     <Screen title="Edit" preventBack={text().length > 0} onBackRequest={confirm}>
-      <input value={text()} onChangeText={(v) => text.set(v)} placeholder="A note" />
+      <Input value={text()} onChangeText={(v) => text.set(v)} placeholder="A note" />
     </Screen>
   );
 }
@@ -205,21 +205,21 @@ shown while `visible` is true (the default), and it is controlled: when the user
 called and you set `visible` to false.
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
 
 function Settings() {
   const open = signal(false);
   return (
-    <view>
+    <View>
       <Button title="About" onPress={() => open.set(true)} />
       <Modal visible={open()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => open.set(false)}>
         <SafeAreaView style={{ flex: 1, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 24, fontWeight: "700" }}>About</text>
+          <Text style={{ fontSize: 24, fontWeight: "700" }}>About</Text>
           <Button title="Close" onPress={() => open.set(false)} />
         </SafeAreaView>
       </Modal>
-    </view>
+    </View>
   );
 }
 ```
@@ -243,12 +243,12 @@ inside it use the modal's insets. A modal with `transparent` and `animationType=
 
 ```tsx
 <Modal visible={open()} transparent animationType="fade" onRequestClose={close}>
-  <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-    <view style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
-      <text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</text>
+  <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+    <View style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</Text>
       <Button title="OK" onPress={close} />
-    </view>
-  </view>
+    </View>
+  </View>
 </Modal>
 ```
 

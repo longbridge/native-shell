@@ -20,16 +20,16 @@ order: 25
 只存在于某一个平台的属性，归入以该平台命名的对象中。每个元素都接受 `ios`、`android` 和 `desktop`（macOS、Windows、Linux）；在其他平台上这个对象会被忽略，在它自己的平台上只应用其中的键。
 
 ```tsx
-<view
+<View
   onPress={open}
   activeOpacity={0.6}
   android={{ ripple: { color: "rgba(0,0,0,0.12)" }, elevation: 4 }}
   style={{ padding: 16, borderRadius: 12, backgroundColor: "#ffffff" }}
 >
-  <text>Open</text>
-</view>
+  <Text>Open</Text>
+</View>
 
-<input
+<Input
   placeholder="Code"
   ios={{ textContentType: "oneTimeCode" }}
 />
@@ -50,8 +50,8 @@ order: 25
 | `android={{ accessibilityLiveRegion }}` | 所有元素 | `"none"`、`"polite"` 或 `"assertive"`：TalkBack 播报视图的变化。 |
 | `android={{ statusBarTranslucent }}` | `Modal` | 模态视图的内容延伸到状态栏下方。 |
 | `android={{ backgroundColor }}` | `StatusBar` | 状态栏颜色（Android 15 全面屏之前）。 |
-| `ios={{ inputAccessoryViewID }}` | `<input>` | 显示在键盘上方的 `InputAccessoryView`。 |
-| `ios={{ textContentType }}` | `<input>` | iOS 对自动填充类型的叫法。 |
+| `ios={{ inputAccessoryViewID }}` | `<Input>` | 显示在键盘上方的 `InputAccessoryView`。 |
+| `ios={{ textContentType }}` | `<Input>` | iOS 对自动填充类型的叫法。 |
 | `ios={{ headerLargeTitle }}`、`ios={{ headerBackTitle }}` | `Screen` | 大标题；返回按钮上的文字。 |
 | `ios={{ presentationStyle }}`、`ios={{ supportedOrientations }}` | `Modal` | `"pageSheet"` / `"formSheet"` 表单样式；允许的方向。 |
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | 滑动在页面历史中前进后退。 |
@@ -113,14 +113,15 @@ function Player() {
 状态栏在两个平台上都用 `nsh/ui/mobile` 中的 [`StatusBar`](../components/status-bar.md) 设置：`barStyle`（`"default"`、`"light-content"`、`"dark-content"`）、`hidden` 和 `animated`，Android 的颜色放在 `android={{ backgroundColor }}` 中。最近挂载的 `StatusBar` 按属性逐项生效，所以页面可以为自己渲染一个，页面消失后之前的设置会恢复。`StatusBar.setBarStyle()` 和 `StatusBar.setHidden()` 以命令式方式设置基础值。
 
 ```tsx
+import { View } from "nsh";
 import { StatusBar } from "nsh/ui/mobile";
 
 function PhotoViewer() {
   return (
-    <view style={{ flex: 1, backgroundColor: "#000000" }}>
+    <View style={{ flex: 1, backgroundColor: "#000000" }}>
       <StatusBar barStyle="light-content" animated />
       …
-    </view>
+    </View>
   );
 }
 ```
@@ -168,12 +169,12 @@ const hint = Platform.select({ ios: "Swipe down to close", android: "Press back 
 const Spinner = Platform.select({ ios: IosSpinner, default: MaterialSpinner })!;
 ```
 
-或者用 [`<if>`](../elements/control-flow.md) 内联：
+或者用 [`<If>`](../elements/control-flow.md) 内联：
 
 ```tsx
-<if when={Platform.OS === "ios"} else={<text>Android has no input accessories.</text>}>
+<If when={Platform.OS === "ios"} else={<Text>Android has no input accessories.</Text>}>
   <InputAccessoryView nativeID="bar">…</InputAccessoryView>
-</if>
+</If>
 ```
 
 ## Tailwind 中的平台变体
@@ -181,8 +182,8 @@ const Spinner = Platform.select({ ios: IosSpinner, default: MaterialSpinner })!;
 `ios:` 和 `android:` 变体只在一个平台上应用对应的类：
 
 ```tsx
-<view class="rounded-xl bg-white p-4 ios:shadow-md android:border android:border-zinc-200">…</view>
-<text class="text-base android:font-medium">Title</text>
+<View class="rounded-xl bg-white p-4 ios:shadow-md android:border android:border-zinc-200">…</View>
+<Text class="text-base android:font-medium">Title</Text>
 ```
 
 ## 优先使用共享的行为

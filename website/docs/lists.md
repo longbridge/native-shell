@@ -10,7 +10,7 @@ demo: guide-lists
 `List` from `nsh/list` renders long data on a native scroll view while only creating the rows near the screen. Which rows exist, where they go, the columns, sticky headers and which items are visible are all computed natively; your JS only fills cells with content when the native side asks for one. A list of a million items costs about as much as a list of thirty.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { List } from "nsh/list";
 
 const items = Array.from({ length: 10_000 }, (_, i) => ({ id: i, title: `Item ${i + 1}` }));
@@ -19,9 +19,9 @@ function App() {
   return (
     <List each={items} estimatedItemSize={52} style={{ flex: 1, backgroundColor: "#ffffff" }}>
       {(item) => (
-        <view style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
-          <text style={{ fontSize: 16 }}>{item().title}</text>
-        </view>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
+          <Text style={{ fontSize: 16 }}>{item().title}</Text>
+        </View>
       )}
     </List>
   );
@@ -30,7 +30,7 @@ function App() {
 mount(App);
 ```
 
-Like a [`<scroll>`](./scrolling.md), the list is the viewport and needs a size from its parent (`flex: 1` or a height).
+Like a [`<Scroll>`](./scrolling.md), the list is the viewport and needs a size from its parent (`flex: 1` or a height).
 
 ## How recycling works
 
@@ -44,11 +44,11 @@ Two rules follow from that:
 // Wrong: `title` stays the first item's title when the cell is reused.
 {(item) => {
   const title = item().title;
-  return <text>{title}</text>;
+  return <Text>{title}</Text>;
 }}
 
 // Right: the text follows the cell's current item.
-{(item) => <text>{item().title}</text>}
+{(item) => <Text>{item().title}</Text>}
 ```
 
 **Keep per-item state in your data, not in the row.** A signal created inside the row belongs to the cell and travels with it to the next item. Store "is this row expanded / selected / liked" in the items or in a map keyed by id:
@@ -64,10 +64,10 @@ const toggle = (id: number) =>
 
 <List each={posts()} estimatedItemSize={64} style={{ flex: 1 }}>
   {(post) => (
-    <view style={{ flexDirection: "row", padding: 16 }}>
-      <text style={{ flex: 1 }}>{post().title}</text>
-      <text onPress={() => toggle(post().id)}>{liked().has(post().id) ? "♥" : "♡"}</text>
-    </view>
+    <View style={{ flexDirection: "row", padding: 16 }}>
+      <Text style={{ flex: 1 }}>{post().title}</Text>
+      <Text onPress={() => toggle(post().id)}>{liked().has(post().id) ? "♥" : "♡"}</Text>
+    </View>
   )}
 </List>
 ```
@@ -86,7 +86,7 @@ Pass a new array to change the items: `posts.set([...posts(), ...more])`. The li
 
 ## Props
 
-`List` takes every scrolling prop of `<scroll>` that makes sense for a list (`pagingEnabled`, `snapToInterval`, `snapToOffsets`, `snapToAlignment`, `decelerationRate`, `disableIntervalMomentum`, `bounces`, `scrollEnabled`, `contentInset`, `contentOffset`, `keyboardShouldPersistTaps`, `keyboardDismissMode`, `scrollEventThrottle`, `onScroll`, `onScrollBeginDrag`, `onScrollEndDrag`, `onMomentumScrollBegin`, `onMomentumScrollEnd`, `onScrollEnd`, `scrollValue`), described in [Scrolling](./scrolling.md). Lists do not zoom. Its own props:
+`List` takes every scrolling prop of `<Scroll>` that makes sense for a list (`pagingEnabled`, `snapToInterval`, `snapToOffsets`, `snapToAlignment`, `decelerationRate`, `disableIntervalMomentum`, `bounces`, `scrollEnabled`, `contentInset`, `contentOffset`, `keyboardShouldPersistTaps`, `keyboardDismissMode`, `scrollEventThrottle`, `onScroll`, `onScrollBeginDrag`, `onScrollEndDrag`, `onMomentumScrollBegin`, `onMomentumScrollEnd`, `onScrollEnd`, `scrollValue`), described in [Scrolling](./scrolling.md). Lists do not zoom. Its own props:
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
@@ -126,7 +126,7 @@ The header, footer and empty slots take a component (`ListHeaderComponent={Heade
   style={{ flex: 1 }}
   contentContainerStyle={{ padding: 12, gap: 8 }}
 >
-  {(photo) => <image src={photo().thumb} style={{ aspectRatio: 1, borderRadius: 8 }} />}
+  {(photo) => <Image src={photo().thumb} style={{ aspectRatio: 1, borderRadius: 8 }} />}
 </List>
 ```
 
@@ -147,24 +147,24 @@ for (const [letter, names] of groups) {
 
 <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1 }}>
   {(row) => (
-    <if
+    <If
       when={"header" in row()}
-      else={<text style={{ padding: 12 }}>{(row() as { name: string }).name}</text>}
+      else={<Text style={{ padding: 12 }}>{(row() as { name: string }).name}</Text>}
     >
-      <text style={{ padding: 6, backgroundColor: "#eaeef2", fontWeight: "700" }}>{(row() as { header: string }).header}</text>
-    </if>
+      <Text style={{ padding: 6, backgroundColor: "#eaeef2", fontWeight: "700" }}>{(row() as { header: string }).header}</Text>
+    </If>
   )}
 </List>
 ```
 
-Because a cell may show a header now and a name later, the row decides what to render with [`<if>`](../elements/control-flow.md), which switches when the item changes. Sticky headers need one column and a list that is not inverted.
+Because a cell may show a header now and a name later, the row decides what to render with [`<If>`](../elements/control-flow.md), which switches when the item changes. Sticky headers need one column and a list that is not inverted.
 
 ## Chat: inverted lists
 
 `inverted` lays the list out from the end: item 0 is at the bottom, the list starts scrolled to the end, and it keeps its distance from the end as items change. Keep the newest message first in the array; prepend to add one, append to load older ones with `onEndReached` (the "end" of an inverted list is the top).
 
 ```tsx
-import { mount, signal } from "nsh";
+import { Input, mount, signal, Text, View } from "nsh";
 import { List } from "nsh/list";
 import { KeyboardAvoidingView } from "nsh/ui/mobile";
 
@@ -194,7 +194,7 @@ function Chat() {
         onEndReachedThreshold={0.5}
       >
         {(m) => (
-          <view
+          <View
             style={{
               alignSelf: m().mine ? "flex-end" : "flex-start",
               maxWidth: "75%",
@@ -204,12 +204,12 @@ function Chat() {
               backgroundColor: m().mine ? "#0969da" : "#eaeef2",
             }}
           >
-            <text style={{ color: m().mine ? "#ffffff" : "#1f2328" }}>{m().text}</text>
-          </view>
+            <Text style={{ color: m().mine ? "#ffffff" : "#1f2328" }}>{m().text}</Text>
+          </View>
         )}
       </List>
-      <view style={{ flexDirection: "row", gap: 8, padding: 8 }}>
-        <input
+      <View style={{ flexDirection: "row", gap: 8, padding: 8 }}>
+        <Input
           value={draft()}
           onChangeText={(t) => draft.set(t)}
           onSubmitEditing={send}
@@ -218,7 +218,7 @@ function Chat() {
           placeholder="Message"
           style={{ flex: 1, borderWidth: 1, borderColor: "#d0d7de", borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 }}
         />
-      </view>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -243,7 +243,7 @@ mount(Chat);
   style={{ height: 140 }}
   contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
 >
-  {(card) => <view style={{ width: 220, height: 140, borderRadius: 14, backgroundColor: card().color }} />}
+  {(card) => <View style={{ width: 220, height: 140, borderRadius: 14, backgroundColor: card().color }} />}
 </List>
 ```
 
@@ -276,7 +276,7 @@ loadMore();
   style={{ flex: 1 }}
   onEndReached={loadMore}
   onEndReachedThreshold={0.5}
-  ListFooterComponent={<text style={{ padding: 16, textAlign: "center", color: "#8c959f" }}>Loading…</text>}
+  ListFooterComponent={<Text style={{ padding: 16, textAlign: "center", color: "#8c959f" }}>Loading…</Text>}
 >
   {(post) => <PostRow post={post()} />}
 </List>
@@ -318,10 +318,11 @@ Give the list a `ref`:
 | `scrollToIndex({ index, animated?, viewPosition?, viewOffset? })` | Scrolls item `index` into view. `viewPosition` places it: 0 at the start of the viewport (default), 0.5 in the middle, 1 at the end; `viewOffset` shifts it further. |
 | `scrollToOffset({ offset, animated? })` | Scrolls to a content offset along the list's axis. |
 | `scrollToEnd({ animated? })` | Scrolls to the end of the content (the start of an inverted list). |
-| `scrollTo({ x?, y?, animated? })` | Scrolls to an offset, as on `<scroll>`. |
+| `scrollTo({ x?, y?, animated? })` | Scrolls to an offset, as on `<Scroll>`. |
 
 ```tsx
 import { type YNode } from "nsh";
+import { List } from "nsh/list";
 
 let list!: YNode;
 
@@ -337,10 +338,11 @@ list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 `ListView` from `nsh/ui/mobile` is a ready-made list built on the same machinery: you pass `each` and render a row, and it adds the padding, dividers and an `inset` grouped look. Use it for settings-style and plain lists that should look like the rest of the mobile UI set; use `List` when you control the whole look. See [ListView](../components/list-view.md).
 
 ```tsx
+import { Text } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 <ListView variant="inset" dividers each={settings} keyExtractor={(s) => s.id}>
-  {(s) => <text>{s().label}</text>}
+  {(s) => <Text>{s().label}</Text>}
 </ListView>
 ```
 
@@ -353,6 +355,6 @@ import { ListView } from "nsh/ui/mobile";
 ## Related
 
 - [`List` element](../elements/list.md) and [`nsh/list`](../modules/nsh-list.md): the reference.
-- [Scrolling](./scrolling.md): the scrolling props lists share with `<scroll>`.
+- [Scrolling](./scrolling.md): the scrolling props lists share with `<Scroll>`.
 - [Reactivity](./reactivity.md): why `item()` is a function.
 - [Performance](./performance.md): measuring lists.

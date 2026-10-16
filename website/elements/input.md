@@ -1,22 +1,22 @@
 ---
-title: input
+title: Input
 description: "The native text field: controlled and uncontrolled text, keyboards, autofill, selection, multiline inputs and focus."
 order: 6
 demo: el-input
 ---
 
-# input
+# Input
 
-`<input>` is a native text field: a UITextField (single line) or UITextView (`multiline`) on iOS and Mac Catalyst, an
+`<Input>` is a native text field: a UITextField (single line) or UITextView (`multiline`) on iOS and Mac Catalyst, an
 EditText on Android. Typing, the caret, selection, autocorrection and autofill are the platform's own.
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 
 function NameField() {
   const name = signal("");
   return (
-    <input
+    <Input
       value={name()}
       onChangeText={(text) => name.set(text)}
       placeholder="Your name"
@@ -86,7 +86,7 @@ view styles apply):
 | `inputAccessoryViewID` | `string` | The `nativeID` of an `InputAccessoryView` ([`nsh/ios`](../modules/nsh-ios.md)) shown over the keyboard while the input has focus. |
 
 ```tsx
-<input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />
+<Input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />
 ```
 
 ## Events
@@ -104,7 +104,7 @@ A multiline input that grows with its text:
 
 ```tsx
 const height = signal(40);
-<input
+<Input
   multiline
   onContentSizeChange={(e) => height.set(Math.min(120, Math.max(40, e.height + 16)))}
   style={{ height: height(), paddingHorizontal: 12, paddingVertical: 8 }}
@@ -124,8 +124,8 @@ Moving focus to the next field on return:
 ```tsx
 let password!: YNode;
 <>
-  <input returnKeyType="next" onSubmitEditing={() => password.focus()} />
-  <input ref={password} secureTextEntry autoComplete="current-password" />
+  <Input returnKeyType="next" onSubmitEditing={() => password.focus()} />
+  <Input ref={password} secureTextEntry autoComplete="current-password" />
 </>;
 ```
 
@@ -133,7 +133,7 @@ let password!: YNode;
 
 ## Platform notes
 
-- Inputs inside a [`<scroll>`](./scroll.md#keyboard) are kept clear of the keyboard natively. Elsewhere use
+- Inputs inside a [`<Scroll>`](./scroll.md#keyboard) are kept clear of the keyboard natively. Elsewhere use
   `KeyboardAvoidingView`.
 - `disabled` disables the input as well as applying `disabled:` classes.
 - `inputAccessoryViewID` has no effect on Android, which has no keyboard accessory bar.

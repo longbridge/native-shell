@@ -1,22 +1,22 @@
 ---
-title: view
+title: View
 description: 最基础的容器元素：布局、背景、边框、阴影、按压处理和手势。
 order: 2
 demo: el-view
 ---
 
-# view
+# View
 
-`<view>` 是每个界面的基本构件：一个原生容器（iOS 和 Mac Catalyst 上是 UIView，Android 上是 ViewGroup），用 flexbox 或 grid 布局子元素，绘制背景、边框、阴影和渐变，并处理按压。按钮、卡片、列表行和整个界面都是 view。
+`<View>` 是每个界面的基本构件：一个原生容器（iOS 和 Mac Catalyst 上是 UIView，Android 上是 ViewGroup），用 flexbox 或 grid 布局子元素，绘制背景、边框、阴影和渐变，并处理按压。按钮、卡片、列表行和整个界面都是 view。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function App() {
   const liked = signal(false);
   return (
-    <view style={{ flex: 1, padding: 24, gap: 16, backgroundColor: "#f6f8fa" }}>
-      <view
+    <View style={{ flex: 1, padding: 24, gap: 16, backgroundColor: "#f6f8fa" }}>
+      <View
         style={{
           backgroundColor: "#ffffff",
           borderRadius: 16,
@@ -27,13 +27,13 @@ function App() {
           gap: 12,
         }}
       >
-        <view style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#8250df" }} />
-        <text style={{ flex: 1, fontSize: 16 }}>一张卡片</text>
-        <view onPress={() => liked.set(!liked())} activeOpacity={0.5} hitSlop={8}>
-          <text style={{ fontSize: 22 }}>{liked() ? "♥" : "♡"}</text>
-        </view>
-      </view>
-    </view>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#8250df" }} />
+        <Text style={{ flex: 1, fontSize: 16 }}>一张卡片</Text>
+        <View onPress={() => liked.set(!liked())} activeOpacity={0.5} hitSlop={8}>
+          <Text style={{ fontSize: 22 }}>{liked() ? "♥" : "♡"}</Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -48,7 +48,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 
 ## 属性
 
-除[通用属性](./index.md)外，`<view>` 没有自己的属性：`style`（`ViewStyle`）、`class`、`classList`、`disabled`，按压属性（`onPress`、`onLongPress`、`onPressIn`、`onPressOut`、`delayLongPress`、`activeOpacity`、`underlayColor`、`underlayOpacity`、`hitSlop`、`pointerEvents`），`onLayout`、`ref`、`nativeID`、`testID`，手势属性（`pan`、`pinch`、`rotation` 及其事件），触摸与响应者属性，无障碍属性，以及 `ios` / `android` / `desktop`。
+除[通用属性](./index.md)外，`<View>` 没有自己的属性：`style`（`ViewStyle`）、`class`、`classList`、`disabled`，按压属性（`onPress`、`onLongPress`、`onPressIn`、`onPressOut`、`delayLongPress`、`activeOpacity`、`underlayColor`、`underlayOpacity`、`hitSlop`、`pointerEvents`），`onLayout`、`ref`、`nativeID`、`testID`，手势属性（`pan`、`pinch`、`rotation` 及其事件），触摸与响应者属性，无障碍属性，以及 `ios` / `android` / `desktop`。
 
 ## 按压反馈
 
@@ -56,13 +56,13 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 
 ```tsx
 // 整个视图淡化。
-<view onPress={open} activeOpacity={0.6}>…</view>
+<View onPress={open} activeOpacity={0.6}>…</View>
 
 // 显示背景色并淡化子元素（默认 0.85）。
-<view onPress={open} underlayColor="#e5e7eb" underlayOpacity={0.7}>…</view>
+<View onPress={open} underlayColor="#e5e7eb" underlayOpacity={0.7}>…</View>
 
 // 用 active: 类在按下时改变任意样式。
-<view onPress={open} class="bg-blue-600 active:bg-blue-800 active:scale-95">…</view>
+<View onPress={open} class="bg-blue-600 active:bg-blue-800 active:scale-95">…</View>
 ```
 
 在 Android 上，`android={{ ripple: { color: "#0000001f" } }}` 会加上 Material 水波纹（可用 `borderless`、`radius` 和 `foreground` 调整）。
@@ -70,7 +70,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 `disabled` 会从原生视图上移除按压监听（既不响应按压，也没有反馈），并应用 `disabled:` 类：
 
 ```tsx
-<view onPress={submit} disabled={!valid()} class="bg-green-600 disabled:opacity-40">…</view>
+<View onPress={submit} disabled={!valid()} class="bg-green-600 disabled:opacity-40">…</View>
 ```
 
 ## 事件
@@ -94,7 +94,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 
 ## 文本中的视图
 
-放在 `<text>` 里的 `<view>` 是行内附件：它坐落在基线上、随文字一起换行，并且可以单独响应按压。参见 [text](./text.md)。
+放在 `<Text>` 里的 `<View>` 是行内附件：它坐落在基线上、随文字一起换行，并且可以单独响应按压。参见 [text](./text.md)。
 
 ## 平台说明
 

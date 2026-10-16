@@ -10,12 +10,12 @@ demo: guide-canvas
 `Canvas` from `nsh/canvas` is a view you draw into with the HTML Canvas 2D API: charts, progress rings, gauges, signatures, custom icons, anything that is easier to draw than to build out of views. Your `draw` function records the drawing in one go; the platform replays it natively (Core Graphics on iOS, `android.graphics.Canvas` on Android) at the screen's resolution, so drawings stay sharp at any pixel density.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 function App() {
   return (
-    <view style={{ flex: 1, padding: 24, paddingTop: 60 }}>
+    <View style={{ flex: 1, padding: 24, paddingTop: 60 }}>
       <Canvas
         style={{ height: 200, borderRadius: 12, backgroundColor: "#ffffff" }}
         draw={(ctx, { width, height }) => {
@@ -28,14 +28,14 @@ function App() {
           ctx.strokeRect(20, 20, width - 40, height - 40);
         }}
       />
-    </view>
+    </View>
   );
 }
 
 mount(App);
 ```
 
-A `Canvas` takes every prop of a [`view`](../elements/view.md) (style, classes, touch handlers, accessibility, `ref`) plus `draw`. It needs a size from its style or layout; its content is the drawing. Coordinates are in points, with the origin at the top left.
+A `Canvas` takes every prop of a [`View`](../elements/view.md) (style, classes, touch handlers, accessibility, `ref`) plus `draw`. It needs a size from its style or layout; its content is the drawing. Coordinates are in points, with the origin at the top left.
 
 ## When draw runs
 
@@ -173,6 +173,7 @@ Font families are the same as in styles: system families and the names of fonts 
 `drawImage` takes a URL, an imported asset (`import logo from "./logo.png"`) or `{ uri }`. The image is loaded natively, and the canvas draws again once it has loaded, so you do not need to track loading yourself. Remote URLs are subject to the app's [network capabilities](./sandbox-and-capabilities.md).
 
 ```tsx
+import { Canvas } from "nsh/canvas";
 import logo from "./logo.png";
 
 <Canvas
@@ -195,7 +196,7 @@ The nine-argument form takes the source rectangle in the image's pixels.
 Any number argument of a drawing call, and `fillStyle` / `strokeStyle`, can be a [native value](./animation.md#native-values) or a node derived from it. Such arguments are read while the platform draws, and when the value animates, the platform redraws on its own, every frame, without running `draw` or any other JS.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 
@@ -207,7 +208,7 @@ function Ring() {
     progress.timing(to, { duration: 900, easing: Easing.inOut(Easing.cubic) });
   };
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
       <Canvas
         style={{ width: 140, height: 140 }}
         draw={(ctx, { width, height }) => {
@@ -230,10 +231,10 @@ function Ring() {
           ctx.fillText(`${label()}%`, cx, cy);
         }}
       />
-      <view onPress={() => go(Math.random())}>
-        <text style={{ color: "#0969da" }}>Animate</text>
-      </view>
-    </view>
+      <View onPress={() => go(Math.random())}>
+        <Text style={{ color: "#0969da" }}>Animate</Text>
+      </View>
+    </View>
   );
 }
 
@@ -284,6 +285,6 @@ const strokes = signal<[number, number][][]>([]);
 
 ## Related
 
-- [`canvas` element](../elements/canvas.md) and [`nsh/canvas`](../modules/nsh-canvas.md): the reference.
+- [`Canvas` element](../elements/canvas.md) and [`nsh/canvas`](../modules/nsh-canvas.md): the reference.
 - [Animation](./animation.md): native values, `interpolate` and `Easing`.
 - [Images and assets](./images-and-assets.md): importing images.

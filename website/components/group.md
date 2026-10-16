@@ -17,27 +17,27 @@ import { Group } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Group } from "nsh/ui/mobile";
 
 function App() {
   const sounds = signal(true);
   return (
-    <view style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 48 }}>
       <Group
-        header={<text>NOTIFICATIONS</text>}
-        footer={<text>Sounds play for new messages only.</text>}
+        header={<Text>NOTIFICATIONS</Text>}
+        footer={<Text>Sounds play for new messages only.</Text>}
       >
-        <text>Show previews</text>
-        <view
+        <Text>Show previews</Text>
+        <View
           onPress={() => sounds.set(!sounds())}
           style={{ flexDirection: "row", justifyContent: "space-between" }}
         >
-          <text>Sounds</text>
-          <text>{sounds() ? "On" : "Off"}</text>
-        </view>
+          <Text>Sounds</Text>
+          <Text>{sounds() ? "On" : "Off"}</Text>
+        </View>
       </Group>
-    </view>
+    </View>
   );
 }
 
@@ -50,20 +50,20 @@ Group wraps each child in a row with 16 pt horizontal and 12 pt vertical padding
 smallest comfortable touch target. The content is centered vertically. Every row except the first has a 1 pt divider
 at its top.
 
-A row is whatever you pass, so put a `<view>` with `flexDirection: "row"` in it to place a label and a value, and an
+A row is whatever you pass, so put a `<View>` with `flexDirection: "row"` in it to place a label and a value, and an
 `onPress` on that view to make the row pressable. When a child is added or removed, for example with
-[`<if>` or `<each>`](../elements/control-flow.md), the group updates the rows and dividers.
+[`<If>` or `<Each>`](../elements/control-flow.md), the group updates the rows and dividers.
 
 ```tsx
-<Group header={<text>DEVICES</text>}>
-  <each of={devices()}>
+<Group header={<Text>DEVICES</Text>}>
+  <Each of={devices()}>
     {(device) => (
-      <view style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <text>{device().name}</text>
-        <text style={{ color: "#737373" }}>{device().status}</text>
-      </view>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text>{device().name}</Text>
+        <Text style={{ color: "#737373" }}>{device().status}</Text>
+      </View>
     )}
-  </each>
+  </Each>
 </Group>
 ```
 

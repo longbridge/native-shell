@@ -11,7 +11,7 @@ nsh apps make HTTP requests with the standard `fetch`. It runs on the platform's
 ## Getting JSON
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 
 type Post = { id: number; title: string };
 
@@ -31,12 +31,12 @@ function App() {
   })();
 
   return (
-    <scroll style={{ flex: 1 }}>
-      <view style={{ padding: 16, paddingTop: 60, gap: 8 }}>
-        <text style={{ color: "#57606a" }}>{status()}</text>
-        <each of={posts()}>{(post) => <text numberOfLines={1}>{post().title}</text>}</each>
-      </view>
-    </scroll>
+    <Scroll style={{ flex: 1 }}>
+      <View style={{ padding: 16, paddingTop: 60, gap: 8 }}>
+        <Text style={{ color: "#57606a" }}>{status()}</Text>
+        <Each of={posts()}>{(post) => <Text numberOfLines={1}>{post().title}</Text>}</Each>
+      </View>
+    </Scroll>
   );
 }
 
@@ -162,7 +162,7 @@ const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 A component that loads data should cancel when it goes away, with [`cleanup`](./reactivity.md):
 
 ```tsx
-import { cleanup, signal } from "nsh";
+import { cleanup, signal, Text } from "nsh";
 
 function Weather(props: { city: string }) {
   const data = signal<unknown>(null);
@@ -172,7 +172,7 @@ function Weather(props: { city: string }) {
     .then((r) => r.json())
     .then((d) => data.set(d))
     .catch(() => {});
-  return <text>{JSON.stringify(data())}</text>;
+  return <Text>{JSON.stringify(data())}</Text>;
 }
 ```
 

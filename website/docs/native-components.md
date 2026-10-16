@@ -12,7 +12,7 @@ A native component is a view the **embedding app** registers by name: a map, a c
 app, sends it props, delivers its events to handlers and forwards commands from a `ref`.
 
 Because nsh renders with the system's own views, a native component is just one more subview in the same hierarchy:
-there is no layering problem, it clips, scrolls and receives touches like a `<view>`.
+there is no layering problem, it clips, scrolls and receives touches like a `<View>`.
 
 > [!NOTE]
 > Native components exist only where an app embeds nsh ([iOS](./embedding-ios.md), [Android](./embedding-android.md)).
@@ -32,7 +32,7 @@ there is no layering problem, it clips, scrolls and receives touches like a `<vi
 ## Declaring the component in JS
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, type YNode } from "nsh";
 import { nativeComponent } from "nsh/native";
 import { SafeAreaView } from "nsh/ui/mobile";
 
@@ -49,7 +49,7 @@ function App() {
   let badge: YNode | undefined;
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, gap: 16, backgroundColor: "#f6f8fa" }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</text>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</Text>
       <Badge
         ref={(node) => (badge = node)}
         text={taps() === 0 ? "Tap the native badge" : `Tapped ${taps()}×`}
@@ -60,7 +60,7 @@ function App() {
         }}
         style={{ alignSelf: "flex-start", borderRadius: 8, overflow: "hidden" }}
       />
-      <text>{`JS saw ${taps()} taps`}</text>
+      <Text>{`JS saw ${taps()} taps`}</Text>
     </SafeAreaView>
   );
 }
@@ -90,7 +90,7 @@ The type parameters describe the props (`P`) and the payload of each event (`E`)
 - the component's own props `P`;
 - a handler per event: event `tap` is handled by `onTap`, `regionChange` by `onRegionChange` (the first letter is
   capitalized and `on` prepended);
-- everything a `<view>` takes except children: `style`, `class` / `classList` ([Tailwind](./tailwind.md)), layout,
+- everything a `<View>` takes except children: `style`, `class` / `classList` ([Tailwind](./tailwind.md)), layout,
   accessibility props, `testID`, `onLayout`, `ref`. These belong to the container nsh draws, not to the component.
 
 A native component is a leaf: it takes no children.
@@ -152,7 +152,7 @@ are applied in order with the changes made before them, so a command issued righ
 
 ## Sizing
 
-The container is laid out like a `<view>`:
+The container is laid out like a `<View>`:
 
 - Where the style gives a dimension (`width`, `height`, `flex: 1`, `alignSelf: "stretch"`, ...), that dimension wins.
 - Where the style leaves a dimension open, the container takes the size the component reported with `setSize`, like an

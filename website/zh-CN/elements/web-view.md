@@ -1,35 +1,33 @@
 ---
-title: web-view
-description: web view 元素与 WebView 组件：在应用中显示网页和内联 HTML，并支持双向通信。
+title: WebView
+description: WebView 组件：在应用中显示网页和内联 HTML，并支持双向通信。
 order: 9
 ---
 
-# web-view
+# WebView
 
 web view 在应用内显示一个网页，或你传入的一段 HTML：iOS 和 Mac Catalyst 上是 WKWebView，Android 上是 `android.webkit.WebView`。由于 nsh 用原生视图渲染，web view 和其他视图一样处在布局中：没有覆盖层，与周围视图之间也不存在层级问题。
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 
 function Browser() {
   const nav = signal<WebViewNavigation | null>(null);
   return (
-    <view style={{ flex: 1 }}>
-      <text numberOfLines={1}>{nav()?.title ?? "Loading…"}</text>
+    <View style={{ flex: 1 }}>
+      <Text numberOfLines={1}>{nav()?.title ?? "Loading…"}</Text>
       <WebView
         source="https://example.com"
         style={{ flex: 1 }}
         onNavigationStateChange={(e) => nav.set(e)}
       />
-    </view>
+    </View>
   );
 }
 ```
 
-## `WebView` 与 `<web-view>`
-
-[`nsh/webview`](../modules/nsh-webview.md) 的 `WebView` 是 `<web-view>` 标签的带类型版本：同一个元素、同样的属性，但属性会经过类型检查，且 `source` 是必填的。裸标签在 TypeScript 中接受任意属性。优先使用 `WebView`。[Web view 与视频指南](../docs/web-view-and-video.md)介绍了通信模式和能力声明。
+`WebView` 从 [`nsh/webview`](../modules/nsh-webview.md) 导入，`source` 是必填的。[Web view 与视频指南](../docs/web-view-and-video.md)介绍了通信模式和能力声明。
 
 ## 属性
 
@@ -75,7 +73,7 @@ function Browser() {
 应用和页面之间交换的是字符串。页面通过 `window.ReactNativeWebView.postMessage(data)` 发送；应用通过 ref 的 `postMessage(data)` 发送。结构化数据请用 JSON。
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { WebView } from "nsh/webview";
 
 const page = `<!doctype html>
@@ -90,10 +88,10 @@ function Bridge() {
   const message = signal("");
   let web!: YNode;
   return (
-    <view style={{ gap: 12 }}>
+    <View style={{ gap: 12 }}>
       <WebView ref={web} source={{ html: page }} style={{ height: 200 }} onMessage={(e) => message.set(e.data)} />
-      <text onPress={() => web.postMessage("hi from the app")}>Post to the page · got: {message()}</text>
-    </view>
+      <Text onPress={() => web.postMessage("hi from the app")}>Post to the page · got: {message()}</Text>
+    </View>
   );
 }
 ```

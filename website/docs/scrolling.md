@@ -7,46 +7,46 @@ demo: guide-scrolling
 
 # Scrolling
 
-`<scroll>` is the platform's own scroll view (UIScrollView on iOS, a ScrollView on Android): flings, bounces, the scroll indicator and pull to refresh are native, and so is snapping. JS hears about scrolling through events and can bind the offset to a [native value](./animation.md#native-values) for effects that follow the finger frame by frame.
+`<Scroll>` is the platform's own scroll view (UIScrollView on iOS, a ScrollView on Android): flings, bounces, the scroll indicator and pull to refresh are native, and so is snapping. JS hears about scrolling through events and can bind the offset to a [native value](./animation.md#native-values) for effects that follow the finger frame by frame.
 
-Use `<scroll>` for content of a known, moderate size: a settings page, a form, an article, a row of chips. For long or unbounded data use [`List`](./lists.md), which recycles rows and accepts the same scrolling props.
+Use `<Scroll>` for content of a known, moderate size: a settings page, a form, an article, a row of chips. For long or unbounded data use [`List`](./lists.md), which recycles rows and accepts the same scrolling props.
 
 ## A scroll view
 
-A `<scroll>` is the viewport; its children are the content. The viewport needs a size from its parent (usually `flex: 1`), and the content is laid out at the viewport's width (vertical) or height (horizontal) and as long as it needs to be.
+A `<Scroll>` is the viewport; its children are the content. The viewport needs a size from its parent (usually `flex: 1`), and the content is laid out at the viewport's width (vertical) or height (horizontal) and as long as it needs to be.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 
 function App() {
   return (
-    <scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
-      <view style={{ padding: 16, gap: 12 }}>
-        <each of={Array.from({ length: 50 }, (_, i) => i + 1)}>
+    <Scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
+      <View style={{ padding: 16, gap: 12 }}>
+        <Each of={Array.from({ length: 50 }, (_, i) => i + 1)}>
           {(n) => (
-            <view style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
-              <text>Row {n()}</text>
-            </view>
+            <View style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
+              <Text>Row {n()}</Text>
+            </View>
           )}
-        </each>
-      </view>
-    </scroll>
+        </Each>
+      </View>
+    </Scroll>
   );
 }
 
 mount(App);
 ```
 
-`<scroll>` has no `contentContainerStyle`: put padding and gaps on a single child view, as above. A horizontal scroll view takes `horizontal` and a row as its child:
+`<Scroll>` has no `contentContainerStyle`: put padding and gaps on a single child view, as above. A horizontal scroll view takes `horizontal` and a row as its child:
 
 ```tsx
-<scroll horizontal showsIndicator={false}>
-  <view style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16 }}>
-    <each of={["Today", "This week", "This month", "This year"]}>
-      {(label) => <text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "#ffffff" }}>{label()}</text>}
-    </each>
-  </view>
-</scroll>
+<Scroll horizontal showsIndicator={false}>
+  <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16 }}>
+    <Each of={["Today", "This week", "This month", "This year"]}>
+      {(label) => <Text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "#ffffff" }}>{label()}</Text>}
+    </Each>
+  </View>
+</Scroll>
 ```
 
 Right to left (see [Device and environment](./device-and-environment.md#right-to-left)), a horizontal scroll view starts at its right end and keeps its distance from it.
@@ -78,7 +78,7 @@ Snapping is decided natively when the finger lifts, from the release offset, the
 A pager: pages as wide as the scroll view, and an indicator updated when the glide ends.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 
 const colors = ["#0969da", "#8250df", "#bf3989", "#1a7f37"];
 
@@ -87,8 +87,8 @@ function Pager() {
   const page = signal(0);
   const settle = (e: { x: number }) => page.set(Math.round(e.x / width()));
   return (
-    <view style={{ gap: 8, padding: 16 }}>
-      <scroll
+    <View style={{ gap: 8, padding: 16 }}>
+      <Scroll
         horizontal
         pagingEnabled
         showsIndicator={false}
@@ -96,22 +96,22 @@ function Pager() {
         onLayout={(e) => width.set(e.width)}
         onScrollEnd={settle}
       >
-        <view style={{ flexDirection: "row" }}>
-          <each of={colors}>
+        <View style={{ flexDirection: "row" }}>
+          <Each of={colors}>
             {(color, i) => (
-              <view style={{ width: width(), height: 160, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
-                <text style={{ color: "#ffffff", fontSize: 24, fontWeight: "700" }}>Page {i() + 1}</text>
-              </view>
+              <View style={{ width: width(), height: 160, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: "#ffffff", fontSize: 24, fontWeight: "700" }}>Page {i() + 1}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </scroll>
-      <view style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
-        <each of={colors}>
-          {(_, i) => <view style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: page() === i() ? "#0969da" : "#d0d7de" }} />}
-        </each>
-      </view>
-    </view>
+          </Each>
+        </View>
+      </Scroll>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
+        <Each of={colors}>
+          {(_, i) => <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: page() === i() ? "#0969da" : "#d0d7de" }} />}
+        </Each>
+      </View>
+    </View>
   );
 }
 
@@ -121,7 +121,7 @@ mount(Pager);
 A carousel of cards that snap to the center, one card per fling:
 
 ```tsx
-<scroll
+<Scroll
   horizontal
   snapToInterval={232}          // card width (220) + gap (12)
   snapToAlignment="center"
@@ -129,8 +129,8 @@ A carousel of cards that snap to the center, one card per fling:
   disableIntervalMomentum
   showsIndicator={false}
 >
-  <view style={{ flexDirection: "row", gap: 12, paddingHorizontal: 16 }}>…</view>
-</scroll>
+  <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 16 }}>…</View>
+</Scroll>
 ```
 
 `List` takes the same snapping props, which is the better choice for a long carousel.
@@ -152,13 +152,13 @@ A carousel of cards that snap to the center, one card per fling:
 ```tsx
 const atBottom = signal(false);
 
-<scroll
+<Scroll
   style={{ flex: 1 }}
   scrollEventThrottle={100}
   onScroll={(e) => atBottom.set(e.y + e.height >= e.contentHeight - 20)}
 >
   …
-</scroll>
+</Scroll>
 ```
 
 > [!TIP]
@@ -169,14 +169,14 @@ const atBottom = signal(false);
 `scrollValue` takes a [native value](./animation.md#native-values) and writes the scroll offset (along the main axis) into it natively, in the same frame the content moves. Bind that value, or nodes derived from it with `interpolate`, `diffClamp` or arithmetic, to styles.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
   const offset = createNativeValue(0);
   return (
-    <view style={{ flex: 1 }}>
-      <view
+    <View style={{ flex: 1 }}>
+      <View
         style={{
           height: 56,
           justifyContent: "center",
@@ -185,7 +185,7 @@ function App() {
           backgroundColor: offset.interpolate({ inputRange: [0, 80], outputRange: ["rgba(255,255,255,0)", "#ffffff"] }),
         }}
       >
-        <text
+        <Text
           style={{
             fontSize: 22,
             fontWeight: "700",
@@ -194,12 +194,12 @@ function App() {
           }}
         >
           Inbox
-        </text>
-      </view>
-      <scroll style={{ flex: 1 }} scrollValue={offset}>
-        <view style={{ padding: 16, gap: 8 }}>…</view>
-      </scroll>
-    </view>
+        </Text>
+      </View>
+      <Scroll style={{ flex: 1 }} scrollValue={offset}>
+        <View style={{ padding: 16, gap: 8 }}>…</View>
+      </Scroll>
+    </View>
   );
 }
 
@@ -212,12 +212,12 @@ A header that slides away while the content scrolls up and comes back as soon as
 const offset = createNativeValue(0);
 const header = offset.diffClamp(0, 56);
 
-<view style={{ flex: 1 }}>
-  <scroll style={{ flex: 1 }} scrollValue={offset}>
-    <view style={{ paddingTop: 56 }}>…</view>
-  </scroll>
-  <view style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</view>
-</view>
+<View style={{ flex: 1 }}>
+  <Scroll style={{ flex: 1 }} scrollValue={offset}>
+    <View style={{ paddingTop: 56 }}>…</View>
+  </Scroll>
+  <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</View>
+</View>
 ```
 
 Interpolations clamp outside their input range by default, so pulling past the top (a negative offset) does not overshoot the effect; pass `extrapolate: "extend"` for a stretchy header that grows as you pull.
@@ -237,14 +237,14 @@ const reload = async () => {
   }
 };
 
-<scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>…</scroll>
+<Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>…</Scroll>
 ```
 
 On iOS the control is UIRefreshControl; in the Mac idiom of Mac Catalyst, which has no UIRefreshControl, nsh shows its own spinner with the same behavior. `List` takes the same two props.
 
 ## Zooming
 
-A `<scroll>` (not a `List`) zooms when `maximumZoomScale` is above `minimumZoomScale`: pinching scales the content, and while zoomed in it scrolls both ways.
+A `<Scroll>` (not a `List`) zooms when `maximumZoomScale` is above `minimumZoomScale`: pinching scales the content, and while zoomed in it scrolls both ways.
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
@@ -258,13 +258,14 @@ A `<scroll>` (not a `List`) zooms when `maximumZoomScale` is above `minimumZoomS
 `onScroll` reports `zoomScale` and the zoomed content size. From code, `ref.zoomTo({ scale, x, y, animated })` zooms so that the content point (`x`, `y`, in unzoomed points) lands in the middle of the viewport; double tap to zoom is a press handler calling it:
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, Scroll, signal, type YNode } from "nsh";
+import { Image } from "nsh/image";
 
 function Photo() {
   let scroll!: YNode;
   const scale = signal(1);
   return (
-    <scroll
+    <Scroll
       ref={scroll}
       style={{ flex: 1, backgroundColor: "#000000" }}
       minimumZoomScale={1}
@@ -272,12 +273,12 @@ function Photo() {
       centerContent
       onScroll={(e) => scale.set(e.zoomScale)}
     >
-      <image
+      <Image
         src="https://picsum.photos/id/1015/1200/800"
         style={{ width: 390, height: 260 }}
         onPress={() => scroll.zoomTo({ scale: scale() > 1.5 ? 1 : 3 })}
       />
-    </scroll>
+    </Scroll>
   );
 }
 
@@ -298,8 +299,8 @@ Give the scroll view a [`ref`](./jsx-and-components.md) and call its methods. Co
 ```tsx
 let scroll!: YNode;
 
-<scroll ref={scroll} style={{ flex: 1 }}>…</scroll>
-<view onPress={() => scroll.scrollTo({ y: 0 })}>…</view>
+<Scroll ref={scroll} style={{ flex: 1 }}>…</Scroll>
+<View onPress={() => scroll.scrollTo({ y: 0 })}>…</View>
 ```
 
 Lists add `scrollToIndex`, `scrollToOffset` and `scrollToEnd`; see [Lists](./lists.md#scrolling-from-code).
@@ -329,7 +330,7 @@ A horizontal scroll view inside a vertical one works as expected: each takes the
 
 ## Related
 
-- [`scroll`](../elements/scroll.md): the element reference, every prop and event.
+- [`Scroll`](../elements/scroll.md): the element reference, every prop and event.
 - [Lists](./lists.md): virtualized lists with the same scrolling props.
 - [Animation](./animation.md): native values, `interpolate` and `diffClamp` for scroll-linked effects.
 - [Forms and the keyboard](./forms-and-keyboard.md): inputs, focus and the keyboard.

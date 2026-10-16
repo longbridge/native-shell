@@ -1,25 +1,27 @@
 ---
-title: image
+title: Image
 description: 显示打包资源或远程图片的元素，支持占位图、模糊、淡入、着色和加载事件。
 order: 4
 ---
 
-# image
+# Image
 
-`<image>` 显示来自应用资源或 URL 的图片。图片在主线程之外下载和解码，按视图显示的尺寸降采样，并缓存在内存中。动态 GIF、WebP 和 APNG 图片会自动播放。
+`<Image>` 显示来自应用资源或 URL 的图片。图片在主线程之外下载和解码，按视图显示的尺寸降采样，并缓存在内存中。动态 GIF、WebP 和 APNG 图片会自动播放。
 
 ```tsx
+import { View } from "nsh";
+import { Image } from "nsh/image";
 import logo from "./assets/logo.png";
 
-<view style={{ flexDirection: "row", gap: 12 }}>
-  <image src={logo} />
-  <image
+<View style={{ flexDirection: "row", gap: 12 }}>
+  <Image src={logo} />
+  <Image
     src="https://example.com/avatar.jpg"
     defaultSource={logo}
     resizeMode="cover"
     style={{ width: 64, height: 64, borderRadius: 32 }}
   />
-</view>;
+</View>;
 ```
 
 导入的资源知道自己的尺寸：不设 `width` 和 `height` 时图片使用该尺寸；只设其中一个时，另一个按资源的宽高比计算。URL 在加载完成前没有已知尺寸，所以要给远程图片设置 `width` 和 `height`（或者其中一个加上 `aspectRatio`）。
@@ -60,7 +62,7 @@ import logo from "./assets/logo.png";
 `ImageStyle` 在视图样式之上增加了 `tintColor`：为模板图片（单色绘制的图标）重新着色。
 
 ```tsx
-<image src={icon} style={{ width: 24, height: 24, tintColor: "#0969da" }} />
+<Image src={icon} style={{ width: 24, height: 24, tintColor: "#0969da" }} />
 ```
 
 ## 事件
@@ -75,7 +77,7 @@ import logo from "./assets/logo.png";
 
 ```tsx
 const state = signal("加载中");
-<image
+<Image
   src={url}
   style={{ width: "100%", aspectRatio: 16 / 9 }}
   onLoad={(e) => state.set(`${e.width}×${e.height} px`)}
@@ -83,7 +85,7 @@ const state = signal("加载中");
 />;
 ```
 
-如果需要在显示前获取图片尺寸或预先加载，请使用 [`nsh/image`](../modules/nsh-image.md) 的 `Image.getSize(uri)` 和 `Image.prefetch(uri)`。从 `nsh/image` 导入 `Image` 不会替换 `<image>` 元素。
+如果需要在显示前获取图片尺寸或预先加载，请调用 `Image.getSize(uri)` 和 `Image.prefetch(uri)`：它们就挂在渲染这个元素的、来自 [`nsh/image`](../modules/nsh-image.md) 的同一个 `Image` 上。
 
 ## ref 方法
 

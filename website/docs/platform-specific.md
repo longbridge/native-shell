@@ -20,16 +20,16 @@ One nsh bundle runs on iOS, Android and Mac Catalyst. Most of an app needs no pl
 Props that exist on one platform only are grouped in an object named after it. Each element accepts `ios`, `android` and `desktop` (macOS, Windows, Linux); on other platforms the object is ignored, and on its own platform only its keys are applied.
 
 ```tsx
-<view
+<View
   onPress={open}
   activeOpacity={0.6}
   android={{ ripple: { color: "rgba(0,0,0,0.12)" }, elevation: 4 }}
   style={{ padding: 16, borderRadius: 12, backgroundColor: "#ffffff" }}
 >
-  <text>Open</text>
-</view>
+  <Text>Open</Text>
+</View>
 
-<input
+<Input
   placeholder="Code"
   ios={{ textContentType: "oneTimeCode" }}
 />
@@ -50,8 +50,8 @@ What exists today:
 | `android={{ accessibilityLiveRegion }}` | every element | `"none"`, `"polite"` or `"assertive"`: TalkBack announces the view's changes. |
 | `android={{ statusBarTranslucent }}` | `Modal` | The modal's content reaches under the status bar. |
 | `android={{ backgroundColor }}` | `StatusBar` | The status bar's color (before Android 15's edge-to-edge). |
-| `ios={{ inputAccessoryViewID }}` | `<input>` | The `InputAccessoryView` shown over the keyboard. |
-| `ios={{ textContentType }}` | `<input>` | iOS's names for autofill types. |
+| `ios={{ inputAccessoryViewID }}` | `<Input>` | The `InputAccessoryView` shown over the keyboard. |
+| `ios={{ textContentType }}` | `<Input>` | iOS's names for autofill types. |
 | `ios={{ headerLargeTitle }}`, `ios={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `ios={{ presentationStyle }}`, `ios={{ supportedOrientations }}` | `Modal` | `"pageSheet"` / `"formSheet"` sheets; allowed orientations. |
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | Swipe back and forward in the page history. |
@@ -113,14 +113,15 @@ See [Forms and the keyboard](./forms-and-keyboard.md#a-bar-over-the-keyboard-ios
 The status bar is set with [`StatusBar`](../components/status-bar.md) from `nsh/ui/mobile`, on both platforms: `barStyle` (`"default"`, `"light-content"`, `"dark-content"`), `hidden` and `animated`, with Android's color in `android={{ backgroundColor }}`. The most recently mounted `StatusBar` wins, prop by prop, so a screen can render one for itself and the previous settings come back when it goes away. `StatusBar.setBarStyle()` and `StatusBar.setHidden()` set the base values imperatively.
 
 ```tsx
+import { View } from "nsh";
 import { StatusBar } from "nsh/ui/mobile";
 
 function PhotoViewer() {
   return (
-    <view style={{ flex: 1, backgroundColor: "#000000" }}>
+    <View style={{ flex: 1, backgroundColor: "#000000" }}>
       <StatusBar barStyle="light-content" animated />
       …
-    </view>
+    </View>
   );
 }
 ```
@@ -168,12 +169,12 @@ Choose components the same way, at module level when the choice never changes:
 const Spinner = Platform.select({ ios: IosSpinner, default: MaterialSpinner })!;
 ```
 
-or inline with [`<if>`](../elements/control-flow.md):
+or inline with [`<If>`](../elements/control-flow.md):
 
 ```tsx
-<if when={Platform.OS === "ios"} else={<text>Android has no input accessories.</text>}>
+<If when={Platform.OS === "ios"} else={<Text>Android has no input accessories.</Text>}>
   <InputAccessoryView nativeID="bar">…</InputAccessoryView>
-</if>
+</If>
 ```
 
 ## Platform variants in Tailwind
@@ -181,8 +182,8 @@ or inline with [`<if>`](../elements/control-flow.md):
 The `ios:` and `android:` variants apply classes on one platform:
 
 ```tsx
-<view class="rounded-xl bg-white p-4 ios:shadow-md android:border android:border-zinc-200">…</view>
-<text class="text-base android:font-medium">Title</text>
+<View class="rounded-xl bg-white p-4 ios:shadow-md android:border android:border-zinc-200">…</View>
+<Text class="text-base android:font-medium">Title</Text>
 ```
 
 ## Prefer shared behavior

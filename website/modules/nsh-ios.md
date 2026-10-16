@@ -12,7 +12,7 @@ order: 11
 import { InputAccessoryView, isAvailable } from "nsh/ios";
 ```
 
-iOS-only *props* of elements and components are not here: they go in the `ios={{…}}` prop (for example `<input ios={{ textContentType: "oneTimeCode" }} />`). See [Platform-specific code](../docs/platform-specific.md).
+iOS-only *props* of elements and components are not here: they go in the `ios={{…}}` prop (for example `<Input ios={{ textContentType: "oneTimeCode" }} />`). See [Platform-specific code](../docs/platform-specific.md).
 
 ## isAvailable
 
@@ -47,15 +47,15 @@ A bar over the keyboard (UIKit's `inputAccessoryView`), shown while an input who
 It renders nothing where it is placed in the tree, and nothing at all on Android, so you can place it next to the input it belongs to.
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { Input, signal, Text, View, type YNode } from "nsh";
 import { InputAccessoryView } from "nsh/ios";
 
 function Note() {
   const text = signal("");
   let input: YNode | undefined;
   return (
-    <view>
-      <input
+    <View>
+      <Input
         ref={(n) => (input = n)}
         value={text()}
         onChangeText={(v) => text.set(v)}
@@ -63,12 +63,12 @@ function Note() {
         ios={{ inputAccessoryViewID: "note-bar" }}
       />
       <InputAccessoryView nativeID="note-bar" style={{ backgroundColor: "#f1f5f9" }}>
-        <view style={{ flexDirection: "row", alignItems: "center", padding: 10 }}>
-          <text style={{ flex: 1, color: "#64748b" }}>{text().length} characters</text>
-          <text onPress={() => input?.blur()} style={{ fontWeight: "600" }}>Done</text>
-        </view>
+        <View style={{ flexDirection: "row", alignItems: "center", padding: 10 }}>
+          <Text style={{ flex: 1, color: "#64748b" }}>{text().length} characters</Text>
+          <Text onPress={() => input?.blur()} style={{ fontWeight: "600" }}>Done</Text>
+        </View>
       </InputAccessoryView>
-    </view>
+    </View>
   );
 }
 ```

@@ -21,17 +21,17 @@ demo: guide-device
 | `reduceMotion()`、`screenReaderEnabled()` | `nsh/accessibility` | 见[无障碍](./accessibility.md)。 |
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
 import { safeArea } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, paddingTop: safeArea().top + 16, paddingHorizontal: 16, backgroundColor: colorScheme() === "dark" ? "#0d1117" : "#ffffff" }}>
-      <text style={{ color: colorScheme() === "dark" ? "#e6edf3" : "#1f2328" }}>
+    <View style={{ flex: 1, paddingTop: safeArea().top + 16, paddingHorizontal: 16, backgroundColor: colorScheme() === "dark" ? "#0d1117" : "#ffffff" }}>
+      <Text style={{ color: colorScheme() === "dark" ? "#e6edf3" : "#1f2328" }}>
         {Math.round(windowSize().width)} × {Math.round(windowSize().height)} pt, text at {fontScale().toFixed(2)}×
-      </text>
-    </view>
+      </Text>
+    </View>
   );
 }
 
@@ -43,16 +43,18 @@ mount(App);
 `windowSize()` 是 nsh 渲染目标 surface 的尺寸：手机上是屏幕，iPad 分屏或 Mac 上是窗口，嵌入时是宿主视图。用它来改变布局，而不只是改变尺寸：
 
 ```tsx
+import { View } from "nsh";
 import { windowSize } from "nsh/device";
+import { Image } from "nsh/image";
 
 function Gallery() {
   const columns = () => (windowSize().width >= 700 ? 4 : windowSize().width >= 500 ? 3 : 2);
   return (
-    <view style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      <each of={photos}>
-        {(p) => <image src={p().url} style={{ width: (windowSize().width - 32 - (columns() - 1) * 8) / columns(), aspectRatio: 1 }} />}
-      </each>
-    </view>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+      <Each of={photos}>
+        {(p) => <Image src={p().url} style={{ width: (windowSize().width - 32 - (columns() - 1) * 8) / columns(), aspectRatio: 1 }} />}
+      </Each>
+    </View>
   );
 }
 ```
@@ -64,15 +66,15 @@ function Gallery() {
 `colorScheme()` 跟随系统外观。支持深色模式最简单的方法是 Tailwind 的 `dark:` 变体，它在 `colorScheme()` 为 `"dark"` 时生效：
 
 ```tsx
-<view class="flex-1 bg-white dark:bg-zinc-900 p-4">
-  <text class="text-zinc-900 dark:text-zinc-100">Follows the system appearance</text>
-</view>
+<View class="flex-1 bg-white dark:bg-zinc-900 p-4">
+  <Text class="text-zinc-900 dark:text-zinc-100">Follows the system appearance</Text>
+</View>
 ```
 
 使用内联样式时，在样式中读取 `colorScheme()`；颜色较多时，先统一派生出一套调色板：
 
 ```tsx
-import { computed } from "nsh";
+import { computed, Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
 
 const palette = computed(() =>
@@ -81,9 +83,9 @@ const palette = computed(() =>
     : { background: "#f6f8fa", surface: "#ffffff", text: "#1f2328", muted: "#57606a" },
 );
 
-<view style={{ flex: 1, backgroundColor: palette().background }}>
-  <text style={{ color: palette().text }}>Hello</text>
-</view>
+<View style={{ flex: 1, backgroundColor: palette().background }}>
+  <Text style={{ color: palette().text }}>Hello</Text>
+</View>
 ```
 
 `nsh/ui/mobile` 的组件从组件主题中取色，主题为每种颜色提供浅色和深色两个值（`nsh.json` 的 `"theme"`），所以它们也会随系统切换。要让状态栏与背景相配，见 [`StatusBar`](../components/status-bar.md)。
@@ -95,13 +97,13 @@ const palette = computed(() =>
 
 `fontScale()` 是用户的文字大小设置（iOS 的动态字体，Android 的字体大小）相对于默认值的比例。文本和输入框会自动跟随：当用户要求更大的文字时，`fontSize: 16` 会渲染得更大。可以针对单个元素关闭或设置上限：
 
-| 属性（`<text>` 和 `<input>`） | 默认值 | 说明 |
+| 属性（`<Text>` 和 `<Input>`） | 默认值 | 说明 |
 |---|---|---|
 | `allowFontScaling` | `true` | 跟随系统文字大小。 |
 | `maxFontSizeMultiplier` | `0`（无上限） | 应用于该文本的最大缩放。 |
 
 ```tsx
-<text style={{ fontSize: 34, fontWeight: "700" }} maxFontSizeMultiplier={1.4}>Today</text>
+<Text style={{ fontSize: 34, fontWeight: "700" }} maxFontSizeMultiplier={1.4}>Today</Text>
 ```
 
 对于不会自动跟随文字的布局，读取 `fontScale()` 来调整，例如文字变大时把横排改为竖排：`flexDirection: fontScale() > 1.3 ? "column" : "row"`。
@@ -115,6 +117,7 @@ const palette = computed(() =>
 - `nsh/ui/mobile` 中的 `SafeAreaView` 是一个按这些 inset 添加内边距的视图（默认四边都加，或用 `edges={["top", "bottom"]}` 指定），叠加在它自己的内边距之上。
 
 ```tsx
+import { View } from "nsh";
 import { SafeAreaView, useSafeAreaInsets } from "nsh/ui/mobile";
 
 function Screen() {
@@ -128,7 +131,7 @@ function Screen() {
 
 function BottomBar() {
   const insets = useSafeAreaInsets();
-  return <view style={{ paddingBottom: insets().bottom + 8, paddingTop: 8, flexDirection: "row" }}>…</view>;
+  return <View style={{ paddingBottom: insets().bottom + 8, paddingTop: 8, flexDirection: "row" }}>…</View>;
 }
 ```
 
@@ -171,10 +174,11 @@ const hapticsSupported = Platform.OS === "ios" || (Platform.OS === "android" && 
 一条一个设备像素高的细线：
 
 ```tsx
+import { View } from "nsh";
 import { PixelRatio } from "nsh/device";
 
 const hairline = 1 / PixelRatio.get();
-<view style={{ height: hairline, backgroundColor: "#d0d7de" }} />
+<View style={{ height: hairline, backgroundColor: "#d0d7de" }} />
 ```
 
 `PixelRatio` 不是响应式的。窗口可能被移到另一块密度不同的屏幕上（接了外接显示器的 Mac），所以在同时读取 `windowSize()` 的组件中读取它，这种情况下 `windowSize()` 会变化。

@@ -6,52 +6,49 @@ order: 1
 
 # 元素
 
-宿主元素就是小写的 JSX 标签：`<view>`、`<text>`、`<image>` 等。每个元素都对应一个原生视图（iOS 和 Mac Catalyst 上是
+宿主元素是构成每个界面的原语：`<View>`、`<Text>`、`<Image>` 等，从 nsh 的模块导入。每个元素都对应一个原生视图（iOS 和 Mac Catalyst 上是
 UIView 子类，Android 上是 `View`），由 nsh 运行时创建并布局。应用显示的一切都由它们组成：
 [`nsh/ui/mobile`](../components/index.md) 的组件同样是用这些元素绘制的。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function App() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
-      <text style={{ fontSize: 24 }}>已点击 {count()} 次</text>
-      <view onPress={() => count.update((n) => n + 1)} activeOpacity={0.6} class="rounded-lg bg-blue-600 px-4 py-2">
-        <text class="text-white">点我</text>
-      </view>
-    </view>
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
+      <Text style={{ fontSize: 24 }}>已点击 {count()} 次</Text>
+      <View onPress={() => count.update((n) => n + 1)} activeOpacity={0.6} class="rounded-lg bg-blue-600 px-4 py-2">
+        <Text class="text-white">点我</Text>
+      </View>
+    </View>
   );
 }
 
 mount(App);
 ```
 
-内置标签无需导入。首字母大写的标签是组件；作用域内的组件也可以写成 kebab-case（`Button` 写作 `<button>`），并且应用自己的绑定优先于同名的内置标签：从
-`nsh/ui/mobile` 导入 `Modal` 后，`<modal>` 就指向该组件。参见 [JSX 与组件](../docs/jsx-and-components.md)。
+每个标签都使用 PascalCase，并指向作用域中的绑定：按下表从各自的模块导入每个元素。只有 `<If>` 和 `<Each>` 是无需导入的全局组件。`<view>` 这样的小写标签会导致构建错误，因为 TypeScript 只能对照每个名称一个的全局类型来检查它，`List`、`Each` 这类泛型组件就无法推断条目类型。编译器通过导入识别这些元素并就地创建原生视图，所以导入它们在运行时没有任何开销。参见 [JSX 与组件](../docs/jsx-and-components.md)。
 
 ## 全部元素
 
-| 标签 | 原生视图（iOS / Android） | 类型化组件 | 页面 |
+| 标签 | 导入自 | 原生视图（iOS / Android） | 页面 |
 |---|---|---|---|
-| `<view>` | UIView / ViewGroup | | [view](./view.md) |
-| `<text>` | CoreText 视图 / StaticLayout 视图 | | [text](./text.md) |
-| `<image>` | 带图片图层的视图 / 图片视图 | | [image](./image.md) |
-| `<scroll>` | UIScrollView / ScrollView | | [scroll](./scroll.md) |
-| `<input>` | UITextField 或 UITextView / EditText | | [input](./input.md) |
-| `<list>` | 复用单元格的 UIScrollView / ScrollView | `List`（`nsh/list`） | [list](./list.md) |
-| `<canvas>` | 回放 2D 绘制的视图 | `Canvas`（`nsh/canvas`） | [canvas](./canvas.md) |
-| `<web-view>` | WKWebView / android.webkit.WebView | `WebView`（`nsh/webview`） | [web-view](./web-view.md) |
-| `<video>` | AVPlayerLayer / TextureView 上的 MediaPlayer | `Video`（`nsh/video`） | [video](./video.md) |
-| `<modal>` | 模态呈现的 view controller / Dialog | `Modal`（`nsh/ui/mobile`） | [modal](./modal.md) |
-| `<input-accessory>` | 键盘上方的工具栏（仅 iOS） | `InputAccessoryView`（`nsh/ios`） | [nsh/ios](../modules/nsh-ios.md) |
-| `<if>`、`<each>` | 无：控制流 | | [控制流](./control-flow.md) |
-
-没有自身类型化形式的标签（`<canvas>`、`<web-view>`、`<video>`、`<modal>`、`<input-accessory>`）在 TypeScript 中接受任意属性。请优先使用它们对应的组件：组件有完整类型，并补上了裸标签缺少的能力（`draw` 函数、`visible` 属性、安全区域边距）。
+| `<View>` | `nsh` | UIView / ViewGroup | [View](./view.md) |
+| `<Text>` | `nsh` | CoreText 视图 / StaticLayout 视图 | [Text](./text.md) |
+| `<Image>` | `nsh/image` | 带图片图层的视图 / 图片视图 | [Image](./image.md) |
+| `<Scroll>` | `nsh` | UIScrollView / ScrollView | [Scroll](./scroll.md) |
+| `<Input>` | `nsh` | UITextField 或 UITextView / EditText | [Input](./input.md) |
+| `<List>` | `nsh/list` | 复用单元格的 UIScrollView / ScrollView | [List](./list.md) |
+| `<Canvas>` | `nsh/canvas` | 回放 2D 绘制的视图 | [Canvas](./canvas.md) |
+| `<WebView>` | `nsh/webview` | WKWebView / android.webkit.WebView | [WebView](./web-view.md) |
+| `<Video>` | `nsh/video` | AVPlayerLayer / TextureView 上的 MediaPlayer | [Video](./video.md) |
+| `<Modal>` | `nsh/ui/mobile` | 模态呈现的 view controller / Dialog | [Modal](./modal.md) |
+| `<InputAccessoryView>` | `nsh/ios` | 键盘上方的工具栏（仅 iOS） | [nsh/ios](../modules/nsh-ios.md) |
+| `<If>`、`<Each>` | 无：全局组件 | 无：控制流 | [控制流](./control-flow.md) |
 
 > [!NOTE]
-> 字符串只有放在 `<text>` 里才会被绘制。`<view>` 的字符串子节点不会创建原生视图，也不参与布局。
+> 字符串只有放在 `<Text>` 里才会被绘制。`<View>` 的字符串子节点不会创建原生视图，也不参与布局。
 
 ## 通用属性
 
@@ -61,7 +58,7 @@ mount(App);
 
 | 属性 | 类型 | 说明 |
 |---|---|---|
-| `style` | `StyleProp<ViewStyle>`（`<text>` 和 `<input>` 为 `TextStyle`，`<image>` 为 `ImageStyle`） | 内联样式，或从左到右合并的样式数组（假值项会被跳过）。优先级高于 `class`。参见[样式参考](../modules/style-reference.md)。 |
+| `style` | `StyleProp<ViewStyle>`（`<Text>` 和 `<Input>` 为 `TextStyle`，`<Image>` 为 `ImageStyle`） | 内联样式，或从左到右合并的样式数组（假值项会被跳过）。优先级高于 `class`。参见[样式参考](../modules/style-reference.md)。 |
 | `class` | `string` | Tailwind 类名，在原生侧解析（`"flex-row gap-2 p-4 dark:bg-zinc-900"`）。后面的类覆盖前面的类。参见 [Tailwind](../docs/tailwind.md)。 |
 | `classList` | `Record<string, boolean \| null \| undefined>` | 值为真时才应用的类（`{ "opacity-50": busy() }`）。 |
 | `disabled` | `boolean` | 忽略按压（也没有按压反馈），应用 `disabled:` 类，并禁用输入框等控件。 |
@@ -144,7 +141,7 @@ stopPropagation() }`）。`onResponderGrant` 返回 `true` 可阻止原生滚动
 
 | 属性 | 说明 |
 |---|---|
-| `ios={{…}}` | iOS 和 Mac Catalyst。`<input>`、`Modal` 和 `WebView` 有各自的键。 |
+| `ios={{…}}` | iOS 和 Mac Catalyst。`<Input>`、`Modal` 和 `WebView` 有各自的键。 |
 | `android={{…}}` | Android。所有元素都支持 `ripple`、`elevation` 和 `accessibilityLiveRegion`（见下表）。 |
 | `desktop={{…}}` | 桌面平台；在移动端被忽略。 |
 
@@ -155,9 +152,9 @@ stopPropagation() }`）。`onResponderGrant` 返回 `true` 可阻止原生滚动
 | `accessibilityLiveRegion` | `"none" \| "polite" \| "assertive"` | 视图变化如何播报给 TalkBack。 |
 
 ```tsx
-<view onPress={save} android={{ ripple: { color: "#00000022" }, elevation: 2 }} class="rounded-lg bg-white p-4">
-  <text>保存</text>
-</view>
+<View onPress={save} android={{ ripple: { color: "#00000022" }, elevation: 2 }} class="rounded-lg bg-white p-4">
+  <Text>保存</Text>
+</View>
 ```
 
 参见[平台相关代码](../docs/platform-specific.md)。
@@ -168,10 +165,10 @@ stopPropagation() }`）。`onResponderGrant` 返回 `true` 可阻止原生滚动
 
 | 方法 | 适用于 | 说明 |
 |---|---|---|
-| `focus()` / `blur()` | `<input>` | 获取焦点（弹出键盘）/ 失去焦点。 |
-| `setSelection(start, end?)` | `<input>` | 选中 `start..end`（UTF-16 单位）；省略 `end` 时为光标。 |
-| `scrollTo({ x?, y?, animated? })` | `<scroll>`、`List` | 滚动到某个偏移量。 |
-| `zoomTo({ scale, x?, y?, animated? })` | 可缩放的 `<scroll>` | 围绕内容中的某点缩放到 `scale`。 |
+| `focus()` / `blur()` | `<Input>` | 获取焦点（弹出键盘）/ 失去焦点。 |
+| `setSelection(start, end?)` | `<Input>` | 选中 `start..end`（UTF-16 单位）；省略 `end` 时为光标。 |
+| `scrollTo({ x?, y?, animated? })` | `<Scroll>`、`List` | 滚动到某个偏移量。 |
+| `zoomTo({ scale, x?, y?, animated? })` | 可缩放的 `<Scroll>` | 围绕内容中的某点缩放到 `scale`。 |
 | `scrollToOffset({ offset, animated? })` | `List` | 沿列表方向滚动到某个偏移量。 |
 | `scrollToIndex({ index, animated?, viewPosition?, viewOffset? })` | `List` | 把某一项滚动到可见区域。 |
 | `scrollToEnd({ animated? })` | `List` | 滚动到内容末尾。 |
@@ -180,12 +177,12 @@ stopPropagation() }`）。`onResponderGrant` 返回 `true` 可阻止原生滚动
 | `command(name, args?)` | 原生组件 | 调用已注册原生组件的命令（[`nsh/native`](../modules/nsh-native.md)）。 |
 
 ```tsx
-import { type YNode } from "nsh";
+import { Input, View, type YNode } from "nsh";
 
 let input!: YNode;
-<view onPress={() => input.focus()}>
-  <input ref={input} placeholder="点击这一行开始输入" />
-</view>;
+<View onPress={() => input.focus()}>
+  <Input ref={input} placeholder="点击这一行开始输入" />
+</View>;
 ```
 
 ## 为什么处理函数不会阻塞 UI

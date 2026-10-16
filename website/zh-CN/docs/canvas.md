@@ -10,12 +10,12 @@ demo: guide-canvas
 `nsh/canvas` 中的 `Canvas` 是一个用 HTML Canvas 2D API 绘制的视图：图表、进度环、仪表盘、签名、自定义图标，凡是画出来比用视图拼出来更容易的东西都适合。你的 `draw` 函数一次性录制整幅绘制；平台以原生方式回放（iOS 上是 Core Graphics，Android 上是 `android.graphics.Canvas`），按屏幕分辨率绘制，所以在任何像素密度下都很清晰。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 function App() {
   return (
-    <view style={{ flex: 1, padding: 24, paddingTop: 60 }}>
+    <View style={{ flex: 1, padding: 24, paddingTop: 60 }}>
       <Canvas
         style={{ height: 200, borderRadius: 12, backgroundColor: "#ffffff" }}
         draw={(ctx, { width, height }) => {
@@ -28,14 +28,14 @@ function App() {
           ctx.strokeRect(20, 20, width - 40, height - 40);
         }}
       />
-    </view>
+    </View>
   );
 }
 
 mount(App);
 ```
 
-`Canvas` 接受 [`view`](../elements/view.md) 的所有属性（样式、类、触摸事件、无障碍、`ref`），再加上 `draw`。它需要从样式或布局中得到尺寸；它的内容就是绘制结果。坐标以点为单位，原点在左上角。
+`Canvas` 接受 [`View`](../elements/view.md) 的所有属性（样式、类、触摸事件、无障碍、`ref`），再加上 `draw`。它需要从样式或布局中得到尺寸；它的内容就是绘制结果。坐标以点为单位，原点在左上角。
 
 ## draw 何时运行
 
@@ -173,6 +173,7 @@ ctx.fillText(label, 32 - 6 - ctx.measureText(label).width, 16);
 `drawImage` 接受 URL、导入的资源（`import logo from "./logo.png"`）或 `{ uri }`。图片在原生端加载，加载完成后画布会重新绘制，你不需要自己跟踪加载状态。远程 URL 受应用的[网络能力声明](./sandbox-and-capabilities.md)约束。
 
 ```tsx
+import { Canvas } from "nsh/canvas";
 import logo from "./logo.png";
 
 <Canvas
@@ -195,7 +196,7 @@ import logo from "./logo.png";
 绘制调用中的任何数字参数，以及 `fillStyle` / `strokeStyle`，都可以是[原生值](./animation.md#原生值)或由它派生的节点。这类参数在平台绘制时才被读取；当原生值在动画中时，平台会自行逐帧重绘，不运行 `draw`，也不运行任何其他 JS。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 
@@ -207,7 +208,7 @@ function Ring() {
     progress.timing(to, { duration: 900, easing: Easing.inOut(Easing.cubic) });
   };
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
       <Canvas
         style={{ width: 140, height: 140 }}
         draw={(ctx, { width, height }) => {
@@ -230,10 +231,10 @@ function Ring() {
           ctx.fillText(`${label()}%`, cx, cy);
         }}
       />
-      <view onPress={() => go(Math.random())}>
-        <text style={{ color: "#0969da" }}>Animate</text>
-      </view>
-    </view>
+      <View onPress={() => go(Math.random())}>
+        <Text style={{ color: "#0969da" }}>Animate</Text>
+      </View>
+    </View>
   );
 }
 
@@ -284,6 +285,6 @@ const strokes = signal<[number, number][][]>([]);
 
 ## 相关内容
 
-- [`canvas` 元素](../elements/canvas.md) 与 [`nsh/canvas`](../modules/nsh-canvas.md)：参考。
+- [`Canvas` 元素](../elements/canvas.md) 与 [`nsh/canvas`](../modules/nsh-canvas.md)：参考。
 - [动画](./animation.md)：原生值、`interpolate` 和 `Easing`。
 - [图片与资源](./images-and-assets.md)：导入图片。

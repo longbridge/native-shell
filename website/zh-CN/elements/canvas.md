@@ -1,10 +1,10 @@
 ---
-title: canvas
-description: canvas 元素与 Canvas 组件：用 HTML Canvas 2D 上下文自定义绘制，并在原生侧回放。
+title: Canvas
+description: Canvas 组件：用 HTML Canvas 2D 上下文自定义绘制，并在原生侧回放。
 order: 8
 ---
 
-# canvas
+# Canvas
 
 canvas 是一个由你自己用 HTML Canvas 2D API 绘制的视图：图表、仪表盘、圆环、签名、自定义形状都可以用它来画。绘制函数只负责记录操作，平台在原生侧以屏幕分辨率回放这些操作（iOS 和 Mac Catalyst 上是 Core Graphics，Android 上是 `android.graphics.Canvas`）。
 
@@ -36,9 +36,7 @@ function Ring(props: { progress: number }) {
 mount(() => <Ring progress={0.7} />);
 ```
 
-## `Canvas` 与 `<canvas>`
-
-请使用 [`nsh/canvas`](../modules/nsh-canvas.md) 的 `Canvas` 组件。它会创建一个 `<canvas>` 元素、测量它的尺寸，再把上下文和尺寸传给你的 `draw` 函数。裸的 `<canvas>` 标签只是组件用来绘制的原生视图：它接受[通用属性](./index.md)，但自己没有 `draw`，单独使用什么也不会画。
+`Canvas` 从 [`nsh/canvas`](../modules/nsh-canvas.md) 导入。它会创建原生画布视图、测量它的尺寸，再把上下文和尺寸传给你的 `draw` 函数。
 
 ## 属性
 
@@ -72,6 +70,7 @@ const values = signal([12, 40, 28, 64]);
 
 ```tsx
 import { Animated, createNativeValue } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
 
 const angle = createNativeValue(0);
 Animated.timing(angle, { toValue: Math.PI * 2, duration: 1000 }).start();

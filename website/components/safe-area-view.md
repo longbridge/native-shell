@@ -18,13 +18,13 @@ import { SafeAreaView } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text } from "nsh";
 import { SafeAreaView } from "nsh/ui/mobile";
 
 function App() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff8c5", padding: 16 }}>
-      <text style={{ fontSize: 24, fontWeight: "700" }}>Never under the notch</text>
+      <Text style={{ fontSize: 24, fontWeight: "700" }}>Never under the notch</Text>
     </SafeAreaView>
   );
 }
@@ -75,14 +75,15 @@ change, for example on rotation.
 | `useSafeAreaInsets()` | Call it in a component. It returns an accessor of the insets where that component renders: the nearest screen's (below its header), the nearest modal's, or else the surface's safe area. These are the same insets SafeAreaView uses. |
 
 ```tsx
+import { Text, View } from "nsh";
 import { useSafeAreaInsets } from "nsh/ui/mobile";
 
 function BottomBar() {
   const insets = useSafeAreaInsets();
   return (
-    <view style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
-      <text>Bottom bar</text>
-    </view>
+    <View style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
+      <Text>Bottom bar</Text>
+    </View>
   );
 }
 ```

@@ -21,24 +21,24 @@ import { KeyboardAvoidingView } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { Input, mount, Scroll, signal, Text, View } from "nsh";
 import { KeyboardAvoidingView } from "nsh/ui/mobile";
 
 function App() {
   const draft = signal("");
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#ffffff" }}>
-      <scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
-        <text style={{ padding: 16, paddingTop: 48 }}>Messages…</text>
-      </scroll>
-      <view style={{ flexDirection: "row", gap: 8, padding: 8, borderTopWidth: 1, borderTopColor: "#e5e5e5" }}>
-        <input
+      <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
+        <Text style={{ padding: 16, paddingTop: 48 }}>Messages…</Text>
+      </Scroll>
+      <View style={{ flexDirection: "row", gap: 8, padding: 8, borderTopWidth: 1, borderTopColor: "#e5e5e5" }}>
+        <Input
           value={draft()}
           onChangeText={(v) => draft.set(v)}
           placeholder="Message"
           style={{ flex: 1, fontSize: 16, padding: 8 }}
         />
-      </view>
+      </View>
     </KeyboardAvoidingView>
   );
 }

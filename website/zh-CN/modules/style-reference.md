@@ -17,12 +17,13 @@ order: 16
 | 接口 | 扩展自 | 用于 |
 |---|---|---|
 | `LayoutStyle` | | 所有元素的布局（flexbox、网格、尺寸、间距、定位） |
-| `ViewStyle` | `LayoutStyle` | `<view>`、`<scroll>`、`<list>`、控件及其他所有元素 |
-| `TextStyle` | `ViewStyle` | `<text>` 和 `<input>`（以及视图：视图上的文字样式会传给其中的文字） |
-| `ImageStyle` | `ViewStyle` | `<image>` |
+| `ViewStyle` | `LayoutStyle` | `<View>`、`<Scroll>`、`<List>`、控件及其他所有元素 |
+| `TextStyle` | `ViewStyle` | `<Text>` 和 `<Input>`（以及视图：视图上的文字样式会传给其中的文字） |
+| `ImageStyle` | `ViewStyle` | `<Image>` |
 
 ```tsx
 import type { ViewStyle, TextStyle } from "nsh";
+import { Text, View } from "nsh";
 
 const card: ViewStyle = {
   padding: 16,
@@ -33,15 +34,15 @@ const card: ViewStyle = {
 
 const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
-<view style={card}>
-  <text style={title}>Hello</text>
-</view>;
+<View style={card}>
+  <Text style={title}>Hello</Text>
+</View>;
 ```
 
 `style` 也接受数组：各项从左到右合并，假值会被跳过，因此条件样式无需展开运算：
 
 ```tsx
-<view style={[card, selected() && { borderColor: "#2563eb", borderWidth: 2 }]} />
+<View style={[card, selected() && { borderColor: "#2563eb", borderWidth: 2 }]} />
 ```
 
 > [!NOTE]
@@ -117,10 +118,10 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `justifySelf` | `"auto" \| "flex-start" \| "flex-end" \| "center" \| "stretch" \| "baseline"` | 为当前项覆盖 `justifyItems`。 |
 
 ```tsx
-<view style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-  <view style={{ gridColumn: "span 2", height: 60, backgroundColor: "#c7d2fe" }} />
-  <view style={{ height: 60, backgroundColor: "#a5b4fc" }} />
-</view>
+<View style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+  <View style={{ gridColumn: "span 2", height: 60, backgroundColor: "#c7d2fe" }} />
+  <View style={{ height: 60, backgroundColor: "#a5b4fc" }} />
+</View>
 ```
 
 ### 尺寸
@@ -178,7 +179,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `experimental_backgroundImage` | `string` | `backgroundImage` 的别名。 |
 
 ```tsx
-<view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
+<View style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
 ```
 
 ### 边框
@@ -240,7 +241,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `shadowRadius` | `number` | 模糊半径。默认 `3`。 |
 
 ```tsx
-<view style={{ padding: 16, borderRadius: 12, backgroundColor: "#fff",
+<View style={{ padding: 16, borderRadius: 12, backgroundColor: "#fff",
   boxShadow: "0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.12)" }} />
 ```
 
@@ -274,7 +275,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `perspective` | `number` | 不支持 |
 
 ```tsx
-<view style={{ transform: [{ perspective: 600 }, { rotateY: "20deg" }, { scale: 0.95 }] }} />
+<View style={{ transform: [{ perspective: 600 }, { rotateY: "20deg" }, { scale: 0.95 }] }} />
 ```
 
 > [!NOTE]
@@ -290,7 +291,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 > [!WARNING]
 > 平台限制：
-> - iOS 上视图只支持 `opacity()`、不超过 1 的 `brightness()` 和 `drop-shadow()`。`<image>` 支持所有颜色滤镜和 `blur()`，在解码图片时应用。
+> - iOS 上视图只支持 `opacity()`、不超过 1 的 `brightness()` 和 `drop-shadow()`。`<Image>` 支持所有颜色滤镜和 `blur()`，在解码图片时应用。
 > - iOS 的 `backdropFilter` 模糊使用按比例调整的系统材质，是对精确半径的近似。
 > - Android 上 `blur()`、`drop-shadow()` 和 `backdropFilter` 需要 API 31；更低版本只应用颜色滤镜。混合模式需要 API 29。
 
@@ -306,7 +307,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `transitionTimingFunction` | `"linear" \| "ease" \| "ease-in" \| "ease-out" \| "ease-in-out" \| "cubic-bezier(...)"` | 缓动曲线。 |
 
 ```tsx
-<view
+<View
   onPress={() => open.set(!open())}
   style={{ height: open() ? 160 : 56, opacity: open() ? 1 : 0.8,
     transitionProperty: "opacity, transform", transitionDuration: 200 }}
@@ -335,7 +336,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 ## TextStyle
 
-文字样式用于 `<text>` 和 `<input>`。它们也像 CSS 一样会继承：视图上设置的文字属性会传给其中的文字和输入框，嵌套的 `<text>` 片段继承父文字的样式。`ViewStyle` 的全部键同样适用。见 [文字](../docs/text.md)。
+文字样式用于 `<Text>` 和 `<Input>`。它们也像 CSS 一样会继承：视图上设置的文字属性会传给其中的文字和输入框，嵌套的 `<Text>` 片段继承父文字的样式。`ViewStyle` 的全部键同样适用。见 [文字](../docs/text.md)。
 
 ### 字体
 
@@ -355,7 +356,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `lineHeight` | `number` | 行高，单位为点。 |
 | `letterSpacing` | `number` | 字符间的额外间距，单位为点。 |
 | `textAlign` | `"auto" \| "left" \| "center" \| "right" \| "justify"` | 水平对齐。 |
-| `textAlignVertical` | `"auto" \| "top" \| "center" \| "bottom"` | 文字比盒子矮时的位置（设置了高度的 `<text>`）。 |
+| `textAlignVertical` | `"auto" \| "top" \| "center" \| "bottom"` | 文字比盒子矮时的位置（设置了高度的 `<Text>`）。 |
 | `writingDirection` | `"auto" \| "ltr" \| "rtl"` | 文字的基础方向；`"auto"` 由内容决定。 |
 | `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | 大小写转换。 |
 
@@ -381,7 +382,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `textShadowRadius` | `number` | 模糊半径。 |
 
 > [!NOTE]
-> iOS 不会在 `<text>` 上绘制渐变（`backgroundImage`）或内阴影。
+> iOS 不会在 `<Text>` 上绘制渐变（`backgroundImage`）或内阴影。
 
 ## ImageStyle
 
@@ -391,7 +392,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 |---|---|---|
 | `tintColor` | `ColorValue` | 为模板图片重新着色（所有不透明像素都变成这个颜色），用于单色图标。 |
 
-图片如何填充盒子由 `<image>` 的 `resizeMode` 属性决定，不是样式；见 [image](../elements/image.md)。
+图片如何填充盒子由 `<Image>` 的 `resizeMode` 属性决定，不是样式；见 [image](../elements/image.md)。
 
 ## 看起来像样式的属性
 
@@ -399,12 +400,12 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 | 设置 | 属性 | Class |
 |---|---|---|
-| 行数限制 | `<text>` 的 `numberOfLines` | `line-clamp-*`、`truncate` |
-| 省略位置 | `<text>` 的 `ellipsizeMode` | `text-ellipsis`、`text-clip` |
+| 行数限制 | `<Text>` 的 `numberOfLines` | `line-clamp-*`、`truncate` |
+| 省略位置 | `<Text>` 的 `ellipsizeMode` | `text-ellipsis`、`text-clip` |
 | 触摸穿透 | `pointerEvents` | `pointer-events-none`、`pointer-events-auto` |
-| 图片填充 | `<image>` 的 `resizeMode` | `object-cover`、`object-contain` 等 |
-| 文字可选 | `<text>` 的 `selectable` | `select-text`、`select-none` |
-| 占位符颜色 | `<input>` 的 `placeholderTextColor` | `placeholder:text-*` |
+| 图片填充 | `<Image>` 的 `resizeMode` | `object-cover`、`object-contain` 等 |
+| 文字可选 | `<Text>` 的 `selectable` | `select-text`、`select-none` |
+| 占位符颜色 | `<Input>` 的 `placeholderTextColor` | `placeholder:text-*` |
 | Material 阴影（Android） | `android={{ elevation }}` | |
 
 ## 相关

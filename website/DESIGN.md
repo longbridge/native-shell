@@ -20,7 +20,7 @@ code themes — adapted for a mobile framework.
    source of what runs.
 3. **Specifics over adjectives.** Every capability card names something a
    reader can check in the repository: a crate, an element, a module, a
-   command (`Taffy`, `<list>`, `nsh/animated`, `nsh publish`). Claims track
+   command (`Taffy`, `<List>`, `nsh/animated`, `nsh publish`). Claims track
    `README.md` and `AGENTS.md`; update the copy when they change.
 4. **Restraint carries the design.** Hierarchy comes from type scale, weight
    and hairlines, not colour fills or gradients.

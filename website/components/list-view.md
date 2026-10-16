@@ -20,7 +20,7 @@ import { ListView } from "nsh/ui/mobile";
 Pass the data as `each` and a row renderer as the child function, the same way as with `List`:
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `Person ${i + 1}` }));
@@ -29,10 +29,10 @@ function App() {
   return (
     <ListView each={people} keyExtractor={(p) => String(p.id)}>
       {(person, index) => (
-        <view style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <text style={{ fontWeight: "600" }}>{person().name}</text>
-          <text style={{ color: "#737373" }}>{`#${index() + 1}`}</text>
-        </view>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontWeight: "600" }}>{person().name}</Text>
+          <Text style={{ color: "#737373" }}>{`#${index() + 1}`}</Text>
+        </View>
       )}
     </ListView>
   );
@@ -66,7 +66,7 @@ above the home indicator.
 
 ```tsx
 <ListView variant="inset" each={settings} dividers={false}>
-  {(item) => <text>{item().label}</text>}
+  {(item) => <Text>{item().label}</Text>}
 </ListView>
 ```
 
@@ -80,13 +80,13 @@ padding), so `List`'s layout props such as `numColumns`, `horizontal`, `estimate
 <ListView
   each={messages()}
   keyExtractor={(m) => m.id}
-  ListHeaderComponent={<text style={{ padding: 16, fontSize: 22, fontWeight: "700" }}>Inbox</text>}
-  ListEmptyComponent={<text style={{ padding: 16 }}>No messages</text>}
+  ListHeaderComponent={<Text style={{ padding: 16, fontSize: 22, fontWeight: "700" }}>Inbox</Text>}
+  ListEmptyComponent={<Text style={{ padding: 16 }}>No messages</Text>}
   refreshing={loading()}
   onRefresh={reload}
   onEndReached={loadMore}
 >
-  {(m) => <text numberOfLines={1}>{m().subject}</text>}
+  {(m) => <Text numberOfLines={1}>{m().subject}</Text>}
 </ListView>
 ```
 

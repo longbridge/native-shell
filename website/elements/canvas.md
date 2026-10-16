@@ -1,10 +1,10 @@
 ---
-title: canvas
-description: "The canvas element and the Canvas component: custom drawing with an HTML Canvas 2D context, replayed natively."
+title: Canvas
+description: "The Canvas component: custom drawing with an HTML Canvas 2D context, replayed natively."
 order: 8
 ---
 
-# canvas
+# Canvas
 
 A canvas is a view you draw yourself with the HTML Canvas 2D API: charts, gauges, rings, signatures, custom shapes.
 The drawing function only records operations; the platform replays them natively (Core Graphics on iOS and Mac
@@ -38,12 +38,8 @@ function Ring(props: { progress: number }) {
 mount(() => <Ring progress={0.7} />);
 ```
 
-## `Canvas` and `<canvas>`
-
-Use the `Canvas` component from [`nsh/canvas`](../modules/nsh-canvas.md). It creates a `<canvas>` element, measures it,
-and runs your `draw` function with a context and the canvas's size. The bare `<canvas>` tag is only the native view the
-component draws into: it takes the [common props](./index.md#common-props) but has no `draw` of its own, so on its own it
-draws nothing.
+`Canvas` comes from [`nsh/canvas`](../modules/nsh-canvas.md). It creates the native canvas view, measures it, and runs
+your `draw` function with a context and the canvas's size.
 
 ## Props
 
@@ -79,6 +75,7 @@ Numbers and colors may also be [native animated values](../modules/nsh-animated.
 
 ```tsx
 import { Animated, createNativeValue } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
 
 const angle = createNativeValue(0);
 Animated.timing(angle, { toValue: Math.PI * 2, duration: 1000 }).start();

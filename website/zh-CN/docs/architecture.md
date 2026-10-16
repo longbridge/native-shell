@@ -85,12 +85,12 @@ order: 35
 
 文本往往是 UI 中开销最大的部分。nsh 在引擎线程上使用平台自己的文本引擎布局文本，因此它看起来与原生文本完全一致：
 
-1. **prepare**：一个 `<text>` 及其嵌套的 span 合并成一个属性字符串（Apple 平台上用 CoreText，Android 上用
+1. **prepare**：一个 `<Text>` 及其嵌套的 span 合并成一个属性字符串（Apple 平台上用 CoreText，Android 上用
    `PrecomputedText` / `StaticLayout`）；
 2. **measure**：按布局请求的宽度测量；测量结果按内容和宽度缓存，所以仅改变颜色不会重新测量；
 3. **layout**：按最终尺寸布局。
 
-主线程接收不可变的结果，只负责绘制。嵌套在 `<text>` 中的文本是 span，而不是视图；`<text>` 之外的字符串不会渲染任何内容。
+主线程接收不可变的结果，只负责绘制。嵌套在 `<Text>` 中的文本是 span，而不是视图；`<Text>` 之外的字符串不会渲染任何内容。
 
 ## 列表
 

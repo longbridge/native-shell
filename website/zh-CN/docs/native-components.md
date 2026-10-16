@@ -10,7 +10,7 @@ order: 3.3
 `android.view.View`。nsh 应用通过 [`nsh/native`](../modules/nsh-native.md) 提供的 `nativeComponent()` 声明它，然后像使用其他组件一样使用它。nsh
 会把它和应用的其余部分一起布局，向它发送 props，把它的事件交给对应的处理函数，并转发通过 `ref` 发出的命令。
 
-nsh 本身就用系统原生视图渲染，所以原生组件只是同一视图层级里多出来的一个子视图：不存在层级叠放问题，它会像 `<view>`
+nsh 本身就用系统原生视图渲染，所以原生组件只是同一视图层级里多出来的一个子视图：不存在层级叠放问题，它会像 `<View>`
 一样被裁剪、随内容滚动并接收触摸。
 
 > [!NOTE]
@@ -29,7 +29,7 @@ nsh 本身就用系统原生视图渲染，所以原生组件只是同一视图�
 ## 在 JS 中声明组件
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, type YNode } from "nsh";
 import { nativeComponent } from "nsh/native";
 import { SafeAreaView } from "nsh/ui/mobile";
 
@@ -46,7 +46,7 @@ function App() {
   let badge: YNode | undefined;
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, gap: 16, backgroundColor: "#f6f8fa" }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</text>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</Text>
       <Badge
         ref={(node) => (badge = node)}
         text={taps() === 0 ? "Tap the native badge" : `Tapped ${taps()}×`}
@@ -57,7 +57,7 @@ function App() {
         }}
         style={{ alignSelf: "flex-start", borderRadius: 8, overflow: "hidden" }}
       />
-      <text>{`JS saw ${taps()} taps`}</text>
+      <Text>{`JS saw ${taps()} taps`}</Text>
     </SafeAreaView>
   );
 }
@@ -87,7 +87,7 @@ function nativeComponent<P extends object = {}, E extends object = {}>(
 - 组件自己的 props `P`；
 - 每个事件对应一个处理函数：事件 `tap` 由 `onTap` 处理，`regionChange` 由 `onRegionChange` 处理（首字母大写并加上
   `on` 前缀）；
-- `<view>` 能接受的一切（children 除外）：`style`、`class` / `classList`（[Tailwind](./tailwind.md)）、布局、
+- `<View>` 能接受的一切（children 除外）：`style`、`class` / `classList`（[Tailwind](./tailwind.md)）、布局、
   无障碍 props、`testID`、`onLayout`、`ref`。这些作用于 nsh 绘制的容器，而不是组件本身。
 
 原生组件是叶子节点：它不接受 children。
@@ -147,7 +147,7 @@ prop 变更之后发出的命令能看到新的 prop。
 
 ## 尺寸
 
-容器的布局方式与 `<view>` 相同：
+容器的布局方式与 `<View>` 相同：
 
 - 样式给出了某个维度时（`width`、`height`、`flex: 1`、`alignSelf: "stretch"` 等），以样式为准。
 - 样式未确定某个维度时，容器采用组件通过 `setSize` 上报的尺寸，就像图片采用它的固有尺寸一样。从不上报尺寸的组件在未确定的维度上尺寸为 0。

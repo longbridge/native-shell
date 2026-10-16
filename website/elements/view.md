@@ -1,24 +1,24 @@
 ---
-title: view
+title: View
 description: "The basic container element: layout, backgrounds, borders, shadows, press handling and gestures."
 order: 2
 demo: el-view
 ---
 
-# view
+# View
 
-`<view>` is the building block of every screen: a native container (a UIView on iOS and Mac Catalyst, a ViewGroup on
+`<View>` is the building block of every screen: a native container (a UIView on iOS and Mac Catalyst, a ViewGroup on
 Android) that lays out its children with flexbox or grid, draws a background, borders, shadows and gradients, and handles
 presses. Buttons, cards, rows and screens are all views.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function App() {
   const liked = signal(false);
   return (
-    <view style={{ flex: 1, padding: 24, gap: 16, backgroundColor: "#f6f8fa" }}>
-      <view
+    <View style={{ flex: 1, padding: 24, gap: 16, backgroundColor: "#f6f8fa" }}>
+      <View
         style={{
           backgroundColor: "#ffffff",
           borderRadius: 16,
@@ -29,13 +29,13 @@ function App() {
           gap: 12,
         }}
       >
-        <view style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#8250df" }} />
-        <text style={{ flex: 1, fontSize: 16 }}>A card</text>
-        <view onPress={() => liked.set(!liked())} activeOpacity={0.5} hitSlop={8}>
-          <text style={{ fontSize: 22 }}>{liked() ? "♥" : "♡"}</text>
-        </view>
-      </view>
-    </view>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#8250df" }} />
+        <Text style={{ flex: 1, fontSize: 16 }}>A card</Text>
+        <View onPress={() => liked.set(!liked())} activeOpacity={0.5} hitSlop={8}>
+          <Text style={{ fontSize: 22 }}>{liked() ? "♥" : "♡"}</Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -52,7 +52,7 @@ The Tailwind `flex` class follows CSS rather than the style default: `class="fle
 
 ## Props
 
-`<view>` has no props of its own beyond the [common props](./index.md#common-props): `style` (`ViewStyle`), `class`,
+`<View>` has no props of its own beyond the [common props](./index.md#common-props): `style` (`ViewStyle`), `class`,
 `classList`, `disabled`, the press props (`onPress`, `onLongPress`, `onPressIn`, `onPressOut`, `delayLongPress`,
 `activeOpacity`, `underlayColor`, `underlayOpacity`, `hitSlop`, `pointerEvents`), `onLayout`, `ref`, `nativeID`,
 `testID`, the gesture props (`pan`, `pinch`, `rotation` and their events), the touch and responder props, the
@@ -65,13 +65,13 @@ JS round trip:
 
 ```tsx
 // Fade the whole view.
-<view onPress={open} activeOpacity={0.6}>…</view>
+<View onPress={open} activeOpacity={0.6}>…</View>
 
 // Show a background and fade the children (default 0.85).
-<view onPress={open} underlayColor="#e5e7eb" underlayOpacity={0.7}>…</view>
+<View onPress={open} underlayColor="#e5e7eb" underlayOpacity={0.7}>…</View>
 
 // Change any style while pressed with active: classes.
-<view onPress={open} class="bg-blue-600 active:bg-blue-800 active:scale-95">…</view>
+<View onPress={open} class="bg-blue-600 active:bg-blue-800 active:scale-95">…</View>
 ```
 
 On Android, `android={{ ripple: { color: "#0000001f" } }}` adds the material ripple (`borderless`, `radius` and
@@ -80,7 +80,7 @@ On Android, `android={{ ripple: { color: "#0000001f" } }}` adds the material rip
 `disabled` removes the press listeners from the native view (no press, no feedback) and applies `disabled:` classes:
 
 ```tsx
-<view onPress={submit} disabled={!valid()} class="bg-green-600 disabled:opacity-40">…</view>
+<View onPress={submit} disabled={!valid()} class="bg-green-600 disabled:opacity-40">…</View>
 ```
 
 ## Events
@@ -105,7 +105,7 @@ A plain view has no commands of its own. `ref` gives you the `YNode`, e.g. to pa
 
 ## Views inside text
 
-A `<view>` placed inside a `<text>` is an inline attachment: it sits on the baseline and wraps with the words, and it
+A `<View>` placed inside a `<Text>` is an inline attachment: it sits on the baseline and wraps with the words, and it
 takes presses of its own. See [text](./text.md#inline-views-and-images).
 
 ## Platform notes

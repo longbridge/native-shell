@@ -9,7 +9,7 @@ order: 17
 `nsh/ui/mobile` 提供原生的导航栈和原生的模态视图。`Stack` 在 iOS 上是 UINavigationController，带有它的标题栏、侧滑返回和大标题；在 Android 上是带工具栏、支持预测性返回的页面栈。路由列表保存在 navigator 中；栈把每个路由渲染为一个页面，只要路由还在栈里，页面就保持挂载，状态也随之保留。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 import { createNavigator, Screen, Stack } from "nsh/ui/mobile";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
@@ -19,15 +19,15 @@ const nav = createNavigator<Route>({ name: "inbox" });
 function Inbox() {
   return (
     <Screen title="Inbox">
-      <scroll style={{ flex: 1 }}>
-        <each of={[1, 2, 3, 4, 5]}>
+      <Scroll style={{ flex: 1 }}>
+        <Each of={[1, 2, 3, 4, 5]}>
           {(id) => (
-            <view onPress={() => nav.push({ name: "message", id: id() })} underlayColor="#eaeef2" style={{ padding: 16 }}>
-              <text>Message {id()}</text>
-            </view>
+            <View onPress={() => nav.push({ name: "message", id: id() })} underlayColor="#eaeef2" style={{ padding: 16 }}>
+              <Text>Message {id()}</Text>
+            </View>
           )}
-        </each>
-      </scroll>
+        </Each>
+      </Scroll>
     </Screen>
   );
 }
@@ -35,9 +35,9 @@ function Inbox() {
 function Message(props: { id: number }) {
   return (
     <Screen title={`Message ${props.id}`}>
-      <view style={{ flex: 1, padding: 16 }}>
-        <text>The body of message {props.id}.</text>
-      </view>
+      <View style={{ flex: 1, padding: 16 }}>
+        <Text>The body of message {props.id}.</Text>
+      </View>
     </Screen>
   );
 }
@@ -135,17 +135,17 @@ function Compose() {
   return (
     <Screen
       title="New message"
-      headerLeft={<text onPress={() => nav.pop()} style={{ fontSize: 17, color: "#0969da" }}>Cancel</text>}
+      headerLeft={<Text onPress={() => nav.pop()} style={{ fontSize: 17, color: "#0969da" }}>Cancel</Text>}
       headerRight={
-        <text
+        <Text
           onPress={() => send(text())}
           style={{ fontSize: 17, fontWeight: "600", color: text() ? "#0969da" : "#8c959f" }}
         >
           Send
-        </text>
+        </Text>
       }
     >
-      <input multiline value={text()} onChangeText={(t) => text.set(t)} style={{ flex: 1, padding: 16, fontSize: 17 }} />
+      <Input multiline value={text()} onChangeText={(t) => text.set(t)} style={{ flex: 1, padding: 16, fontSize: 17 }} />
     </Screen>
   );
 }
@@ -176,7 +176,7 @@ function Compose() {
 要在丢弃未保存的修改前先询问用户，就在有内容可能丢失时设置 `preventBack`，并处理 `onBackRequest`：
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 import { Alert, Screen } from "nsh/ui/mobile";
 
 function EditNote() {
@@ -190,7 +190,7 @@ function EditNote() {
   };
   return (
     <Screen title="Edit" preventBack={text().length > 0} onBackRequest={confirm}>
-      <input value={text()} onChangeText={(t) => text.set(t)} placeholder="A note" style={{ margin: 16, fontSize: 17 }} />
+      <Input value={text()} onChangeText={(t) => text.set(t)} placeholder="A note" style={{ margin: 16, fontSize: 17 }} />
     </Screen>
   );
 }
@@ -208,25 +208,25 @@ function EditNote() {
 `Modal` 在其他所有内容之上呈现内容，处于独立的原生窗口层：iOS 上是被 present 的视图控制器，Android 上是一个对话框。把它渲染在其状态所在的地方，用 `visible` 控制：
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Modal, SafeAreaView } from "nsh/ui/mobile";
 
 function Settings() {
   const open = signal(false);
   return (
-    <view style={{ flex: 1 }}>
-      <view onPress={() => open.set(true)} style={{ padding: 16 }}>
-        <text>Edit profile</text>
-      </view>
+    <View style={{ flex: 1 }}>
+      <View onPress={() => open.set(true)} style={{ padding: 16 }}>
+        <Text>Edit profile</Text>
+      </View>
       <Modal visible={open()} animationType="slide" ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => open.set(false)}>
         <SafeAreaView style={{ flex: 1, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 22, fontWeight: "700" }}>Profile</text>
-          <view onPress={() => open.set(false)}>
-            <text style={{ color: "#0969da" }}>Done</text>
-          </view>
+          <Text style={{ fontSize: 22, fontWeight: "700" }}>Profile</Text>
+          <View onPress={() => open.set(false)}>
+            <Text style={{ color: "#0969da" }}>Done</Text>
+          </View>
         </SafeAreaView>
       </Modal>
-    </view>
+    </View>
   );
 }
 ```
@@ -250,19 +250,16 @@ function Settings() {
 
 ```tsx
 <Modal visible={open()} transparent animationType="fade" onRequestClose={() => open.set(false)}>
-  <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-    <view style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
-      <text style={{ fontSize: 20, fontWeight: "700" }}>Delete the file?</text>
-      <view onPress={() => open.set(false)}><text style={{ color: "#cf222e" }}>Delete</text></view>
-    </view>
-  </view>
+  <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+    <View style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>Delete the file?</Text>
+      <View onPress={() => open.set(false)}><Text style={{ color: "#cf222e" }}>Delete</Text></View>
+    </View>
+  </View>
 </Modal>
 ```
 
 在模态视图内部，`SafeAreaView` 和 `useSafeAreaInsets()` 给出的是模态视图自己的 inset。系统对话框（带按钮的提示框、操作表）请用 [`Alert`](../components/alert.md) 和 [`ActionSheet`](../components/action-sheet.md)；从底部滑出、覆盖在暗色背景上并跟随手指的面板，请用 [`Sheet`](../components/sheet.md)。
-
-> [!NOTE]
-> 从 `nsh/ui/mobile` 导入 `Modal` 后，文件中的 `<modal>` 也会变成这个组件。见 [`modal` 元素](../elements/modal.md)。
 
 ## Android 返回键
 
@@ -295,7 +292,7 @@ function Editor() {
 
 ## 标签页与其他布局
 
-`nsh/ui/mobile` 没有标签栏组件。标签栏就是一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<if>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
+`nsh/ui/mobile` 没有标签栏组件。标签栏就是一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<If>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
 
 ## 相关内容
 

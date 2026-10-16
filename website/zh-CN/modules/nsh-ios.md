@@ -12,7 +12,7 @@ order: 11
 import { InputAccessoryView, isAvailable } from "nsh/ios";
 ```
 
-元素和组件的 iOS 专有*属性*不在这里：它们放在 `ios={{…}}` 属性中（例如 `<input ios={{ textContentType: "oneTimeCode" }} />`）。见[平台专有代码](../docs/platform-specific.md)。
+元素和组件的 iOS 专有*属性*不在这里：它们放在 `ios={{…}}` 属性中（例如 `<Input ios={{ textContentType: "oneTimeCode" }} />`）。见[平台专有代码](../docs/platform-specific.md)。
 
 ## isAvailable
 
@@ -47,15 +47,15 @@ interface InputAccessoryViewProps {
 它在树中所处的位置不渲染任何内容，在 Android 上则完全不渲染，因此可以把它放在所属输入框的旁边。
 
 ```tsx
-import { signal, type YNode } from "nsh";
+import { Input, signal, Text, View, type YNode } from "nsh";
 import { InputAccessoryView } from "nsh/ios";
 
 function Note() {
   const text = signal("");
   let input: YNode | undefined;
   return (
-    <view>
-      <input
+    <View>
+      <Input
         ref={(n) => (input = n)}
         value={text()}
         onChangeText={(v) => text.set(v)}
@@ -63,12 +63,12 @@ function Note() {
         ios={{ inputAccessoryViewID: "note-bar" }}
       />
       <InputAccessoryView nativeID="note-bar" style={{ backgroundColor: "#f1f5f9" }}>
-        <view style={{ flexDirection: "row", alignItems: "center", padding: 10 }}>
-          <text style={{ flex: 1, color: "#64748b" }}>{text().length} characters</text>
-          <text onPress={() => input?.blur()} style={{ fontWeight: "600" }}>Done</text>
-        </view>
+        <View style={{ flexDirection: "row", alignItems: "center", padding: 10 }}>
+          <Text style={{ flex: 1, color: "#64748b" }}>{text().length} characters</Text>
+          <Text onPress={() => input?.blur()} style={{ fontWeight: "600" }}>Done</Text>
+        </View>
       </InputAccessoryView>
-    </view>
+    </View>
   );
 }
 ```

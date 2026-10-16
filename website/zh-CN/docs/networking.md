@@ -11,7 +11,7 @@ nsh 应用用标准的 `fetch` 发起 HTTP 请求。它运行在平台的网络�
 ## 获取 JSON
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 
 type Post = { id: number; title: string };
 
@@ -31,12 +31,12 @@ function App() {
   })();
 
   return (
-    <scroll style={{ flex: 1 }}>
-      <view style={{ padding: 16, paddingTop: 60, gap: 8 }}>
-        <text style={{ color: "#57606a" }}>{status()}</text>
-        <each of={posts()}>{(post) => <text numberOfLines={1}>{post().title}</text>}</each>
-      </view>
-    </scroll>
+    <Scroll style={{ flex: 1 }}>
+      <View style={{ padding: 16, paddingTop: 60, gap: 8 }}>
+        <Text style={{ color: "#57606a" }}>{status()}</Text>
+        <Each of={posts()}>{(post) => <Text numberOfLines={1}>{post().title}</Text>}</Each>
+      </View>
+    </Scroll>
   );
 }
 
@@ -162,7 +162,7 @@ const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 加载数据的组件应该在销毁时取消请求，使用 [`cleanup`](./reactivity.md)：
 
 ```tsx
-import { cleanup, signal } from "nsh";
+import { cleanup, signal, Text } from "nsh";
 
 function Weather(props: { city: string }) {
   const data = signal<unknown>(null);
@@ -172,7 +172,7 @@ function Weather(props: { city: string }) {
     .then((r) => r.json())
     .then((d) => data.set(d))
     .catch(() => {});
-  return <text>{JSON.stringify(data())}</text>;
+  return <Text>{JSON.stringify(data())}</Text>;
 }
 ```
 

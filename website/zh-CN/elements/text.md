@@ -1,30 +1,30 @@
 ---
-title: text
+title: Text
 description: 绘制文本的元素：嵌套片段、链接、行数限制、字体缩放、行内视图和文本布局事件。
 order: 3
 demo: el-text
 ---
 
-# text
+# Text
 
-`<text>` 绘制一个段落。它是唯一能显示字符串的元素：`<view>` 的字符串子节点什么也不会画。段落在原生侧排版（iOS 和 Mac Catalyst 上用 CoreText，Android 上用 `StaticLayout`），并在引擎线程上测量，主线程只负责绘制。
+`<Text>` 绘制一个段落。它是唯一能显示字符串的元素：`<View>` 的字符串子节点什么也不会画。段落在原生侧排版（iOS 和 Mac Catalyst 上用 CoreText，Android 上用 `StaticLayout`），并在引擎线程上测量，主线程只负责绘制。
 
 ```tsx
-<text style={{ fontSize: 16, lineHeight: 24, color: "#1f2328" }}>
-  继续之前请阅读<text style={{ fontWeight: "700" }}>条款</text>。
-</text>
+<Text style={{ fontSize: 16, lineHeight: 24, color: "#1f2328" }}>
+  继续之前请阅读<text style={{ fontWeight: "700" }}>条款</Text>。
+</Text>
 ```
 
 ## 片段
 
-`<text>` 里的 `<text>` 是同一段落中的一个片段（span），而不是单独的视图。片段继承段落的文本样式（`color`、`fontSize`、`fontWeight` 等），并覆盖自己设置的部分。整个文本块是一个原生视图。
+`<Text>` 里的 `<Text>` 是同一段落中的一个片段（span），而不是单独的视图。片段继承段落的文本样式（`color`、`fontSize`、`fontWeight` 等），并覆盖自己设置的部分。整个文本块是一个原生视图。
 
 ```tsx
-<text style={{ fontSize: 17 }}>
-  <text style={{ fontWeight: "300" }}>细体 </text>
-  <text style={{ fontWeight: "bold" }}>粗体 </text>
-  <text style={{ fontStyle: "italic", color: "#8250df" }}>斜体</text>
-</text>
+<Text style={{ fontSize: 17 }}>
+  <Text style={{ fontWeight: "300" }}>细体 </Text>
+  <Text style={{ fontWeight: "bold" }}>粗体 </Text>
+  <Text style={{ fontStyle: "italic", color: "#8250df" }}>斜体</Text>
+</Text>
 ```
 
 ### 链接
@@ -32,28 +32,28 @@ demo: el-text
 带按压处理函数的片段就是链接：按在它的字符上由该片段处理，按在其他位置则由段落处理。
 
 ```tsx
-<text style={{ fontSize: 15 }} onPress={() => log("整句")}>
+<Text style={{ fontSize: 15 }} onPress={() => log("整句")}>
   {"继续即表示你同意"}
-  <text style={{ color: "#0969da", textDecorationLine: "underline" }} onPress={() => open("terms")}>
+  <Text style={{ color: "#0969da", textDecorationLine: "underline" }} onPress={() => open("terms")}>
     服务条款
-  </text>
+  </Text>
   。
-</text>
+</Text>
 ```
 
 ### 行内视图和图片
 
-`<text>` 中的其他元素（`<view>`、`<image>`，即使位于片段内）都是行内附件：按自身尺寸布局，坐落在基线上，并随文字一起换行。它们可以单独响应按压。
+`<Text>` 中的其他元素（`<View>`、`<Image>`，即使位于片段内）都是行内附件：按自身尺寸布局，坐落在基线上，并随文字一起换行。它们可以单独响应按压。
 
 ```tsx
-<text style={{ fontSize: 16, lineHeight: 26 }}>
+<Text style={{ fontSize: 16, lineHeight: 26 }}>
   {"由 "}
-  <image src={logo} style={{ width: 18, height: 18, borderRadius: 4 }} />
+  <Image src={logo} style={{ width: 18, height: 18, borderRadius: 4 }} />
   {" nsh 构建。状态 "}
-  <view style={{ backgroundColor: "#1a7f37", borderRadius: 9, paddingHorizontal: 7, height: 18, justifyContent: "center" }}>
-    <text style={{ color: "#ffffff", fontSize: 11, fontWeight: "700" }}>LIVE</text>
-  </view>
-</text>
+  <View style={{ backgroundColor: "#1a7f37", borderRadius: 9, paddingHorizontal: 7, height: 18, justifyContent: "center" }}>
+    <Text style={{ color: "#ffffff", fontSize: 11, fontWeight: "700" }}>LIVE</Text>
+  </View>
+</Text>
 ```
 
 被 `numberOfLines` 或省略号截掉的附件会被隐藏。复制可选中的文本时不包含附件。
@@ -86,9 +86,10 @@ Tailwind 类 `select-text` 等同于 `selectable`。
 `fontFamily` 接受系统字体族，或导入字体文件得到的名称：
 
 ```tsx
+import { Text } from "nsh";
 import Inter from "./fonts/Inter-Regular.ttf";
 
-<text style={{ fontFamily: Inter, fontSize: 17 }}>Inter</text>;
+<Text style={{ fontFamily: Inter, fontSize: 17 }}>Inter</Text>;
 ```
 
 字体会在第一帧之前注册。参见[字体](../docs/fonts.md)。
@@ -105,7 +106,7 @@ import Inter from "./fonts/Inter-Regular.ttf";
 
 ```tsx
 const lines = signal(0);
-<text onTextLayout={(e) => lines.set(e.lines.length)}>{article}</text>;
+<Text onTextLayout={(e) => lines.set(e.lines.length)}>{article}</Text>;
 ```
 
 ## ref 方法

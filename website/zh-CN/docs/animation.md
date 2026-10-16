@@ -23,13 +23,13 @@ nsh 中的所有动画都运行在 UI 线程上。你在 JS 中描述一次，�
 给视图设置 `transitionProperty` 和 `transitionDuration`，之后这些属性的变化就会从屏幕上的当前值以原生动画过渡到新值。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 
 function App() {
   const on = signal(false);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <View
         onPress={() => on.set(!on())}
         style={{
           width: 100,
@@ -42,7 +42,7 @@ function App() {
           transitionTimingFunction: "ease-in-out",
         }}
       />
-    </view>
+    </View>
   );
 }
 
@@ -61,9 +61,9 @@ mount(App);
 用 Tailwind 时对应的是 `transition`（颜色、不透明度、阴影和变换）、`transition-all`、`transition-colors`、`transition-opacity`、`transition-transform`、`transition-shadow`，再配合 `duration-*`、`delay-*` 和 `ease-*`。与 `active:` 变体结合，就得到带动画的按下状态：
 
 ```tsx
-<view onPress={save} class="rounded-xl bg-blue-600 px-5 py-3 transition duration-150 active:scale-95 active:bg-blue-800">
-  <text class="font-semibold text-white">Save</text>
-</view>
+<View onPress={save} class="rounded-xl bg-blue-600 px-5 py-3 transition duration-150 active:scale-95 active:bg-blue-800">
+  <Text class="font-semibold text-white">Save</Text>
+</View>
 ```
 
 过渡从屏幕上的当前值开始，所以中途再次改变目标时，动画会平滑地转向。
@@ -73,8 +73,8 @@ mount(App);
 内置四种以原生方式运行、默认无限循环的关键帧动画：`spin`（顺时针转一圈）、`ping`（放大到 2 倍并淡出）、`pulse`（淡到一半不透明度再恢复）和 `bounce`（向上跳起自身高度的四分之一再落下）。
 
 ```tsx
-<view class="size-8 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
-<view class="h-4 w-40 rounded bg-zinc-200 animate-pulse" />
+<View class="size-8 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
+<View class="h-4 w-40 rounded bg-zinc-200 animate-pulse" />
 ```
 
 | 样式 | 类型 | 说明 |
@@ -92,16 +92,16 @@ Tailwind：`animate-spin`、`animate-ping`、`animate-pulse`、`animate-bounce`�
 原生值是一个存在于 UI 线程上的数字。用 `nsh/animated` 中的 `createNativeValue` 创建，把它绑定到样式，再让它动起来；绑定它的视图每一帧都跟随它，而无需重新渲染。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 
 function App() {
   const x = createNativeValue(0);
   const opacity = createNativeValue(1);
   return (
-    <view style={{ flex: 1, justifyContent: "center", padding: 24, gap: 24 }}>
-      <view style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#0969da", opacity, transform: [{ translateX: x }] }} />
-      <view
+    <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: 24 }}>
+      <View style={{ width: 60, height: 60, borderRadius: 12, backgroundColor: "#0969da", opacity, transform: [{ translateX: x }] }} />
+      <View
         onPress={async () => {
           await x.timing(240, { duration: 600, easing: Easing.out(Easing.cubic) });
           await opacity.timing(0.3, { duration: 200 });
@@ -109,9 +109,9 @@ function App() {
           opacity.timing(1);
         }}
       >
-        <text style={{ color: "#0969da" }}>Play</text>
-      </view>
-    </view>
+        <Text style={{ color: "#0969da" }}>Play</Text>
+      </View>
+    </View>
   );
 }
 
@@ -140,7 +140,7 @@ x.spring(200, { stiffness: 180, damping: 8 });   // 晃动
 x.spring(200, { stiffness: 400, damping: 30 });  // 干脆，不过冲
 
 // 以拖动的松手速度滑行到停止。
-<view pan={{ x }} onPanEnd={(e) => x.decay({ velocity: e.velocityX })} />
+<View pan={{ x }} onPanEnd={(e) => x.decay({ velocity: e.velocityX })} />
 ```
 
 ### 插值
@@ -150,7 +150,7 @@ x.spring(200, { stiffness: 400, damping: 30 });  // 干脆，不过冲
 ```tsx
 const t = createNativeValue(0);
 
-<view
+<View
   style={{
     backgroundColor: t.interpolate({ inputRange: [0, 1, 2], outputRange: ["#54aeff", "#8250df", "#cf222e"] }),
     opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
@@ -183,8 +183,8 @@ const t = createNativeValue(0);
 const scroll = createNativeValue(0);
 const header = scroll.diffClamp(0, 56);
 
-<scroll style={{ flex: 1 }} scrollValue={scroll}>…</scroll>
-<view style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</view>
+<Scroll style={{ flex: 1 }} scrollValue={scroll}>…</Scroll>
+<View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</View>
 ```
 
 ## 组合动画
@@ -311,11 +311,12 @@ LayoutAnimation.configureNext({
 当用户要求减少动态效果时（iOS 的"减弱动态效果"、Android 的"移除动画"），`nsh/accessibility` 中的 `reduceMotion()` 为 `true`，Tailwind 的 `motion-reduce:` / `motion-safe:` 变体随之生效。nsh 不会自行关闭你的动画；用它们来选择更平和的替代方案：
 
 ```tsx
+import { View } from "nsh";
 import { reduceMotion } from "nsh/accessibility";
 
 const open = () => (reduceMotion() ? panel.set(0) : panel.spring(0));
 
-<view class="motion-safe:animate-bounce" />
+<View class="motion-safe:animate-bounce" />
 ```
 
 见[无障碍](./accessibility.md#减少动态效果)。

@@ -12,7 +12,7 @@ order: 12
 import { BackHandler, isAvailable, setStatusBarBackgroundColor, Toast } from "nsh/android";
 ```
 
-Android-only *props* of elements and components are not here: they go in the `android={{…}}` prop (for example `<view android={{ elevation: 4, ripple: … }} />`). See [Platform-specific code](../docs/platform-specific.md).
+Android-only *props* of elements and components are not here: they go in the `android={{…}}` prop (for example `<View android={{ elevation: 4, ripple: … }} />`). See [Platform-specific code](../docs/platform-specific.md).
 
 ## isAvailable
 

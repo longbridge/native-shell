@@ -17,16 +17,16 @@ import { Button } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button } from "nsh/ui/mobile";
 
 function App() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, padding: 16, gap: 12, justifyContent: "center" }}>
-      <text>{`Pressed ${count()} times`}</text>
+    <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: "center" }}>
+      <Text>{`Pressed ${count()} times`}</Text>
       <Button title="Press me" onPress={() => count.set(count() + 1)} />
-    </view>
+    </View>
   );
 }
 
@@ -37,10 +37,10 @@ The button lays its label out in a row, centered, with 16 pt of horizontal and 1
 it stretches to the column's width, like any view. Pass `class` or `style` to size or round it differently:
 
 ```tsx
-<view style={{ flexDirection: "row", gap: 8 }}>
+<View style={{ flexDirection: "row", gap: 8 }}>
   <Button class="flex-1" title="Cancel" variant="secondary" onPress={cancel} />
   <Button class="flex-1" title="Save" onPress={save} />
-</view>
+</View>
 ```
 
 ## Variants

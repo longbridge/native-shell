@@ -110,7 +110,7 @@ build errors, so a typo is caught when you build instead of becoming a missing p
 
 ### `network`
 
-Covers `fetch` (including every redirect), remote images (`<image>`, `defaultSource`, canvas images,
+Covers `fetch` (including every redirect), remote images (`<Image>`, `defaultSource`, canvas images,
 `Image.getSize` / `Image.prefetch`) and video sources.
 
 | Key | Type | Description |

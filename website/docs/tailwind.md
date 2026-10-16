@@ -10,9 +10,9 @@ demo: guide-tailwind
 Every element accepts Tailwind CSS classes in `class`, resolved natively against Tailwind 4's default theme:
 
 ```tsx
-<view class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-lg active:scale-[0.98] dark:bg-zinc-800">
-  <text class="text-base font-semibold text-zinc-900 dark:text-white">Tailwind on native views</text>
-</view>
+<View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-lg active:scale-[0.98] dark:bg-zinc-800">
+  <Text class="text-base font-semibold text-zinc-900 dark:text-white">Tailwind on native views</Text>
+</View>
 ```
 
 No CSS is generated and nothing runs in JavaScript: the string is passed to the core, which parses each distinct class string once (and caches it), turns it into style rules, and applies them. Variants that depend on state (pressed, dark mode, window width) are re-applied by the core when that state changes, and pressed and focused states are tracked natively, so `active:` feedback has no JavaScript round trip.
@@ -22,7 +22,7 @@ Classes and the [`style` prop](./styling.md) produce the same native styles and 
 ## class and classList
 
 ```tsx
-<view
+<View
   class="rounded-lg px-4 py-2 transition-colors"
   classList={{ "bg-indigo-600": selected(), "bg-zinc-200": !selected(), "opacity-50": busy() }}
 />
@@ -65,18 +65,18 @@ Components from `nsh/ui/mobile` accept `class` and `classList` too; your classes
 Variants combine: `dark:active:bg-zinc-700`, `md:landscape:flex-row`.
 
 ```tsx
-<view class="group flex-row items-center gap-3 rounded-xl bg-white p-3 active:bg-zinc-50">
-  <text class="flex-1 text-zinc-900">Settings</text>
-  <text class="text-zinc-300 transition-transform group-active:translate-x-1">›</text>
-</view>
+<View class="group flex-row items-center gap-3 rounded-xl bg-white p-3 active:bg-zinc-50">
+  <Text class="flex-1 text-zinc-900">Settings</Text>
+  <Text class="text-zinc-300 transition-transform group-active:translate-x-1">›</Text>
+</View>
 ```
 
 `disabled` on any element applies `disabled:` classes and removes its press handlers from what is mounted, so it shows no press feedback either:
 
 ```tsx
-<view disabled={saving()} onPress={save} class="rounded-lg bg-emerald-500 px-4 py-2 active:bg-emerald-600 disabled:opacity-40">
-  <text class="font-medium text-white">Save</text>
-</view>
+<View disabled={saving()} onPress={save} class="rounded-lg bg-emerald-500 px-4 py-2 active:bg-emerald-600 disabled:opacity-40">
+  <Text class="font-medium text-white">Save</Text>
+</View>
 ```
 
 Breakpoints compare against the window (the surface nsh renders into), not the device: in an iPad split view or a resizable window, they follow the window's width.
@@ -85,7 +85,7 @@ Breakpoints compare against the window (the surface nsh renders into), not the d
 
 - **Units are points.** `p-4` is 16 points (1 spacing step = 4pt, 1rem = 16pt). Arbitrary values in `px` are points too: `p-[13px]` is 13pt.
 - **`flex` is a row**, as in CSS: `class="flex"` lays out its children in a row unless a direction class says otherwise (anywhere in the string: `flex-col flex` is a column). A view without `flex` or `inline-flex` keeps nsh's default column. `block` and `flow-root` use block layout; `inline` and `inline-block` lay out as views (there is no inline formatting context).
-- **Text classes on views are inherited.** `text-*`, `font-*`, `leading-*`, `tracking-*` and the other text utilities on a view pass to the `<text>` and `<input>` elements inside it, as CSS inheritance does: `<view class="text-white">` makes its labels white.
+- **Text classes on views are inherited.** `text-*`, `font-*`, `leading-*`, `tracking-*` and the other text utilities on a view pass to the `<Text>` and `<Input>` elements inside it, as CSS inheritance does: `<View class="text-white">` makes its labels white.
 - **`space-x-*` / `space-y-*` are gaps** (`gap-x` / `gap-y`).
 - **Classes for settings that are props in nsh**: `line-clamp-*`, `truncate`, `whitespace-nowrap`, `pointer-events-*`, `object-*` (image resize mode), `select-text`, `caret-*` and `placeholder:text-*` work, and lose to the explicit props (`numberOfLines`, `pointerEvents`, `resizeMode`, ...) when both are set.
 - **Not supported**: `peer-*` variants, pseudo-elements (`before:`, `after:`), arbitrary properties (`[mask-type:luminance]`). Web-only utilities that need nothing natively (`antialiased`, `will-change-*`, `touch-*`, `scroll-*`, `snap-*`, `overscroll-*`, `box-border`, ...) are accepted and ignored.

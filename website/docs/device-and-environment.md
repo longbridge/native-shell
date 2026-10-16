@@ -21,17 +21,17 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 | `reduceMotion()`, `screenReaderEnabled()` | `nsh/accessibility` | See [Accessibility](./accessibility.md). |
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
 import { safeArea } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, paddingTop: safeArea().top + 16, paddingHorizontal: 16, backgroundColor: colorScheme() === "dark" ? "#0d1117" : "#ffffff" }}>
-      <text style={{ color: colorScheme() === "dark" ? "#e6edf3" : "#1f2328" }}>
+    <View style={{ flex: 1, paddingTop: safeArea().top + 16, paddingHorizontal: 16, backgroundColor: colorScheme() === "dark" ? "#0d1117" : "#ffffff" }}>
+      <Text style={{ color: colorScheme() === "dark" ? "#e6edf3" : "#1f2328" }}>
         {Math.round(windowSize().width)} × {Math.round(windowSize().height)} pt, text at {fontScale().toFixed(2)}×
-      </text>
-    </view>
+      </Text>
+    </View>
   );
 }
 
@@ -43,16 +43,18 @@ mount(App);
 `windowSize()` is the size of the surface nsh renders into: the screen on a phone, the window on an iPad in split view or on a Mac, the host view when nsh is embedded. Use it to change the layout, not only sizes:
 
 ```tsx
+import { View } from "nsh";
 import { windowSize } from "nsh/device";
+import { Image } from "nsh/image";
 
 function Gallery() {
   const columns = () => (windowSize().width >= 700 ? 4 : windowSize().width >= 500 ? 3 : 2);
   return (
-    <view style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      <each of={photos}>
-        {(p) => <image src={p().url} style={{ width: (windowSize().width - 32 - (columns() - 1) * 8) / columns(), aspectRatio: 1 }} />}
-      </each>
-    </view>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+      <Each of={photos}>
+        {(p) => <Image src={p().url} style={{ width: (windowSize().width - 32 - (columns() - 1) * 8) / columns(), aspectRatio: 1 }} />}
+      </Each>
+    </View>
   );
 }
 ```
@@ -64,15 +66,15 @@ Often flexbox, percentages and `aspectRatio` do the job without reading the size
 `colorScheme()` follows the system appearance. The simplest way to support dark mode is the `dark:` Tailwind variant, which applies when `colorScheme()` is `"dark"`:
 
 ```tsx
-<view class="flex-1 bg-white dark:bg-zinc-900 p-4">
-  <text class="text-zinc-900 dark:text-zinc-100">Follows the system appearance</text>
-</view>
+<View class="flex-1 bg-white dark:bg-zinc-900 p-4">
+  <Text class="text-zinc-900 dark:text-zinc-100">Follows the system appearance</Text>
+</View>
 ```
 
 With inline styles, read `colorScheme()` in the style; for more than a few colors, derive a palette once:
 
 ```tsx
-import { computed } from "nsh";
+import { computed, Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
 
 const palette = computed(() =>
@@ -81,9 +83,9 @@ const palette = computed(() =>
     : { background: "#f6f8fa", surface: "#ffffff", text: "#1f2328", muted: "#57606a" },
 );
 
-<view style={{ flex: 1, backgroundColor: palette().background }}>
-  <text style={{ color: palette().text }}>Hello</text>
-</view>
+<View style={{ flex: 1, backgroundColor: palette().background }}>
+  <Text style={{ color: palette().text }}>Hello</Text>
+</View>
 ```
 
 The components of `nsh/ui/mobile` take their colors from the component theme, which has light and dark values (`nsh.json` `"theme"`), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../components/status-bar.md).
@@ -95,13 +97,13 @@ The components of `nsh/ui/mobile` take their colors from the component theme, wh
 
 `fontScale()` is the user's text size setting (Dynamic Type on iOS, font size on Android) relative to the default. Text and inputs follow it by themselves: `fontSize: 16` renders larger when the user asked for larger text. Per element you can opt out or cap it:
 
-| Prop (on `<text>` and `<input>`) | Default | Description |
+| Prop (on `<Text>` and `<Input>`) | Default | Description |
 |---|---|---|
 | `allowFontScaling` | `true` | Follow the system text size. |
 | `maxFontSizeMultiplier` | `0` (none) | The largest scale applied to this text. |
 
 ```tsx
-<text style={{ fontSize: 34, fontWeight: "700" }} maxFontSizeMultiplier={1.4}>Today</text>
+<Text style={{ fontSize: 34, fontWeight: "700" }} maxFontSizeMultiplier={1.4}>Today</Text>
 ```
 
 Read `fontScale()` to adapt layout that does not follow text automatically, such as switching a row to a column when the text gets large: `flexDirection: fontScale() > 1.3 ? "column" : "row"`.
@@ -115,6 +117,7 @@ Notches, the home indicator, the status bar, Android's navigation bar and the Ma
 - `SafeAreaView` from `nsh/ui/mobile` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
 
 ```tsx
+import { View } from "nsh";
 import { SafeAreaView, useSafeAreaInsets } from "nsh/ui/mobile";
 
 function Screen() {
@@ -128,7 +131,7 @@ function Screen() {
 
 function BottomBar() {
   const insets = useSafeAreaInsets();
-  return <view style={{ paddingBottom: insets().bottom + 8, paddingTop: 8, flexDirection: "row" }}>…</view>;
+  return <View style={{ paddingBottom: insets().bottom + 8, paddingTop: 8, flexDirection: "row" }}>…</View>;
 }
 ```
 
@@ -171,10 +174,11 @@ const hapticsSupported = Platform.OS === "ios" || (Platform.OS === "android" && 
 A hairline, one device pixel tall:
 
 ```tsx
+import { View } from "nsh";
 import { PixelRatio } from "nsh/device";
 
 const hairline = 1 / PixelRatio.get();
-<view style={{ height: hairline, backgroundColor: "#d0d7de" }} />
+<View style={{ height: hairline, backgroundColor: "#d0d7de" }} />
 ```
 
 `PixelRatio` is not reactive. A window can move to a screen with another density (a Mac with an external display), so read it in components that also read `windowSize()`, which changes in that case.

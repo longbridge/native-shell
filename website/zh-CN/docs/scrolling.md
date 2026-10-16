@@ -7,46 +7,46 @@ demo: guide-scrolling
 
 # 滚动
 
-`<scroll>` 就是平台自己的滚动视图（iOS 上的 UIScrollView，Android 上的 ScrollView）：惯性滑动、回弹、滚动条、下拉刷新以及吸附都是原生实现。JS 通过事件得知滚动情况，也可以把滚动偏移绑定到[原生值](./animation.md#原生值)上，做出逐帧跟随手指的效果。
+`<Scroll>` 就是平台自己的滚动视图（iOS 上的 UIScrollView，Android 上的 ScrollView）：惯性滑动、回弹、滚动条、下拉刷新以及吸附都是原生实现。JS 通过事件得知滚动情况，也可以把滚动偏移绑定到[原生值](./animation.md#原生值)上，做出逐帧跟随手指的效果。
 
-`<scroll>` 适合尺寸已知、规模适中的内容：设置页、表单、文章、一排标签。长列表或无限数据请用 [`List`](./lists.md)，它会复用行，并接受同样的滚动属性。
+`<Scroll>` 适合尺寸已知、规模适中的内容：设置页、表单、文章、一排标签。长列表或无限数据请用 [`List`](./lists.md)，它会复用行，并接受同样的滚动属性。
 
 ## 滚动视图
 
-`<scroll>` 本身是视口，它的子元素是内容。视口需要父元素给出尺寸（通常是 `flex: 1`）；内容按视口的宽度（纵向）或高度（横向）排版，长度按需延伸。
+`<Scroll>` 本身是视口，它的子元素是内容。视口需要父元素给出尺寸（通常是 `flex: 1`）；内容按视口的宽度（纵向）或高度（横向）排版，长度按需延伸。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 
 function App() {
   return (
-    <scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
-      <view style={{ padding: 16, gap: 12 }}>
-        <each of={Array.from({ length: 50 }, (_, i) => i + 1)}>
+    <Scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
+      <View style={{ padding: 16, gap: 12 }}>
+        <Each of={Array.from({ length: 50 }, (_, i) => i + 1)}>
           {(n) => (
-            <view style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
-              <text>Row {n()}</text>
-            </view>
+            <View style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
+              <Text>Row {n()}</Text>
+            </View>
           )}
-        </each>
-      </view>
-    </scroll>
+        </Each>
+      </View>
+    </Scroll>
   );
 }
 
 mount(App);
 ```
 
-`<scroll>` 没有 `contentContainerStyle`：像上面那样，把内边距和间距放在唯一的子视图上。横向滚动视图使用 `horizontal`，并以一个横排视图作为子元素：
+`<Scroll>` 没有 `contentContainerStyle`：像上面那样，把内边距和间距放在唯一的子视图上。横向滚动视图使用 `horizontal`，并以一个横排视图作为子元素：
 
 ```tsx
-<scroll horizontal showsIndicator={false}>
-  <view style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16 }}>
-    <each of={["Today", "This week", "This month", "This year"]}>
-      {(label) => <text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "#ffffff" }}>{label()}</text>}
-    </each>
-  </view>
-</scroll>
+<Scroll horizontal showsIndicator={false}>
+  <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16 }}>
+    <Each of={["Today", "This week", "This month", "This year"]}>
+      {(label) => <Text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "#ffffff" }}>{label()}</Text>}
+    </Each>
+  </View>
+</Scroll>
 ```
 
 在从右到左布局中（见[设备与环境](./device-and-environment.md#从右到左)），横向滚动视图从最右端开始，并保持与右端的距离。
@@ -78,7 +78,7 @@ mount(App);
 一个分页器：每页与滚动视图等宽，滑行结束时更新页码指示器。
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 
 const colors = ["#0969da", "#8250df", "#bf3989", "#1a7f37"];
 
@@ -87,8 +87,8 @@ function Pager() {
   const page = signal(0);
   const settle = (e: { x: number }) => page.set(Math.round(e.x / width()));
   return (
-    <view style={{ gap: 8, padding: 16 }}>
-      <scroll
+    <View style={{ gap: 8, padding: 16 }}>
+      <Scroll
         horizontal
         pagingEnabled
         showsIndicator={false}
@@ -96,22 +96,22 @@ function Pager() {
         onLayout={(e) => width.set(e.width)}
         onScrollEnd={settle}
       >
-        <view style={{ flexDirection: "row" }}>
-          <each of={colors}>
+        <View style={{ flexDirection: "row" }}>
+          <Each of={colors}>
             {(color, i) => (
-              <view style={{ width: width(), height: 160, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
-                <text style={{ color: "#ffffff", fontSize: 24, fontWeight: "700" }}>Page {i() + 1}</text>
-              </view>
+              <View style={{ width: width(), height: 160, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: "#ffffff", fontSize: 24, fontWeight: "700" }}>Page {i() + 1}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </scroll>
-      <view style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
-        <each of={colors}>
-          {(_, i) => <view style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: page() === i() ? "#0969da" : "#d0d7de" }} />}
-        </each>
-      </view>
-    </view>
+          </Each>
+        </View>
+      </Scroll>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
+        <Each of={colors}>
+          {(_, i) => <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: page() === i() ? "#0969da" : "#d0d7de" }} />}
+        </Each>
+      </View>
+    </View>
   );
 }
 
@@ -121,7 +121,7 @@ mount(Pager);
 吸附到中间、每次滑动只移动一张的卡片轮播：
 
 ```tsx
-<scroll
+<Scroll
   horizontal
   snapToInterval={232}          // 卡片宽度 (220) + 间距 (12)
   snapToAlignment="center"
@@ -129,8 +129,8 @@ mount(Pager);
   disableIntervalMomentum
   showsIndicator={false}
 >
-  <view style={{ flexDirection: "row", gap: 12, paddingHorizontal: 16 }}>…</view>
-</scroll>
+  <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: 16 }}>…</View>
+</Scroll>
 ```
 
 `List` 接受同样的吸附属性，长轮播用它更合适。
@@ -152,13 +152,13 @@ mount(Pager);
 ```tsx
 const atBottom = signal(false);
 
-<scroll
+<Scroll
   style={{ flex: 1 }}
   scrollEventThrottle={100}
   onScroll={(e) => atBottom.set(e.y + e.height >= e.contentHeight - 20)}
 >
   …
-</scroll>
+</Scroll>
 ```
 
 > [!TIP]
@@ -169,14 +169,14 @@ const atBottom = signal(false);
 `scrollValue` 接收一个[原生值](./animation.md#原生值)，并在内容移动的同一帧，由原生把（主轴方向的）滚动偏移写进去。把这个值，或由它经 `interpolate`、`diffClamp`、算术运算得到的节点，绑定到样式上。
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 function App() {
   const offset = createNativeValue(0);
   return (
-    <view style={{ flex: 1 }}>
-      <view
+    <View style={{ flex: 1 }}>
+      <View
         style={{
           height: 56,
           justifyContent: "center",
@@ -185,7 +185,7 @@ function App() {
           backgroundColor: offset.interpolate({ inputRange: [0, 80], outputRange: ["rgba(255,255,255,0)", "#ffffff"] }),
         }}
       >
-        <text
+        <Text
           style={{
             fontSize: 22,
             fontWeight: "700",
@@ -194,12 +194,12 @@ function App() {
           }}
         >
           Inbox
-        </text>
-      </view>
-      <scroll style={{ flex: 1 }} scrollValue={offset}>
-        <view style={{ padding: 16, gap: 8 }}>…</view>
-      </scroll>
-    </view>
+        </Text>
+      </View>
+      <Scroll style={{ flex: 1 }} scrollValue={offset}>
+        <View style={{ padding: 16, gap: 8 }}>…</View>
+      </Scroll>
+    </View>
   );
 }
 
@@ -212,12 +212,12 @@ mount(App);
 const offset = createNativeValue(0);
 const header = offset.diffClamp(0, 56);
 
-<view style={{ flex: 1 }}>
-  <scroll style={{ flex: 1 }} scrollValue={offset}>
-    <view style={{ paddingTop: 56 }}>…</view>
-  </scroll>
-  <view style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</view>
-</view>
+<View style={{ flex: 1 }}>
+  <Scroll style={{ flex: 1 }} scrollValue={offset}>
+    <View style={{ paddingTop: 56 }}>…</View>
+  </Scroll>
+  <View style={{ position: "absolute", top: 0, left: 0, right: 0, height: 56, transform: [{ translateY: header.mul(-1) }] }}>…</View>
+</View>
 ```
 
 插值在输入范围之外默认会截断（clamp），所以下拉越过顶部（偏移为负）时效果不会超出终点；想做随下拉放大的弹性头图，传入 `extrapolate: "extend"`。
@@ -237,14 +237,14 @@ const reload = async () => {
   }
 };
 
-<scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>…</scroll>
+<Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={reload}>…</Scroll>
 ```
 
 iOS 上的控件是 UIRefreshControl；Mac Catalyst 的 Mac 界面风格没有 UIRefreshControl，nsh 会显示自己的加载指示器，行为相同。`List` 也接受这两个属性。
 
 ## 缩放
 
-当 `maximumZoomScale` 大于 `minimumZoomScale` 时，`<scroll>`（`List` 不行）就可以缩放：捏合会缩放内容，放大后可以双向滚动。
+当 `maximumZoomScale` 大于 `minimumZoomScale` 时，`<Scroll>`（`List` 不行）就可以缩放：捏合会缩放内容，放大后可以双向滚动。
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -258,13 +258,14 @@ iOS 上的控件是 UIRefreshControl；Mac Catalyst 的 Mac 界面风格没有 U
 `onScroll` 会报告 `zoomScale` 和缩放后的内容尺寸。在代码中，`ref.zoomTo({ scale, x, y, animated })` 会缩放，使内容中的点（`x`、`y`，未缩放的点坐标）落在视口中央；双击放大就是在按压处理函数里调用它：
 
 ```tsx
-import { mount, signal, type YNode } from "nsh";
+import { mount, Scroll, signal, type YNode } from "nsh";
+import { Image } from "nsh/image";
 
 function Photo() {
   let scroll!: YNode;
   const scale = signal(1);
   return (
-    <scroll
+    <Scroll
       ref={scroll}
       style={{ flex: 1, backgroundColor: "#000000" }}
       minimumZoomScale={1}
@@ -272,12 +273,12 @@ function Photo() {
       centerContent
       onScroll={(e) => scale.set(e.zoomScale)}
     >
-      <image
+      <Image
         src="https://picsum.photos/id/1015/1200/800"
         style={{ width: 390, height: 260 }}
         onPress={() => scroll.zoomTo({ scale: scale() > 1.5 ? 1 : 3 })}
       />
-    </scroll>
+    </Scroll>
   );
 }
 
@@ -298,8 +299,8 @@ mount(Photo);
 ```tsx
 let scroll!: YNode;
 
-<scroll ref={scroll} style={{ flex: 1 }}>…</scroll>
-<view onPress={() => scroll.scrollTo({ y: 0 })}>…</view>
+<Scroll ref={scroll} style={{ flex: 1 }}>…</Scroll>
+<View onPress={() => scroll.scrollTo({ y: 0 })}>…</View>
 ```
 
 列表另外还有 `scrollToIndex`、`scrollToOffset` 和 `scrollToEnd`；见[列表](./lists.md#从代码滚动)。
@@ -329,7 +330,7 @@ nsh 会自动让获得焦点的输入框保持可见：键盘出现时，输入�
 
 ## 相关内容
 
-- [`scroll`](../elements/scroll.md)：元素参考，包含所有属性和事件。
+- [`Scroll`](../elements/scroll.md)：元素参考，包含所有属性和事件。
 - [列表](./lists.md)：使用相同滚动属性的虚拟化列表。
 - [动画](./animation.md)：用于滚动联动效果的原生值、`interpolate` 和 `diffClamp`。
 - [表单与键盘](./forms-and-keyboard.md)：输入框、焦点和键盘。

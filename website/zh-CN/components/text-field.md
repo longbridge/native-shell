@@ -7,7 +7,7 @@ demo: ui-text-field
 
 # TextField
 
-`TextField` 是一个单行文本输入框：上方可以有标签，聚焦时边框变色，并带有清除按钮。它基于 [`<input>`](../elements/input.md) 元素构建。
+`TextField` 是一个单行文本输入框：上方可以有标签，聚焦时边框变色，并带有清除按钮。它基于 [`<Input>`](../elements/input.md) 元素构建。
 
 ```tsx
 import { TextField } from "nsh/ui/mobile";
@@ -16,16 +16,16 @@ import { TextField } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { TextField } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <TextField label="Name" placeholder="Your name" value={name()} onChange={(v) => name.set(v)} />
-      <text>{`Hello, ${name() || "nobody"}`}</text>
-    </view>
+      <Text>{`Hello, ${name() || "nobody"}`}</Text>
+    </View>
   );
 }
 
@@ -67,7 +67,7 @@ mount(App);
 ```
 
 > [!NOTE]
-> TextField 覆盖的是常见场景。如果需要键盘类型、回车键文字、自动填充、多行文本，或带 `focus()` 的 ref，请直接使用 [`<input>`](../elements/input.md) 元素。另请参见[表单与键盘](../docs/forms-and-keyboard.md)。
+> TextField 覆盖的是常见场景。如果需要键盘类型、回车键文字、自动填充、多行文本，或带 `focus()` 的 ref，请直接使用 [`<Input>`](../elements/input.md) 元素。另请参见[表单与键盘](../docs/forms-and-keyboard.md)。
 
 ## 属性
 

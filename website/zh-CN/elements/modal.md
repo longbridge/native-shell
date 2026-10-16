@@ -1,47 +1,40 @@
 ---
-title: modal
-description: modal 元素与 Modal 组件：在所有内容之上呈现内容，可以是全屏、底部弹出的 sheet 或对话框。
+title: Modal
+description: Modal 组件：在所有内容之上呈现内容，可以是全屏、底部弹出的 sheet 或对话框。
 order: 11
 ---
 
-# modal
+# Modal
 
 modal 在应用其余内容之上、在它自己的原生窗口层中呈现内容：iOS 和 Mac Catalyst 上是一个被 present 的 view controller，Android 上是一个 Dialog。它用于全屏流程、sheet 和对话框。系统自带的手势（下滑关闭 sheet、Android 返回键）都能正常工作，并在原生侧决定。
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
 
 function Example() {
   const open = signal(false);
   return (
-    <view style={{ flex: 1, justifyContent: "center", padding: 24 }}>
+    <View style={{ flex: 1, justifyContent: "center", padding: 24 }}>
       <Button title="Open" onPress={() => open.set(true)} />
       <Modal visible={open()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => open.set(false)}>
         <SafeAreaView style={{ flex: 1, padding: 20, gap: 12, backgroundColor: "#ffffff" }}>
-          <text style={{ fontSize: 24, fontWeight: "700" }}>A sheet</text>
+          <Text style={{ fontSize: 24, fontWeight: "700" }}>A sheet</Text>
           <Button title="Close" onPress={() => open.set(false)} />
         </SafeAreaView>
       </Modal>
-    </view>
+    </View>
   );
 }
 ```
 
-## `Modal` 与 `<modal>`
-
-请使用 [`nsh/ui/mobile`](../components/navigation.md) 的 `Modal`。它补上了裸标签缺少的功能：
-
-- `visible` 属性：`visible` 不为 `false` 时呈现，变为 `false` 时关闭；
-- modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `useSafeAreaInsets()` 读取。
-
-裸的 `<modal>` 标签只要处于挂载状态就会一直呈现（用 [`<if>`](./control-flow.md) 包裹来控制显示和隐藏），也不会给内容提供 inset。在某个文件中导入 `Modal` 后，该文件里的 `<modal>` 就是这个组件。
+`Modal` 从 [`nsh/ui/mobile`](../components/navigation.md) 导入。`visible` 不为 `false` 时呈现，变为 `false` 时关闭；它还会给内容提供 modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `useSafeAreaInsets()` 读取。
 
 ## 属性
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `visible` | `boolean` | `true` | 仅 `Modal`：为 true 时呈现。 |
+| `visible` | `boolean` | `true` | 为 true 时呈现。 |
 | `animationType` | `"slide" \| "fade" \| "none"` | `"slide"` | modal 的出现方式。 |
 | `transparent` | `boolean` | `false` | 背景透出下面的内容（用于应用自己绘制的对话框）。 |
 | `dismissible` | `boolean` | `false` | 用户可在原生侧直接关闭（iOS 下滑 sheet、Android 返回键），随后触发 `onRequestClose` 和 `onDismiss`。不设置时，这些手势只是请求关闭。 |
@@ -78,12 +71,12 @@ modal 是受控的：用户下滑 sheet 或按返回键时，nsh 通过 `onReque
 
 ```tsx
 <Modal visible={confirm()} transparent animationType="fade" onRequestClose={() => confirm.set(false)}>
-  <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-    <view style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
-      <text style={{ fontSize: 20, fontWeight: "700" }}>Delete this item?</text>
+  <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+    <View style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>Delete this item?</Text>
       <Button title="Delete" onPress={remove} />
-    </view>
-  </view>
+    </View>
+  </View>
 </Modal>
 ```
 

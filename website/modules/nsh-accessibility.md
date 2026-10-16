@@ -21,9 +21,9 @@ const screenReaderEnabled: Accessor<boolean>;
 Whether a screen reader (VoiceOver, TalkBack) is running. Reactive: what reads it updates when the user turns the screen reader on or off.
 
 ```tsx
-<if when={!screenReaderEnabled()} else={<text onPress={next}>Next photo</text>}>
-  <text>Swipe for the next photo</text>
-</if>
+<If when={!screenReaderEnabled()} else={<Text onPress={next}>Next photo</Text>}>
+  <Text>Swipe for the next photo</Text>
+</If>
 ```
 
 ## reduceMotion
@@ -67,7 +67,7 @@ The system's accessibility settings, read once or followed with listeners. `scre
 | `addEventListener(event, listener)` | Calls `listener` with the new value when the setting changes; returns a subscription to `remove()`. |
 
 ```tsx
-import { cleanup, type YNode } from "nsh";
+import { cleanup, Text, View, type YNode } from "nsh";
 import { AccessibilityInfo } from "nsh/accessibility";
 
 function Saved() {
@@ -79,10 +79,10 @@ function Saved() {
   const sub = AccessibilityInfo.addEventListener("screenReaderChanged", (on) => console.log("screen reader", on));
   cleanup(() => sub.remove());
   return (
-    <view style={{ gap: 8 }}>
-      <text onPress={save} accessibilityRole="button">Save</text>
-      <text ref={note}>Your changes are kept on this device.</text>
-    </view>
+    <View style={{ gap: 8 }}>
+      <Text onPress={save} accessibilityRole="button">Save</Text>
+      <Text ref={note}>Your changes are kept on this device.</Text>
+    </View>
   );
 }
 ```

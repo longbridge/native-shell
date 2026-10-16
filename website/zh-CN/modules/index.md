@@ -28,13 +28,13 @@ nsh 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 
 | 模块 | 导出 | 页面 |
 |---|---|---|
-| `nsh` | `signal`、`computed`、`effect`、`batch`、`untracked`、`cleanup`、`context`、`split`、`mount`；元素、样式、事件和 JSX 的类型（`YNode`、`ViewStyle` 等） | [nsh](./nsh.md) |
+| `nsh` | `signal`、`computed`、`effect`、`batch`、`untracked`、`cleanup`、`context`、`split`、`mount`；`View`、`Text`、`Scroll`、`Input`；元素、样式、事件和 JSX 的类型（`YNode`、`ViewStyle` 等） | [nsh](./nsh.md) |
 | `nsh/animated` | `createNativeValue`、`NativeValue`、`NativeNode`、`Animated`、`Easing`、`LayoutAnimation` | [nsh/animated](./nsh-animated.md) |
 | `nsh/list` | `List`（虚拟化、可复用单元格的列表） | [nsh/list](./nsh-list.md) |
 | `nsh/canvas` | `Canvas`、`Path2D`、`CanvasRenderingContext2D`、`CanvasGradient` | [nsh/canvas](./nsh-canvas.md) |
 | `nsh/device` | `windowSize`、`colorScheme`、`fontScale`、`Platform`、`PixelRatio`、`I18nManager` | [nsh/device](./nsh-device.md) |
 | `nsh/gesture` | `PanResponder` | [nsh/gesture](./nsh-gesture.md) |
-| `nsh/image` | `Image.getSize`、`Image.prefetch` | [nsh/image](./nsh-image.md) |
+| `nsh/image` | `Image`（元素）、`Image.getSize`、`Image.prefetch` | [nsh/image](./nsh-image.md) |
 | `nsh/native` | `nativeComponent`（宿主应用注册的原生组件） | [nsh/native](./nsh-native.md) |
 | `nsh/accessibility` | `AccessibilityInfo`、`screenReaderEnabled`、`reduceMotion` | [nsh/accessibility](./nsh-accessibility.md) |
 | `nsh/ios` | `isAvailable`、`InputAccessoryView` | [nsh/ios](./nsh-ios.md) |
@@ -53,4 +53,4 @@ nsh 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 
 ## 宿主元素
 
-`<view>`、`<text>`、`<image>`、`<scroll>`、`<input>` 等小写 JSX 标签不需要导入：它们内置于 JSX 编译器中。它们的属性见[元素](../elements/index.md)。
+宿主元素和其他一切一样是需要导入的组件：`View`、`Text`、`Scroll`、`Input` 来自 `nsh`，`Image` 来自 `nsh/image`，`List` 来自 `nsh/list`，`Canvas`、`WebView`、`Video` 来自各自的模块，`Modal` 来自 `nsh/ui/mobile`，`InputAccessoryView` 来自 `nsh/ios`。只有 `If` 和 `Each` 是全局组件。编译器会就地创建这些元素，所以导入在运行时没有任何开销。它们的属性见[元素](../elements/index.md)。

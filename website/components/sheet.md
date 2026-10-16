@@ -21,20 +21,20 @@ import { Sheet } from "nsh/ui/mobile";
 `open` to false:
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, Sheet } from "nsh/ui/mobile";
 
 function App() {
   const open = signal(false);
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48 }}>
       <Button title="Share" onPress={() => open.set(true)} />
       <Sheet open={open()} onClose={() => open.set(false)}>
-        <text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</text>
+        <Text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</Text>
         <Button title="Copy link" variant="secondary" onPress={() => open.set(false)} />
         <Button title="Done" onPress={() => open.set(false)} />
       </Sheet>
-    </view>
+    </View>
   );
 }
 
@@ -67,8 +67,8 @@ For a list in a sheet, give the list's parent a height:
 
 ```tsx
 <Sheet open={picking()} onClose={() => picking.set(false)}>
-  <text style={{ fontSize: 17, fontWeight: "600" }}>Choose a city</text>
-  <view style={{ height: 320 }}>
+  <Text style={{ fontSize: 17, fontWeight: "600" }}>Choose a city</Text>
+  <View style={{ height: 320 }}>
     <SelectList
       options={cities}
       value={city()}
@@ -77,7 +77,7 @@ For a list in a sheet, give the list's parent a height:
         picking.set(false);
       }}
     />
-  </view>
+  </View>
 </Sheet>
 ```
 

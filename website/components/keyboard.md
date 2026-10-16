@@ -22,16 +22,16 @@ Keyboard.dismiss(): void
 Unfocuses the focused input, which hides the keyboard. It does nothing if no input is focused.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 import { Button, Keyboard, TextField } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <TextField label="Name" value={name()} onChange={(v) => name.set(v)} />
       <Button title="Done" onPress={() => Keyboard.dismiss()} />
-    </view>
+    </View>
   );
 }
 
@@ -53,12 +53,13 @@ the duration of the keyboard's show or hide animation, in seconds. It is reactiv
 reads it runs again when the keyboard shows, hides or changes height.
 
 ```tsx
+import { Input, View } from "nsh";
 import { keyboard, useSafeAreaInsets } from "nsh/ui/mobile";
 
 function MessageBar() {
   const insets = useSafeAreaInsets();
   return (
-    <view
+    <View
       style={{
         flexDirection: "row",
         padding: 8,
@@ -66,8 +67,8 @@ function MessageBar() {
         paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
       }}
     >
-      <input placeholder="Message" style={{ flex: 1 }} />
-    </view>
+      <Input placeholder="Message" style={{ flex: 1 }} />
+    </View>
   );
 }
 ```

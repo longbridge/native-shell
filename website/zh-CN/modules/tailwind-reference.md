@@ -11,10 +11,10 @@ order: 17
 本页列出支持的内容。入门介绍见 [Tailwind](../docs/tailwind.md)；工具类最终设置的样式键见 [样式参考](./style-reference.md)。
 
 ```tsx
-<view class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-md active:scale-[0.98] transition dark:bg-zinc-800">
-  <text class="text-base font-semibold text-zinc-900 dark:text-white">Inbox</text>
-  <text classList={{ "text-red-500": unread() > 0, "text-zinc-400": unread() === 0 }}>{unread()}</text>
-</view>
+<View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-md active:scale-[0.98] transition dark:bg-zinc-800">
+  <Text class="text-base font-semibold text-zinc-900 dark:text-white">Inbox</Text>
+  <Text classList={{ "text-red-500": unread() > 0, "text-zinc-400": unread() === 0 }}>{unread()}</Text>
+</View>
 ```
 
 ## 类如何组合
@@ -22,7 +22,7 @@ order: 17
 - **后写的生效。** 同一变体层级的工具类中，字符串里靠后的那个生效：`"p-4 p-2"` 等于 `p-2`。组件可以接收 `class` 属性并直接拼接到自己的类后面，不需要 `tailwind-merge`。
 - **变体在普通工具类之后应用**，顺序与 Tailwind 的变体顺序一致：位置（`first:` 等）、`group-*:`、`focus-within:`、`hover:`、`focus:`、`active:`、`enabled:`、`disabled:`、动效偏好、`max-*:` 断点、按宽度升序的断点、方向（横竖屏）、书写方向、`dark:`，最后是平台。因此 `"active:bg-red-500 bg-blue-500"` 按下时是红色。
 - **`style` 优先于类。** 内联 `style` 叠加在解析后的类之上。重要标记的工具类（`!p-4` 或 `p-4!`）连内联样式也能覆盖。
-- **文字样式会继承。** 写在视图上的文字类（`text-white`、`font-bold`、`text-center` 等）会像 CSS 一样传给其中的 `<text>` 和 `<input>`。
+- **文字样式会继承。** 写在视图上的文字类（`text-white`、`font-bold`、`text-center` 等）会像 CSS 一样传给其中的 `<Text>` 和 `<Input>`。
 - **display 遵循 CSS。** `flex` 和 `inline-flex` 是横向排列，除非有方向类另行指定，且与其在字符串中的位置无关（`flex-col flex` 是纵向）。没有 `flex` 的视图保持 nsh 默认的纵向排列。
 
 ## 单位与主题
@@ -258,7 +258,7 @@ Tailwind 的文字阴影有多层；原生只绘制一层，即最宽的那层�
 | `bg-none` | 去掉渐变 |
 
 ```tsx
-<view class="h-32 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 via-40% to-pink-500" />
+<View class="h-32 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 via-40% to-pink-500" />
 ```
 
 ## 边框
@@ -321,7 +321,7 @@ Tailwind 的文字阴影有多层；原生只绘制一层，即最宽的那层�
 | `backdrop-filter-none` | 去掉背景滤镜 |
 
 > [!WARNING]
-> iOS 上视图只支持 `opacity`、不超过 1 的 `brightness` 和 `drop-shadow`；`<image>` 支持所有颜色滤镜和 `blur`。Android 上 `blur`、`drop-shadow` 和背景模糊需要 API 31。见 [样式参考](./style-reference.md#滤镜与混合)。
+> iOS 上视图只支持 `opacity`、不超过 1 的 `brightness` 和 `drop-shadow`；`<Image>` 支持所有颜色滤镜和 `blur`。Android 上 `blur`、`drop-shadow` 和背景模糊需要 API 31。见 [样式参考](./style-reference.md#滤镜与混合)。
 
 ## 变换
 
@@ -429,13 +429,13 @@ Tailwind 的文字阴影有多层；原生只绘制一层，即最宽的那层�
 `disabled` 适用于任何元素：它会让 `disabled:` 生效，并移除元素的按压处理器，因此也不会显示按压反馈。
 
 ```tsx
-<view
+<View
   onPress={save}
   disabled={saving()}
   class="rounded-lg bg-blue-600 px-4 py-2 transition active:scale-95 active:bg-blue-700 disabled:opacity-40"
 >
-  <text class="font-medium text-white">Save</text>
-</view>
+  <Text class="font-medium text-white">Save</Text>
+</View>
 ```
 
 ### 分组
@@ -451,10 +451,10 @@ Tailwind 的文字阴影有多层；原生只绘制一层，即最宽的那层�
 | `group-disabled:` | 禁用 |
 
 ```tsx
-<view onPress={open} class="group/row flex-row items-center gap-3 p-3 active:bg-zinc-100">
-  <text class="flex-1 text-zinc-900 group-active/row:text-blue-600">Settings</text>
-  <text class="text-zinc-400 group-active/row:translate-x-1 transition-transform">›</text>
-</view>
+<View onPress={open} class="group/row flex-row items-center gap-3 p-3 active:bg-zinc-100">
+  <Text class="flex-1 text-zinc-900 group-active/row:text-blue-600">Settings</Text>
+  <Text class="text-zinc-400 group-active/row:translate-x-1 transition-transform">›</Text>
+</View>
 ```
 
 ### 在兄弟元素中的位置
@@ -468,12 +468,12 @@ Tailwind 的文字阴影有多层；原生只绘制一层，即最宽的那层�
 | `even:` | 第 2、4……个子元素 |
 
 ```tsx
-<each of={items()}>{(item) => <text class="border-b border-zinc-200 py-3 last:border-b-0">{item().name}</text>}</each>
+<Each of={items()}>{(item) => <Text class="border-b border-zinc-200 py-3 last:border-b-0">{item().name}</Text>}</Each>
 ```
 
 ### 占位符
 
-`placeholder:` 作用于 `<input>` 的占位文字，只接受文字颜色：`placeholder:text-zinc-400`。
+`placeholder:` 作用于 `<Input>` 的占位文字，只接受文字颜色：`placeholder:text-zinc-400`。
 
 ### 重要标记
 

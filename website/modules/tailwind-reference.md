@@ -11,10 +11,10 @@ Every element takes Tailwind CSS classes in its `class` prop (and conditional on
 This page lists what is supported. For an introduction see [Tailwind](../docs/tailwind.md); for the style keys the utilities set, see the [Style reference](./style-reference.md).
 
 ```tsx
-<view class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-md active:scale-[0.98] transition dark:bg-zinc-800">
-  <text class="text-base font-semibold text-zinc-900 dark:text-white">Inbox</text>
-  <text classList={{ "text-red-500": unread() > 0, "text-zinc-400": unread() === 0 }}>{unread()}</text>
-</view>
+<View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-md active:scale-[0.98] transition dark:bg-zinc-800">
+  <Text class="text-base font-semibold text-zinc-900 dark:text-white">Inbox</Text>
+  <Text classList={{ "text-red-500": unread() > 0, "text-zinc-400": unread() === 0 }}>{unread()}</Text>
+</View>
 ```
 
 ## How classes combine
@@ -22,7 +22,7 @@ This page lists what is supported. For an introduction see [Tailwind](../docs/ta
 - **Later wins.** Among utilities of the same variant level, the one later in the string wins: `"p-4 p-2"` is `p-2`. A component can take a `class` prop and append it to its own classes without `tailwind-merge`.
 - **Variants apply after plain utilities**, in Tailwind's variant order: position (`first:` ...), `group-*:`, `focus-within:`, `hover:`, `focus:`, `active:`, `enabled:`, `disabled:`, motion, `max-*:` breakpoints, then breakpoints ascending, orientation, direction, `dark:`, then platform. So `"active:bg-red-500 bg-blue-500"` is red while pressed.
 - **`style` wins over classes.** The inline `style` is applied on top of the resolved classes. An important utility (`!p-4` or `p-4!`) wins over the inline style too.
-- **Text styles inherit.** Text utilities on a view (`text-white`, `font-bold`, `text-center`, ...) pass to the `<text>` and `<input>` elements inside it, as in CSS.
+- **Text styles inherit.** Text utilities on a view (`text-white`, `font-bold`, `text-center`, ...) pass to the `<Text>` and `<Input>` elements inside it, as in CSS.
 - **Display is CSS's.** `flex` and `inline-flex` make a row unless a direction utility says otherwise, wherever it is in the string (`flex-col flex` is a column). Views without `flex` keep nsh's column default.
 
 ## Units and the theme
@@ -258,7 +258,7 @@ Tailwind's text shadows have several layers; natively one shadow is drawn, the w
 | `bg-none` | removes the gradient |
 
 ```tsx
-<view class="h-32 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 via-40% to-pink-500" />
+<View class="h-32 rounded-2xl bg-linear-to-br from-indigo-500 via-purple-500 via-40% to-pink-500" />
 ```
 
 ## Borders
@@ -321,7 +321,7 @@ Shadows, rings and inset shadows combine into one `boxShadow` list, as in CSS. A
 | `backdrop-filter-none` | removes them |
 
 > [!WARNING]
-> iOS applies only `opacity`, `brightness` up to 1 and `drop-shadow` to views; `<image>` takes every color filter and `blur`. Android needs API 31 for `blur`, `drop-shadow` and backdrop blur. See the [Style reference](./style-reference.md#filters-and-blending).
+> iOS applies only `opacity`, `brightness` up to 1 and `drop-shadow` to views; `<Image>` takes every color filter and `blur`. Android needs API 31 for `blur`, `drop-shadow` and backdrop blur. See the [Style reference](./style-reference.md#filters-and-blending).
 
 ## Transforms
 
@@ -429,13 +429,13 @@ States are tracked by the platform only for elements whose classes use them, and
 `disabled` works on any element: it applies `disabled:` and removes the element's press handlers, so it shows no press feedback either.
 
 ```tsx
-<view
+<View
   onPress={save}
   disabled={saving()}
   class="rounded-lg bg-blue-600 px-4 py-2 transition active:scale-95 active:bg-blue-700 disabled:opacity-40"
 >
-  <text class="font-medium text-white">Save</text>
-</view>
+  <Text class="font-medium text-white">Save</Text>
+</View>
 ```
 
 ### Groups
@@ -451,10 +451,10 @@ Mark an ancestor with `group` and style descendants by its state with `group-<st
 | `group-disabled:` | disabled |
 
 ```tsx
-<view onPress={open} class="group/row flex-row items-center gap-3 p-3 active:bg-zinc-100">
-  <text class="flex-1 text-zinc-900 group-active/row:text-blue-600">Settings</text>
-  <text class="text-zinc-400 group-active/row:translate-x-1 transition-transform">›</text>
-</view>
+<View onPress={open} class="group/row flex-row items-center gap-3 p-3 active:bg-zinc-100">
+  <Text class="flex-1 text-zinc-900 group-active/row:text-blue-600">Settings</Text>
+  <Text class="text-zinc-400 group-active/row:translate-x-1 transition-transform">›</Text>
+</View>
 ```
 
 ### Position among siblings
@@ -468,12 +468,12 @@ Mark an ancestor with `group` and style descendants by its state with `group-<st
 | `even:` | the 2nd, 4th, ... child |
 
 ```tsx
-<each of={items()}>{(item) => <text class="border-b border-zinc-200 py-3 last:border-b-0">{item().name}</text>}</each>
+<Each of={items()}>{(item) => <Text class="border-b border-zinc-200 py-3 last:border-b-0">{item().name}</Text>}</Each>
 ```
 
 ### Placeholder
 
-`placeholder:` applies to an `<input>`'s placeholder and only takes a text color: `placeholder:text-zinc-400`.
+`placeholder:` applies to an `<Input>`'s placeholder and only takes a text color: `placeholder:text-zinc-400`.
 
 ### Important
 

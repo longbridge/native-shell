@@ -16,16 +16,16 @@ import { Stepper, type StepperRef } from "nsh/ui/mobile";
 ## 用法
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Stepper } from "nsh/ui/mobile";
 
 function App() {
   const guests = signal(2);
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
-      <text>{`${guests()} guests`}</text>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+      <Text>{`${guests()} guests`}</Text>
       <Stepper value={guests()} min={1} max={12} onChange={(v) => guests.set(v)} />
-    </view>
+    </View>
   );
 }
 
@@ -62,13 +62,13 @@ mount(App);
 传入 `ref` 即可获得一个 `StepperRef`，用来在代码中读取和设置数值：
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Button, Stepper, type StepperRef } from "nsh/ui/mobile";
 
 function App() {
   let stepper!: StepperRef;
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <Stepper ref={stepper} defaultValue={3} max={10} />
       <Button
         title="Reset"
@@ -77,7 +77,7 @@ function App() {
           stepper.setValue(0);
         }}
       />
-    </view>
+    </View>
   );
 }
 

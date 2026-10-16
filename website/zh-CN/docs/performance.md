@@ -50,20 +50,21 @@ computed 值一次性看到所有写入，而不是每次写入后都运行一�
 
 ### 3. 细粒度更新
 
-组件只运行**一次**。之后，当某个 signal 变化时，只有读取它的绑定会重新运行：一段文本、一个样式属性、`<if>` 的一个分支、
-`<each>` 的各行。不会为了找出变化而重新渲染整棵子树。
+组件只运行**一次**。之后，当某个 signal 变化时，只有读取它的绑定会重新运行：一段文本、一个样式属性、`<If>` 的一个分支、
+`<Each>` 的各行。不会为了找出变化而重新渲染整棵子树。
 
 ```tsx
 import type { Accessor } from "nsh";
+import { Text } from "nsh";
 
 type Quote = { price: number; change: number };
 
 function Price(props: { quote: Accessor<Quote> }) {
   // Runs once. When quote() changes, only the text and the color update.
   return (
-    <text style={{ color: props.quote().change < 0 ? "#cf222e" : "#1a7f37" }}>
+    <Text style={{ color: props.quote().change < 0 ? "#cf222e" : "#1a7f37" }}>
       {props.quote().price.toFixed(2)}
-    </text>
+    </Text>
   );
 }
 ```
@@ -71,14 +72,14 @@ function Price(props: { quote: Accessor<Quote> }) {
 **对你的代码而言：**
 
 - 在使用 signal 的地方读取它（JSX 表达式、`computed`、`effect` 内部），而不是在组件顶部读取，这样更新的是范围最小的绑定。
-- 集合使用 `<each>`（按 key 保留行）或 [`List`](./lists.md)；JSX 中普通的 `.map()` 会在每次变化时重新创建所有行。
+- 集合使用 `<Each>`（按 key 保留行）或 [`List`](./lists.md)；JSX 中普通的 `.map()` 会在每次变化时重新创建所有行。
 - 当多个绑定用到同一个派生值时，用 `computed` 计算它，这样每次变化只计算一次。
 
 向一个三项列表追加第四项，`nsh trace` 显示的结果如下：
 
 ```tsx
-{items().map((n) => <text>{`row ${n}`}</text>)}                   // 22 mount items: 3 views removed, 4 created
-<each of={items()}>{(n) => <text>{`row ${n()}`}</text>}</each>      // 4 mount items: 1 view created
+{items().map((n) => <Text>{`row ${n}`}</Text>)}                   // 22 mount items: 3 views removed, 4 created
+<Each of={items()}>{(n) => <Text>{`row ${n()}`}</Text>}</Each>      // 4 mount items: 1 view created
 ```
 
 参见[响应式](./reactivity.md)。
@@ -94,11 +95,13 @@ core 只发送变化的部分：新视图不带默认样式，也不带空的事
 繁忙时会卡顿。[`nsh/animated`](./animation.md) 则以原生方式运行动画：
 
 ```tsx
+import { View } from "nsh";
 import { createNativeValue } from "nsh/animated";
+import { List } from "nsh/list";
 
 const scrollY = createNativeValue(0);
 
-<view
+<View
   style={{
     opacity: scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 0.35] }),
     transform: [{ translateY: scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, -6] }) }],

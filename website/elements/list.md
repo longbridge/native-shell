@@ -1,17 +1,17 @@
 ---
-title: list
+title: List
 description: "The virtualized, recycling list: rows, columns, sticky headers, inverted chat lists, viewability and scrolling to items."
 order: 7
 ---
 
-# list
+# List
 
-`<list>` shows long or unbounded data. Only the rows near the viewport exist: as the user scrolls, rows that leave are
+`<List>` shows long or unbounded data. Only the rows near the viewport exist: as the user scrolls, rows that leave are
 recycled for the rows that come in. Which rows exist, their positions, columns, sticky headers and viewability are all
 computed natively, so scrolling a list of thousands of items costs no more than a list of twenty.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { List } from "nsh/list";
 
 const contacts = Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `Contact ${i + 1}` }));
@@ -20,11 +20,11 @@ function App() {
   return (
     <List each={contacts} estimatedItemSize={56} style={{ flex: 1 }}>
       {(contact, index) => (
-        <view style={{ height: 56, paddingHorizontal: 16, justifyContent: "center" }}>
-          <text style={{ fontSize: 16 }}>
+        <View style={{ height: 56, paddingHorizontal: 16, justifyContent: "center" }}>
+          <Text style={{ fontSize: 16 }}>
             {index() + 1}. {contact().name}
-          </text>
-        </view>
+          </Text>
+        </View>
       )}
     </List>
   );
@@ -33,14 +33,11 @@ function App() {
 mount(App);
 ```
 
-## `List` and `<list>`
+`List` comes from [`nsh/list`](../modules/nsh-list.md). It is generic: `List<T>` checks that `each` and the row
+function agree on the item type, which TypeScript infers from `each`.
 
-`List` from [`nsh/list`](../modules/nsh-list.md) and the built-in `<list>` tag are the same thing; `<list>` needs no
-import. The import gives you a generic type: `List<T>` checks that `each` and the row function agree on the item type,
-which the tag cannot (TypeScript's intrinsic elements are not generic). Prefer `List` in typed code.
-
-For a short list whose rows should all exist (a settings page, a form), an [`<each>`](./control-flow.md) inside a
-[`<scroll>`](./scroll.md) is simpler. For a list styled as a grouped table, see
+For a short list whose rows should all exist (a settings page, a form), an [`<Each>`](./control-flow.md) inside a
+[`<Scroll>`](./scroll.md) is simpler. For a list styled as a grouped table, see
 [`ListView`](../components/list-view.md). The [lists guide](../docs/lists.md) covers patterns: infinite loading, chat,
 sections.
 
@@ -51,7 +48,7 @@ The row function runs once per cell, not once per item. When a cell is reused fo
 
 ```tsx
 <List each={messages()}>
-  {(message) => <text>{message().body}</text>}
+  {(message) => <Text>{message().body}</Text>}
 </List>
 ```
 
@@ -88,7 +85,7 @@ stay with the cell and show up on another item.
 | `style` | `StyleProp<ViewStyle>` | | The list's own style (it needs a bounded size: `flex: 1` or a height). |
 | `ref` | `YNode \| (node: YNode) => void` | | The list's node (see [ref methods](#ref-methods)). |
 
-Lists also take the scrolling props of [`<scroll>`](./scroll.md#scrolling): `pagingEnabled`, `snapToInterval`,
+Lists also take the scrolling props of [`<Scroll>`](./scroll.md#scrolling): `pagingEnabled`, `snapToInterval`,
 `snapToOffsets`, `snapToAlignment`, `disableIntervalMomentum`, `decelerationRate`, `bounces`, `contentInset`,
 `contentOffset`, `keyboardShouldPersistTaps`, `scrollEventThrottle` and `scrollEnabled`. Lists do not zoom.
 
@@ -139,10 +136,10 @@ let list!: YNode;
   contentContainerStyle={{ padding: 12, gap: 8 }}
   viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
   onViewableItemsChanged={({ viewableItems }) => visible.set(`${viewableItems.length} visible`)}
-  ListHeaderComponent={<text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</text>}
+  ListHeaderComponent={<Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</Text>}
   style={{ flex: 1 }}
 >
-  {(photo) => <image src={photo().url} style={{ height: 120, borderRadius: 8 }} />}
+  {(photo) => <Image src={photo().url} style={{ height: 120, borderRadius: 8 }} />}
 </List>;
 ```
 

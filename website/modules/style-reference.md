@@ -17,12 +17,13 @@ Each interface extends the one before it:
 | Interface | Extends | Used by |
 |---|---|---|
 | `LayoutStyle` | | Layout of every element (flexbox, grid, sizes, spacing, position) |
-| `ViewStyle` | `LayoutStyle` | `<view>`, `<scroll>`, `<list>`, controls and every other element |
-| `TextStyle` | `ViewStyle` | `<text>` and `<input>` (and views, whose text styles pass to the text inside them) |
-| `ImageStyle` | `ViewStyle` | `<image>` |
+| `ViewStyle` | `LayoutStyle` | `<View>`, `<Scroll>`, `<List>`, controls and every other element |
+| `TextStyle` | `ViewStyle` | `<Text>` and `<Input>` (and views, whose text styles pass to the text inside them) |
+| `ImageStyle` | `ViewStyle` | `<Image>` |
 
 ```tsx
 import type { ViewStyle, TextStyle } from "nsh";
+import { Text, View } from "nsh";
 
 const card: ViewStyle = {
   padding: 16,
@@ -33,15 +34,15 @@ const card: ViewStyle = {
 
 const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
-<view style={card}>
-  <text style={title}>Hello</text>
-</view>;
+<View style={card}>
+  <Text style={title}>Hello</Text>
+</View>;
 ```
 
 `style` also takes an array; entries merge left to right and falsy entries are skipped, so conditional styles need no spreading:
 
 ```tsx
-<view style={[card, selected() && { borderColor: "#2563eb", borderWidth: 2 }]} />
+<View style={[card, selected() && { borderColor: "#2563eb", borderWidth: 2 }]} />
 ```
 
 > [!NOTE]
@@ -117,10 +118,10 @@ Set `display: "grid"` to lay out children in a CSS grid. Track lists use CSS syn
 | `justifySelf` | `"auto" \| "flex-start" \| "flex-end" \| "center" \| "stretch" \| "baseline"` | Overrides `justifyItems` for this item. |
 
 ```tsx
-<view style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-  <view style={{ gridColumn: "span 2", height: 60, backgroundColor: "#c7d2fe" }} />
-  <view style={{ height: 60, backgroundColor: "#a5b4fc" }} />
-</view>
+<View style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+  <View style={{ gridColumn: "span 2", height: 60, backgroundColor: "#c7d2fe" }} />
+  <View style={{ height: 60, backgroundColor: "#a5b4fc" }} />
+</View>
 ```
 
 ### Size
@@ -178,7 +179,7 @@ Everything drawn by a view. All keys of `LayoutStyle` apply too.
 | `experimental_backgroundImage` | `string` | Alias of `backgroundImage`. |
 
 ```tsx
-<view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
+<View style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
 ```
 
 ### Borders
@@ -240,7 +241,7 @@ Two ways to cast a shadow: the CSS `boxShadow` (several layers, spread, inset) o
 | `shadowRadius` | `number` | Blur radius. Default `3`. |
 
 ```tsx
-<view style={{ padding: 16, borderRadius: 12, backgroundColor: "#fff",
+<View style={{ padding: 16, borderRadius: 12, backgroundColor: "#fff",
   boxShadow: "0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px -4px rgb(0 0 0 / 0.12)" }} />
 ```
 
@@ -274,7 +275,7 @@ A `TransformStep` is an object with one key:
 | `perspective` | `number` | no |
 
 ```tsx
-<view style={{ transform: [{ perspective: 600 }, { rotateY: "20deg" }, { scale: 0.95 }] }} />
+<View style={{ transform: [{ perspective: 600 }, { rotateY: "20deg" }, { scale: 0.95 }] }} />
 ```
 
 > [!NOTE]
@@ -290,7 +291,7 @@ A `TransformStep` is an object with one key:
 
 > [!WARNING]
 > Platform limits:
-> - iOS applies only `opacity()`, `brightness()` up to 1 and `drop-shadow()` to views. `<image>` takes every color filter and `blur()`, applied while the image is decoded.
+> - iOS applies only `opacity()`, `brightness()` up to 1 and `drop-shadow()` to views. `<Image>` takes every color filter and `blur()`, applied while the image is decoded.
 > - iOS `backdropFilter` blur uses a system material at a fraction, an approximation of the exact radius.
 > - Android needs API 31 for `blur()`, `drop-shadow()` and `backdropFilter`; below that only color filters apply. Blend modes need API 29.
 
@@ -306,7 +307,7 @@ When a transitioned property changes (from a new style, a class or a variant suc
 | `transitionTimingFunction` | `"linear" \| "ease" \| "ease-in" \| "ease-out" \| "ease-in-out" \| "cubic-bezier(...)"` | The easing curve. |
 
 ```tsx
-<view
+<View
   onPress={() => open.set(!open())}
   style={{ height: open() ? 160 : 56, opacity: open() ? 1 : 0.8,
     transitionProperty: "opacity, transform", transitionDuration: 200 }}
@@ -335,7 +336,7 @@ For animations driven by values, gestures or springs, use [nsh/animated](./nsh-a
 
 ## TextStyle
 
-Text styles apply to `<text>` and `<input>`. They are also inherited, as in CSS: text properties set on a view pass to the texts and inputs inside it, and nested `<text>` spans inherit from their parent text. All keys of `ViewStyle` apply too. See [Text](../docs/text.md).
+Text styles apply to `<Text>` and `<Input>`. They are also inherited, as in CSS: text properties set on a view pass to the texts and inputs inside it, and nested `<Text>` spans inherit from their parent text. All keys of `ViewStyle` apply too. See [Text](../docs/text.md).
 
 ### Font
 
@@ -355,7 +356,7 @@ Text styles apply to `<text>` and `<input>`. They are also inherited, as in CSS:
 | `lineHeight` | `number` | Line height in points. |
 | `letterSpacing` | `number` | Extra space between characters, in points. |
 | `textAlign` | `"auto" \| "left" \| "center" \| "right" \| "justify"` | Horizontal alignment. |
-| `textAlignVertical` | `"auto" \| "top" \| "center" \| "bottom"` | Where text shorter than its box sits (a `<text>` with a height). |
+| `textAlignVertical` | `"auto" \| "top" \| "center" \| "bottom"` | Where text shorter than its box sits (a `<Text>` with a height). |
 | `writingDirection` | `"auto" \| "ltr" \| "rtl"` | Base direction of the text; `"auto"` takes it from the content. |
 | `textTransform` | `"none" \| "uppercase" \| "lowercase" \| "capitalize"` | Case transformation. |
 
@@ -381,7 +382,7 @@ Text styles apply to `<text>` and `<input>`. They are also inherited, as in CSS:
 | `textShadowRadius` | `number` | Blur radius. |
 
 > [!NOTE]
-> iOS draws no gradients (`backgroundImage`) or inset box shadows on `<text>`.
+> iOS draws no gradients (`backgroundImage`) or inset box shadows on `<Text>`.
 
 ## ImageStyle
 
@@ -391,7 +392,7 @@ All keys of `ViewStyle`, plus:
 |---|---|---|
 | `tintColor` | `ColorValue` | Recolors a template image (every opaque pixel takes this color), for monochrome icons. |
 
-How an image fills its box is the `resizeMode` prop of `<image>`, not a style; see [image](../elements/image.md).
+How an image fills its box is the `resizeMode` prop of `<Image>`, not a style; see [image](../elements/image.md).
 
 ## Props that look like styles
 
@@ -399,12 +400,12 @@ Some settings are props in nsh, not style keys. Their Tailwind classes exist, bu
 
 | Setting | Prop | Class |
 |---|---|---|
-| Line limit | `numberOfLines` on `<text>` | `line-clamp-*`, `truncate` |
-| Ellipsis position | `ellipsizeMode` on `<text>` | `text-ellipsis`, `text-clip` |
+| Line limit | `numberOfLines` on `<Text>` | `line-clamp-*`, `truncate` |
+| Ellipsis position | `ellipsizeMode` on `<Text>` | `text-ellipsis`, `text-clip` |
 | Touch pass-through | `pointerEvents` | `pointer-events-none`, `pointer-events-auto` |
-| Image fit | `resizeMode` on `<image>` | `object-cover`, `object-contain`, ... |
-| Selectable text | `selectable` on `<text>` | `select-text`, `select-none` |
-| Placeholder color | `placeholderTextColor` on `<input>` | `placeholder:text-*` |
+| Image fit | `resizeMode` on `<Image>` | `object-cover`, `object-contain`, ... |
+| Selectable text | `selectable` on `<Text>` | `select-text`, `select-none` |
+| Placeholder color | `placeholderTextColor` on `<Input>` | `placeholder:text-*` |
 | Material shadow (Android) | `android={{ elevation }}` | |
 
 ## Related

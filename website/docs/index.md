@@ -48,28 +48,28 @@ The two are positioned differently. GPUI Shell is for extending GPUI desktop app
 A module is TypeScript and JSX:
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function Counter() {
   const count = signal(0);
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
-      <text style={{ fontSize: 48, fontWeight: "700" }}>{count()}</text>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 12 }}>
+      <Text style={{ fontSize: 48, fontWeight: "700" }}>{count()}</Text>
+      <View
         onPress={() => count.update((n) => n + 1)}
         activeOpacity={0.6}
         class="rounded-lg bg-blue-600 px-5 py-3"
       >
-        <text class="text-white text-lg">Tap</text>
-      </view>
-    </view>
+        <Text class="text-white text-lg">Tap</Text>
+      </View>
+    </View>
   );
 }
 
 mount(Counter);
 ```
 
-`<view>` becomes a `UIView` or an Android `ViewGroup`, `<text>` a native text view, and the button's press feedback (`activeOpacity`) runs on the main thread without a round trip to JavaScript. When you tap, `count.update` changes one signal, and only the text that reads `count()` is updated: the component function does not run again.
+`<View>` becomes a `UIView` or an Android `ViewGroup`, `<Text>` a native text view, and the button's press feedback (`activeOpacity`) runs on the main thread without a round trip to JavaScript. When you tap, `count.update` changes one signal, and only the text that reads `count()` is updated: the component function does not run again.
 
 The host app shows it with a few lines of native code ([iOS](./embedding-ios.md), [Android](./embedding-android.md)):
 

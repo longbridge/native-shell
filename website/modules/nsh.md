@@ -6,10 +6,10 @@ order: 2
 
 # nsh
 
-`nsh` is the core module: the reactive API (signals, computed values, effects, context), `mount`, and the TypeScript types of elements, styles and events. The reactive graph itself runs natively in Rust; reading a signal is a call into the runtime that costs a few nanoseconds, and only your own closures run in the JavaScript interpreter.
+`nsh` is the core module: the reactive API (signals, computed values, effects, context), `mount`, the host elements `View`, `Text`, `Scroll` and `Input`, and the TypeScript types of elements, styles and events. The reactive graph itself runs natively in Rust; reading a signal is a call into the runtime that costs a few nanoseconds, and only your own closures run in the JavaScript interpreter.
 
 ```ts
-import { batch, cleanup, computed, context, effect, mount, signal, split, untracked } from "nsh";
+import { batch, cleanup, computed, context, effect, Input, mount, Scroll, signal, split, Text, untracked, View } from "nsh";
 ```
 
 nsh's reactivity follows the same model as SolidJS: a component function runs **once**, and the parts of the UI that read signals are updated in place when those signals change. There is no re-render of the component and no virtual DOM. See [Reactivity](../docs/reactivity.md) for the guide.
@@ -35,15 +35,15 @@ interface SignalOptions<T> {
 A signal holds a value. Calling it reads the value and, inside a tracking scope (JSX expressions, `computed`, `effect`), subscribes that scope to it. `set` and `update` write it; everything that read it updates.
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 
 function Counter() {
   const count = signal(0);
   return (
-    <view style={{ padding: 24, gap: 12 }}>
-      <text>Count: {count()}</text>
-      <text onPress={() => count.update((n) => n + 1)}>Add one</text>
-    </view>
+    <View style={{ padding: 24, gap: 12 }}>
+      <Text>Count: {count()}</Text>
+      <Text onPress={() => count.update((n) => n + 1)}>Add one</Text>
+    </View>
   );
 }
 
@@ -138,7 +138,7 @@ function Clock() {
   const now = signal(new Date());
   const timer = setInterval(() => now.set(new Date()), 1000);
   cleanup(() => clearInterval(timer));
-  return <text>{now().toLocaleTimeString()}</text>;
+  return <Text>{now().toLocaleTimeString()}</Text>;
 }
 ```
 
@@ -155,22 +155,22 @@ interface Context<T> extends Accessor<T> {
 A value a component provides to everything it renders, however deep. Calling the context (`Theme()`) reads the nearest provider's value, or `defaultValue` without one.
 
 ```tsx
-import { context, mount, signal } from "nsh";
+import { context, mount, signal, Text, View } from "nsh";
 
 const Theme = context<"light" | "dark">("light");
 
 function Label(props: { text: string }) {
-  return <text style={{ color: Theme() === "dark" ? "#fff" : "#000" }}>{props.text}</text>;
+  return <Text style={{ color: Theme() === "dark" ? "#fff" : "#000" }}>{props.text}</Text>;
 }
 
 function App() {
   const dark = signal(false);
   return (
     <Theme.Provider value={dark() ? "dark" : "light"}>
-      <view style={{ flex: 1, padding: 24, backgroundColor: dark() ? "#000" : "#fff" }}>
+      <View style={{ flex: 1, padding: 24, backgroundColor: dark() ? "#000" : "#fff" }}>
         <Label text="Hello" />
-        <text onPress={() => dark.update((d) => !d)}>Toggle</text>
-      </view>
+        <Text onPress={() => dark.update((d) => !d)}>Toggle</Text>
+      </View>
     </Theme.Provider>
   );
 }
@@ -202,18 +202,34 @@ function split<T extends object, K extends readonly (keyof T)[]>(
 Splits a props object into the props named in `keys` and the rest. Both halves stay reactive: props whose values change are getters, and `split` keeps them as getters. Use it in a component that handles some props itself and passes the others on. Destructuring props (`const { label } = props`) would read them once and lose updates.
 
 ```tsx
-import { type InputProps, split } from "nsh";
+import { Input, type InputProps, split, Text, View } from "nsh";
 
 function LabeledInput(props: InputProps & { label: string }) {
   const [own, rest] = split(props, ["label"]);
   return (
-    <view style={{ gap: 4 }}>
-      <text>{own.label}</text>
-      <input {...rest} />
-    </view>
+    <View style={{ gap: 4 }}>
+      <Text>{own.label}</Text>
+      <Input {...rest} />
+    </View>
   );
 }
 ```
+
+## View, Text, Scroll, Input
+
+```ts
+function View(props: ViewProps): YNode;
+function Text(props: TextProps): YNode;
+function Scroll(props: ScrollProps): YNode;
+function Input(props: InputProps): YNode;
+```
+
+The host elements `nsh` exports, written as tags: `<View>`, `<Text>`, `<Scroll>`, `<Input>`. The compiler makes the
+native view in place for a tag that names one of them through its import (an alias too), so importing them costs
+nothing at run time. They are components like any other, so they can also be passed around (`const Tag = inline ? Text : View`).
+The other elements come from their own modules: `Image` from [`nsh/image`](./nsh-image.md), `List` from
+[`nsh/list`](./nsh-list.md), `Canvas`, `WebView` and `Video` from theirs. Their props are documented under
+[Elements](../elements/index.md).
 
 ## Types
 
@@ -226,7 +242,7 @@ function LabeledInput(props: InputProps & { label: string }) {
 | `SignalOptions<T>` | Options of `signal` and `computed` (`equals`) |
 | `Context<T>` | What `context` returns |
 | `Component<P>` | `(props: P) => JSX.Element` |
-| `JSX` | The JSX namespace (`JSX.Element`, `JSX.IntrinsicElements`) |
+| `JSX` | The JSX namespace (`JSX.Element`) |
 | `YNode` | What a `ref` receives: focus, scroll and other commands. See [Elements](../elements/index.md) |
 | `ViewProps`, `TextProps`, `ImageProps`, `ScrollProps`, `InputProps`, `CommonProps`, `TouchProps` | Props of host elements |
 | `ViewStyle`, `TextStyle`, `ImageStyle`, `LayoutStyle`, `StyleProp<T>` | Style objects; see the [style reference](./style-reference.md) |
@@ -246,5 +262,5 @@ const onPress = (e: GestureResponderEvent) => field?.focus();
 `StyleProp<T>` accepts one style or a list merged left to right, skipping falsy entries:
 
 ```tsx
-<view style={[styles.card, selected() && styles.selected]} />
+<View style={[styles.card, selected() && styles.selected]} />
 ```

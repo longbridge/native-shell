@@ -28,7 +28,7 @@ interface PanResponderInstance {
 创建一个 pan responder。把它的 `panHandlers` 展开到需要接收手势的视图上：
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, View } from "nsh";
 import { PanResponder } from "nsh/gesture";
 
 function App() {
@@ -41,8 +41,8 @@ function App() {
     onPanResponderRelease: (_, g) => console.log(`released at ${g.vx.toFixed(2)} pt/ms`),
   });
   return (
-    <view style={{ flex: 1 }}>
-      <view
+    <View style={{ flex: 1 }}>
+      <View
         {...pan.panHandlers}
         style={{
           width: 64,
@@ -52,7 +52,7 @@ function App() {
           transform: [{ translateX: pos().x }, { translateY: pos().y }],
         }}
       />
-    </view>
+    </View>
   );
 }
 

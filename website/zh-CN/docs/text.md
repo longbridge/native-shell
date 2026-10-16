@@ -6,20 +6,20 @@ order: 11
 
 # 文字
 
-所有文字都通过 `<text>` 显示。一个 `<text>` 元素就是一个段落，在布局时由平台的文本引擎（Apple 平台上是 CoreText，Android 上是 `StaticLayout`）在引擎线程上排版，主线程只负责绘制。嵌套的 `<text>` 元素是同一段落中的 span，而不是独立的视图。
+所有文字都通过 `<Text>` 显示。一个 `<Text>` 元素就是一个段落，在布局时由平台的文本引擎（Apple 平台上是 CoreText，Android 上是 `StaticLayout`）在引擎线程上排版，主线程只负责绘制。嵌套的 `<Text>` 元素是同一段落中的 span，而不是独立的视图。
 
 ```tsx
-<text style={{ fontSize: 16, lineHeight: 24, color: "#1f2328" }}>
+<Text style={{ fontSize: 16, lineHeight: 24, color: "#1f2328" }}>
   By continuing you agree to the{" "}
-  <text style={{ color: "#0969da", textDecorationLine: "underline" }} onPress={openTerms}>
+  <Text style={{ color: "#0969da", textDecorationLine: "underline" }} onPress={openTerms}>
     Terms of service
-  </text>
+  </Text>
   .
-</text>
+</Text>
 ```
 
 > [!IMPORTANT]
-> 字符串只有放在 `<text>` 里才会显示。直接放在 `<view>` 中的字符串不会显示。
+> 字符串只有放在 `<Text>` 里才会显示。直接放在 `<View>` 中的字符串不会显示。
 
 元素本身的说明见 [text](../elements/text.md)；本页介绍如何使用它。
 
@@ -28,51 +28,51 @@ order: 11
 JSX 中的文字遵循与 React 相同的规则：每一行首尾的空白被去掉，只含空白的行被丢弃，剩下的行用一个空格连接。同一行内的空白会保留，所以 `{first} {last}` 中间的空格不会丢。在行首或行尾需要空格时用 `{" "}`，需要换行时用 `{"\n"}`：
 
 ```tsx
-<text>
+<Text>
   Hello,
   {name()}!{"\n"}
   Welcome back.
-</text>
+</Text>
 ```
 
-文字中的表达式会跟随它读取的值：`<text>{count()} items</text>` 会在 `count` 变化时更新第一个 span。
+文字中的表达式会跟随它读取的值：`<Text>{count()} items</Text>` 会在 `count` 变化时更新第一个 span。
 
 ## Span 与继承
 
-`<text>` 中的 `<text>` 是一个 span。它继承父元素的文字样式，并覆盖自己设置的部分：
+`<Text>` 中的 `<Text>` 是一个 span。它继承父元素的文字样式，并覆盖自己设置的部分：
 
 ```tsx
-<text style={{ fontSize: 17, color: "#1f2328" }}>
-  <text style={{ fontWeight: "300" }}>Light </text>
-  <text style={{ fontWeight: "700" }}>Bold </text>
-  <text style={{ fontStyle: "italic" }}>Italic </text>
-  <text style={{ letterSpacing: 4 }}>Spaced</text>
-</text>
+<Text style={{ fontSize: 17, color: "#1f2328" }}>
+  <Text style={{ fontWeight: "300" }}>Light </Text>
+  <Text style={{ fontWeight: "700" }}>Bold </Text>
+  <Text style={{ fontStyle: "italic" }}>Italic </Text>
+  <Text style={{ letterSpacing: 4 }}>Spaced</Text>
+</Text>
 ```
 
-文字样式类也会像 CSS 一样从视图向下传递：`<view class="text-white text-sm">` 会为其中的 `<text>` 和 `<input>` 元素设置样式。
+文字样式类也会像 CSS 一样从视图向下传递：`<View class="text-white text-sm">` 会为其中的 `<Text>` 和 `<Input>` 元素设置样式。
 
 ### 链接
 
 带有 `onPress`（或 `onLongPress`）的 span 就是链接：按在它的字符上会交给这个 span，按在其他位置则交给整个段落。嵌套 span 中的链接同样有效。
 
 ```tsx
-<text onPress={() => log("the sentence")}>
-  Read the <text style={{ color: "#0969da" }} onPress={() => open(termsUrl)}>terms</text> first.
-</text>
+<Text onPress={() => log("the sentence")}>
+  Read the <Text style={{ color: "#0969da" }} onPress={() => open(termsUrl)}>terms</Text> first.
+</Text>
 ```
 
 ### 文字中的视图和图片
 
-`<text>` 中除 `<text>` 以外的任何元素都会以行内方式布局在基线上，并随文字一起换行。它也可以有自己的按下处理：
+`<Text>` 中除 `<Text>` 以外的任何元素都会以行内方式布局在基线上，并随文字一起换行。它也可以有自己的按下处理：
 
 ```tsx
-<text style={{ fontSize: 16, lineHeight: 26 }}>
-  Made with <image src={logo} style={{ width: 18, height: 18 }} /> nsh. Status{" "}
-  <view style={{ backgroundColor: "#1a7f37", borderRadius: 9, paddingHorizontal: 7, height: 18, justifyContent: "center" }}>
-    <text style={{ color: "#ffffff", fontSize: 11, fontWeight: "700" }}>LIVE</text>
-  </view>
-</text>
+<Text style={{ fontSize: 16, lineHeight: 26 }}>
+  Made with <Image src={logo} style={{ width: 18, height: 18 }} /> nsh. Status{" "}
+  <View style={{ backgroundColor: "#1a7f37", borderRadius: 9, paddingHorizontal: 7, height: 18, justifyContent: "center" }}>
+    <Text style={{ color: "#ffffff", fontSize: 11, fontWeight: "700" }}>LIVE</Text>
+  </View>
+</Text>
 ```
 
 被 `numberOfLines` 或省略号截掉的行内元素会被隐藏；复制文字时也不会包含它们。
@@ -98,14 +98,14 @@ JSX 中的文字遵循与 React 相同的规则：每一行首尾的空白被去
 | `fontVariant` | OpenType 特性：`["tabular-nums"]`、`"small-caps"`、`"oldstyle-nums"`、`"lining-nums"`、`"proportional-nums"` |
 | `writingDirection` | `"auto"`、`"ltr"`、`"rtl"`：段落的基础方向 |
 
-`<text>` 同时也是视图：它支持背景、边框、圆角、内边距以及其他[视图样式](./styling.md)。
+`<Text>` 同时也是视图：它支持背景、边框、圆角、内边距以及其他[视图样式](./styling.md)。
 
 ```tsx
-<text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>{price().toFixed(2)}</text>
-<text style={{ textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationColor: "#cf222e" }}>Typo</text>
-<text style={{ fontSize: 26, fontWeight: "800", color: "#ffffff", textShadowColor: "rgba(0,0,0,0.6)", textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
+<Text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>{price().toFixed(2)}</Text>
+<Text style={{ textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationColor: "#cf222e" }}>Typo</Text>
+<Text style={{ fontSize: 26, fontWeight: "800", color: "#ffffff", textShadowColor: "rgba(0,0,0,0.6)", textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4 }}>
   Shadow
-</text>
+</Text>
 ```
 
 `tabular-nums` 让所有数字等宽，计数器和价格变化时就不会左右跳动。
@@ -113,8 +113,8 @@ JSX 中的文字遵循与 React 相同的规则：每一行首尾的空白被去
 ## 截断
 
 ```tsx
-<text numberOfLines={2}>{longDescription}</text>
-<text numberOfLines={1} ellipsizeMode="middle">{filePath}</text>
+<Text numberOfLines={2}>{longDescription}</Text>
+<Text numberOfLines={1} ellipsizeMode="middle">{filePath}</Text>
 ```
 
 | 属性 | 说明 |
@@ -125,9 +125,9 @@ JSX 中的文字遵循与 React 相同的规则：每一行首尾的空白被去
 | `minimumFontScale` | `adjustsFontSizeToFit` 最多能缩小到的比例（0–1） |
 
 ```tsx
-<text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ fontSize: 48, width: 200 }}>
+<Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ fontSize: 48, width: 200 }}>
   {total()}
-</text>
+</Text>
 ```
 
 Tailwind 类 `truncate` 和 `line-clamp-*` 效果相同；同时设置时以属性为准。
@@ -141,10 +141,10 @@ Tailwind 类 `truncate` 和 `line-clamp-*` 效果相同；同时设置时以属�
 | `allowFontScaling` | 设为 `false` 时字号固定。默认 `true` |
 | `maxFontSizeMultiplier` | 允许的最大缩放比例，例如 `1.5`。`0` 表示不限 |
 
-[`nsh/device`](../modules/nsh-device.md) 中的 `fontScale()` 是当前的缩放比例，这个访问器会在用户修改设置时变化。`<input>` 同样支持 `allowFontScaling` 和 `maxFontSizeMultiplier`。
+[`nsh/device`](../modules/nsh-device.md) 中的 `fontScale()` 是当前的缩放比例，这个访问器会在用户修改设置时变化。`<Input>` 同样支持 `allowFontScaling` 和 `maxFontSizeMultiplier`。
 
 ```tsx
-<text maxFontSizeMultiplier={1.3} style={{ fontSize: 13 }}>Tab label</text>
+<Text maxFontSizeMultiplier={1.3} style={{ fontSize: 13 }}>Tab label</Text>
 ```
 
 与其关闭缩放，不如限制缩放比例：大字号是很多人依赖的辅助功能设置。
@@ -154,7 +154,7 @@ Tailwind 类 `truncate` 和 `line-clamp-*` 效果相同；同时设置时以属�
 `selectable` 允许用户复制文字：长按会高亮整个段落并提供“拷贝”（iOS 的编辑菜单，Android 的浮动操作模式）。选择的单位是整个段落，不支持选择部分范围。类 `select-text` 效果相同。
 
 ```tsx
-<text selectable>{orderNumber}</text>
+<Text selectable>{orderNumber}</Text>
 ```
 
 ## onTextLayout
@@ -162,21 +162,21 @@ Tailwind 类 `truncate` 和 `line-clamp-*` 效果相同；同时设置时以属�
 `onTextLayout` 在每次布局后报告排好的各行，坐标位于文字的内容框中：
 
 ```tsx
-<text
+<Text
   onTextLayout={(e) => {
     lines.set(e.lines.length);
     console.log(e.lines.map((l) => `${l.text} (${l.width.toFixed(0)}pt)`));
   }}
 >
   {body()}
-</text>
+</Text>
 ```
 
 每一行包含 `text`、`x`、`y`、`width`、`height`、`ascender`、`descender`、`capHeight` 和 `xHeight`。可以用它在文字被截断时才显示“阅读更多”按钮，或让其他内容与基线对齐。
 
 ## 无障碍
 
-屏幕阅读器会朗读 `<text>` 的内容。为充当标题的文字设置角色（`accessibilityRole="header"`），为链接设置 `accessibilityRole="link"`。参见[无障碍](./accessibility.md)。
+屏幕阅读器会朗读 `<Text>` 的内容。为充当标题的文字设置角色（`accessibilityRole="header"`），为链接设置 `accessibilityRole="link"`。参见[无障碍](./accessibility.md)。
 
 ## 相关内容
 

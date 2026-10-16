@@ -17,15 +17,15 @@ import { StatusBar } from "nsh/ui/mobile";
 渲染出来的 `StatusBar` 不占任何空间，它的设置在挂载期间生效：
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { StatusBar } from "nsh/ui/mobile";
 
 function App() {
   return (
-    <view style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
+    <View style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
       <StatusBar barStyle="light-content" />
-      <text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</text>
-    </view>
+      <Text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</Text>
+    </View>
   );
 }
 

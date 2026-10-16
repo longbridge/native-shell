@@ -33,9 +33,9 @@ count.update((n) => n + 1);  // 6
 function Counter() {
   const count = signal(0);
   return (
-    <view onPress={() => count.update((n) => n + 1)}>
-      <text>Tapped {count()} times</text>
-    </view>
+    <View onPress={() => count.update((n) => n + 1)}>
+      <Text>Tapped {count()} times</Text>
+    </View>
   );
 }
 ```
@@ -63,7 +63,7 @@ todos().push(item);    // does not notify anyone
 todos.set(todos());    // still the same array: no change
 ```
 
-`<each>` 按项为行设置 key，所以在新数组中替换某一项时，只会重建那一行（[JSX 与组件](./jsx-and-components.md)）。
+`<Each>` 按项为行设置 key，所以在新数组中替换某一项时，只会重建那一行（[JSX 与组件](./jsx-and-components.md)）。
 
 ## computed
 
@@ -74,14 +74,14 @@ const price = signal(12);
 const quantity = signal(2);
 const total = computed(() => price() * quantity());
 
-<text>Total: {total()}</text>
+<Text>Total: {total()}</Text>
 ```
 
 当派生值在多处被读取，或计算开销较大时，使用 `computed`：无论有多少读取者，每次变化它只运行一次，而且只有结果真正变化时（`===`，或 `equals` 选项）才会通知读取者。对于只读一次、计算很便宜的值，普通函数就够了：
 
 ```tsx
 const label = () => `${quantity()} items`;
-<text>{label()}</text>
+<Text>{label()}</Text>
 ```
 
 `fn` 会收到上一次的值（第一次为 `undefined`），适合需要累积的值：
@@ -104,7 +104,7 @@ function Search(props: { query: string }) {
       .then((r) => r.json())
       .then((data) => results.set(data.items));
   });
-  return <each of={results()}>{(item) => <text>{item()}</text>}</each>;
+  return <Each of={results()}>{(item) => <Text>{item()}</Text>}</Each>;
 }
 ```
 
@@ -131,7 +131,7 @@ function Clock() {
   const now = signal(Date.now());
   const id = setInterval(() => now.set(Date.now()), 1000);
   cleanup(() => clearInterval(id));       // when Clock is removed
-  return <text>{new Date(now()).toLocaleTimeString()}</text>;
+  return <Text>{new Date(now()).toLocaleTimeString()}</Text>;
 }
 
 effect(() => {
@@ -141,7 +141,7 @@ effect(() => {
 });
 ```
 
-组件不再被渲染时就会被销毁：它所在的 `<if>` 分支被隐藏、所在的 `<each>` 行被移除，或者它的页面被弹出。它创建的一切（effect、computed 值、cleanup、嵌套组件）都会随之释放。
+组件不再被渲染时就会被销毁：它所在的 `<If>` 分支被隐藏、所在的 `<Each>` 行被移除，或者它的页面被弹出。它创建的一切（effect、computed 值、cleanup、嵌套组件）都会随之释放。
 
 ## batch
 
@@ -181,7 +181,7 @@ const Theme = context<"light" | "dark">("light");
 
 function Label(props: { children: string }) {
   const theme = Theme();
-  return <text style={{ color: theme === "dark" ? "#ffffff" : "#1f2328" }}>{props.children}</text>;
+  return <Text style={{ color: theme === "dark" ? "#ffffff" : "#1f2328" }}>{props.children}</Text>;
 }
 
 mount(() => (
@@ -207,7 +207,7 @@ function App() {
 
 function Swatch() {
   const accent = Accent();
-  return <view onPress={() => accent.set("#8250df")} style={{ width: 40, height: 40, backgroundColor: accent() }} />;
+  return <View onPress={() => accent.set("#8250df")} style={{ width: 40, height: 40, backgroundColor: accent() }} />;
 }
 ```
 
@@ -221,8 +221,8 @@ function Swatch() {
 | 调用函数或读取属性的 `{expr}` 或 `prop={expr}` | 元素创建时运行一次 | 它读取的 signal 变化时；只更新那一个 prop 或子节点 |
 | `computed(fn)` | 创建时 | 它读取的 signal 变化时 |
 | `effect(fn)` | 当前这一轮的元素都已存在之后 | 它读取的 signal 变化时 |
-| `<if when>` | 创建时 | `when` 的真假变化时 |
-| `<each of>` 的行 | 它的 key 第一次出现时 | 从不；改为由 `item()` / `index()` 访问器变化 |
+| `<If when>` | 创建时 | `when` 的真假变化时 |
+| `<Each of>` 的行 | 它的 key 第一次出现时 | 从不；改为由 `item()` / `index()` 访问器变化 |
 
 环境同样是响应式的：[`nsh/device`](../modules/nsh-device.md) 中的 `windowSize()`、`colorScheme()`、`fontScale()`，以及 `nsh/ui/mobile` 中的 `safeArea()` / `keyboard()` 都是访问器，读取它们的 JSX 会跟随屏幕旋转、深色模式或键盘变化。
 
@@ -235,11 +235,11 @@ function Swatch() {
 ```tsx
 function Bad() {
   const n = count();           // read once
-  return <text>{n}</text>;     // never changes
+  return <Text>{n}</Text>;     // never changes
 }
 
 function Good() {
-  return <text>{count()}</text>;
+  return <Text>{count()}</Text>;
 }
 ```
 
@@ -253,6 +253,6 @@ function Good() {
 
 ## 相关内容
 
-- [JSX 与组件](./jsx-and-components.md)：作为 getter 的 props、`<if>`、`<each>`。
+- [JSX 与组件](./jsx-and-components.md)：作为 getter 的 props、`<If>`、`<Each>`。
 - [`nsh` 模块参考](../modules/nsh.md)：每个函数的签名。
 - [动画](./animation.md)：不经过 signal、在 UI 线程上运行动画的原生值。

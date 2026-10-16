@@ -9,7 +9,7 @@ order: 17
 `nsh/ui/mobile` provides a native navigation stack and native modals. A `Stack` is a UINavigationController on iOS, with its header, swipe back and large titles, and a stack with a toolbar and predictive back on Android. You keep the list of routes in a navigator; the stack renders each route as a screen and keeps it mounted, with its state, while it is in the stack.
 
 ```tsx
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 import { createNavigator, Screen, Stack } from "nsh/ui/mobile";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
@@ -19,15 +19,15 @@ const nav = createNavigator<Route>({ name: "inbox" });
 function Inbox() {
   return (
     <Screen title="Inbox">
-      <scroll style={{ flex: 1 }}>
-        <each of={[1, 2, 3, 4, 5]}>
+      <Scroll style={{ flex: 1 }}>
+        <Each of={[1, 2, 3, 4, 5]}>
           {(id) => (
-            <view onPress={() => nav.push({ name: "message", id: id() })} underlayColor="#eaeef2" style={{ padding: 16 }}>
-              <text>Message {id()}</text>
-            </view>
+            <View onPress={() => nav.push({ name: "message", id: id() })} underlayColor="#eaeef2" style={{ padding: 16 }}>
+              <Text>Message {id()}</Text>
+            </View>
           )}
-        </each>
-      </scroll>
+        </Each>
+      </Scroll>
     </Screen>
   );
 }
@@ -35,9 +35,9 @@ function Inbox() {
 function Message(props: { id: number }) {
   return (
     <Screen title={`Message ${props.id}`}>
-      <view style={{ flex: 1, padding: 16 }}>
-        <text>The body of message {props.id}.</text>
-      </view>
+      <View style={{ flex: 1, padding: 16 }}>
+        <Text>The body of message {props.id}.</Text>
+      </View>
     </Screen>
   );
 }
@@ -135,17 +135,17 @@ function Compose() {
   return (
     <Screen
       title="New message"
-      headerLeft={<text onPress={() => nav.pop()} style={{ fontSize: 17, color: "#0969da" }}>Cancel</text>}
+      headerLeft={<Text onPress={() => nav.pop()} style={{ fontSize: 17, color: "#0969da" }}>Cancel</Text>}
       headerRight={
-        <text
+        <Text
           onPress={() => send(text())}
           style={{ fontSize: 17, fontWeight: "600", color: text() ? "#0969da" : "#8c959f" }}
         >
           Send
-        </text>
+        </Text>
       }
     >
-      <input multiline value={text()} onChangeText={(t) => text.set(t)} style={{ flex: 1, padding: 16, fontSize: 17 }} />
+      <Input multiline value={text()} onChangeText={(t) => text.set(t)} style={{ flex: 1, padding: 16, fontSize: 17 }} />
     </Screen>
   );
 }
@@ -176,7 +176,7 @@ Inside a screen, `useSafeAreaInsets()` and `SafeAreaView` report the insets belo
 To ask before discarding unsaved changes, set `preventBack` while there is something to lose and handle `onBackRequest`:
 
 ```tsx
-import { signal } from "nsh";
+import { Input, signal } from "nsh";
 import { Alert, Screen } from "nsh/ui/mobile";
 
 function EditNote() {
@@ -190,7 +190,7 @@ function EditNote() {
   };
   return (
     <Screen title="Edit" preventBack={text().length > 0} onBackRequest={confirm}>
-      <input value={text()} onChangeText={(t) => text.set(t)} placeholder="A note" style={{ margin: 16, fontSize: 17 }} />
+      <Input value={text()} onChangeText={(t) => text.set(t)} placeholder="A note" style={{ margin: 16, fontSize: 17 }} />
     </Screen>
   );
 }
@@ -208,25 +208,25 @@ With `preventBack` on, the swipe back is disabled and the back buttons (in the h
 `Modal` presents content over everything else, in its own native window layer: a presented view controller on iOS, a dialog on Android. Render it where its state lives and control it with `visible`:
 
 ```tsx
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Modal, SafeAreaView } from "nsh/ui/mobile";
 
 function Settings() {
   const open = signal(false);
   return (
-    <view style={{ flex: 1 }}>
-      <view onPress={() => open.set(true)} style={{ padding: 16 }}>
-        <text>Edit profile</text>
-      </view>
+    <View style={{ flex: 1 }}>
+      <View onPress={() => open.set(true)} style={{ padding: 16 }}>
+        <Text>Edit profile</Text>
+      </View>
       <Modal visible={open()} animationType="slide" ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => open.set(false)}>
         <SafeAreaView style={{ flex: 1, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 22, fontWeight: "700" }}>Profile</text>
-          <view onPress={() => open.set(false)}>
-            <text style={{ color: "#0969da" }}>Done</text>
-          </view>
+          <Text style={{ fontSize: 22, fontWeight: "700" }}>Profile</Text>
+          <View onPress={() => open.set(false)}>
+            <Text style={{ color: "#0969da" }}>Done</Text>
+          </View>
         </SafeAreaView>
       </Modal>
-    </view>
+    </View>
   );
 }
 ```
@@ -250,19 +250,16 @@ A transparent modal makes a custom dialog:
 
 ```tsx
 <Modal visible={open()} transparent animationType="fade" onRequestClose={() => open.set(false)}>
-  <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-    <view style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
-      <text style={{ fontSize: 20, fontWeight: "700" }}>Delete the file?</text>
-      <view onPress={() => open.set(false)}><text style={{ color: "#cf222e" }}>Delete</text></view>
-    </view>
-  </view>
+  <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+    <View style={{ alignSelf: "stretch", backgroundColor: "#ffffff", borderRadius: 14, padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>Delete the file?</Text>
+      <View onPress={() => open.set(false)}><Text style={{ color: "#cf222e" }}>Delete</Text></View>
+    </View>
+  </View>
 </Modal>
 ```
 
 Inside a modal, `SafeAreaView` and `useSafeAreaInsets()` give the modal's own insets. For system dialogs (an alert with buttons, an action sheet) use [`Alert`](../components/alert.md) and [`ActionSheet`](../components/action-sheet.md); for a panel that slides up over a dimmed backdrop and follows the finger, use [`Sheet`](../components/sheet.md).
-
-> [!NOTE]
-> Importing `Modal` from `nsh/ui/mobile` makes `<modal>` in your file that component too. See the [`modal` element](../elements/modal.md).
 
 ## The Android back button
 
@@ -295,7 +292,7 @@ function Editor() {
 
 ## Tabs and other layouts
 
-`nsh/ui/mobile` has no tab bar component. A tab bar is a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<if>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
+`nsh/ui/mobile` has no tab bar component. A tab bar is a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<If>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
 
 ## Related
 

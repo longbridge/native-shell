@@ -10,9 +10,9 @@ demo: guide-tailwind
 每个元素都可以在 `class` 中写 Tailwind CSS 类，它们会以 Tailwind 4 的默认主题为准，在原生层解析：
 
 ```tsx
-<view class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-lg active:scale-[0.98] dark:bg-zinc-800">
-  <text class="text-base font-semibold text-zinc-900 dark:text-white">Tailwind on native views</text>
-</view>
+<View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-lg active:scale-[0.98] dark:bg-zinc-800">
+  <Text class="text-base font-semibold text-zinc-900 dark:text-white">Tailwind on native views</Text>
+</View>
 ```
 
 整个过程不生成 CSS，也不在 JavaScript 中运行任何代码：字符串被直接交给核心，核心对每个不同的类字符串只解析一次（并缓存），把它转换为样式规则后应用。依赖状态的变体（按下、深色模式、窗口宽度）会在相应状态变化时由核心重新应用；按下和聚焦状态在原生层跟踪，因此 `active:` 的反馈无需往返 JavaScript。
@@ -22,7 +22,7 @@ demo: guide-tailwind
 ## class 与 classList
 
 ```tsx
-<view
+<View
   class="rounded-lg px-4 py-2 transition-colors"
   classList={{ "bg-indigo-600": selected(), "bg-zinc-200": !selected(), "opacity-50": busy() }}
 />
@@ -65,18 +65,18 @@ demo: guide-tailwind
 变体可以组合：`dark:active:bg-zinc-700`、`md:landscape:flex-row`。
 
 ```tsx
-<view class="group flex-row items-center gap-3 rounded-xl bg-white p-3 active:bg-zinc-50">
-  <text class="flex-1 text-zinc-900">Settings</text>
-  <text class="text-zinc-300 transition-transform group-active:translate-x-1">›</text>
-</view>
+<View class="group flex-row items-center gap-3 rounded-xl bg-white p-3 active:bg-zinc-50">
+  <Text class="flex-1 text-zinc-900">Settings</Text>
+  <Text class="text-zinc-300 transition-transform group-active:translate-x-1">›</Text>
+</View>
 ```
 
 任何元素上的 `disabled` 都会应用 `disabled:` 类，并把它的按下处理器从挂载内容中移除，因此也不会显示按下反馈：
 
 ```tsx
-<view disabled={saving()} onPress={save} class="rounded-lg bg-emerald-500 px-4 py-2 active:bg-emerald-600 disabled:opacity-40">
-  <text class="font-medium text-white">Save</text>
-</view>
+<View disabled={saving()} onPress={save} class="rounded-lg bg-emerald-500 px-4 py-2 active:bg-emerald-600 disabled:opacity-40">
+  <Text class="font-medium text-white">Save</Text>
+</View>
 ```
 
 断点比较的是窗口（nsh 渲染所在的表面）而不是设备：在 iPad 分屏或可调整大小的窗口中，它们跟随窗口宽度变化。
@@ -85,7 +85,7 @@ demo: guide-tailwind
 
 - **单位是点（point）。** `p-4` 是 16 点（1 个间距步长 = 4pt，1rem = 16pt）。以 `px` 写的任意值也按点计算：`p-[13px]` 就是 13pt。
 - **`flex` 是横向排列**，与 CSS 一致：`class="flex"` 会让子元素横向排列，除非有方向类另行指定（在字符串中的任何位置都可以：`flex-col flex` 是纵向）。没有 `flex` 或 `inline-flex` 的视图保持 nsh 默认的纵向排列。`block` 和 `flow-root` 使用块布局；`inline` 和 `inline-block` 按视图布局（没有行内格式化上下文）。
-- **视图上的文字类会被继承。** 视图上的 `text-*`、`font-*`、`leading-*`、`tracking-*` 等文字工具类会像 CSS 继承那样传给其内部的 `<text>` 和 `<input>` 元素：`<view class="text-white">` 会让其中的标签变成白色。
+- **视图上的文字类会被继承。** 视图上的 `text-*`、`font-*`、`leading-*`、`tracking-*` 等文字工具类会像 CSS 继承那样传给其内部的 `<Text>` 和 `<Input>` 元素：`<View class="text-white">` 会让其中的标签变成白色。
 - **`space-x-*` / `space-y-*` 是间距**（等同 `gap-x` / `gap-y`）。
 - **在 nsh 中属于属性的设置，以类的形式也可用**：`line-clamp-*`、`truncate`、`whitespace-nowrap`、`pointer-events-*`、`object-*`（图片缩放模式）、`select-text`、`caret-*` 和 `placeholder:text-*` 都能使用；若同时设置了对应的显式属性（`numberOfLines`、`pointerEvents`、`resizeMode` 等），以属性为准。
 - **不支持**：`peer-*` 变体、伪元素（`before:`、`after:`）、任意属性（`[mask-type:luminance]`）。原生无需处理的纯 Web 工具类（`antialiased`、`will-change-*`、`touch-*`、`scroll-*`、`snap-*`、`overscroll-*`、`box-border` 等）会被接受并忽略。

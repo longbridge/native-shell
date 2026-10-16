@@ -18,16 +18,16 @@ import { Stepper, type StepperRef } from "nsh/ui/mobile";
 ## Usage
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Stepper } from "nsh/ui/mobile";
 
 function App() {
   const guests = signal(2);
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
-      <text>{`${guests()} guests`}</text>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+      <Text>{`${guests()} guests`}</Text>
       <Stepper value={guests()} min={1} max={12} onChange={(v) => guests.set(v)} />
-    </view>
+    </View>
   );
 }
 
@@ -67,13 +67,13 @@ button is released or the value reaches `min` or `max`. At a bound, that button 
 Pass a `ref` to get a `StepperRef`, which reads and sets the value from your code:
 
 ```tsx
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Button, Stepper, type StepperRef } from "nsh/ui/mobile";
 
 function App() {
   let stepper!: StepperRef;
   return (
-    <view style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
+    <View style={{ flex: 1, padding: 16, paddingTop: 48, gap: 12 }}>
       <Stepper ref={stepper} defaultValue={3} max={10} />
       <Button
         title="Reset"
@@ -82,7 +82,7 @@ function App() {
           stepper.setValue(0);
         }}
       />
-    </view>
+    </View>
   );
 }
 

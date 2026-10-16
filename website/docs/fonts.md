@@ -26,9 +26,10 @@ A family installed on the device can be named directly (`"Georgia"`, `"Avenir Ne
 Import a `.ttf` or `.otf` file. The import evaluates to the font's family name, and the font is registered before the first frame, so it is ready when text first renders:
 
 ```tsx
+import { Text } from "nsh";
 import Pacifico from "./fonts/Pacifico-Regular.ttf";
 
-<text style={{ fontFamily: Pacifico, fontSize: 30 }}>Custom fonts</text>
+<Text style={{ fontFamily: Pacifico, fontSize: 30 }}>Custom fonts</Text>
 ```
 
 `Pacifico` is the string `"Pacifico"`: the family name stored in the font file (its typographic family name, or else its family name), not the file name. Using the imported value instead of writing the name by hand keeps the two in sync and makes sure the file is bundled.
@@ -43,6 +44,7 @@ The bundler copies the file into the app like any other [asset](./images-and-ass
 A family usually comes as several files, one per weight and style. Import each one; they register under the same family name, and `fontWeight` and `fontStyle` choose the face:
 
 ```tsx
+import { Text } from "nsh";
 import Inter from "./fonts/Inter-Regular.ttf";
 import "./fonts/Inter-Medium.ttf";
 import "./fonts/Inter-Bold.ttf";
@@ -50,10 +52,10 @@ import "./fonts/Inter-Italic.ttf";
 
 const body = { fontFamily: Inter, fontSize: 16 } as const;
 
-<text style={body}>
-  Regular, <text style={{ fontWeight: "500" }}>medium</text>, <text style={{ fontWeight: "bold" }}>bold</text> and{" "}
-  <text style={{ fontStyle: "italic" }}>italic</text>.
-</text>
+<Text style={body}>
+  Regular, <Text style={{ fontWeight: "500" }}>medium</Text>, <Text style={{ fontWeight: "bold" }}>bold</Text> and{" "}
+  <Text style={{ fontStyle: "italic" }}>italic</Text>.
+</Text>
 ```
 
 When no registered face has the exact weight asked for, the nearest one is used. The platforms differ when a face is missing:
@@ -78,15 +80,16 @@ Name your families in the Tailwind theme in `nsh.json` to use them as `font-*` c
 ```
 
 ```tsx
+import { Text } from "nsh";
 import "./fonts/Pacifico-Regular.ttf";
 import "./fonts/Inter-Regular.ttf";
 import "./fonts/Inter-Bold.ttf";
 
-<text class="font-display text-3xl text-violet-600">Custom fonts</text>
-<text class="font-body font-bold">Bold Inter</text>
+<Text class="font-display text-3xl text-violet-600">Custom fonts</Text>
+<Text class="font-body font-bold">Bold Inter</Text>
 ```
 
-An arbitrary family works without a theme entry: `font-[Pacifico]`. Weight classes (`font-light`, `font-semibold`, `font-bold`, ...) select faces as `fontWeight` does. Text classes on a view pass down to the texts inside it, so `<view class="font-body">` sets the family for a whole screen.
+An arbitrary family works without a theme entry: `font-[Pacifico]`. Weight classes (`font-light`, `font-semibold`, `font-bold`, ...) select faces as `fontWeight` does. Text classes on a view pass down to the texts inside it, so `<View class="font-body">` sets the family for a whole screen.
 
 ## A default font for the app
 
@@ -94,9 +97,9 @@ There is no global default font setting. Set the family on a container with a cl
 
 ```tsx
 mount(() => (
-  <view class="flex-1 font-body">
+  <View class="flex-1 font-body">
     <App />
-  </view>
+  </View>
 ));
 ```
 

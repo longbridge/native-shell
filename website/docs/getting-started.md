@@ -33,22 +33,22 @@ The display name defaults to the directory's name; pass `--name "My App"` to cho
 ### The entry module
 
 ```tsx
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { SafeAreaView } from "nsh/ui/mobile";
 
 function App() {
   const count = signal(0);
   return (
     <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</text>
-      <view
+      <Text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</Text>
+      <View
         onPress={() => count.update((c) => c + 1)}
         activeOpacity={0.6}
         accessibilityRole="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
-        <text style={{ color: "white", fontSize: 17 }}>Tap</text>
-      </view>
+        <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -58,16 +58,16 @@ mount(App);
 
 Line by line:
 
-- **`import { mount, signal } from "nsh"`**: `nsh` is the core module: [signals](./reactivity.md), `mount`, and the other reactive primitives. It is served by the native runtime, not bundled.
+- **`import { mount, signal, Text, View } from "nsh"`**: `nsh` is the core module: [signals](./reactivity.md), `mount`, the other reactive primitives, and the host elements `View` and `Text`. It is served by the native runtime, not bundled.
 - **`import { SafeAreaView } from "nsh/ui/mobile"`**: the mobile UI set. [`SafeAreaView`](../components/safe-area-view.md) pads its content so it stays clear of the notch, the status bar and the home indicator.
 - **`function App()`** is a component: a function that returns JSX. It runs **once**. `signal(0)` makes a value that changes over time.
 - **`{count()}`** reads the signal inside JSX. The compiler sees a call and makes this text follow the signal: when `count` changes, the runtime updates this one text, nothing else.
-- **`<view onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. Lowercase tags (`view`, `text`, `image`, `scroll`, `input`, ...) are [host elements](../elements/index.md).
+- **`<View onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from nsh's modules, like any component; only `If` and `Each` need no import.
 - **`style={{ … }}`** takes an object of camelCase style properties, with numbers in points. Layout is flexbox, and children stack in a column by default ([Layout](./layout.md)).
 - **`mount(App)`** renders the component into the app's surface.
 
 > [!IMPORTANT]
-> Text must be inside `<text>`. A bare string in a `<view>` (`<view>Hello</view>`) is not displayed.
+> Text must be inside `<Text>`. A bare string in a `<View>` (`<View>Hello</View>`) is not displayed.
 
 ## Develop it
 
@@ -105,7 +105,7 @@ Start an emulator or connect a device first (`adb devices` lists them; nsh uses 
 Leave `nsh run` running and change the label in `App.tsx`:
 
 ```tsx
-<text style={{ color: "white", fontSize: 17 }}>Add one</text>
+<Text style={{ color: "white", fontSize: 17 }}>Add one</Text>
 ```
 
 Save. The CLI rebuilds and sends a patch; the host runs the changed module again and renders again only the components whose code changed. Here that is `App`, which owns the `count` signal, so the count starts over. State survives when you edit a component that does not own it. Move the button into a component of its own:
@@ -113,9 +113,9 @@ Save. The CLI rebuilds and sends a patch; the host runs the changed module again
 ```tsx
 function TapButton(props: { onPress: () => void }) {
   return (
-    <view onPress={props.onPress} activeOpacity={0.6} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
-      <text style={{ color: "white", fontSize: 17 }}>Tap</text>
-    </view>
+    <View onPress={props.onPress} activeOpacity={0.6} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
+      <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
+    </View>
   );
 }
 ```

@@ -132,10 +132,10 @@ nsh 不需要 `node_modules`。取而代之的是，每个构建应用的命令�
 
 | `.nsh/types/nsh/` 中的文件 | 声明的内容 |
 |---|---|
-| `index.d.ts` | `nsh`：`signal`、`computed`、`effect`、`mount` 等，并重新导出下列类型 |
+| `index.d.ts` | `nsh`：`signal`、`computed`、`effect`、`mount`、`View`、`Text` 等，并重新导出下列类型 |
 | `types.d.ts` | 样式（`ViewStyle`、`TextStyle` 等）、每个元素的 props 和事件、`YNode`（`ref` 接收到的对象） |
-| `jsx-runtime.d.ts` | JSX 命名空间：内置元素、`<if>` / `<each>`，以及你的 kebab-case 组件 |
-| `globals.d.ts` | `console`、定时器、`requestAnimationFrame`、`fetch` 及其他 [Web API](../modules/web-apis.md) |
+| `jsx-runtime.d.ts` | TypeScript 通过 `jsxImportSource` 解析的 JSX 运行时（`JSX` 命名空间） |
+| `globals.d.ts` | `If` 和 `Each`；`console`、定时器、`requestAnimationFrame`、`fetch` 及其他 [Web API](../modules/web-apis.md) |
 | `assets.d.ts` | 导入图片或字体得到的值 |
 | `list.d.ts`、`animated.d.ts`、`device.d.ts` 等 | 每个模块一个文件（`nsh/list`、`nsh/animated`、`nsh/device` 等） |
 | `ui/mobile.d.ts` | `nsh/ui/mobile` |
@@ -162,7 +162,7 @@ import strings from "./strings.json";
 
 | 模块 | 内容 |
 |---|---|
-| `nsh` | 响应式（`signal`、`computed`、`effect` 等）、`mount`、`split`、`context`（[参考](../modules/nsh.md)） |
+| `nsh` | 响应式（`signal`、`computed`、`effect` 等）、`mount`、`split`、`context`；`View`、`Text`、`Scroll`、`Input`（[参考](../modules/nsh.md)） |
 | `nsh/ui/mobile` | 移动端 UI 组件集：组件、导航、弹窗、安全区域（[组件](../components/index.md)） |
 | `nsh/list` | `List`：虚拟化、可复用的列表 |
 | `nsh/animated` | 原生动画 |
@@ -170,7 +170,7 @@ import strings from "./strings.json";
 | `nsh/gesture` | `PanResponder` |
 | `nsh/device` | `Platform`、`windowSize`、`colorScheme`、`fontScale`、`PixelRatio`、`I18nManager` |
 | `nsh/accessibility` | 读屏与减少动态效果的状态、朗读通知 |
-| `nsh/image` | `Image.getSize`、`Image.prefetch` |
+| `nsh/image` | `Image`（元素）、`Image.getSize`、`Image.prefetch` |
 | `nsh/webview`, `nsh/video` | `WebView`、`Video` |
 | `nsh/native` | 嵌入应用注册的组件 |
 | `nsh/ios`, `nsh/android` | 平台专属 API |
@@ -188,11 +188,13 @@ nsh 本身不依赖 npm 上的任何东西，但如果你用包管理器安装�
 图片和字体像模块一样导入。打包器会记录每个被导入的文件并随应用一起发布：`nsh build` 把它们复制到 `out/assets/`，`nsh package` 把它们放进应用，开发期间则由开发服务器提供。
 
 ```tsx
+import { Text } from "nsh";
+import { Image } from "nsh/image";
 import logo from "./assets/logo@2x.png";   // { uri: "asset:/assets/logo@2x.png", width: 64, height: 64 }
 import Inter from "./assets/Inter.ttf";     // "Inter"
 
-<image src={logo} />
-<text style={{ fontFamily: Inter }}>Hello</text>
+<Image src={logo} />
+<Text style={{ fontFamily: Inter }}>Hello</Text>
 ```
 
 | 扩展名 | 导入得到 |
