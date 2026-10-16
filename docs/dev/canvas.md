@@ -8,7 +8,7 @@
   which takes SVG path data; arcs become cubics), `fillRect` / `strokeRect` / `clearRect`, `fillText` / `strokeText` /
   `measureText` (synchronous, through the engine's text engine; only `width`), linear / radial / conic
   gradients, `drawImage` (all three forms, images by URI or asset). Any number argument and colors may be native values
-  (`createNativeValue`, `interpolate`, ...): those become slots bound like style values (`AnimProp::CanvasArg`) and the
+  (`createNativeValue`, `interpolate`, ...): those become slots bound like style values (`AnimationProp::CanvasArg`) and the
   platform redraws on its own while they animate, without JS. A drawing travels in its own op (`Op::Draw`), recorded into
   a Rust list of its own (`nsh-js` `canvas.rs`): creating native values while drawing pushes ops of its own. Each
   operation is one variant of `CanvasOp` / `PathOp` with `#[derive(JsOps)]` (`nsh_core::js::ops`): `#[op(code = CV_…)]` reads its fields in order

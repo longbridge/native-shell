@@ -110,7 +110,7 @@ pub(crate) fn keyframes(layer: &CALayer, animation: Option<&KeyframeAnimation>, 
     let Some(a) = animation else { return };
     let repeat = a.iterations.map_or(f32::INFINITY, |n| n as f32);
     let num = |v: f64| NSNumber::new_f64(v);
-    let anim: Retained<objc2_quartz_core::CAAnimation> = match a.keyframes {
+    let animation: Retained<objc2_quartz_core::CAAnimation> = match a.keyframes {
         Keyframes::Spin => {
             let b =
                 CABasicAnimation::animationWithKeyPath(Some(ns_string!("transform.rotation.z")));
@@ -137,11 +137,11 @@ pub(crate) fn keyframes(layer: &CALayer, animation: Option<&KeyframeAnimation>, 
             scale.setKeyTimes(Some(&times));
             fade.setKeyTimes(Some(&times));
             let group = objc2_quartz_core::CAAnimationGroup::new();
-            let anims: [Retained<objc2_quartz_core::CAAnimation>; 2] = [
+            let animations: [Retained<objc2_quartz_core::CAAnimation>; 2] = [
                 Retained::into_super(Retained::into_super(scale)),
                 Retained::into_super(Retained::into_super(fade)),
             ];
-            group.setAnimations(Some(&NSArray::from_retained_slice(&anims)));
+            group.setAnimations(Some(&NSArray::from_retained_slice(&animations)));
             group.setTimingFunction(Some(&timing(a.easing)));
             Retained::into_super(group)
         }
@@ -182,15 +182,15 @@ pub(crate) fn keyframes(layer: &CALayer, animation: Option<&KeyframeAnimation>, 
             Retained::into_super(Retained::into_super(jump))
         }
     };
-    anim.setDuration(a.duration as f64 / 1000.0);
-    anim.setRepeatCount(repeat);
+    animation.setDuration(a.duration as f64 / 1000.0);
+    animation.setRepeatCount(repeat);
     if a.delay > 0.0 {
         // SAFETY: a plain clock read.
-        anim.setBeginTime(objc2_quartz_core::CACurrentMediaTime() + a.delay as f64 / 1000.0);
+        animation.setBeginTime(objc2_quartz_core::CACurrentMediaTime() + a.delay as f64 / 1000.0);
     }
     // Keeps running when the view leaves the window and comes back.
-    anim.setRemovedOnCompletion(false);
-    layer.addAnimation_forKey(&anim, Some(&key));
+    animation.setRemovedOnCompletion(false);
+    layer.addAnimation_forKey(&animation, Some(&key));
 }
 
 /// `mixBlendMode` as a Core Animation compositing filter name.

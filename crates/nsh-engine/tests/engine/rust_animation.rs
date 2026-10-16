@@ -9,7 +9,7 @@ use std::time::Duration;
 use crossbeam_channel::Receiver;
 use nsh_core::{
     ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, NodeId, Size,
-    nsh_anim::{AnimOp, Finished, Graph},
+    nsh_animation::{AnimationOp, Finished, Graph},
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
@@ -116,7 +116,7 @@ struct Platform {
     /// The graph's clock, in seconds.
     now: f64,
     /// The graph operations received.
-    ops: Vec<AnimOp>,
+    ops: Vec<AnimationOp>,
     /// The value moved (bound to the root view's translation).
     x: Option<u32>,
 }
@@ -165,10 +165,10 @@ impl Platform {
                         self.texts.retain(|t| t.0 != id);
                         self.texts.push((id, text.text.clone()));
                     }
-                    MountItem::AnimBindings { bindings, .. } => {
+                    MountItem::AnimationBindings { bindings, .. } => {
                         self.x = bindings.first().map(|b| b.1);
                     }
-                    MountItem::Anim(op) => {
+                    MountItem::Animation(op) => {
                         self.ops.push(op.clone());
                         self.graph.apply(op, &mut self.finished);
                     }
@@ -243,7 +243,12 @@ fn rust_composites_run_natively_and_report_their_ends() {
     let starts = p
         .ops
         .iter()
-        .filter(|op| matches!(op, AnimOp::StartComposite { .. } | AnimOp::Start { .. }))
+        .filter(|op| {
+            matches!(
+                op,
+                AnimationOp::StartComposite { .. } | AnimationOp::Start { .. }
+            )
+        })
         .count();
     assert_eq!(starts, 1, "{:?}", p.ops);
 

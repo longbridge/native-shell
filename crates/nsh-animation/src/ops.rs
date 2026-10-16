@@ -3,11 +3,11 @@ pub type NodeId = u32;
 
 /// Identifier of one started animation, assigned by JS; reported back when
 /// the animation finishes.
-pub type AnimId = u32;
+pub type AnimationId = u32;
 
 /// A view property that an animation node can drive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnimProp {
+pub enum AnimationProp {
     /// `opacity`, 0..1.
     Opacity,
     /// `backgroundColor`, from a color interpolation.
@@ -20,12 +20,12 @@ pub enum AnimProp {
     CanvasArg(u16),
 }
 
-impl AnimProp {
+impl AnimationProp {
     /// Parses a style key (transform entries are addressed by position).
-    pub fn from_name(name: &str) -> Option<AnimProp> {
+    pub fn from_name(name: &str) -> Option<AnimationProp> {
         Some(match name {
-            "opacity" => AnimProp::Opacity,
-            "backgroundColor" => AnimProp::BackgroundColor,
+            "opacity" => AnimationProp::Opacity,
+            "backgroundColor" => AnimationProp::BackgroundColor,
             _ => return None,
         })
     }
@@ -166,7 +166,7 @@ pub enum Operand {
 
 /// A change to the animation graph, sent by JS.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnimOp {
+pub enum AnimationOp {
     /// A settable, animatable value.
     CreateValue {
         /// New node.
@@ -227,7 +227,7 @@ pub enum AnimOp {
         /// Value node.
         node: NodeId,
         /// Reported back on completion.
-        animation: AnimId,
+        animation: AnimationId,
         /// How to move.
         driver: Driver,
     },
@@ -235,7 +235,7 @@ pub enum AnimOp {
     /// loops) run natively, step after step.
     StartComposite {
         /// Reported back when the whole animation ends.
-        animation: AnimId,
+        animation: AnimationId,
         /// The composite (one JS object, run any number of times): the
         /// values it animates are recorded as they are now, for `Reset`.
         key: u32,
@@ -261,7 +261,7 @@ pub enum AnimOp {
     /// Stops a composite animation (its running steps stay where they are).
     StopAnimation {
         /// The animation.
-        animation: AnimId,
+        animation: AnimationId,
     },
     /// Frees a node.
     Release {

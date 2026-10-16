@@ -34,7 +34,7 @@ pub mod ui;
 // The derive macros name `::nsh_core`, also in this crate's own tests.
 extern crate self as nsh_core;
 
-pub use nsh_anim;
+pub use nsh_animation;
 /// The values registered native components take and emit (props, events,
 /// command arguments): JSON.
 pub use serde_json::Value as JsonValue;

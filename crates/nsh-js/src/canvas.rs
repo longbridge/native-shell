@@ -52,7 +52,7 @@ pub(crate) enum Rec {
     Str(Rc<str>),
     List(Rc<Vec<Rec>>),
     /// A native animation node (`NativeNode.__nv`).
-    Node(nsh_anim::NodeId),
+    Node(nsh_animation::NodeId),
 }
 
 /// A recorded list, read by index.
@@ -130,7 +130,7 @@ impl HostInput for Rec {
         }
     }
 
-    fn native_node(&self) -> Option<nsh_anim::NodeId> {
+    fn native_node(&self) -> Option<nsh_animation::NodeId> {
         match self {
             Rec::Node(id) => Some(*id),
             _ => None,
@@ -503,7 +503,7 @@ fn to_rec(ctx: *mut JsContext, v: JsValue, used: &mut Vec<JsValue>, depth: u32) 
             let mut n = 0f64;
             qjs::JS_ToFloat64(ctx, &mut n, nv);
             used.push(qjs::JS_DupValue(ctx, v));
-            return Rec::Node(n as nsh_anim::NodeId);
+            return Rec::Node(n as nsh_animation::NodeId);
         }
         qjs::JS_FreeValue(ctx, nv);
         if qjs::JS_IsArray(v) {

@@ -195,7 +195,7 @@ fn path_of(specifier: &str) -> String {
 /// What the core's tables add to one of nsh's modules.
 fn generated(module: &str) -> String {
     match module {
-        "nsh/animated" => nsh_core::js::anim::declarations(),
+        "nsh/animated" => nsh_core::js::animation::declarations(),
         "nsh/canvas" => nsh_core::js::canvas::declarations(),
         _ => String::new(),
     }

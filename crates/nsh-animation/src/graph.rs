@@ -3,28 +3,29 @@ use std::cell::Cell;
 use crate::{
     driver::{Running, ease},
     ops::{
-        AnimId, AnimOp, Composite, Driver, Easing, Extrapolate, MathOp, NodeId, Operand, Output,
+        AnimationId, AnimationOp, Composite, Driver, Easing, Extrapolate, MathOp, NodeId, Operand,
+        Output,
     },
 };
 
 /// Animations of composite steps get ids from here up (JS's are small).
-const LEAF_IDS: AnimId = 0x8000_0000;
+const LEAF_IDS: AnimationId = 0x8000_0000;
 
 /// The evaluated value of a node.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AnimValue {
+pub enum AnimationValue {
     /// A number.
     Number(f32),
     /// A color, `0xRRGGBBAA`.
     Color(u32),
 }
 
-impl AnimValue {
+impl AnimationValue {
     /// The number, or 0 for colors.
     pub fn number(self) -> f32 {
         match self {
-            AnimValue::Number(n) => n,
-            AnimValue::Color(_) => 0.0,
+            AnimationValue::Number(n) => n,
+            AnimationValue::Color(_) => 0.0,
         }
     }
 }
@@ -33,7 +34,7 @@ impl AnimValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finished {
     /// The animation.
-    pub animation: AnimId,
+    pub animation: AnimationId,
     /// False if it was stopped or replaced before reaching its end.
     pub finished: bool,
 }
@@ -80,7 +81,7 @@ pub struct Graph {
     programs: Vec<Program>,
     /// Ends of composite steps (and when they ended), for their programs.
     leaf_ends: Vec<(Finished, f64)>,
-    next_leaf: AnimId,
+    next_leaf: AnimationId,
     /// Values a composite step started in this frame.
     started: Vec<NodeId>,
     /// Values of each composite when it last started, for resets.
@@ -90,7 +91,7 @@ pub struct Graph {
 /// A running composite animation.
 #[derive(Debug)]
 struct Program {
-    id: AnimId,
+    id: AnimationId,
     key: u32,
     root: Step,
     /// When it started (its first frame).
@@ -104,7 +105,7 @@ enum Step {
         node: NodeId,
         driver: Driver,
         /// The animation once started.
-        leaf: Option<AnimId>,
+        leaf: Option<AnimationId>,
     },
     Sequence {
         steps: Vec<Step>,
@@ -338,7 +339,7 @@ impl Step {
 
 impl Graph {
     /// Applies an op. Interrupted animations are pushed to `finished`.
-    pub fn apply(&mut self, op: AnimOp, finished: &mut Vec<Finished>) {
+    pub fn apply(&mut self, op: AnimationOp, finished: &mut Vec<Finished>) {
         self.apply_op(op, finished);
         self.route_leaf_ends(finished);
     }
@@ -357,9 +358,9 @@ impl Graph {
         }
     }
 
-    fn apply_op(&mut self, op: AnimOp, finished: &mut Vec<Finished>) {
+    fn apply_op(&mut self, op: AnimationOp, finished: &mut Vec<Finished>) {
         match op {
-            AnimOp::CreateValue { node, value } => self.insert(
+            AnimationOp::CreateValue { node, value } => self.insert(
                 node,
                 Node::Value {
                     value,
@@ -367,7 +368,7 @@ impl Graph {
                     running: None,
                 },
             ),
-            AnimOp::CreateInterpolate {
+            AnimationOp::CreateInterpolate {
                 node,
                 input,
                 input_range,
@@ -385,7 +386,7 @@ impl Graph {
                     easing,
                 },
             ),
-            AnimOp::CreateDiffClamp {
+            AnimationOp::CreateDiffClamp {
                 node,
                 input,
                 min,
@@ -399,16 +400,18 @@ impl Graph {
                     state: Cell::new(None),
                 },
             ),
-            AnimOp::CreateMath { node, op, a, b } => self.insert(node, Node::Math { op, a, b }),
-            AnimOp::Set { node, value } => self.set(node, value, finished),
-            AnimOp::Start {
+            AnimationOp::CreateMath { node, op, a, b } => {
+                self.insert(node, Node::Math { op, a, b })
+            }
+            AnimationOp::Set { node, value } => self.set(node, value, finished),
+            AnimationOp::Start {
                 node,
                 animation,
                 driver,
             } => {
                 self.start(node, animation, driver, None, finished);
             }
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation,
                 key,
                 spec,
@@ -430,7 +433,7 @@ impl Graph {
                     at: None,
                 });
             }
-            AnimOp::ResetComposite { key } => {
+            AnimationOp::ResetComposite { key } => {
                 while let Some(i) = self.programs.iter().position(|p| p.key == key) {
                     let mut program = self.programs.remove(i);
                     program.root.stop(self, finished);
@@ -447,9 +450,9 @@ impl Graph {
                     self.baselines.push((key, values));
                 }
             }
-            AnimOp::ReleaseComposite { key } => self.baselines.retain(|(k, _)| *k != key),
-            AnimOp::Stop { node } => self.stop(node, finished),
-            AnimOp::StopAnimation { animation } => {
+            AnimationOp::ReleaseComposite { key } => self.baselines.retain(|(k, _)| *k != key),
+            AnimationOp::Stop { node } => self.stop(node, finished),
+            AnimationOp::StopAnimation { animation } => {
                 if let Some(i) = self.programs.iter().position(|p| p.id == animation) {
                     let mut program = self.programs.remove(i);
                     program.root.stop(self, finished);
@@ -459,7 +462,7 @@ impl Graph {
                     });
                 }
             }
-            AnimOp::Release { node } => {
+            AnimationOp::Release { node } => {
                 self.stop(node, finished);
                 if let Some(slot) = self.nodes.get_mut(node as usize) {
                     *slot = None;
@@ -473,7 +476,7 @@ impl Graph {
     fn start(
         &mut self,
         node: NodeId,
-        animation: AnimId,
+        animation: AnimationId,
         driver: Driver,
         start: Option<f64>,
         finished: &mut Vec<Finished>,
@@ -503,7 +506,7 @@ impl Graph {
     }
 
     /// The animation running on value `node`.
-    fn running_id(&self, node: NodeId) -> Option<AnimId> {
+    fn running_id(&self, node: NodeId) -> Option<AnimationId> {
         match self.nodes.get(node as usize)? {
             Some(Node::Value {
                 running: Some(r), ..
@@ -658,16 +661,16 @@ impl Graph {
     }
 
     /// Evaluates any node.
-    pub fn eval(&self, node: NodeId) -> AnimValue {
+    pub fn eval(&self, node: NodeId) -> AnimationValue {
         self.eval_depth(node, 0)
     }
 
-    fn eval_depth(&self, node: NodeId, depth: u32) -> AnimValue {
+    fn eval_depth(&self, node: NodeId, depth: u32) -> AnimationValue {
         if depth > MAX_DEPTH {
-            return AnimValue::Number(0.0);
+            return AnimationValue::Number(0.0);
         }
         match self.nodes.get(node as usize) {
-            Some(Some(Node::Value { value, .. })) => AnimValue::Number(*value),
+            Some(Some(Node::Value { value, .. })) => AnimationValue::Number(*value),
             Some(Some(Node::Interpolate {
                 input,
                 input_range,
@@ -693,7 +696,7 @@ impl Graph {
                     Some((last, out)) => (out + x - last).clamp(*min, *max),
                 };
                 state.set(Some((x, out)));
-                AnimValue::Number(out)
+                AnimationValue::Number(out)
             }
             Some(Some(Node::Math { op, a, b })) => {
                 let operand = |o: &Operand| match *o {
@@ -701,7 +704,7 @@ impl Graph {
                     Operand::Const(c) => c,
                 };
                 let (a, b) = (operand(a), operand(b));
-                AnimValue::Number(match op {
+                AnimationValue::Number(match op {
                     MathOp::Mod if b != 0.0 => ((a % b) + b) % b,
                     MathOp::Mod => 0.0,
                     MathOp::Add => a + b,
@@ -711,7 +714,7 @@ impl Graph {
                     MathOp::Div => 0.0,
                 })
             }
-            _ => AnimValue::Number(0.0),
+            _ => AnimationValue::Number(0.0),
         }
     }
 }
@@ -722,24 +725,24 @@ fn interpolate(
     output: &Output,
     (left, right): (Extrapolate, Extrapolate),
     easing: Easing,
-) -> AnimValue {
+) -> AnimationValue {
     let n = input.len().min(match output {
         Output::Numbers(v) => v.len(),
         Output::Colors(v) => v.len(),
     });
     if n == 0 {
-        return AnimValue::Number(x);
+        return AnimationValue::Number(x);
     }
     let (first, last) = (input[0], input[n - 1]);
     let extrapolate = if x < first { left } else { right };
     if n == 1 || (x < first || x > last) && extrapolate != Extrapolate::Extend {
         if extrapolate == Extrapolate::Identity && n > 1 {
-            return AnimValue::Number(x);
+            return AnimationValue::Number(x);
         }
         let i = if n == 1 || x < first { 0 } else { n - 1 };
         return match output {
-            Output::Numbers(v) => AnimValue::Number(v[i]),
-            Output::Colors(v) => AnimValue::Color(v[i]),
+            Output::Numbers(v) => AnimationValue::Number(v[i]),
+            Output::Colors(v) => AnimationValue::Color(v[i]),
         };
     }
     // Segment containing x (or the edge segment when extending).
@@ -756,8 +759,10 @@ fn interpolate(
         t
     };
     match output {
-        Output::Numbers(v) => AnimValue::Number(v[seg] + (v[seg + 1] - v[seg]) * t),
-        Output::Colors(v) => AnimValue::Color(lerp_color(v[seg], v[seg + 1], t.clamp(0.0, 1.0))),
+        Output::Numbers(v) => AnimationValue::Number(v[seg] + (v[seg + 1] - v[seg]) * t),
+        Output::Colors(v) => {
+            AnimationValue::Color(lerp_color(v[seg], v[seg + 1], t.clamp(0.0, 1.0)))
+        }
     }
 }
 
@@ -784,15 +789,15 @@ mod tests {
         let r = [0.0, 1.0, 2.0];
         assert_eq!(
             interpolate(0.5, &r, &out, CLAMP, Easing::Linear),
-            AnimValue::Number(5.0)
+            AnimationValue::Number(5.0)
         );
         assert_eq!(
             interpolate(1.5, &r, &out, CLAMP, Easing::Linear),
-            AnimValue::Number(5.0)
+            AnimationValue::Number(5.0)
         );
         assert_eq!(
             interpolate(3.0, &r, &out, CLAMP, Easing::Linear),
-            AnimValue::Number(0.0)
+            AnimationValue::Number(0.0)
         );
         assert_eq!(
             interpolate(
@@ -802,7 +807,7 @@ mod tests {
                 (Extrapolate::Extend, Extrapolate::Extend),
                 Easing::Linear
             ),
-            AnimValue::Number(-10.0)
+            AnimationValue::Number(-10.0)
         );
         assert_eq!(
             interpolate(
@@ -812,12 +817,12 @@ mod tests {
                 (Extrapolate::Identity, Extrapolate::Identity),
                 Easing::Linear
             ),
-            AnimValue::Number(-1.0)
+            AnimationValue::Number(-1.0)
         );
         let colors = Output::Colors(vec![0x0000_00ff, 0xff00_00ff]);
         assert_eq!(
             interpolate(0.5, &[0.0, 1.0], &colors, CLAMP, Easing::Linear),
-            AnimValue::Color(0x8000_00ff)
+            AnimationValue::Color(0x8000_00ff)
         );
     }
 
@@ -826,14 +831,14 @@ mod tests {
         let mut g = Graph::default();
         let mut finished = Vec::new();
         g.apply(
-            AnimOp::CreateValue {
+            AnimationOp::CreateValue {
                 node: 1,
                 value: 0.0,
             },
             &mut finished,
         );
         g.apply(
-            AnimOp::CreateInterpolate {
+            AnimationOp::CreateInterpolate {
                 node: 2,
                 input: 1,
                 input_range: vec![0.0, 100.0],
@@ -845,7 +850,7 @@ mod tests {
             &mut finished,
         );
         g.apply(
-            AnimOp::CreateMath {
+            AnimationOp::CreateMath {
                 node: 3,
                 op: MathOp::Mul,
                 a: Operand::Node(1),
@@ -854,7 +859,7 @@ mod tests {
             &mut finished,
         );
         g.apply(
-            AnimOp::Start {
+            AnimationOp::Start {
                 node: 1,
                 animation: 7,
                 driver: Driver::Timing {
@@ -888,7 +893,7 @@ mod tests {
         let mut g = Graph::default();
         let mut finished = Vec::new();
         g.apply(
-            AnimOp::CreateValue {
+            AnimationOp::CreateValue {
                 node: 1,
                 value: 0.0,
             },
@@ -902,7 +907,7 @@ mod tests {
             velocity: None,
         };
         g.apply(
-            AnimOp::Start {
+            AnimationOp::Start {
                 node: 1,
                 animation: 1,
                 driver: spring(100.0),
@@ -912,7 +917,7 @@ mod tests {
         g.tick(0.0, &mut finished);
         g.tick(0.1, &mut finished);
         g.apply(
-            AnimOp::Start {
+            AnimationOp::Start {
                 node: 1,
                 animation: 2,
                 driver: spring(0.0),
@@ -950,7 +955,7 @@ mod tests {
 
     fn values(g: &mut Graph, f: &mut Vec<Finished>, nodes: &[NodeId]) {
         for &node in nodes {
-            g.apply(AnimOp::CreateValue { node, value: 0.0 }, f);
+            g.apply(AnimationOp::CreateValue { node, value: 0.0 }, f);
         }
     }
 
@@ -969,7 +974,7 @@ mod tests {
         let mut f = Vec::new();
         values(&mut g, &mut f, &[1, 2]);
         g.apply(
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation: 5,
                 key: 1,
                 spec: Composite::Sequence(vec![
@@ -1012,7 +1017,7 @@ mod tests {
         let mut f = Vec::new();
         values(&mut g, &mut f, &[1, 2]);
         g.apply(
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation: 9,
                 key: 1,
                 spec: Composite::Parallel {
@@ -1055,7 +1060,7 @@ mod tests {
         let mut f = Vec::new();
         values(&mut g, &mut f, &[1]);
         g.apply(
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation: 3,
                 key: 1,
                 spec: Composite::Loop {
@@ -1087,7 +1092,7 @@ mod tests {
         // Forever, until stopped.
         f.clear();
         g.apply(
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation: 4,
                 key: 2,
                 spec: Composite::Loop {
@@ -1103,7 +1108,7 @@ mod tests {
         );
         run(&mut g, &mut f, 1.0, 3.0);
         assert!(f.is_empty());
-        g.apply(AnimOp::StopAnimation { animation: 4 }, &mut f);
+        g.apply(AnimationOp::StopAnimation { animation: 4 }, &mut f);
         assert_eq!(
             f,
             vec![Finished {
@@ -1114,7 +1119,7 @@ mod tests {
         assert!(!g.is_animating());
         // Back to where the forever loop started (10).
         g.set(1, 7.0, &mut f);
-        g.apply(AnimOp::ResetComposite { key: 2 }, &mut f);
+        g.apply(AnimationOp::ResetComposite { key: 2 }, &mut f);
         assert_eq!(g.value(1), Some(10.0));
     }
 
@@ -1124,7 +1129,7 @@ mod tests {
         let mut f = Vec::new();
         values(&mut g, &mut f, &[1]);
         g.apply(
-            AnimOp::CreateDiffClamp {
+            AnimationOp::CreateDiffClamp {
                 node: 2,
                 input: 1,
                 min: 0.0,
@@ -1133,7 +1138,7 @@ mod tests {
             &mut f,
         );
         g.apply(
-            AnimOp::CreateMath {
+            AnimationOp::CreateMath {
                 node: 3,
                 op: MathOp::Mod,
                 a: Operand::Node(1),
@@ -1168,7 +1173,7 @@ mod tests {
                 both(Extrapolate::Clamp, Extrapolate::Extend),
                 Easing::Linear
             ),
-            AnimValue::Number(0.0)
+            AnimationValue::Number(0.0)
         );
         assert_eq!(
             interpolate(
@@ -1178,7 +1183,7 @@ mod tests {
                 both(Extrapolate::Clamp, Extrapolate::Extend),
                 Easing::Linear
             ),
-            AnimValue::Number(200.0)
+            AnimationValue::Number(200.0)
         );
         let eased = interpolate(
             0.5,
@@ -1187,7 +1192,7 @@ mod tests {
             both(Extrapolate::Clamp, Extrapolate::Clamp),
             Easing::Curve(crate::ops::Curve::Quad, crate::ops::EaseMode::In),
         );
-        assert_eq!(eased, AnimValue::Number(25.0));
+        assert_eq!(eased, AnimationValue::Number(25.0));
     }
 
     #[test]
@@ -1195,7 +1200,7 @@ mod tests {
         let mut g = Graph::default();
         let mut f = Vec::new();
         g.apply(
-            AnimOp::CreateMath {
+            AnimationOp::CreateMath {
                 node: 1,
                 op: MathOp::Add,
                 a: Operand::Node(1),

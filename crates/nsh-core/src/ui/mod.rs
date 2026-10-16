@@ -46,15 +46,15 @@ mod theme;
 mod value;
 pub(crate) mod virtual_list;
 
-pub use nsh_anim::{Curve, EaseMode, Easing, Extrapolate, Output as AnimOutput};
+pub use nsh_animation::{Curve, EaseMode, Easing, Extrapolate, Output as AnimationOutput};
 pub use nsh_macros::{
     Event, JsObject, PropEnum, Props, asset, assets, methods, module, native_module,
 };
 
 pub use self::{
     animated::{
-        AnimOperand, Animated, Animation, AnimationEnd, Interpolation, NativeNode, NativeValue,
-        Spring, Timing,
+        Animated, Animation, AnimationEnd, AnimationOperand, Interpolation, NativeNode,
+        NativeValue, Spring, Timing,
     },
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
     back::BackSubscription,
@@ -119,9 +119,9 @@ pub mod prelude {
         AccessibilityState,
         Accessible,
         AdaptiveColor,
-        AnimOutput,
         Animated,
         Animation,
+        AnimationOutput,
         AnyElement,
         AsyncCx,
         // Host elements and their settings.

@@ -3,7 +3,7 @@
 //! operations and their decoding ([`canvas`], with [`ops`]'
 //! `#[derive(JsOps)]`), the style types ([`style`]), the host elements'
 //! props ([`host`]: their decoding and types, from `#[derive(HostProps)]`
-//! on [`crate::Prop`]) and the easings and layout animations ([`anim`]).
+//! on [`crate::Prop`]) and the easings and layout animations ([`animation`]).
 //! The decoders in `nsh-js` match on the same constants and call the
 //! derived decoders, and their declarations go into the ones apps are
 //! checked against (`nsh-js` `declarations.rs`).
@@ -86,7 +86,7 @@ macro_rules! codes {
     };
 }
 
-pub mod anim;
+pub mod animation;
 pub mod canvas;
 pub mod host;
 pub(crate) mod host_values;
@@ -162,10 +162,12 @@ mod tests {
             assert!(elements[at..end].contains(prop), "{interface}: {prop}");
         }
         assert!(elements.contains("\"number-pad\" | \"numeric\""));
-        let anim = super::anim::declarations();
-        assert!(anim.contains("  back(s?: number): EasingCurve;"));
-        assert!(anim.contains("export type LayoutAnimationType = \"easeInEaseOut\" | \"spring\""));
-        assert!(anim.contains("  readonly scaleXY: \"scaleXY\";"));
+        let animation = super::animation::declarations();
+        assert!(animation.contains("  back(s?: number): EasingCurve;"));
+        assert!(
+            animation.contains("export type LayoutAnimationType = \"easeInEaseOut\" | \"spring\"")
+        );
+        assert!(animation.contains("  readonly scaleXY: \"scaleXY\";"));
         // What the runtime sets itself is not part of the types.
         for internal in ["splice?", "cellIndex?", "tailwindTheme?", "headerSlot?"] {
             assert!(!elements.contains(internal), "{internal}");

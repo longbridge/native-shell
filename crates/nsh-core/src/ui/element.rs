@@ -951,7 +951,7 @@ pub trait Element: IntoElement + Sized {
     /// Binds `opacity` to a native value (it moves natively).
     fn bind_opacity(mut self, value: &impl super::Animated) -> Self {
         let node = value.native_node();
-        let decl = crate::StyleDecl::Animated(nsh_anim::AnimProp::Opacity, node.id());
+        let decl = crate::StyleDecl::Animated(nsh_animation::AnimationProp::Opacity, node.id());
         self.node().attrs.animated.push((decl, node));
         self
     }
@@ -960,7 +960,8 @@ pub trait Element: IntoElement + Sized {
     /// ([`super::NativeNode::interpolate_colors`]).
     fn bind_background(mut self, value: &impl super::Animated) -> Self {
         let node = value.native_node();
-        let decl = crate::StyleDecl::Animated(nsh_anim::AnimProp::BackgroundColor, node.id());
+        let decl =
+            crate::StyleDecl::Animated(nsh_animation::AnimationProp::BackgroundColor, node.id());
         self.node().attrs.animated.push((decl, node));
         self
     }

@@ -9,7 +9,7 @@ use std::time::Duration;
 use crossbeam_channel::Receiver;
 use nsh_core::{
     EventKind, EventPayload, MountBatch, MountItem,
-    nsh_anim::{AnimValue, Finished, Graph, NodeId},
+    nsh_animation::{AnimationValue, Finished, Graph, NodeId},
 };
 use nsh_engine::Engine;
 
@@ -67,8 +67,8 @@ impl Platform {
             self.screen.apply(&batch);
             for item in batch.items {
                 match item {
-                    MountItem::Anim(op) => self.graph.apply(op, &mut self.finished),
-                    MountItem::AnimBindings { bindings, .. } => {
+                    MountItem::Animation(op) => self.graph.apply(op, &mut self.finished),
+                    MountItem::AnimationBindings { bindings, .. } => {
                         for (_, node) in bindings {
                             if !self.bound.contains(&node) {
                                 self.bound.push(node);
@@ -120,7 +120,7 @@ impl Platform {
     }
 
     /// What the bound properties are now.
-    fn bound_values(&self) -> Vec<AnimValue> {
+    fn bound_values(&self) -> Vec<AnimationValue> {
         self.bound.iter().map(|&n| self.graph.eval(n)).collect()
     }
 

@@ -127,8 +127,8 @@ natively removes its route; screens and modals provide the insets they report to
 ## Runtime modules
 
 - `nsh/gesture`: the responder system and `PanResponder` (`touch.rs`), in Rust as it runs on every touch move.
-- `nsh/animated` (`animated.rs`): operations are encoded as a few values (`ANIM_*`) and decoded into `AnimOp`s
-  (`protocol::decode_anim_op`); nodes and composites are released by their finalizers; a started animation's promise
+- `nsh/animated` (`animated.rs`): operations are encoded as a few values (`ANIMATION_*`) and decoded into `AnimationOp`s
+  (`protocol::decode_animation_op`); nodes and composites are released by their finalizers; a started animation's promise
   settles when the core reports its end (`Host::animations_finished`).
 - `nsh/webview`, `nsh/video`, `nsh/native`, `nsh/ios` and the hand-written part of `nsh/android` (`isAvailable`,
   `BackHandler`'s listeners): `platform_modules.rs`.

@@ -604,12 +604,12 @@ pub struct Drawing {
     /// The operations, in order.
     pub ops: Vec<CanvasOp>,
     /// The native values the operations read, by slot.
-    pub slots: Vec<nsh_anim::NodeId>,
+    pub slots: Vec<nsh_animation::NodeId>,
 }
 
 impl Drawing {
     /// The slot of native value `node`, adding it if new.
-    pub fn slot(&mut self, node: nsh_anim::NodeId) -> u16 {
+    pub fn slot(&mut self, node: nsh_animation::NodeId) -> u16 {
         match self.slots.iter().position(|&n| n == node) {
             Some(i) => i as u16,
             None => {

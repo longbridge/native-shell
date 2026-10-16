@@ -1,40 +1,13 @@
-//! The native animation graph on the UI thread: `Choreographer` ticks,
-//! drags and scroll offsets update it; changed view properties go back to
-//! Java as `[animating, (view, prop, value)*]` float arrays.
+//! The native animation graph on the browser's main thread:
+//! `requestAnimationFrame` ticks, drags and scroll offsets update it;
+//! bound view properties go to the DOM as `["a", view, prop, value]`
+//! items (the Android animator's design, `nsh-platform-android/src/animation.rs`).
 
-use nsh_anim::{AnimProp, AnimValue, Finished, Graph, NodeId};
-use nsh_core::{GestureValues, MAX_TRANSFORMS, MountItem, Transform};
+use nsh_animation::{AnimationProp, AnimationValue, Finished, Graph, NodeId};
+use nsh_core::{Color, GestureValues, MAX_TRANSFORMS, MountItem, Transform};
 use rustc_hash::FxHashMap;
 
-// Java-side property codes (`Mounter.java`).
-const OPACITY: f32 = 0.0;
-const BACKGROUND: f32 = 7.0;
-/// Canvas native value slot `n` is `CANVAS_ARG + n` (a color as ARGB bits).
-const CANVAS_ARG: f32 = 1000.0;
-/// Codes of the [`view_transform`] values, in order.
-const TRANSFORM_CODES: [f32; 8] = [1.0, 2.0, 4.0, 5.0, 6.0, 8.0, 9.0, 10.0];
-
-/// A transform list as Android view properties: translation x / y (dp),
-/// scale x / y, rotation, rotation x / y (degrees) and the perspective
-/// term (`-1 / distance`, 0 for none; Java turns it into a camera
-/// distance). `value(i)` overrides entry `i` (an animated value). Skew has
-/// no view property and is dropped.
-pub(crate) fn view_transform(t: &Transform, value: impl Fn(usize) -> Option<f32>) -> [f32; 8] {
-    match t.matrix(value).decompose() {
-        Some(d) => [
-            d.translate[0] as f32,
-            d.translate[1] as f32,
-            d.scale[0] as f32,
-            d.scale[1] as f32,
-            d.rotate[2] as f32,
-            d.rotate[0] as f32,
-            d.rotate[1] as f32,
-            d.perspective as f32,
-        ],
-        // A zero scale: invisible.
-        None => [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-    }
-}
+use crate::encode::{Out, css_color, css_transform};
 
 #[derive(Default)]
 struct Gestures {
@@ -44,11 +17,11 @@ struct Gestures {
 }
 
 #[derive(Default)]
-pub(crate) struct UiAnim {
+pub(crate) struct UiAnimation {
     graph: Graph,
     pub(crate) finished: Vec<Finished>,
     /// View id -> bound properties.
-    bindings: FxHashMap<u32, Vec<(AnimProp, NodeId)>>,
+    bindings: FxHashMap<u32, Vec<(AnimationProp, NodeId)>>,
     /// View id -> static transform list, whose animated entries the
     /// bindings replace.
     statics: FxHashMap<u32, Transform>,
@@ -57,25 +30,34 @@ pub(crate) struct UiAnim {
     scrolls: FxHashMap<u32, (NodeId, bool)>,
 }
 
-impl UiAnim {
-    pub(crate) fn apply(&mut self, item: MountItem) {
+fn value_css(v: AnimationValue) -> String {
+    match v {
+        AnimationValue::Color(c) => css_color(Color(c)),
+        other => other.number().to_string(),
+    }
+}
+
+impl UiAnimation {
+    /// Takes the animation items of a batch; true if the item was one
+    /// (only animation items are consumed; the others are also looked at).
+    pub(crate) fn apply(&mut self, item: &MountItem) {
         match item {
-            MountItem::Anim(op) => self.graph.apply(op, &mut self.finished),
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::Animation(op) => self.graph.apply(op.clone(), &mut self.finished),
+            MountItem::AnimationBindings { id, bindings } => {
                 if bindings.is_empty() {
-                    self.bindings.remove(&id);
+                    self.bindings.remove(id);
                 } else {
-                    self.bindings.insert(id, bindings);
+                    self.bindings.insert(*id, bindings.clone());
                 }
             }
             MountItem::ViewStyle { id, style } => {
-                self.statics.insert(id, style.transform);
+                self.statics.insert(*id, style.transform);
             }
             MountItem::Gestures { id, values } => {
                 if values.is_empty() {
-                    self.gestures.remove(&id);
+                    self.gestures.remove(id);
                 } else {
-                    self.gestures.entry(id).or_default().values = values;
+                    self.gestures.entry(*id).or_default().values = *values;
                 }
             }
             MountItem::ScrollConfig {
@@ -85,17 +67,17 @@ impl UiAnim {
                 ..
             } => match scroll_value {
                 Some(node) => {
-                    self.scrolls.insert(id, (node, horizontal));
+                    self.scrolls.insert(*id, (*node, *horizontal));
                 }
                 None => {
-                    self.scrolls.remove(&id);
+                    self.scrolls.remove(id);
                 }
             },
             MountItem::Delete { id } => {
-                self.bindings.remove(&id);
-                self.statics.remove(&id);
-                self.gestures.remove(&id);
-                self.scrolls.remove(&id);
+                self.bindings.remove(id);
+                self.statics.remove(id);
+                self.gestures.remove(id);
+                self.scrolls.remove(id);
             }
             _ => {}
         }
@@ -117,13 +99,6 @@ impl UiAnim {
         self.graph
             .set(node, if horizontal { x } else { y }, &mut self.finished);
         true
-    }
-
-    /// Whether view `id` is dragged by native values.
-    pub(crate) fn has_pan(&self, id: u32) -> bool {
-        self.gestures
-            .get(&id)
-            .is_some_and(|g| g.values.pan_x.is_some() || g.values.pan_y.is_some())
     }
 
     /// A drag began: grabbing an animating value stops it where it is.
@@ -189,34 +164,27 @@ impl UiAnim {
         }
     }
 
-    /// `[animating, (view, prop, value)*]` for every bound property.
-    pub(crate) fn outputs(&self) -> Vec<f32> {
-        let mut out = Vec::with_capacity(1 + self.bindings.len() * 12);
-        out.push(if self.animating() { 1.0 } else { 0.0 });
+    /// Every bound property's current value.
+    pub(crate) fn outputs(&self, out: &mut Out) {
         for (&view, bindings) in &self.bindings {
-            let v = f32::from_bits(view);
             let mut overrides = [None; MAX_TRANSFORMS];
             let mut transformed = false;
             for &(prop, node) in bindings {
                 match prop {
-                    AnimProp::Opacity => {
-                        out.extend_from_slice(&[v, OPACITY, self.graph.eval(node).number()]);
+                    AnimationProp::Opacity => {
+                        out.animation(view, "opacity", &self.graph.eval(node).number().to_string());
                     }
-                    AnimProp::BackgroundColor => {
-                        let value = match self.graph.eval(node) {
-                            AnimValue::Color(c) => f32::from_bits(c.rotate_right(8)),
-                            other => other.number(),
-                        };
-                        out.extend_from_slice(&[v, BACKGROUND, value]);
+                    AnimationProp::BackgroundColor => {
+                        out.animation(view, "background-color", &value_css(self.graph.eval(node)));
                     }
-                    AnimProp::CanvasArg(k) => {
-                        let value = match self.graph.eval(node) {
-                            AnimValue::Color(c) => f32::from_bits(c.rotate_right(8)),
-                            other => other.number(),
-                        };
-                        out.extend_from_slice(&[v, CANVAS_ARG + k as f32, value]);
+                    AnimationProp::CanvasArg(k) => {
+                        out.animation(
+                            view,
+                            &format!("canvas:{k}"),
+                            &value_css(self.graph.eval(node)),
+                        );
                     }
-                    AnimProp::Transform(i) => {
+                    AnimationProp::Transform(i) => {
                         if let Some(o) = overrides.get_mut(i as usize) {
                             *o = Some(self.graph.eval(node).number());
                             transformed = true;
@@ -230,12 +198,9 @@ impl UiAnim {
                     .get(&view)
                     .copied()
                     .unwrap_or(Transform::IDENTITY);
-                let values = view_transform(&statics, |i| overrides[i]);
-                for (code, value) in TRANSFORM_CODES.iter().zip(values) {
-                    out.extend_from_slice(&[v, *code, value]);
-                }
+                let css = css_transform(&statics, |i| overrides[i]);
+                out.animation(view, "transform", css.trim_end());
             }
         }
-        out
     }
 }

@@ -16,7 +16,7 @@ unreachable_pub = "deny"
 private_interfaces = "deny"
 
 [workspace.dependencies]
-nsh-anim = { path = "crates/nsh-anim" }
+nsh-animation = { path = "crates/nsh-animation" }
 nsh-core = { path = "crates/nsh-core" }
 nsh-package = { path = "crates/nsh-package" }
 nsh-ui-mobile = { path = "crates/nsh-ui-mobile" }

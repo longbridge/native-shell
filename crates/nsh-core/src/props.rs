@@ -288,15 +288,15 @@ pub struct ViewProps {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GestureValues {
     /// Horizontal drag translation (`pan={{ x }}`).
-    pub pan_x: Option<nsh_anim::NodeId>,
+    pub pan_x: Option<nsh_animation::NodeId>,
     /// Vertical drag translation (`pan={{ y }}`).
-    pub pan_y: Option<nsh_anim::NodeId>,
+    pub pan_y: Option<nsh_animation::NodeId>,
     /// Pinch scale (`pinch={{ scale }}`), multiplied from its value when the
     /// pinch starts.
-    pub pinch: Option<nsh_anim::NodeId>,
+    pub pinch: Option<nsh_animation::NodeId>,
     /// Two-finger rotation in degrees (`rotation={{ angle }}`), added to its
     /// value when the rotation starts.
-    pub rotation: Option<nsh_anim::NodeId>,
+    pub rotation: Option<nsh_animation::NodeId>,
 }
 
 impl GestureValues {

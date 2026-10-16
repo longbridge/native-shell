@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use nsh_anim::{AnimOp, AnimProp};
+use nsh_animation::{AnimationOp, AnimationProp};
 
 use super::*;
 use crate::{Color, EventKind, StyleValue};
@@ -967,14 +967,14 @@ fn list_keeps_visible_content_anchored() {
 }
 
 #[test]
-fn anim_ops_and_bindings_are_forwarded_in_order() {
+fn animation_ops_and_bindings_are_forwarded_in_order() {
     let mut c = core();
     let mut s = Style::default();
-    s.animated.push((AnimProp::Opacity, 7));
+    s.animated.push((AnimationProp::Opacity, 7));
     apply(
         &mut c,
         vec![
-            Op::Anim(AnimOp::CreateValue {
+            Op::Animation(AnimationOp::CreateValue {
                 node: 7,
                 value: 1.0,
             }),
@@ -995,16 +995,18 @@ fn anim_ops_and_bindings_are_forwarded_in_order() {
         ],
     );
     let batch = c.commit().unwrap();
-    let anim = batch
-        .items
-        .iter()
-        .position(|i| matches!(i, MountItem::Anim(AnimOp::CreateValue { node: 7, .. })));
+    let animation = batch.items.iter().position(|i| {
+        matches!(
+            i,
+            MountItem::Animation(AnimationOp::CreateValue { node: 7, .. })
+        )
+    });
     let bind = batch
         .items
         .iter()
-        .position(|i| matches!(i, MountItem::AnimBindings { id: 2, .. }));
+        .position(|i| matches!(i, MountItem::AnimationBindings { id: 2, .. }));
     assert!(
-        anim.unwrap() < bind.unwrap(),
+        animation.unwrap() < bind.unwrap(),
         "values exist before views bind them"
     );
 }
@@ -4109,22 +4111,22 @@ mod components {
             ],
         );
         let batch = c.commit().unwrap();
-        let anims: Vec<_> = batch
+        let animations: Vec<_> = batch
             .items
             .iter()
             .filter_map(|i| match i {
-                MountItem::Anim(op) => Some(op.clone()),
+                MountItem::Animation(op) => Some(op.clone()),
                 _ => None,
             })
             .collect();
         // The value and its interpolation, in the core's id range.
-        let value = match anims[0] {
-            nsh_anim::AnimOp::CreateValue { node, value: 0.0 } => node,
+        let value = match animations[0] {
+            nsh_animation::AnimationOp::CreateValue { node, value: 0.0 } => node,
             ref op => panic!("{op:?}"),
         };
         assert_eq!(value % 2, 1, "the core's ids are odd");
         assert!(
-            matches!(anims[1], nsh_anim::AnimOp::CreateInterpolate { input, .. } if input == value)
+            matches!(animations[1], nsh_animation::AnimationOp::CreateInterpolate { input, .. } if input == value)
         );
         assert_eq!(texts(&batch), ["resting"]);
 
@@ -4143,7 +4145,7 @@ mod components {
             .items
             .iter()
             .find_map(|i| match i {
-                MountItem::Anim(nsh_anim::AnimOp::Start {
+                MountItem::Animation(nsh_animation::AnimationOp::Start {
                     node, animation, ..
                 }) if *node == value => Some(*animation),
                 _ => None,
@@ -4151,12 +4153,12 @@ mod components {
             .expect("a spring");
         assert_eq!(texts(&batch), ["springing"]);
         let mut finished = vec![
-            nsh_anim::Finished {
+            nsh_animation::Finished {
                 animation,
                 finished: true,
             },
             // JS's (even ids) stay for JS.
-            nsh_anim::Finished {
+            nsh_animation::Finished {
                 animation: 8,
                 finished: true,
             },
@@ -4185,7 +4187,12 @@ mod components {
             .iter()
             .flatten()
             .flat_map(|b| &b.items)
-            .filter(|i| matches!(i, MountItem::Anim(nsh_anim::AnimOp::Release { .. })))
+            .filter(|i| {
+                matches!(
+                    i,
+                    MountItem::Animation(nsh_animation::AnimationOp::Release { .. })
+                )
+            })
             .count();
         assert_eq!(released, 2, "{batch:?}");
     }
@@ -4771,7 +4778,7 @@ mod touch {
             .items
             .iter()
             .filter_map(|i| match i {
-                MountItem::Anim(AnimOp::CreateValue { node, .. }) => Some(*node),
+                MountItem::Animation(AnimationOp::CreateValue { node, .. }) => Some(*node),
                 _ => None,
             })
             .collect();

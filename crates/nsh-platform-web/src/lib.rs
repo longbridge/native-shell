@@ -9,7 +9,7 @@
 //!   out, CSS made here from the view styles.
 //! - Text is laid out here with the browser's font measurements and drawn
 //!   run by run ([`text`]); native animations run here on
-//!   `requestAnimationFrame` ([`anim`]).
+//!   `requestAnimationFrame` ([`animation`]).
 //!
 //! There is no network stack (`fetch` fails), no web view and no native
 //! components; scroll views use the browser's scrolling. Off WebAssembly
@@ -17,7 +17,7 @@
 
 #![cfg(target_arch = "wasm32")]
 
-mod anim;
+mod animation;
 mod canvas;
 mod encode;
 mod ffi;
@@ -31,7 +31,7 @@ use nsh_engine::{
     LocalEngine, MountSink, Os, Policy,
 };
 
-use crate::{anim::UiAnim, encode::Out, text::WebTextEngine};
+use crate::{animation::UiAnimation, encode::Out, text::WebTextEngine};
 
 thread_local! {
     static APP: RefCell<Option<Running>> = const { RefCell::new(None) };
@@ -49,7 +49,7 @@ thread_local! {
 struct Running {
     engine: LocalEngine<WebTextEngine>,
     control: EngineControl,
-    anim: UiAnim,
+    animation: UiAnimation,
     /// JS asked for a display frame (`requestAnimationFrame`).
     js_frame: bool,
     /// The surface's environment (window, appearance).
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn nsh_start(
         *a.borrow_mut() = Some(Running {
             engine,
             control,
-            anim: UiAnim::default(),
+            animation: UiAnimation::default(),
             js_frame: false,
             environment,
         });
@@ -282,14 +282,17 @@ fn flush() {
         let mut out = Out::new();
         for batch in &batches {
             for item in &batch.items {
-                app.anim.apply(item);
-                if !matches!(item, MountItem::Anim(_) | MountItem::AnimBindings { .. }) {
+                app.animation.apply(item);
+                if !matches!(
+                    item,
+                    MountItem::Animation(_) | MountItem::AnimationBindings { .. }
+                ) {
                     encode::encode(&mut out, item);
                 }
             }
         }
         // Bound properties follow the styles just applied.
-        app.anim.outputs(&mut out);
+        app.animation.outputs(&mut out);
         if !out.is_empty() {
             ffi::submit(&out.finish());
         }
@@ -299,8 +302,8 @@ fn flush() {
 }
 
 fn finish_animations(app: &mut Running) {
-    if !app.anim.finished.is_empty() {
-        let finished = std::mem::take(&mut app.anim.finished);
+    if !app.animation.finished.is_empty() {
+        let finished = std::mem::take(&mut app.animation.finished);
         app.control.animations_finished(finished);
     }
 }
@@ -313,7 +316,7 @@ fn request_frames() {
             return false;
         };
         app.js_frame |= wanted;
-        app.js_frame || app.anim.animating()
+        app.js_frame || app.animation.animating()
     });
     if animating {
         ffi::request_frame();
@@ -360,10 +363,10 @@ pub extern "C" fn nsh_frame(now: f64) -> f64 {
     APP.with(|a| {
         let mut app = a.borrow_mut();
         let Some(app) = app.as_mut() else { return };
-        if app.anim.animating() {
-            app.anim.tick(now);
+        if app.animation.animating() {
+            app.animation.tick(now);
             let mut out = Out::new();
-            app.anim.outputs(&mut out);
+            app.animation.outputs(&mut out);
             if !out.is_empty() {
                 ffi::submit(&out.finish());
             }
@@ -538,9 +541,9 @@ pub unsafe extern "C" fn nsh_touch(ptr: *const u8, len: usize) -> f64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nsh_scroll(id: u32, x: f32, y: f32, applied: u32) -> f64 {
     send(|app| {
-        if app.anim.scrolled(id, x, y) {
+        if app.animation.scrolled(id, x, y) {
             let mut out = Out::new();
-            app.anim.outputs(&mut out);
+            app.animation.outputs(&mut out);
             if !out.is_empty() {
                 ffi::submit(&out.finish());
             }
@@ -556,15 +559,15 @@ pub extern "C" fn nsh_scroll(id: u32, x: f32, y: f32, applied: u32) -> f64 {
 pub extern "C" fn nsh_pan(id: u32, phase: u32, tx: f32, ty: f32, vx: f32, vy: f32) -> f64 {
     send(|app| {
         match phase {
-            0 => app.anim.pan_began(id),
-            _ => app.anim.pan_moved(id, tx, ty),
+            0 => app.animation.pan_began(id),
+            _ => app.animation.pan_moved(id, tx, ty),
         }
         let mut out = Out::new();
-        app.anim.outputs(&mut out);
+        app.animation.outputs(&mut out);
         if !out.is_empty() {
             ffi::submit(&out.finish());
         }
-        let (value_x, value_y) = app.anim.pan_values(id);
+        let (value_x, value_y) = app.animation.pan_values(id);
         let payload = EventPayload::Pan {
             translation_x: tx,
             translation_y: ty,
@@ -589,11 +592,11 @@ pub extern "C" fn nsh_transform_gesture(id: u32, rotation: u32, phase: u32, amou
     let rotation = rotation != 0;
     send(|app| {
         match phase {
-            0 => app.anim.transform_began(id, rotation),
-            _ => app.anim.transform_moved(id, rotation, amount),
+            0 => app.animation.transform_began(id, rotation),
+            _ => app.animation.transform_moved(id, rotation, amount),
         }
         let mut out = Out::new();
-        app.anim.outputs(&mut out);
+        app.animation.outputs(&mut out);
         if !out.is_empty() {
             ffi::submit(&out.finish());
         }

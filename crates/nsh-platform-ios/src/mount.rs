@@ -4,7 +4,7 @@
 use std::{cell::RefCell, sync::Arc};
 
 use dispatch2::{DispatchQueue, MainThreadBound};
-use nsh_anim::{AnimProp, AnimValue};
+use nsh_animation::{AnimationProp, AnimationValue};
 use nsh_core::{
     Color, Command, EventKind, EventMask, EventPayload, GestureValues, ImageSource,
     KeyboardDismissMode, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
@@ -26,7 +26,7 @@ use objc2_ui_kit::{
 };
 
 use crate::{
-    anim::Animator,
+    animation::Animator,
     decor::{self, Decor},
     image::{AssetBase, DecodedImage, ImageLoader, Request},
     input::Input,
@@ -242,7 +242,7 @@ struct Slot {
     decor: Decor,
     events: EventMask,
     gestures: Gestures,
-    bindings: Vec<(AnimProp, nsh_anim::NodeId)>,
+    bindings: Vec<(AnimationProp, nsh_animation::NodeId)>,
     values: GestureValues,
     /// Values of the gesture nodes when the gesture began: pan x, pan y,
     /// pinch, rotation.
@@ -256,7 +256,7 @@ struct Slot {
     /// A cell of such a list: mirrored back.
     in_mirrored: bool,
     pressed: bool,
-    scroll_value: Option<nsh_anim::NodeId>,
+    scroll_value: Option<nsh_animation::NodeId>,
     /// How a scroll view scrolls (scroll views only).
     behavior: Option<Box<nsh_core::ScrollBehavior>>,
     horizontal: bool,
@@ -427,7 +427,7 @@ impl Mounter {
             layout_animation: None,
             created: Vec::new(),
             disappearing: Default::default(),
-            frame_link: crate::anim::frame_link(&target_for_link),
+            frame_link: crate::animation::frame_link(&target_for_link),
             hosts: Default::default(),
             dirty_stacks: Vec::new(),
             deferred_stacks: Vec::new(),
@@ -445,16 +445,16 @@ impl Mounter {
     }
 
     pub(crate) fn apply(&mut self, batch: MountBatch) {
-        let mut anim_changed = false;
+        let mut animation_changed = false;
         for item in batch.items {
-            anim_changed |= self.apply_item(item);
+            animation_changed |= self.apply_item(item);
         }
         if let Some(animation) = self.layout_animation.take() {
             self.animate_appearing(&animation);
         }
         self.created.clear();
         self.finish_navigation();
-        if anim_changed {
+        if animation_changed {
             self.apply_animations();
         }
         self.report_finished();
@@ -878,7 +878,7 @@ impl Mounter {
             }
             MountItem::Refreshing { id, refreshing } => self.set_refreshing(id, refreshing),
             MountItem::Canvas { id, drawing } => self.set_drawing(id, drawing),
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::AnimationBindings { id, bindings } => {
                 if let Some(s) = self.slot_mut(id) {
                     // Properties no longer animated fall back to the static style.
                     s.bindings = bindings;
@@ -929,7 +929,7 @@ impl Mounter {
                     modal.configure(config);
                 }
             }
-            MountItem::Anim(op) => {
+            MountItem::Animation(op) => {
                 self.animator.apply(op);
                 return true;
             }
@@ -1618,9 +1618,9 @@ impl Mounter {
         let mut background = s.style.background_color;
         let mut animated = false;
         for &(prop, node) in &s.bindings {
-            if prop == AnimProp::BackgroundColor {
+            if prop == AnimationProp::BackgroundColor {
                 animated = true;
-                if let AnimValue::Color(c) = animator.eval(node) {
+                if let AnimationValue::Color(c) = animator.eval(node) {
                     background = Color(c);
                 }
             }
@@ -2824,9 +2824,9 @@ fn dynamic_background(slot: &Slot, animator: &Animator) -> (Color, bool) {
     let mut background = slot.style.background_color;
     let mut animated = false;
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::BackgroundColor {
+        if prop == AnimationProp::BackgroundColor {
             animated = true;
-            if let AnimValue::Color(c) = animator.eval(node) {
+            if let AnimationValue::Color(c) = animator.eval(node) {
                 background = Color(c);
             }
         }
@@ -2837,7 +2837,7 @@ fn dynamic_background(slot: &Slot, animator: &Animator) -> (Color, bool) {
 fn dynamic_opacity(slot: &Slot, animator: &Animator) -> f32 {
     let mut opacity = slot.style.opacity * crate::visual::filter_opacity(&slot.style);
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::Opacity {
+        if prop == AnimationProp::Opacity {
             opacity = animator.eval(node).number().clamp(0.0, 1.0);
         }
     }
@@ -2851,7 +2851,7 @@ fn dynamic_opacity(slot: &Slot, animator: &Animator) -> f32 {
 fn dynamic_transform(slot: &Slot, animator: &Animator) -> CATransform3D {
     let mut overrides = [None; nsh_core::MAX_TRANSFORMS];
     for &(prop, node) in &slot.bindings {
-        if let AnimProp::Transform(i) = prop
+        if let AnimationProp::Transform(i) = prop
             && let Some(o) = overrides.get_mut(i as usize)
         {
             *o = Some(animator.eval(node).number());
@@ -2941,7 +2941,7 @@ fn scaled_transform(t: &CATransform3D, f: CGFloat) -> CATransform3D {
 fn apply_dynamic(slot: &Slot, animator: &Animator) {
     if let Native::Canvas(canvas) = &slot.native {
         for &(prop, node) in &slot.bindings {
-            if let AnimProp::CanvasArg(k) = prop {
+            if let AnimationProp::CanvasArg(k) = prop {
                 canvas.set_value(k, animator.eval(node));
             }
         }
@@ -2949,8 +2949,8 @@ fn apply_dynamic(slot: &Slot, animator: &Animator) {
     let view = slot.native.view();
     let mut background = slot.style.background_color;
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::BackgroundColor
-            && let AnimValue::Color(c) = animator.eval(node)
+        if prop == AnimationProp::BackgroundColor
+            && let AnimationValue::Color(c) = animator.eval(node)
         {
             background = Color(c);
         }

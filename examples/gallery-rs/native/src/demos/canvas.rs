@@ -13,7 +13,7 @@ use nsh_core::{
         CanvasGradient, CanvasTextAlign, CanvasTextBaseline, Composite, FillRule, LineCap,
         LineJoin, svg_path,
     },
-    nsh_anim::{Curve, EaseMode},
+    nsh_animation::{Curve, EaseMode},
     ui::{AnyElement, prelude::*},
 };
 

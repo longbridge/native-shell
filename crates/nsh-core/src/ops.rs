@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nsh_anim::AnimOp;
+use nsh_animation::AnimationOp;
 
 use crate::{
     js::host::HostProps,
@@ -1107,10 +1107,10 @@ pub enum Prop {
     /// `scrollValue`: a native value fed with the scroll offset (main axis), for
     /// scroll-linked effects.
     #[prop(js = "scrollValue", with = crate::js::host_values::scroll_value, reset = Prop::ScrollValue(None), ts = "NativeValue", on = SCROLL | LIST)]
-    ScrollValue(Option<nsh_anim::NodeId>),
+    ScrollValue(Option<nsh_animation::NodeId>),
     /// `pan`: drags drive these native values (points) on the UI thread.
     #[prop(js = "pan", with = crate::js::host_values::pan, reset = Prop::PanValues(None, None), ts = "{ x?: NativeValue; y?: NativeValue }")]
-    PanValues(Option<nsh_anim::NodeId>, Option<nsh_anim::NodeId>),
+    PanValues(Option<nsh_animation::NodeId>, Option<nsh_animation::NodeId>),
     /// `numberOfLines`: the most lines shown; 0 (default) is unlimited.
     #[prop(js = "numberOfLines", on = TEXT)]
     NumberOfLines(u32),
@@ -1270,10 +1270,10 @@ pub enum Prop {
     MinimumFontScale(f32),
     /// `pinch`: two-finger pinches drive `scale` natively.
     #[prop(js = "pinch", with = crate::js::host_values::pinch, reset = Prop::PinchValue(None), ts = "{ scale?: NativeValue }")]
-    PinchValue(Option<nsh_anim::NodeId>),
+    PinchValue(Option<nsh_animation::NodeId>),
     /// `rotation`: two-finger rotations drive `angle` (degrees) natively.
     #[prop(js = "rotation", with = crate::js::host_values::rotation, reset = Prop::RotationValue(None), ts = "{ angle?: NativeValue }")]
-    RotationValue(Option<nsh_anim::NodeId>),
+    RotationValue(Option<nsh_animation::NodeId>),
     /// A screen option.
     #[prop(nested)]
     Screen(ScreenProp),
@@ -1441,7 +1441,7 @@ pub enum Op {
         id: NodeId,
     },
     /// An animation graph change, forwarded to the platform in order.
-    Anim(AnimOp),
+    Animation(AnimationOp),
     /// An imperative call on a node's native view.
     Command {
         /// Node id.

@@ -15,7 +15,7 @@
 
 #![cfg(target_os = "ios")]
 
-mod anim;
+mod animation;
 mod app;
 mod blur;
 mod canvas;

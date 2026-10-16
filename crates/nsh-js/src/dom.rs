@@ -242,8 +242,8 @@ impl Dom {
 
     /// Queues the release of a collected animation node or composite (from
     /// a finalizer).
-    pub(crate) fn queue_anim_release(&self, op: nsh_anim::AnimOp) {
-        self.shared.anim_releases.borrow_mut().push(op);
+    pub(crate) fn queue_animation_release(&self, op: nsh_animation::AnimationOp) {
+        self.shared.animation_releases.borrow_mut().push(op);
     }
 
     /// The surface's layout direction (sent once something is mounted).

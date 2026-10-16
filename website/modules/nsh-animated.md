@@ -262,12 +262,12 @@ const LayoutAnimation: {
 
 interface LayoutAnimationConfig {
   duration: number;                // ms
-  create?: LayoutAnimationAnim;    // views inserted
-  update?: LayoutAnimationAnim;    // views moved or resized
-  delete?: LayoutAnimationAnim;    // views removed
+  create?: LayoutAnimationAnimation;    // views inserted
+  update?: LayoutAnimationAnimation;    // views moved or resized
+  delete?: LayoutAnimationAnimation;    // views removed
 }
 
-interface LayoutAnimationAnim {
+interface LayoutAnimationAnimation {
   type?: "easeInEaseOut" | "spring" | "linear" | "easeIn" | "easeOut";
   property?: "opacity" | "scaleXY" | "scale";
   duration?: number;

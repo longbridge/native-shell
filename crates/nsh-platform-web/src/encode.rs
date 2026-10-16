@@ -2,7 +2,7 @@
 //! reads: one array per batch, one array per item, `[op, id, ...]`. Visual
 //! styles are turned into CSS here, so JS only assigns them.
 //!
-//! Native animation items stay in Rust ([`crate::anim::UiAnim`]); the DOM
+//! Native animation items stay in Rust ([`crate::animation::UiAnimation`]); the DOM
 //! gets their results each frame.
 
 use std::fmt::Write as _;
@@ -92,7 +92,7 @@ impl Out {
     }
 
     /// An animation output: `["a", id, prop, value]`.
-    pub(crate) fn anim(&mut self, id: u32, prop: &str, value: &str) {
+    pub(crate) fn animation(&mut self, id: u32, prop: &str, value: &str) {
         self.item("a").num(id).str(prop).str(value).end();
     }
 }
@@ -904,7 +904,9 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
         },
         MountItem::Command { id, command } => encode_command(out, *id, command),
         MountItem::Component { id, name } => out.item("comp").num(*id).str(name).end(),
-        MountItem::ComponentProps { .. } | MountItem::AnimBindings { .. } | MountItem::Anim(_) => {}
+        MountItem::ComponentProps { .. }
+        | MountItem::AnimationBindings { .. }
+        | MountItem::Animation(_) => {}
     }
 }
 

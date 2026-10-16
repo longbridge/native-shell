@@ -7,7 +7,7 @@ use std::time::Duration;
 use crossbeam_channel::Receiver;
 use nsh_core::{
     EventKind, EventPayload, MountBatch, MountItem,
-    nsh_anim::{AnimOp, Driver},
+    nsh_animation::{AnimationOp, Driver},
 };
 use nsh_engine::Engine;
 
@@ -30,7 +30,7 @@ fn dispatch(
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
         screen.apply(&batch);
         for item in &batch.items {
-            if let MountItem::Anim(AnimOp::Start { driver, .. }) = item {
+            if let MountItem::Animation(AnimationOp::Start { driver, .. }) = item {
                 started.push(*driver);
             }
         }

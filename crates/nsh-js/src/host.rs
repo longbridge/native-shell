@@ -30,7 +30,7 @@ pub(crate) struct Shared {
     /// finalizers queue here: the op queue may be borrowed meanwhile).
     pub(crate) releases: RefCell<Vec<NodeId>>,
     /// Native animation nodes and composites collected meanwhile.
-    pub(crate) anim_releases: RefCell<Vec<nsh_anim::AnimOp>>,
+    pub(crate) animation_releases: RefCell<Vec<nsh_animation::AnimationOp>>,
     timers: RefCell<Timers>,
     pub(crate) warnings: RefCell<Warnings>,
     pub(crate) net: RefCell<NetworkQueue>,
@@ -315,7 +315,7 @@ impl Host {
     }
 
     /// Resolves the promises of finished (or interrupted) native animations.
-    pub fn animations_finished(&self, finished: &[nsh_anim::Finished]) {
+    pub fn animations_finished(&self, finished: &[nsh_animation::Finished]) {
         self.guarded(Phase::Call, || {
             if finished.is_empty() {
                 return;
@@ -346,10 +346,10 @@ impl Host {
         drop(releases);
         out.extend(
             self.shared
-                .anim_releases
+                .animation_releases
                 .borrow_mut()
                 .drain(..)
-                .map(Op::Anim),
+                .map(Op::Animation),
         );
     }
 

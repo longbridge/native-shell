@@ -14,7 +14,7 @@ Things that were found the hard way. Read the section of the area you change bef
   `Release` (queued by the node's finalizer) frees the node and its native view.
 - **`nsh_js::BUNDLE_NAME` (`bundle.js`)** is the module name of every bundle and is how stacks are matched for symbolication; `BYTECODE_VERSION`
   is tested against the linked QuickJS version: update both when upgrading rquickjs.
-- **Encoded operations' codes** (`ANIM_*`, `CV_*`) come from `nsh_core::js` (`protocol.rs`, `canvas.rs`): never write a code's value
+- **Encoded operations' codes** (`ANIMATION_*`, `CV_*`) come from `nsh_core::js` (`protocol.rs`, `canvas.rs`): never write a code's value
   by hand in `nsh-js`.
 - **rquickjs converts `Option::None` to `undefined`, not `null`**: compare native results with `== null` in JS.
 - **`on*` props are event handlers to the renderer** (held on the node, sent to the core as a listener flag): settings must not

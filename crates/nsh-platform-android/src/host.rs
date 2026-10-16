@@ -24,7 +24,7 @@ use nsh_engine::{
 };
 
 use crate::{
-    anim::UiAnim,
+    animation::UiAnimation,
     encode::{self, Obj},
     java::{java, with_env},
     text::AndroidTextEngine,
@@ -42,9 +42,9 @@ pub(crate) struct Host {
     environment: Mutex<Environment>,
     /// Animation items of submitted batches, by batch number, applied on the
     /// UI thread once Java has applied that batch.
-    anim_queue: Mutex<VecDeque<(u64, Vec<MountItem>)>>,
+    animation_queue: Mutex<VecDeque<(u64, Vec<MountItem>)>>,
     seq: AtomicU64,
-    ui: Mutex<UiAnim>,
+    ui: Mutex<UiAnimation>,
     epoch: Instant,
     /// What the embedding app grants loaded apps at most
     /// (`NshView.setGrantedCapabilities`).
@@ -83,8 +83,8 @@ impl Host {
         }
         // Stop the old engine first: its batches must not reach the new app.
         drop(self.engine.lock().expect("engine").take());
-        *self.anim_queue.lock().expect("queue") = VecDeque::new();
-        *self.ui.lock().expect("ui") = UiAnim::default();
+        *self.animation_queue.lock().expect("queue") = VecDeque::new();
+        *self.ui.lock().expect("ui") = UiAnimation::default();
         let config = EngineConfig {
             app,
             viewport,
@@ -195,11 +195,11 @@ impl MountSink for Sink {
         let host = &self.0;
         let encoded = encode::encode(batch);
         let seq = host.seq.fetch_add(1, Ordering::Relaxed) + 1;
-        if !encoded.anim.is_empty() {
-            host.anim_queue
+        if !encoded.animation.is_empty() {
+            host.animation_queue
                 .lock()
                 .expect("queue")
-                .push_back((seq, encoded.anim));
+                .push_back((seq, encoded.animation));
         }
         with_env(|env| {
             let bytes = env.byte_array_from_slice(&encoded.bytes)?;
@@ -324,9 +324,9 @@ extern "system" fn Java_com_longbridge_nsh_Native_create(
         pending: Mutex::new(None),
         viewport: Mutex::new(Size::new(0.0, 0.0)),
         environment: Mutex::new(Environment::default()),
-        anim_queue: Mutex::new(VecDeque::new()),
+        animation_queue: Mutex::new(VecDeque::new()),
         seq: AtomicU64::new(0),
-        ui: Mutex::new(UiAnim::default()),
+        ui: Mutex::new(UiAnimation::default()),
         epoch: Instant::now(),
         granted: Mutex::new(None),
         limits: Mutex::new(nsh_engine::Limits::default()),
@@ -827,7 +827,7 @@ extern "system" fn Java_com_longbridge_nsh_Native_afterBatch(
     let host = unsafe { host(handle) };
     let mut items = Vec::new();
     {
-        let mut queue = host.anim_queue.lock().expect("queue");
+        let mut queue = host.animation_queue.lock().expect("queue");
         while queue.front().is_some_and(|(s, _)| *s <= seq as u64) {
             items.extend(queue.pop_front().expect("front").1);
         }
@@ -1061,7 +1061,7 @@ extern "system" fn Java_com_longbridge_nsh_Native_frame(
 }
 
 /// Reports finished animations to JS.
-fn finish(host: &Host, ui: &mut UiAnim) {
+fn finish(host: &Host, ui: &mut UiAnimation) {
     if ui.finished.is_empty() {
         return;
     }

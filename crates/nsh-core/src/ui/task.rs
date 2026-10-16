@@ -80,11 +80,11 @@ pub(crate) enum Action {
     /// answer resolves the slot.
     ImageInfo(String, AnswerSlot<Result<ImageSize, String>>),
     /// An operation on the native animation graph.
-    Anim(nsh_anim::AnimOp),
+    Animation(nsh_animation::AnimationOp),
     /// Starts an animation; its end resolves the slot.
     Animate {
-        op: nsh_anim::AnimOp,
-        animation: nsh_anim::AnimId,
+        op: nsh_animation::AnimationOp,
+        animation: nsh_animation::AnimationId,
         end: AnswerSlot<bool>,
     },
     /// A component's own list reports the rows viewable now (they stayed
@@ -135,7 +135,7 @@ pub(crate) struct Executor {
     runtime: RefCell<Option<Handle>>,
     /// Native animation nodes and animations made so far (their ids are
     /// odd: JS's are even).
-    anim_ids: std::cell::Cell<u32>,
+    animation_ids: std::cell::Cell<u32>,
     /// Live derived nodes, for renders deriving them again.
     derived: RefCell<super::animated::Derived>,
     /// The components' listeners of the back button.
@@ -144,18 +144,25 @@ pub(crate) struct Executor {
 
 impl Executor {
     /// The live node `key` (a node-making op, node 0) made.
-    pub(crate) fn derived(&self, key: &nsh_anim::AnimOp) -> Option<Rc<super::animated::Node>> {
+    pub(crate) fn derived(
+        &self,
+        key: &nsh_animation::AnimationOp,
+    ) -> Option<Rc<super::animated::Node>> {
         self.derived.borrow_mut().get(key)
     }
 
-    pub(crate) fn remember_derived(&self, key: nsh_anim::AnimOp, node: &Rc<super::animated::Node>) {
+    pub(crate) fn remember_derived(
+        &self,
+        key: nsh_animation::AnimationOp,
+        node: &Rc<super::animated::Node>,
+    ) {
         self.derived.borrow_mut().0.push((key, Rc::downgrade(node)));
     }
 
     /// A new id for a native animation node or animation.
-    pub(crate) fn next_anim_id(&self) -> u32 {
-        let n = self.anim_ids.get();
-        self.anim_ids.set(n + 1);
+    pub(crate) fn next_animation_id(&self) -> u32 {
+        let n = self.animation_ids.get();
+        self.animation_ids.set(n + 1);
         2 * n + 1
     }
 

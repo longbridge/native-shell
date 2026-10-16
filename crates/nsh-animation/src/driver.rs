@@ -1,7 +1,7 @@
 //! Animation drivers. All are closed-form functions of elapsed time, so the
 //! result does not depend on frame rate or dropped frames.
 
-use crate::ops::{AnimId, Curve, Driver, EaseMode, Easing};
+use crate::ops::{AnimationId, Curve, Driver, EaseMode, Easing};
 
 /// Spring rest thresholds (value units and units per second).
 const REST_DISPLACEMENT: f32 = 0.001;
@@ -12,7 +12,7 @@ const DECAY_REST_SPEED: f32 = 0.0005;
 /// One animation running on a value.
 #[derive(Debug, Clone)]
 pub(crate) struct Running {
-    pub(crate) id: AnimId,
+    pub(crate) id: AnimationId,
     driver: Driver,
     from: f32,
     velocity: f32,
@@ -28,7 +28,7 @@ impl Running {
         self
     }
 
-    pub(crate) fn new(id: AnimId, driver: Driver, from: f32, velocity: f32) -> Self {
+    pub(crate) fn new(id: AnimationId, driver: Driver, from: f32, velocity: f32) -> Self {
         let velocity = match driver {
             Driver::Spring {
                 velocity: Some(v), ..

@@ -3,8 +3,8 @@
 //! `LayoutAnimation`. Everything runs on the UI thread, JS only describes
 //! it.
 //!
-//! Operations are encoded as a few values (`ANIM_*`) and decoded into
-//! `AnimOp`s (`protocol::decode_anim_op`). Nodes and composites are
+//! Operations are encoded as a few values (`ANIMATION_*`) and decoded into
+//! `AnimationOp`s (`protocol::decode_animation_op`). Nodes and composites are
 //! released when JS lets go of them (their finalizers queue the release); a
 //! promise of a started animation settles when the core reports its end
 //! (`Host::animations_finished`).
@@ -15,7 +15,7 @@ use std::{
     ptr,
 };
 
-use nsh_anim::AnimOp;
+use nsh_animation::AnimationOp;
 use nsh_core::js::protocol::*;
 use rquickjs::{Ctx, Value, qjs};
 use rustc_hash::FxHashMap;
@@ -111,7 +111,7 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     let data = unsafe { Box::from_raw(p) };
     if let Some(state) = crate::state::of_runtime(rt) {
         // Not the op queue: a finalizer may run while it is borrowed.
-        unsafe { &(*state).dom }.queue_anim_release(AnimOp::Release { node: data.id });
+        unsafe { &(*state).dom }.queue_animation_release(AnimationOp::Release { node: data.id });
     }
     for v in data.inputs {
         unsafe { qjs::JS_FreeValueRT(rt, v) };
@@ -136,7 +136,8 @@ unsafe extern "C" fn composite_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     }
     let data = unsafe { Box::from_raw(p) };
     if let Some(state) = crate::state::of_runtime(rt) {
-        unsafe { &(*state).dom }.queue_anim_release(AnimOp::ReleaseComposite { key: data.key });
+        unsafe { &(*state).dom }
+            .queue_animation_release(AnimationOp::ReleaseComposite { key: data.key });
     }
     unsafe { qjs::JS_FreeValueRT(rt, data.spec) };
     for v in data.values {
@@ -237,7 +238,7 @@ fn classes(ctx: *mut JsContext) -> Classes {
     }
 }
 
-/// Decodes an encoded animation operation (`ANIM_*`, the node, its
+/// Decodes an encoded animation operation (`ANIMATION_*`, the node, its
 /// values) and queues it. Takes `values`.
 fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
     let mut values = values;
@@ -249,8 +250,8 @@ fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
     let Some(array) = value.as_array() else {
         return Ok(());
     };
-    match crate::protocol::decode_anim_op(&cx, array) {
-        Ok(op) => dom::push_op(ctx, nsh_core::Op::Anim(op)),
+    match crate::protocol::decode_animation_op(&cx, array) {
+        Ok(op) => dom::push_op(ctx, nsh_core::Op::Animation(op)),
         Err(rquickjs::Error::Exception) => Err(qjs::JS_EXCEPTION),
         Err(e) => {
             let message = CString::new(format!("nsh/animated: {e}")).unwrap_or_default();
@@ -376,7 +377,7 @@ unsafe extern "C" fn node_interpolate(
         easing,
     ];
     free(ctx, both);
-    derived(ctx, vec![dup(ctx, this)], ANIM_INTERPOLATE, args)
+    derived(ctx, vec![dup(ctx, this)], ANIMATION_INTERPOLATE, args)
 }
 
 unsafe extern "C" fn node_diff_clamp(
@@ -394,7 +395,7 @@ unsafe extern "C" fn node_diff_clamp(
         dup(ctx, arg(argc, argv, 0)),
         dup(ctx, arg(argc, argv, 1)),
     ];
-    derived(ctx, vec![dup(ctx, this)], ANIM_DIFF_CLAMP, args)
+    derived(ctx, vec![dup(ctx, this)], ANIMATION_DIFF_CLAMP, args)
 }
 
 /// `a op b`: a node of two operands (nodes or numbers).
@@ -410,7 +411,7 @@ fn math(ctx: *mut JsContext, op: &str, a: JsValue, b: JsValue) -> JsValue {
         .map(|v| dup(ctx, v))
         .collect();
     let args = vec![string(ctx, op), operand(a), operand(b)];
-    derived(ctx, inputs, ANIM_MATH, args)
+    derived(ctx, inputs, ANIMATION_MATH, args)
 }
 
 macro_rules! math_method {
@@ -446,7 +447,10 @@ unsafe extern "C" fn native_value(
     // SAFETY: converting a live value.
     unsafe { qjs::JS_ToFloat64(ctx, &mut v, arg(argc, argv, 0)) };
     let (node, id) = new_node(ctx, true, Vec::new());
-    match send(ctx, vec![int(ANIM_VALUE), int(id), qjs::JS_NewFloat64(v)]) {
+    match send(
+        ctx,
+        vec![int(ANIMATION_VALUE), int(id), qjs::JS_NewFloat64(v)],
+    ) {
         Ok(()) => node,
         Err(e) => {
             free(ctx, node);
@@ -476,7 +480,7 @@ unsafe extern "C" fn value_set(
         Err(e) => return e,
     };
     let v = dup(ctx, arg(argc, argv, 0));
-    send(ctx, vec![int(ANIM_SET), int(id), v])
+    send(ctx, vec![int(ANIMATION_SET), int(id), v])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -491,7 +495,7 @@ unsafe extern "C" fn value_stop(
         Ok(id) => id,
         Err(e) => return e,
     };
-    send(ctx, vec![int(ANIM_STOP), int(id)])
+    send(ctx, vec![int(ANIMATION_STOP), int(id)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -524,7 +528,7 @@ fn start(ctx: *mut JsContext, this: JsValue, config: JsValue) -> JsValue {
         }
     };
     let id = next_animation(ctx);
-    if let Err(e) = send(ctx, vec![int(ANIM_START), int(node), int(id), config]) {
+    if let Err(e) = send(ctx, vec![int(ANIMATION_START), int(node), int(id), config]) {
         return e;
     }
     let (p, resolve) = promise(ctx);
@@ -665,7 +669,7 @@ unsafe extern "C" fn composite_stop(
         return UNDEFINED;
     }
     let id = unsafe { (*p).running };
-    send(ctx, vec![int(ANIM_STOP_ANIMATION), int(id)])
+    send(ctx, vec![int(ANIMATION_STOP_ANIMATION), int(id)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -682,7 +686,7 @@ unsafe extern "C" fn composite_reset(
     }
     // SAFETY: live composite data.
     let key = unsafe { (*p).key };
-    send(ctx, vec![int(ANIM_RESET_COMPOSITE), int(key)])
+    send(ctx, vec![int(ANIMATION_RESET_COMPOSITE), int(key)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -713,7 +717,7 @@ unsafe extern "C" fn composite_start(
     };
     if let Err(e) = send(
         ctx,
-        vec![int(ANIM_START_COMPOSITE), int(id), int(key), spec],
+        vec![int(ANIMATION_START_COMPOSITE), int(id), int(key), spec],
     ) {
         return e;
     }
@@ -1019,7 +1023,7 @@ fn class_function(ctx: *mut JsContext, name: &CStr, f: Native, proto_index: usiz
 /// The core's animation tables as JS (cached JSON, converted on use).
 fn table(ctx: *mut JsContext, key: &str) -> JsValue {
     static TABLES: std::sync::OnceLock<nsh_core::JsonValue> = std::sync::OnceLock::new();
-    let tables = TABLES.get_or_init(nsh_core::js::anim::tables);
+    let tables = TABLES.get_or_init(nsh_core::js::animation::tables);
     crate::host::json_to_js(ctx, &tables[key])
 }
 
@@ -1395,7 +1399,7 @@ pub(crate) const EXPORTS: &[Item] = &[
 ];
 
 /// `nsh/animated`'s types (with the easing and layout animation types of
-/// `nsh_core::js::anim::declarations`).
+/// `nsh_core::js::animation::declarations`).
 pub(crate) const TYPES: &str = r#"export type Extrapolation = "extend" | "clamp" | "identity";
 
 /** Easing functions (React Native's `Easing`). */
@@ -1481,18 +1485,22 @@ mod tests {
         let starts: Vec<u32> = ops
             .iter()
             .filter_map(|o| match o {
-                Op::Anim(nsh_anim::AnimOp::Start { animation, .. }) => Some(*animation),
-                Op::Anim(nsh_anim::AnimOp::StartComposite { animation, .. }) => Some(*animation),
+                Op::Animation(nsh_animation::AnimationOp::Start { animation, .. }) => {
+                    Some(*animation)
+                }
+                Op::Animation(nsh_animation::AnimationOp::StartComposite { animation, .. }) => {
+                    Some(*animation)
+                }
                 _ => None,
             })
             .collect();
         assert_eq!(starts, [2, 4], "{ops:?}");
         host.animations_finished(&[
-            nsh_anim::Finished {
+            nsh_animation::Finished {
                 animation: 2,
                 finished: true,
             },
-            nsh_anim::Finished {
+            nsh_animation::Finished {
                 animation: 4,
                 finished: false,
             },

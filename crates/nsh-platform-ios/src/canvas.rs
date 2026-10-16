@@ -11,7 +11,7 @@
 
 use std::{cell::RefCell, f64::consts::TAU, sync::Arc};
 
-use nsh_anim::AnimValue;
+use nsh_animation::AnimationValue;
 use nsh_core::{
     Color,
     canvas::{
@@ -40,7 +40,7 @@ use crate::native_view::NshView;
 pub(crate) struct CanvasViewIvars {
     drawing: RefCell<Option<Arc<Drawing>>>,
     /// Current values of the drawing's native value slots.
-    values: RefCell<Vec<AnimValue>>,
+    values: RefCell<Vec<AnimationValue>>,
     /// Images it draws, by URI, once loaded.
     images: RefCell<FxHashMap<Arc<str>, Retained<UIImage>>>,
 }
@@ -110,11 +110,11 @@ impl CanvasView {
     }
 
     /// Sets slot `slot` to `value`; draws again if it changed.
-    pub(crate) fn set_value(&self, slot: u16, value: AnimValue) {
+    pub(crate) fn set_value(&self, slot: u16, value: AnimationValue) {
         let mut values = self.ivars().values.borrow_mut();
         let i = slot as usize;
         if values.len() <= i {
-            values.resize(i + 1, AnimValue::Number(0.0));
+            values.resize(i + 1, AnimationValue::Number(0.0));
         }
         if values[i] != value {
             values[i] = value;
@@ -210,7 +210,7 @@ impl Default for State {
 
 struct Replay<'a> {
     c: &'a CGContext,
-    values: &'a [AnimValue],
+    values: &'a [AnimationValue],
     images: &'a FxHashMap<Arc<str>, Retained<UIImage>>,
     state: State,
     stack: Vec<State>,
@@ -238,7 +238,7 @@ impl<'a> Replay<'a> {
         match paint {
             Paint::Color(c) => Some(*c),
             Paint::Slot(s) => match self.values.get(*s as usize) {
-                Some(AnimValue::Color(c)) => Some(Color(*c)),
+                Some(AnimationValue::Color(c)) => Some(Color(*c)),
                 _ => None,
             },
             Paint::Gradient(_) => None,

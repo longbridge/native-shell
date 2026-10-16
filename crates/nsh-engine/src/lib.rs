@@ -428,7 +428,7 @@ enum Message {
     Scroll(NodeId, f32, f32, u32),
     Zoom(NodeId, f32),
     ComponentSize(NodeId, Size),
-    AnimationsFinished(Vec<nsh_anim::Finished>),
+    AnimationsFinished(Vec<nsh_animation::Finished>),
     Resize(Size),
     /// A component's task was woken: it runs in the loop.
     Wake,
@@ -497,7 +497,7 @@ impl EngineControl {
     }
 
     /// Reports native animations that finished or were interrupted.
-    pub fn animations_finished(&self, finished: Vec<nsh_anim::Finished>) {
+    pub fn animations_finished(&self, finished: Vec<nsh_animation::Finished>) {
         let _ = self.tx.send(Message::AnimationsFinished(finished));
     }
 

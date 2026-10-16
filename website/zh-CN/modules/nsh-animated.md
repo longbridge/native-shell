@@ -262,12 +262,12 @@ const LayoutAnimation: {
 
 interface LayoutAnimationConfig {
   duration: number;                // 毫秒
-  create?: LayoutAnimationAnim;    // 插入的视图
-  update?: LayoutAnimationAnim;    // 移动或改变尺寸的视图
-  delete?: LayoutAnimationAnim;    // 移除的视图
+  create?: LayoutAnimationAnimation;    // 插入的视图
+  update?: LayoutAnimationAnimation;    // 移动或改变尺寸的视图
+  delete?: LayoutAnimationAnimation;    // 移除的视图
 }
 
-interface LayoutAnimationAnim {
+interface LayoutAnimationAnimation {
   type?: "easeInEaseOut" | "spring" | "linear" | "easeIn" | "easeOut";
   property?: "opacity" | "scaleXY" | "scale";
   duration?: number;

@@ -26,7 +26,7 @@ crates/
                        `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS
                        face is made from their specs (nsh-js `components.rs`), their TypeScript declarations generated
-  nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
+  nsh-animation/       Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host and nsh's runtime: console / timers, bytecode compilation and loading, limits (`sandbox.rs`);
                        the native modules apps import (`modules.rs`: module table and loader; docs/dev/js-modules.md), the
                        renderer of compiled JSX (`dom.rs`, `nsh:rt`), the reactive graph (`reactive.rs`: signals, memos,
@@ -165,7 +165,7 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 - **Limits and checks are enforced in Rust, never in JS**: a bundle holds only the app's code, so nothing in JS is
   trusted. QuickJS bytecode is trusted input (`Bundle::bytecode` is `unsafe`): it only loads from the app's own
   resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
-- **Generated, never hand-copied**: the codes of encoded operations (`ANIM_*`, `CV_*`), the canvas's recording
+- **Generated, never hand-copied**: the codes of encoded operations (`ANIMATION_*`, `CV_*`), the canvas's recording
   methods and properties (made natively from `CanvasOp`'s `#[derive(JsOps)]` specs, which also decode them), the style
   types, the host elements' props and events and the easings / layout animation presets come from
   `crates/nsh-core/src/js/`, and so do their declarations, as do those of the UI sets' components and the runtime's

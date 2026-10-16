@@ -256,7 +256,7 @@ pub(super) struct Components {
     image_infos: FxHashMap<u32, AnswerSlot<Result<ImageSize, String>>>,
     next_image_info: u32,
     /// The ends of the animations components started, by id.
-    animations: FxHashMap<nsh_anim::AnimId, AnswerSlot<bool>>,
+    animations: FxHashMap<nsh_animation::AnimationId, AnswerSlot<bool>>,
     /// The components' own lists, by node.
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
     /// The insets screens and modals reported (`onInsets`).
@@ -2418,12 +2418,12 @@ impl<M: TextEngine> Core<M> {
                 });
             }
             Action::Return(call, result) => self.reply(crate::ROOT_ID, call, result),
-            Action::Anim(op) => {
-                let _ = self.apply_op(Op::Anim(op));
+            Action::Animation(op) => {
+                let _ = self.apply_op(Op::Animation(op));
             }
             Action::Animate { op, animation, end } => {
                 self.components.animations.insert(animation, end);
-                let _ = self.apply_op(Op::Anim(op));
+                let _ = self.apply_op(Op::Animation(op));
             }
             Action::ReportViewable(list) => self.report_viewable(list),
             Action::Frame(answer) => self.wait_frame(answer),
@@ -2442,7 +2442,7 @@ impl<M: TextEngine> Core<M> {
 
     /// Native animations that ended: the components' resolve their
     /// [`crate::ui::AnimationEnd`]s; JS's stay in `finished`.
-    pub fn animations_finished(&mut self, finished: &mut Vec<nsh_anim::Finished>) {
+    pub fn animations_finished(&mut self, finished: &mut Vec<nsh_animation::Finished>) {
         finished.retain(|f| match self.components.animations.remove(&f.animation) {
             Some(end) => {
                 end.borrow_mut().deliver(f.finished);

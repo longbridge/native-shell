@@ -3,7 +3,7 @@
 //! layouts. One JNI call per commit, no per-item crossings.
 //!
 //! Animation items (graph ops, bindings, drag and scroll values) are not
-//! encoded: they go to the UI-thread animator ([`crate::anim`]).
+//! encoded: they go to the UI-thread animator ([`crate::animation`]).
 //!
 //! The opcodes must match `Mounter.java`.
 //!
@@ -27,7 +27,7 @@ use nsh_core::{
 };
 
 use crate::{
-    anim::view_transform,
+    animation::view_transform,
     text::{AndroidLayout, argb},
 };
 
@@ -75,7 +75,7 @@ pub(crate) struct Encoded {
     pub(crate) bytes: Vec<u8>,
     pub(crate) objects: Vec<Obj>,
     /// Items for the UI-thread animator, in order.
-    pub(crate) anim: Vec<MountItem>,
+    pub(crate) animation: Vec<MountItem>,
 }
 
 impl Encoded {
@@ -156,7 +156,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(DELETE);
                 e.int(id as i32);
                 // The animator forgets the view too.
-                e.anim.push(MountItem::Delete { id });
+                e.animation.push(MountItem::Delete { id });
             }
             MountItem::Frame { id, frame } => {
                 e.int(FRAME);
@@ -170,7 +170,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(id as i32);
                 view_style(&mut e, &style);
                 // The animator composes animated values with the static ones.
-                e.anim.push(MountItem::ViewStyle { id, style });
+                e.animation.push(MountItem::ViewStyle { id, style });
             }
             MountItem::Text {
                 id,
@@ -247,7 +247,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     KeyboardDismissMode::Interactive => 2,
                 });
                 e.bool(mirrored);
-                e.anim.push(MountItem::ScrollConfig {
+                e.animation.push(MountItem::ScrollConfig {
                     id,
                     horizontal,
                     shows_indicator,
@@ -333,12 +333,13 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(id as i32);
                 e.bool(refreshing);
             }
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::AnimationBindings { id, bindings } => {
                 // Java restores the static style; the animator then writes
                 // the bound properties.
                 e.int(DYNAMIC);
                 e.int(id as i32);
-                e.anim.push(MountItem::AnimBindings { id, bindings });
+                e.animation
+                    .push(MountItem::AnimationBindings { id, bindings });
             }
             MountItem::Gestures { id, values } => {
                 e.int(GESTURES);
@@ -353,7 +354,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 });
                 e.bool(values.pinch.is_some());
                 e.bool(values.rotation.is_some());
-                e.anim.push(MountItem::Gestures { id, values });
+                e.animation.push(MountItem::Gestures { id, values });
             }
             MountItem::ViewProps { id, props } => {
                 e.int(VIEW_PROPS);
@@ -393,7 +394,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     layout_transition(&mut e, t);
                 }
             }
-            item @ MountItem::Anim(_) => e.anim.push(item),
+            item @ MountItem::Animation(_) => e.animation.push(item),
             MountItem::Input { id, config } => {
                 e.int(INPUT);
                 e.int(id as i32);

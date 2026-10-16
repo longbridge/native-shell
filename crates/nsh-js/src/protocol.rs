@@ -1,9 +1,11 @@
 //! Decoding of JS values into the core's types: props and styles
 //! ([`decode_prop`]), commands ([`decode_command`]), animation operations
-//! ([`decode_anim_op`], as `nsh/animated` encodes them) and JSON
+//! ([`decode_animation_op`], as `nsh/animated` encodes them) and JSON
 //! ([`to_json`]).
 
-use nsh_anim::{AnimOp, AnimProp, Driver, Easing, Extrapolate, MathOp, Operand, Output};
+use nsh_animation::{
+    AnimationOp, AnimationProp, Driver, Easing, Extrapolate, MathOp, Operand, Output,
+};
 use nsh_core::{
     Color, Command, EventKind, LayoutAnimation, NodeId, Op, Prop, Style, StyleDecl, StyleError,
     StylePatch, StyleValue, TransformKind,
@@ -118,9 +120,12 @@ impl<'js> Reader<'_, 'js> {
 }
 
 /// Decodes an animation operation, encoded as `nsh/animated` builds it
-/// (`ANIM_*`, the node, then the operation's values).
-pub(crate) fn decode_anim_op<'js>(ctx: &Ctx<'js>, buf: &Array<'js>) -> rquickjs::Result<AnimOp> {
-    decode_anim(&mut Reader { ctx, buf, pos: 0 })
+/// (`ANIMATION_*`, the node, then the operation's values).
+pub(crate) fn decode_animation_op<'js>(
+    ctx: &Ctx<'js>,
+    buf: &Array<'js>,
+) -> rquickjs::Result<AnimationOp> {
+    decode_animation(&mut Reader { ctx, buf, pos: 0 })
 }
 
 /// The command `name` with argument `arg` sends to a node's view (`None`:
@@ -228,7 +233,7 @@ pub(crate) fn decode_command<'js>(
 }
 
 /// Reads the node id of a native value object (`{ __nv: id }`).
-fn native_value(value: &Value<'_>) -> Option<nsh_anim::NodeId> {
+fn native_value(value: &Value<'_>) -> Option<nsh_animation::NodeId> {
     value
         .as_object()?
         .get::<_, Option<u32>>("__nv")
@@ -456,7 +461,7 @@ fn decode_style<'js>(
             continue;
         }
         if let Some(node) = native_value(&value) {
-            match AnimProp::from_name(&key) {
+            match AnimationProp::from_name(&key) {
                 Some(prop) => {
                     let _ = patch.push(&mut style, StyleDecl::Animated(prop, node));
                 }
@@ -566,16 +571,16 @@ fn parse_angle(s: &str) -> Option<f32> {
     }
 }
 
-fn decode_anim(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimOp> {
+fn decode_animation(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimationOp> {
     let sub = r.int()?;
-    let node = r.int()? as nsh_anim::NodeId;
+    let node = r.int()? as nsh_animation::NodeId;
     Ok(match sub {
-        ANIM_VALUE => AnimOp::CreateValue {
+        ANIMATION_VALUE => AnimationOp::CreateValue {
             node,
             value: r.number()?,
         },
-        ANIM_INTERPOLATE => {
-            let input = r.int()? as nsh_anim::NodeId;
+        ANIMATION_INTERPOLATE => {
+            let input = r.int()? as nsh_animation::NodeId;
             let input_range = r.numbers()?;
             let outputs = r.value()?;
             let output = decode_output(r, &outputs)?;
@@ -587,36 +592,36 @@ fn decode_anim(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimOp> {
             let extrapolate_left = extrapolate(r.string()?);
             let extrapolate_right = extrapolate(r.string()?);
             let easing = r.value()?;
-            AnimOp::CreateInterpolate {
+            AnimationOp::CreateInterpolate {
                 node,
                 input,
                 input_range,
                 output,
                 extrapolate_left,
                 extrapolate_right,
-                easing: nsh_core::js::anim::easing(&Js(easing)).unwrap_or(Easing::Linear),
+                easing: nsh_core::js::animation::easing(&Js(easing)).unwrap_or(Easing::Linear),
             }
         }
-        ANIM_DIFF_CLAMP => AnimOp::CreateDiffClamp {
+        ANIMATION_DIFF_CLAMP => AnimationOp::CreateDiffClamp {
             node,
-            input: r.int()? as nsh_anim::NodeId,
+            input: r.int()? as nsh_animation::NodeId,
             min: r.number()?,
             max: r.number()?,
         },
-        ANIM_START_COMPOSITE => {
+        ANIMATION_START_COMPOSITE => {
             // `node` carries the animation id here.
             let key = r.int()? as u32;
             let spec = r.value()?;
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation: node,
                 key,
                 spec: decode_composite(r, &spec, 0)?,
             }
         }
-        ANIM_STOP_ANIMATION => AnimOp::StopAnimation { animation: node },
-        ANIM_RESET_COMPOSITE => AnimOp::ResetComposite { key: node },
-        ANIM_RELEASE_COMPOSITE => AnimOp::ReleaseComposite { key: node },
-        ANIM_MATH => {
+        ANIMATION_STOP_ANIMATION => AnimationOp::StopAnimation { animation: node },
+        ANIMATION_RESET_COMPOSITE => AnimationOp::ResetComposite { key: node },
+        ANIMATION_RELEASE_COMPOSITE => AnimationOp::ReleaseComposite { key: node },
+        ANIMATION_MATH => {
             let op = match r.string()?.as_str() {
                 "add" => MathOp::Add,
                 "sub" => MathOp::Sub,
@@ -626,24 +631,24 @@ fn decode_anim(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimOp> {
             };
             let a = r.operand()?;
             let b = r.operand()?;
-            AnimOp::CreateMath { node, op, a, b }
+            AnimationOp::CreateMath { node, op, a, b }
         }
-        ANIM_SET => AnimOp::Set {
+        ANIMATION_SET => AnimationOp::Set {
             node,
             value: r.number()?,
         },
-        ANIM_START => {
-            let animation = r.int()? as nsh_anim::AnimId;
+        ANIMATION_START => {
+            let animation = r.int()? as nsh_animation::AnimationId;
             let config = r.value()?;
             let driver = decode_driver(r, &config)?;
-            AnimOp::Start {
+            AnimationOp::Start {
                 node,
                 animation,
                 driver,
             }
         }
-        ANIM_STOP => AnimOp::Stop { node },
-        ANIM_RELEASE => AnimOp::Release { node },
+        ANIMATION_STOP => AnimationOp::Stop { node },
+        ANIMATION_RELEASE => AnimationOp::Release { node },
         other => {
             return Err(Exception::throw_type(
                 r.ctx,
@@ -716,7 +721,7 @@ fn decode_driver(r: &Reader<'_, '_>, config: &Value<'_>) -> rquickjs::Result<Dri
         "timing" => Driver::Timing {
             to: num("to")?.unwrap_or(0.0),
             duration_ms: num("duration")?.unwrap_or(300.0),
-            easing: nsh_core::js::anim::easing(&Js(c.get::<_, Value>("easing")?))
+            easing: nsh_core::js::animation::easing(&Js(c.get::<_, Value>("easing")?))
                 .unwrap_or(Easing::EaseInOut),
             delay_ms: num("delay")?.unwrap_or(0.0),
         },
@@ -745,8 +750,8 @@ fn decode_composite(
     r: &Reader<'_, '_>,
     spec: &Value<'_>,
     depth: u32,
-) -> rquickjs::Result<nsh_anim::Composite> {
-    use nsh_anim::Composite;
+) -> rquickjs::Result<nsh_animation::Composite> {
+    use nsh_animation::Composite;
     let Some(o) = spec.as_object().filter(|_| depth < 64) else {
         return Err(Exception::throw_type(r.ctx, "animation: invalid composite"));
     };
@@ -777,7 +782,7 @@ fn decode_composite(
             reset: o.get::<_, Option<bool>>("reset")?.unwrap_or(true),
         },
         _ => Composite::Run {
-            node: o.get::<_, f64>("node")? as nsh_anim::NodeId,
+            node: o.get::<_, f64>("node")? as nsh_animation::NodeId,
             driver: decode_driver(r, spec)?,
         },
     })
@@ -901,7 +906,7 @@ mod decode_bench {
 
 #[cfg(test)]
 mod tests {
-    use nsh_anim::{Curve, EaseMode};
+    use nsh_animation::{Curve, EaseMode};
     use nsh_core::{LayoutCurve, LayoutProperty, LayoutTransition};
     use rquickjs::{Context, Runtime};
 
@@ -921,7 +926,7 @@ mod tests {
 
     #[test]
     fn easings_decode_by_name_curve_and_bezier() {
-        let easing = |s: &str| with_value(s, |v| nsh_core::js::anim::easing(&v));
+        let easing = |s: &str| with_value(s, |v| nsh_core::js::animation::easing(&v));
         assert_eq!(easing("'easeOut'"), Some(Easing::EaseOut));
         assert_eq!(easing("'ease'"), Some(Easing::Bezier(0.25, 0.1, 0.25, 1.0)));
         assert_eq!(
@@ -974,7 +979,7 @@ mod tests {
             })
         );
         // The presets `nsh/animated` serves decode to the core's.
-        let tables = nsh_core::js::anim::tables();
+        let tables = nsh_core::js::animation::tables();
         let spring = tables["presets"]["spring"].to_string();
         assert_eq!(layout(&spring), LayoutAnimation::SPRING);
     }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nsh_anim::{AnimOp, AnimProp};
+use nsh_animation::{AnimationOp, AnimationProp};
 
 use crate::{
     geometry::{Rect, Size},
@@ -561,7 +561,7 @@ pub enum MountItem {
         /// Shows the scroll indicator.
         shows_indicator: bool,
         /// Native animation value fed with the main-axis offset.
-        scroll_value: Option<nsh_anim::NodeId>,
+        scroll_value: Option<nsh_animation::NodeId>,
         /// When dragging dismisses the keyboard.
         keyboard_dismiss: KeyboardDismissMode,
         /// A horizontal list laid out right to left: the platform mirrors
@@ -616,7 +616,7 @@ pub enum MountItem {
         refreshing: bool,
     },
     /// What a canvas draws; its native values come as
-    /// [`nsh_anim::AnimProp::CanvasArg`] bindings.
+    /// [`nsh_animation::AnimationProp::CanvasArg`] bindings.
     Canvas {
         /// The canvas.
         id: NodeId,
@@ -624,11 +624,11 @@ pub enum MountItem {
         drawing: Arc<crate::canvas::Drawing>,
     },
     /// Bind visual properties to native animation nodes.
-    AnimBindings {
+    AnimationBindings {
         /// View.
         id: NodeId,
         /// Property bindings (replaces the previous set).
-        bindings: Vec<(AnimProp, nsh_anim::NodeId)>,
+        bindings: Vec<(AnimationProp, nsh_animation::NodeId)>,
     },
     /// Drive native animation values from gestures on the view.
     Gestures {
@@ -648,7 +648,7 @@ pub enum MountItem {
     /// this batch.
     LayoutAnimation(LayoutAnimation),
     /// An animation graph change, in order with the other items.
-    Anim(AnimOp),
+    Animation(AnimationOp),
     /// Configure a text input.
     Input {
         /// Input view.

@@ -18,7 +18,7 @@
     `types`);
   - a registry's components and modules: their specs (`nsh_core::ui::declarations`; a module object's type is
     `<Name>Module`, which a native module can build on: `BackHandlerModule & BackListeners`);
-  - the styles, host props, events, easings and canvas methods: the core's tables (`nsh_core::js::{style, host, anim,
+  - the styles, host props, events, easings and canvas methods: the core's tables (`nsh_core::js::{style, host, animation,
     canvas}::declarations`; an event's handler type is its row in `host::EVENTS`, an event no element declares is in
     `INTERNAL_EVENTS`);
   - a web class: its spec's `ClassTs` (members as in a class body; the constants come from the spec's table), the

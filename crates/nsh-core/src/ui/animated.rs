@@ -14,7 +14,9 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use nsh_anim::{AnimId, AnimOp, Composite, Driver, Easing, Extrapolate, MathOp, Operand, Output};
+use nsh_animation::{
+    AnimationId, AnimationOp, Composite, Driver, Easing, Extrapolate, MathOp, Operand, Output,
+};
 
 use super::{
     Color,
@@ -23,7 +25,7 @@ use super::{
 
 /// A node of the graph, released when its last handle goes.
 pub(crate) struct Node {
-    id: nsh_anim::NodeId,
+    id: nsh_animation::NodeId,
     executor: Weak<Executor>,
     /// The nodes it derives from, alive while it is: a chain such as
     /// `v.mul(TAU).sub(1.0)` keeps no handle of its middle node.
@@ -33,11 +35,11 @@ pub(crate) struct Node {
 impl Node {
     fn new(
         executor: &Rc<Executor>,
-        op: impl FnOnce(nsh_anim::NodeId) -> AnimOp,
+        op: impl FnOnce(nsh_animation::NodeId) -> AnimationOp,
         inputs: Vec<Rc<Node>>,
     ) -> Rc<Self> {
-        let id = executor.next_anim_id();
-        executor.act(Action::Anim(op(id)));
+        let id = executor.next_animation_id();
+        executor.act(Action::Animation(op(id)));
         Rc::new(Self {
             id,
             executor: Rc::downgrade(executor),
@@ -45,26 +47,26 @@ impl Node {
         })
     }
 
-    fn act(&self, op: AnimOp) {
+    fn act(&self, op: AnimationOp) {
         if let Some(executor) = self.executor.upgrade() {
-            executor.act(Action::Anim(op));
+            executor.act(Action::Animation(op));
         }
     }
 }
 
 impl Drop for Node {
     fn drop(&mut self) {
-        self.act(AnimOp::Release { node: self.id });
+        self.act(AnimationOp::Release { node: self.id });
     }
 }
 
 /// `op` (a node-making operation) making node `id`.
-fn with_node(mut op: AnimOp, id: nsh_anim::NodeId) -> AnimOp {
+fn with_node(mut op: AnimationOp, id: nsh_animation::NodeId) -> AnimationOp {
     match &mut op {
-        AnimOp::CreateValue { node, .. }
-        | AnimOp::CreateInterpolate { node, .. }
-        | AnimOp::CreateDiffClamp { node, .. }
-        | AnimOp::CreateMath { node, .. } => *node = id,
+        AnimationOp::CreateValue { node, .. }
+        | AnimationOp::CreateInterpolate { node, .. }
+        | AnimationOp::CreateDiffClamp { node, .. }
+        | AnimationOp::CreateMath { node, .. } => *node = id,
         _ => {}
     }
     op
@@ -73,10 +75,10 @@ fn with_node(mut op: AnimOp, id: nsh_anim::NodeId) -> AnimOp {
 /// Derived nodes by the operation that made them (its node id 0), while
 /// alive.
 #[derive(Default)]
-pub(crate) struct Derived(pub(crate) Vec<(AnimOp, Weak<Node>)>);
+pub(crate) struct Derived(pub(crate) Vec<(AnimationOp, Weak<Node>)>);
 
 impl Derived {
-    pub(crate) fn get(&mut self, key: &AnimOp) -> Option<Rc<Node>> {
+    pub(crate) fn get(&mut self, key: &AnimationOp) -> Option<Rc<Node>> {
         self.0.retain(|(_, n)| n.strong_count() > 0);
         self.0
             .iter()
@@ -98,7 +100,7 @@ pub trait Animated {
 pub struct NativeNode(Rc<Node>);
 
 impl NativeNode {
-    pub(crate) fn id(&self) -> nsh_anim::NodeId {
+    pub(crate) fn id(&self) -> nsh_animation::NodeId {
         self.0.id
     }
 
@@ -111,7 +113,7 @@ impl NativeNode {
     /// node, so its bindings stay as they are).
     fn derive(
         &self,
-        op: impl FnOnce(nsh_anim::NodeId) -> AnimOp,
+        op: impl FnOnce(nsh_animation::NodeId) -> AnimationOp,
         other: Option<&NativeNode>,
     ) -> NativeNode {
         let Some(executor) = self.executor() else {
@@ -157,7 +159,7 @@ impl NativeNode {
         let source = self.id();
         let input_range = input.to_vec();
         self.derive(
-            move |node| AnimOp::CreateInterpolate {
+            move |node| AnimationOp::CreateInterpolate {
                 node,
                 input: source,
                 input_range,
@@ -170,37 +172,37 @@ impl NativeNode {
         )
     }
 
-    fn math(&self, op: MathOp, other: AnimOperand) -> NativeNode {
+    fn math(&self, op: MathOp, other: AnimationOperand) -> NativeNode {
         let a = Operand::Node(self.id());
         let b = other.operand;
         self.derive(
-            move |node| AnimOp::CreateMath { node, op, a, b },
+            move |node| AnimationOp::CreateMath { node, op, a, b },
             other.node.as_ref(),
         )
     }
 
     /// The sum with `other`.
-    pub fn add(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn add(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.math(MathOp::Add, other.into())
     }
 
     /// The difference with `other`.
-    pub fn sub(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn sub(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.math(MathOp::Sub, other.into())
     }
 
     /// The product with `other`.
-    pub fn mul(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn mul(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.math(MathOp::Mul, other.into())
     }
 
     /// The quotient by `other`.
-    pub fn div(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn div(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.math(MathOp::Div, other.into())
     }
 
     /// The remainder by `other`.
-    pub fn modulo(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn modulo(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.math(MathOp::Mod, other.into())
     }
 
@@ -209,7 +211,7 @@ impl NativeNode {
     pub fn diff_clamp(&self, min: f32, max: f32) -> NativeNode {
         let input = self.id();
         self.derive(
-            move |node| AnimOp::CreateDiffClamp {
+            move |node| AnimationOp::CreateDiffClamp {
                 node,
                 input,
                 min,
@@ -240,13 +242,13 @@ impl fmt::Debug for NativeNode {
 
 /// An operand of arithmetic on nodes: a number or another node.
 #[derive(Debug, Clone)]
-pub struct AnimOperand {
+pub struct AnimationOperand {
     operand: Operand,
     /// The node, kept alive by what derives from it.
     node: Option<NativeNode>,
 }
 
-impl From<f32> for AnimOperand {
+impl From<f32> for AnimationOperand {
     fn from(n: f32) -> Self {
         Self {
             operand: Operand::Const(n),
@@ -255,7 +257,7 @@ impl From<f32> for AnimOperand {
     }
 }
 
-impl<A: Animated> From<&A> for AnimOperand {
+impl<A: Animated> From<&A> for AnimationOperand {
     fn from(a: &A) -> Self {
         let node = a.native_node();
         Self {
@@ -396,7 +398,7 @@ impl NativeValue {
     pub(crate) fn new(executor: &Rc<Executor>, value: f32) -> Self {
         Self(NativeNode(Node::new(
             executor,
-            |node| AnimOp::CreateValue { node, value },
+            |node| AnimationOp::CreateValue { node, value },
             Vec::new(),
         )))
     }
@@ -408,7 +410,7 @@ impl NativeValue {
 
     /// Sets the value at once, stopping its animation.
     pub fn set(&self, value: f32) {
-        self.0.0.act(AnimOp::Set {
+        self.0.0.act(AnimationOp::Set {
             node: self.0.id(),
             value,
         });
@@ -416,7 +418,7 @@ impl NativeValue {
 
     /// Stops its animation where it is.
     pub fn stop(&self) {
-        self.0.0.act(AnimOp::Stop { node: self.0.id() });
+        self.0.0.act(AnimationOp::Stop { node: self.0.id() });
     }
 
     fn executor(&self) -> Weak<Executor> {
@@ -427,9 +429,9 @@ impl NativeValue {
         let (end, slot) = Answer::new();
         let end = AnimationEnd(end);
         if let Some(executor) = self.0.executor() {
-            let animation = executor.next_anim_id();
+            let animation = executor.next_animation_id();
             executor.act(Action::Animate {
-                op: AnimOp::Start {
+                op: AnimationOp::Start {
                     node: self.0.id(),
                     animation,
                     driver,
@@ -491,27 +493,27 @@ impl NativeValue {
     }
 
     /// See [`NativeNode::add`].
-    pub fn add(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn add(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.0.add(other)
     }
 
     /// See [`NativeNode::sub`].
-    pub fn sub(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn sub(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.0.sub(other)
     }
 
     /// See [`NativeNode::mul`].
-    pub fn mul(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn mul(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.0.mul(other)
     }
 
     /// See [`NativeNode::div`].
-    pub fn div(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn div(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.0.div(other)
     }
 
     /// See [`NativeNode::modulo`].
-    pub fn modulo(&self, other: impl Into<AnimOperand>) -> NativeNode {
+    pub fn modulo(&self, other: impl Into<AnimationOperand>) -> NativeNode {
         self.0.modulo(other)
     }
 }
@@ -558,7 +560,7 @@ struct Run {
     /// Its composite key (what resets restore by); 0 until it first runs.
     key: Cell<u32>,
     /// Its last run (0: none).
-    animation: Cell<AnimId>,
+    animation: Cell<AnimationId>,
 }
 
 impl Drop for Run {
@@ -568,7 +570,7 @@ impl Drop for Run {
         if key != 0
             && let Some(executor) = self.executor.upgrade()
         {
-            executor.act(Action::Anim(AnimOp::ReleaseComposite { key }));
+            executor.act(Action::Animation(AnimationOp::ReleaseComposite { key }));
         }
     }
 }
@@ -729,12 +731,12 @@ impl Animation {
         };
         self.stop();
         if run.key.get() == 0 {
-            run.key.set(executor.next_anim_id());
+            run.key.set(executor.next_animation_id());
         }
-        let animation = executor.next_anim_id();
+        let animation = executor.next_animation_id();
         run.animation.set(animation);
         executor.act(Action::Animate {
-            op: AnimOp::StartComposite {
+            op: AnimationOp::StartComposite {
                 animation,
                 key: run.key.get(),
                 spec: self.0.spec.clone(),
@@ -752,7 +754,7 @@ impl Animation {
         if animation != 0
             && let Some(executor) = run.executor.upgrade()
         {
-            executor.act(Action::Anim(AnimOp::StopAnimation { animation }));
+            executor.act(Action::Animation(AnimationOp::StopAnimation { animation }));
         }
     }
 
@@ -765,7 +767,7 @@ impl Animation {
         if key != 0
             && let Some(executor) = run.executor.upgrade()
         {
-            executor.act(Action::Anim(AnimOp::ResetComposite { key }));
+            executor.act(Action::Animation(AnimationOp::ResetComposite { key }));
         }
     }
 }
@@ -784,7 +786,7 @@ mod tests {
         executor
             .take_actions()
             .into_iter()
-            .filter(|a| matches!(a, Action::Anim(AnimOp::Release { .. })))
+            .filter(|a| matches!(a, Action::Animation(AnimationOp::Release { .. })))
             .count()
     }
 
@@ -803,12 +805,12 @@ mod tests {
 
     /// The graph operations `executor` was asked for (animations' ends
     /// dropped).
-    fn ops(executor: &Executor) -> Vec<AnimOp> {
+    fn ops(executor: &Executor) -> Vec<AnimationOp> {
         executor
             .take_actions()
             .into_iter()
             .filter_map(|a| match a {
-                Action::Anim(op) | Action::Animate { op, .. } => Some(op),
+                Action::Animation(op) | Action::Animate { op, .. } => Some(op),
                 _ => None,
             })
             .collect()
@@ -907,7 +909,7 @@ mod tests {
 
         let _ = jump.start();
         let [
-            AnimOp::StartComposite {
+            AnimationOp::StartComposite {
                 animation,
                 key,
                 spec,
@@ -926,22 +928,22 @@ mod tests {
         assert!(matches!(
             &again[..],
             [
-                AnimOp::StopAnimation { animation: a },
-                AnimOp::StartComposite { animation: b, key: k, .. },
+                AnimationOp::StopAnimation { animation: a },
+                AnimationOp::StartComposite { animation: b, key: k, .. },
             ] if *a == first && *b != first && *k == key
         ));
         jump.stop();
         assert!(matches!(
             &ops(&executor)[..],
-            [AnimOp::StopAnimation { .. }]
+            [AnimationOp::StopAnimation { .. }]
         ));
         jump.stop();
         assert_eq!(ops(&executor), [], "stopped once");
         jump.reset();
-        assert_eq!(ops(&executor), [AnimOp::ResetComposite { key }]);
+        assert_eq!(ops(&executor), [AnimationOp::ResetComposite { key }]);
 
         drop(jump);
-        assert_eq!(ops(&executor), [AnimOp::ReleaseComposite { key }]);
+        assert_eq!(ops(&executor), [AnimationOp::ReleaseComposite { key }]);
     }
 
     #[test]
@@ -964,7 +966,7 @@ mod tests {
         let angle = t.interpolate_with(&[0.0, 1.0], Output::Numbers(vec![0.0, 180.0]), right);
         let [
             ..,
-            AnimOp::CreateInterpolate {
+            AnimationOp::CreateInterpolate {
                 extrapolate_left,
                 extrapolate_right,
                 easing,

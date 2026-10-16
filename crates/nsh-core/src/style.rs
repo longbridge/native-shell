@@ -730,7 +730,7 @@ pub struct Style {
     pub text: TextStyle,
     /// Visual properties driven by native animation nodes; they override
     /// the static values while bound.
-    pub animated: Vec<(nsh_anim::AnimProp, nsh_anim::NodeId)>,
+    pub animated: Vec<(nsh_animation::AnimationProp, nsh_animation::NodeId)>,
     /// `zIndex`: stacking order among siblings (higher on top).
     pub z_index: i32,
     /// `direction`: right to left (`Some(true)`), left to right, or
@@ -1141,13 +1141,13 @@ pub enum StyleDecl {
     ClearTransform,
     /// Appends a `transform` entry, driven by a native value when given
     /// (the amount is then the identity until it is bound).
-    Transform(TransformKind, f32, Option<nsh_anim::NodeId>),
+    Transform(TransformKind, f32, Option<nsh_animation::NodeId>),
     /// `shadowOffset`; `None` restores the default.
     ShadowOffset(Option<(f32, f32)>),
     /// `textShadowOffset`.
     TextShadowOffset(Option<(f32, f32)>),
     /// A property driven by a native animation node.
-    Animated(nsh_anim::AnimProp, nsh_anim::NodeId),
+    Animated(nsh_animation::AnimationProp, nsh_animation::NodeId),
 }
 
 impl StyleDecl {
@@ -1157,9 +1157,9 @@ impl StyleDecl {
             StyleDecl::Set(key, value) => style.set_key(*key, value.as_value()),
             StyleDecl::ClearTransform => {
                 style.view.transform = Transform::IDENTITY;
-                style
-                    .animated
-                    .retain(|(prop, _)| !matches!(prop, nsh_anim::AnimProp::Transform(_)));
+                style.animated.retain(|(prop, _)| {
+                    !matches!(prop, nsh_animation::AnimationProp::Transform(_))
+                });
                 Ok(())
             }
             StyleDecl::Transform(kind, amount, node) => {
@@ -1171,7 +1171,7 @@ impl StyleDecl {
                 if let Some(node) = node {
                     style
                         .animated
-                        .push((nsh_anim::AnimProp::Transform(index), *node));
+                        .push((nsh_animation::AnimationProp::Transform(index), *node));
                 }
                 Ok(())
             }

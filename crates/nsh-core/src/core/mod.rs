@@ -8,7 +8,7 @@ mod touch;
 
 use std::sync::Arc;
 
-use nsh_anim::AnimProp;
+use nsh_animation::AnimationProp;
 use slab::Slab;
 use taffy::{AvailableSpace, NodeId as LayoutId, Overflow, Position, TaffyTree};
 
@@ -55,8 +55,8 @@ mod dirty {
     pub(super) const SCROLL: u32 = 1 << 5;
     /// Emit [`crate::MountItem::Refreshing`].
     pub(super) const REFRESHING: u32 = 1 << 6;
-    /// Emit [`crate::MountItem::AnimBindings`].
-    pub(super) const ANIM: u32 = 1 << 7;
+    /// Emit [`crate::MountItem::AnimationBindings`].
+    pub(super) const ANIMATION: u32 = 1 << 7;
     /// Emit [`crate::MountItem::PanValues`].
     pub(super) const PAN: u32 = 1 << 8;
     /// Emit [`crate::MountItem::Input`].
@@ -238,7 +238,7 @@ struct ScrollState {
     horizontal: bool,
     shows_indicator: bool,
     refreshing: bool,
-    scroll_value: Option<nsh_anim::NodeId>,
+    scroll_value: Option<nsh_animation::NodeId>,
     keyboard_dismiss: KeyboardDismissMode,
     /// Last content size sent to the platform.
     content: Option<Size>,
@@ -302,7 +302,7 @@ struct Node {
     base_layout: Option<Box<taffy::Style>>,
     view_style: ViewStyle,
     text_style: TextStyle,
-    animated: Vec<(AnimProp, nsh_anim::NodeId)>,
+    animated: Vec<(AnimationProp, nsh_animation::NodeId)>,
     /// What a canvas draws.
     drawing: Option<Arc<crate::canvas::Drawing>>,
     /// The `style` prop as written, applied over the class styles.
@@ -938,8 +938,8 @@ impl<M: TextEngine> Core<M> {
                 Ok(())
             }
             Op::Release { id } => self.release(id),
-            Op::Anim(op) => {
-                self.mount.push(MountItem::Anim(op));
+            Op::Animation(op) => {
+                self.mount.push(MountItem::Animation(op));
                 Ok(())
             }
             Op::Draw { id, mut drawing } => {
@@ -972,7 +972,7 @@ impl<M: TextEngine> Core<M> {
                     return Ok(());
                 }
                 node.drawing = Some(Arc::from(drawing));
-                let flags = dirty::CANVAS | if slots_changed { dirty::ANIM } else { 0 };
+                let flags = dirty::CANVAS | if slots_changed { dirty::ANIMATION } else { 0 };
                 self.mark(key, flags);
                 Ok(())
             }
@@ -1367,7 +1367,7 @@ impl<M: TextEngine> Core<M> {
         node.rtl = rtl;
         let view_changed = node.view_style != view;
         let text_changed = node.text_style != text;
-        let anim_changed = node.animated != animated;
+        let animation_changed = node.animated != animated;
         let z_changed = node.z_index != z_index;
         node.view_style = view;
         node.text_style = text;
@@ -1388,8 +1388,8 @@ impl<M: TextEngine> Core<M> {
         if view_changed {
             flags |= dirty::VIEW;
         }
-        if anim_changed {
-            flags |= dirty::ANIM;
+        if animation_changed {
+            flags |= dirty::ANIMATION;
         }
         if flags != 0 {
             self.mark(key, flags);
@@ -2516,7 +2516,7 @@ impl<M: TextEngine> Core<M> {
             }
         }
         if !node.animated.is_empty() || node.drawing.as_ref().is_some_and(|d| !d.slots.is_empty()) {
-            flags |= dirty::ANIM;
+            flags |= dirty::ANIMATION;
         }
         if node.drawing.is_some() {
             flags |= dirty::CANVAS;
@@ -2697,17 +2697,18 @@ impl<M: TextEngine> Core<M> {
                     });
                 }
             }
-            if flags & dirty::ANIM != 0 {
+            if flags & dirty::ANIMATION != 0 {
                 let mut bindings = node.animated.clone();
                 if let Some(d) = &node.drawing {
                     bindings.extend(
                         d.slots
                             .iter()
                             .enumerate()
-                            .map(|(i, &n)| (AnimProp::CanvasArg(i as u16), n)),
+                            .map(|(i, &n)| (AnimationProp::CanvasArg(i as u16), n)),
                     );
                 }
-                self.mount.push(MountItem::AnimBindings { id, bindings });
+                self.mount
+                    .push(MountItem::AnimationBindings { id, bindings });
             }
             if flags & dirty::CANVAS != 0
                 && let Some(drawing) = &node.drawing

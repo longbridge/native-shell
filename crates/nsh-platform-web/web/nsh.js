@@ -205,7 +205,7 @@ class Player {
     root._id = ROOT_ID;
     root._kind = "root";
     root._events = new Set();
-    root._anim = {};
+    root._animation = {};
     this.views.set(ROOT_ID, root);
     const width = root.clientWidth || 390;
     const height = root.clientHeight || 844;
@@ -359,7 +359,7 @@ class Player {
     el._id = id;
     el._kind = kind;
     el._events = new Set();
-    el._anim = {};
+    el._animation = {};
     el._css = "";
     el._frame = null;
     el.className = kind === "scroll" ? "nsh-v nsh-scroll" : "nsh-v";
@@ -469,7 +469,7 @@ class Player {
     el.style.cssText = (el._base ?? "") + css + (el._extra ?? "");
     if (transition) el.style.transition = transition;
     this.placeFrame(el);
-    for (const [prop, value] of Object.entries(el._anim)) el.style.setProperty(prop, value);
+    for (const [prop, value] of Object.entries(el._animation)) el.style.setProperty(prop, value);
     if (el._sticky) el.style.translate = el._sticky;
     if (border) {
       if (!el._border) {
@@ -496,7 +496,7 @@ class Player {
       this.drawSoon(el);
       return;
     }
-    el._anim[prop] = value;
+    el._animation[prop] = value;
     el.style.setProperty(prop, value);
   }
 
@@ -566,7 +566,7 @@ class Player {
     el.style.opacity = "0";
     requestAnimationFrame(() => {
       el.style.transition = `opacity ${t.duration}ms ${t.easing} ${t.delay}ms`;
-      el.style.opacity = el._anim.opacity ?? "";
+      el.style.opacity = el._animation.opacity ?? "";
       setTimeout(() => { el.style.transition = ""; }, t.duration + t.delay + 50);
     });
   }
@@ -1262,7 +1262,7 @@ class Player {
     const opacity = el._props?.activeOpacity;
     if (opacity != null && opacity < 1) {
       el.style.transition = "opacity .05s";
-      el.style.opacity = String(opacity * Number(el._anim.opacity ?? getComputedStyle(el).opacity ?? 1));
+      el.style.opacity = String(opacity * Number(el._animation.opacity ?? getComputedStyle(el).opacity ?? 1));
     }
     if (el._events.has("onPressIn")) this.event(el._id, "onPressIn");
     if (el._events.has("onLongPress")) {
@@ -1280,7 +1280,7 @@ class Player {
     clearTimeout(p.longTimer);
     if (el._props?.activeOpacity != null) {
       el.style.transition = "opacity .2s";
-      el.style.opacity = el._anim.opacity ?? "";
+      el.style.opacity = el._animation.opacity ?? "";
     }
     if (el._events.has("onPressOut")) this.event(el._id, "onPressOut");
     if (inside && !p.long && el._events.has("onPress")) this.event(el._id, "onPress");

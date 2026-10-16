@@ -166,7 +166,7 @@ impl Component for Button {                // JS export: `Button`, the type's na
   `interpolate` each time) gets the live one, so bindings stay as they are. Bound style properties go into the
   element's inline style, before the app's `style` on a host (the core keeps the app's and composes the two). The
   animations' ends come back through `Core::animations_finished` (the engine hands JS the rest). An `Animation` is
-  sent whole as one `AnimOp::StartComposite` and runs in the graph step after step; its composite key (odd, JS's
+  sent whole as one `AnimationOp::StartComposite` and runs in the graph step after step; its composite key (odd, JS's
   even) is what `reset()` restores by, and dropping the last handle releases it (a run going on goes on).
 - **Element refs** (`ui/element_ref.rs`) hold the node of the element that carries them, set when the render is
   applied and cleared when the element goes; their commands go out through the executor, and an event's handling
