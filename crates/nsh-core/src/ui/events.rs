@@ -120,6 +120,16 @@ pub struct VideoProgress {
     pub duration: f32,
 }
 
+/// An image's download went on (`Image::on_progress`): bytes so far and in
+/// all (0 when the server does not say).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ImageProgress {
+    /// Bytes loaded.
+    pub loaded: f64,
+    /// Bytes in all, 0 when unknown.
+    pub total: f64,
+}
+
 /// An event of a registered native component (`on_native_event`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NativeEvent {
@@ -333,6 +343,17 @@ pub(crate) fn progress(p: &EventPayload) -> Option<Cow<'_, VideoProgress>> {
     Some(Cow::Owned(VideoProgress {
         current_time: number(p, "currentTime"),
         duration: number(p, "duration"),
+    }))
+}
+
+pub(crate) fn image_progress(p: &EventPayload) -> Option<Cow<'_, ImageProgress>> {
+    let number = |key| match field(p, key) {
+        Some(PayloadValue::Number(n)) => *n,
+        _ => 0.0,
+    };
+    Some(Cow::Owned(ImageProgress {
+        loaded: number("loaded"),
+        total: number("total"),
     }))
 }
 

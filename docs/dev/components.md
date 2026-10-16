@@ -81,7 +81,9 @@ impl Component for Button {
   presses of their own, strings, inline views and images; the core merges them into one paragraph), `image(..)`, the
   other host elements (`input()`, `scroll()`, `stack()` of
   `screen()`s, `modal()`,
-  `canvas(drawing)`, `web_view(url)`, `video(url)`, `native(name)` for the embedder's components; `ui/host.rs`),
+  `canvas(drawing)`, `web_view(url)` / `web_view_html(html, base_url)`, `video(url)`,
+  `input_accessory_view(native_id)` (iOS's bar over the keyboard; empty on Android), `native(name)` for the
+  embedder's components; `ui/host.rs`),
   strings (as texts) and other components (`Button::element(props)`, whose `.on_event(cx.listener(..))` handles their
   typed events instead of the app; `.child(..)` / `.children(..)` pass it content and `.fill("header", ..)` fills a
   slot, as JSX children and slot props do: the content is nodes of this render, placed where the nested component's

@@ -133,6 +133,13 @@ host_element! {
 }
 
 host_element! {
+    /// A bar over the keyboard (`<inputaccessory>`, TS: `InputAccessoryView`
+    /// of `nsh/ios`), made by [`input_accessory_view`]: its children are its
+    /// content.
+    InputAccessoryView
+}
+
+host_element! {
     /// A view drawn with a [`Drawing`] (`<canvas>`), made by [`canvas`].
     CanvasView
 }
@@ -157,6 +164,25 @@ impl ParentElement for Scroll {}
 impl ParentElement for Stack {}
 impl ParentElement for Screen {}
 impl ParentElement for Modal {}
+
+/// Android has no input accessories: there the bar keeps no content.
+impl ParentElement for InputAccessoryView {
+    fn child(mut self, child: impl IntoElement) -> Self {
+        if !cfg!(target_os = "android") {
+            self.0.children.push(child.into_element().0);
+        }
+        self
+    }
+
+    fn children(mut self, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
+        if !cfg!(target_os = "android") {
+            self.0
+                .children
+                .extend(children.into_iter().map(|c| c.into_element().0));
+        }
+        self
+    }
+}
 
 /// A text field.
 pub fn input() -> Input {
@@ -193,6 +219,26 @@ pub fn modal() -> Modal {
     Modal(node)
 }
 
+/// A bar shown over the keyboard of the inputs whose
+/// [`Input::input_accessory`] is `native_id` (iOS's `inputAccessoryView`):
+/// as wide as the window and as tall as its content, moving with the
+/// keyboard natively. It takes no room where the render places it; on
+/// Android, which has no input accessories, it is an empty hidden view.
+pub fn input_accessory_view(native_id: &str) -> InputAccessoryView {
+    let tag = if cfg!(target_os = "android") {
+        Tag::View
+    } else {
+        Tag::InputAccessory
+    };
+    let mut node = ElNode::new(tag);
+    if cfg!(target_os = "android") {
+        node.style.keyword(crate::StyleKey::Display, "none");
+    } else {
+        set(&mut node, Prop::NativeId(Some(native_id.into())));
+    }
+    InputAccessoryView(node)
+}
+
 /// A canvas showing what `painter` recorded (draw again, e.g. from
 /// `on_layout`'s size, to change it; native values in it move natively).
 pub fn canvas(painter: impl Into<Painter>) -> CanvasView {
@@ -207,6 +253,12 @@ pub fn canvas(painter: impl Into<Painter>) -> CanvasView {
 pub fn web_view(url: &str) -> WebView {
     WebView(ElNode::new(Tag::WebView))
         .set(Prop::Native(NativeProp::Source(WebSource::Uri(url.into()))))
+}
+
+/// A web view showing the page `html`, its relative links resolved against
+/// `base_url` (TS: `source={{ html, baseUrl }}`).
+pub fn web_view_html(html: &str, base_url: Option<&str>) -> WebView {
+    WebView(ElNode::new(Tag::WebView)).html(html, base_url)
 }
 
 /// A video playing the file or stream at `url`.
@@ -306,9 +358,18 @@ impl Input {
         self.set(Prop::CaretHidden(hidden))
     }
 
-    /// Shows the input accessory with this `nativeID` over the keyboard.
+    /// Shows the input accessory with this `nativeID` over the keyboard
+    /// ([`input_accessory_view`]; iOS).
     pub fn input_accessory(self, native_id: &str) -> Self {
         self.set(Prop::InputAccessoryViewId(Some(native_id.into())))
+    }
+
+    /// Selects `start..end` (UTF-16 units; a caret when equal) when the
+    /// value differs from the last render's (TS: the controlled
+    /// `selection`); the user moves it on from there
+    /// ([`Self::on_selection_change`]).
+    pub fn selection(self, start: u32, end: u32) -> Self {
+        self.set(Prop::Selection(start, end))
     }
 
     /// The text changed (the new text).
@@ -513,6 +574,16 @@ impl Modal {
         self.set(Prop::Modal(ModalProp::StatusBarTranslucent(translucent)))
     }
 
+    /// The orientations it allows while it is presented (iOS; default:
+    /// those of what presents it).
+    pub fn supported_orientations(
+        self,
+        orientations: impl IntoIterator<Item = Orientation>,
+    ) -> Self {
+        let bits = orientations.into_iter().fold(0, |bits, o| bits | o.bits());
+        self.set(Prop::Modal(ModalProp::Orientations(bits)))
+    }
+
     /// Swipes down and the back button dismiss it, reporting
     /// [`Self::on_dismiss`] (default: they ask with
     /// [`Self::on_request_close`]).
@@ -534,6 +605,34 @@ impl Modal {
     /// The user or the system dismissed it.
     pub fn on_dismiss(self, listener: Listener<()>) -> Self {
         self.listen(EventKind::Dismiss, listener, events::unit)
+    }
+}
+
+/// An orientation of the screen ([`Modal::supported_orientations`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Orientation {
+    /// Upright.
+    Portrait,
+    /// Upside down.
+    PortraitUpsideDown,
+    /// Either landscape.
+    Landscape,
+    /// Landscape, the top on the left.
+    LandscapeLeft,
+    /// Landscape, the top on the right.
+    LandscapeRight,
+}
+
+impl Orientation {
+    fn bits(self) -> u8 {
+        use crate::ModalConfig as M;
+        match self {
+            Orientation::Portrait => M::PORTRAIT,
+            Orientation::PortraitUpsideDown => M::PORTRAIT_UPSIDE_DOWN,
+            Orientation::Landscape => M::LANDSCAPE_LEFT | M::LANDSCAPE_RIGHT,
+            Orientation::LandscapeLeft => M::LANDSCAPE_LEFT,
+            Orientation::LandscapeRight => M::LANDSCAPE_RIGHT,
+        }
     }
 }
 

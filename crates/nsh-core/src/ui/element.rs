@@ -1531,6 +1531,15 @@ impl Image {
     pub fn on_load_end(self, listener: Listener<()>) -> Self {
         self.on(EventKind::LoadEnd, events::typed(listener, events::unit))
     }
+
+    /// Its download went on: bytes so far and in all (at most every 100
+    /// ms; none for images already in memory).
+    pub fn on_progress(self, listener: Listener<events::ImageProgress>) -> Self {
+        self.on(
+            EventKind::Progress,
+            events::typed(listener, events::image_progress),
+        )
+    }
 }
 
 impl super::Scrollable for ListElement {}

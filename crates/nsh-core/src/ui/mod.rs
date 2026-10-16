@@ -67,13 +67,13 @@ pub use self::{
     element_ref::{ComponentRef, ElementRef},
     env::Environment,
     events::{
-        GestureEvent, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection, VideoInfo,
-        VideoProgress, WebNavigation,
+        GestureEvent, ImageProgress, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection,
+        VideoInfo, VideoProgress, WebNavigation,
     },
     host::{
-        CanvasArg, CanvasPaint, CanvasView, Input, Modal, NativeView, Painter, Screen, Scroll,
-        Stack, Video, WebView, canvas, input, modal, native, screen, scroll, stack, video,
-        web_view,
+        CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, Modal, NativeView,
+        Orientation, Painter, Screen, Scroll, Stack, Video, WebView, canvas, input,
+        input_accessory_view, modal, native, screen, scroll, stack, video, web_view, web_view_html,
     },
     module::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
@@ -155,6 +155,7 @@ pub mod prelude {
         GestureEvent,
         ImageAsset,
         Input,
+        InputAccessoryView,
         Interactive,
         Interpolation,
         IntoElement,
@@ -178,6 +179,7 @@ pub mod prelude {
         NativeValue,
         NativeView,
         NoEvent,
+        Orientation,
         Painter,
         PanEvent,
         PanGesture,
@@ -223,6 +225,7 @@ pub mod prelude {
         canvas,
         image,
         input,
+        input_accessory_view,
         methods,
         modal,
         module,
@@ -239,6 +242,7 @@ pub mod prelude {
         view,
         virtual_list,
         web_view,
+        web_view_html,
     };
 }
 
