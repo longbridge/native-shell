@@ -100,7 +100,7 @@ sdkmanager "platforms;android-35" "build-tools;35.0.1" "platform-tools"
 
 ## 编辑器配置
 
-nsh 不需要 `node_modules`。`nsh init` 会写入 `tsconfig.json`，并把 nsh 提供的所有内容的类型声明写入 `.nsh/types`，之后每个构建应用的命令都会让它们保持最新。任何使用 TypeScript 语言服务的编辑器（VS Code、Zed、Neovim、WebStorm）都能借此对应用做类型检查。参见 [项目结构](./project-structure.md)。
+nsh 无需 NPM。`nsh init` 会写入 `tsconfig.json`，并把 nsh 提供的所有内容的类型声明写入 `.nsh/types`，之后每个构建应用的命令都会让它们保持最新。任何使用 TypeScript 语言服务的编辑器（VS Code、Zed、Neovim、WebStorm）都能借此对应用做类型检查。参见 [项目结构](./project-structure.md)。
 
 ## 下一步
 

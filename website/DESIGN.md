@@ -12,13 +12,12 @@ the look of the UI nsh draws.
    apps (AI-generated and dynamically delivered UI first, plugins second,
    standalone apps third), never presented as a way to write whole apps, and
    never compared with other frameworks outside the comparison page. Architecture comes further down.
-2. **Show the real thing, in its real place.** The hero is a native host app
-   (a chat and its composer) whose assistant answers with a module; only the
-   dashed, tagged region is nsh, and it runs the real `demos/home-module.tsx`
-   (a live watchlist in the gallery's Stocks look, fictional tickers)
-   through the web player. The legend says which part is the host and that
-   the module is a web preview. Documentation pages run their demos in a
-   frame at phone width; the code shown is always the source of what runs.
+2. **Show the real thing.** The hero runs the gallery's AI chat
+   (`demos/home-chat.tsx`, its files in `demos/hero-chat/`, copied from
+   `examples/gallery`) live on the web player: it plays one scenario on
+   load (a tool call and a streamed Markdown reply, fictional content) and
+   stays interactive. Documentation pages run their demos in a frame at
+   phone width; the code shown is always the source of what runs.
    The product is written "Native Shell" where it is a name; `nsh` and
    `native-shell` stay as they are in code, commands and URLs.
 3. **Specifics over adjectives.** Every capability card names something a
@@ -101,23 +100,24 @@ Chinese); `ui-monospace` / SF Mono for code. No webfonts. Base 15px.
 - Grid columns use `minmax(0, 1fr)`; check phone widths for horizontal
   overflow (the page's `scrollWidth` must equal the viewport).
 
-## The hero story
+## The hero
 
-The hero plays once on load (Replay restarts it): the question rises, the
-assistant types, the module's card shows one "Generating module…" row with
-a spinner and a thin filling line, then the live module fades in once both
-the story (≥3.2s) and the frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
-with reduced motion the final state shows at once. The host app sits in a
-card frame of the site's design (a slim bar with the app's name and a "Host
-app" badge, the app on an inset surface; no device chrome) and follows the
-page's theme, the module too (the player's `?theme=`, then a message on
-every change): the user's bubble and the assistant's avatar citrus, the
-module on a card with the card finish, its dashed region and tag citrus, the
-composer a recessed field with a round primary send button.
+The chat sits in a card frame of the site's design (a slim bar with the
+file name and a "Live" badge, the app on an inset surface; no device
+chrome) and follows the page's theme (the player's `?theme=`, then a
+message on every change); the gallery's palette has both. The caption says
+what runs; Replay reloads it, which plays the scenario again. Entrance
+motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`. The copied chat imports
+`./clipboard`, a no-op, because this runtime has no `nsh/clipboard` yet;
+the playground lists every demo but this one (it compiles single files).
 
-Behind the hero, `HeroField.astro` draws the dot grid on a 2D canvas: a slow
-wave runs through it, and near the pointer (or the last touch) dots swell
-into the accent under an eased glow, faint over the copy. It pauses off
+Behind the hero, `HeroField.astro` draws the dot grid on a 2D canvas, mostly
+dark and quiet: every dot has a seeded size, brightness and twinkle, and a
+slowly drifting value-noise field decides where the grid shimmers. Near the
+pointer (or the last touch) a few dots light up more than their
+neighbours inside a noise-perturbed reach that trails the pointer a little,
+over a small faint halo (140 px, peak alpha 0.06); the field is faint over
+the copy. It pauses off
 screen and in hidden tabs, draws one static frame with reduced motion,
 never takes pointer events, and costs about 0.2 ms a frame (`?fieldperf`
 logs it).

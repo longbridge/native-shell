@@ -15,7 +15,7 @@ Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 
 **首要目标：由 AI 生成的界面。** 应用里的助手可以用一个界面而不是一段文字来回答。模型写出一个小的 TSX 模块（一个表单、一张图表、一张预订卡片），服务器检查、构建并签名后，应用下载并在 `NshAppView` 中显示：是原生界面，运行在沙箱里，只能做你授予的事，而且不需要更新应用。nsh 围绕这个场景设计，整体架构都是 AI 友好的：
 
-- **模型擅长的格式。** 一个模块就是一个 TSX 文件，用到信号、少量宿主元素和 Tailwind 类——都是模型在 Web 上早已熟悉的词汇，不需要构建配置，也没有 `node_modules`。
+- **模型擅长的格式。** 一个模块就是一个 TSX 文件，用到信号、少量宿主元素和 Tailwind 类——都是模型在 Web 上早已熟悉的词汇，不需要构建配置，也无需 NPM。
 - **精确的、自动生成的契约。** 每个元素、属性、样式键和模块都有从 Rust 源码生成的 TypeScript 声明（`.nsh/types`），生成的代码可以做类型检查，也可以把准确的 API 交给模型，而不是让它去猜。本文档也以纯文本形式提供给模型（[`llms.txt`](/llms.txt)、[`llms-full.txt`](/llms-full.txt)）。
 - **下发之前就能验证。** `nsh trace` 可以无界面、不需要设备地运行模块，报告错误和它生成的视图；构建错误附带代码定位。生成流程可以编译、运行、读取结果再重试。编译器也能作为库在进程内运行（`nsh_bundler::compile_module`），甚至在浏览器里运行（[在线试用](/zh-CN/playground)）。
 - **不可信也能安全运行。** 生成的代码就是不可信代码。每个模块运行在独立的 QuickJS 虚拟机里，受内存、调用时长和节点数限制，只能使用宿主授予的能力，并以签名包的形式到达、先经应用校验。
@@ -104,7 +104,7 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 - **细粒度响应式。** 与 Solid 类似的[信号](./reactivity.md)，在原生层实现。组件只运行一次，只有读取了变化信号的表达式会重新执行。
 - **样式与 Tailwind**，在原生层解析：flexbox、CSS grid、阴影、渐变、滤镜、过渡（[样式](./styling.md)、[Tailwind](./tailwind.md)）。
 - **移动端 UI 组件集**（`nsh/ui/mobile`），组件用 Rust 编写，在 iOS 和 Android 上外观一致：[Button](../components/button.md)、[Card](../components/card.md)、[ListView](../components/list-view.md)、[导航](../components/navigation.md) 等。
-- **单一可执行文件的工具链。** 不需要 Node.js，也没有 `node_modules`；`nsh` 负责构建模块、生成类型声明、以热模块替换的方式提供开发服务、打包和签名。
+- **单一可执行文件的工具链。** 不需要 Node.js，也无需 NPM；`nsh` 负责构建模块、生成类型声明、以热模块替换的方式提供开发服务、打包和签名。
 
 ## 运行平台
 

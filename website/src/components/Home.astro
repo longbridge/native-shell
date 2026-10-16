@@ -1,9 +1,8 @@
 ---
 // The landing page. Structure and rules follow gpui-kit.com (DESIGN.md):
 // one container per band, hairline separators, restraint, verifiable
-// specifics. The hero shows what nsh is for: a native host app whose
-// assistant answers with a generated module, running live in the marked
-// region (the WebAssembly preview of demos/home-module.tsx).
+// specifics. The hero runs the gallery's AI chat live (demos/home-chat.tsx
+// on the WebAssembly runtime) in a frame of the site's design.
 import { BASE, url, type Lang } from '../lib/site';
 import { hasPlayer } from '../lib/demo.js';
 import HeroField from './HeroField.astro';
@@ -13,7 +12,7 @@ const { lang = 'en' } = Astro.props;
 const zh = lang === 'zh-CN';
 const link = (path: string) => url(zh ? `zh-CN/${path}` : path);
 const player = hasPlayer();
-const moduleSrc = `${BASE}play/index.html?theme=dark#home-module`;
+const chatSrc = `${BASE}play/index.html?theme=dark#home-chat`;
 
 const copy = zh
   ? {
@@ -28,17 +27,13 @@ const copy = zh
         ['building', '由长桥（Longbridge）构建'],
       ],
       snippetLang: 'Swift',
-      host: {
-        title: '助手',
-        ask: '我的科技股今天表现怎么样？',
-        reply: '这是你的自选股，实时更新：',
-        generating: '正在生成模块…',
-        badge: '宿主应用',
-        input: '问点什么…',
-        tag: 'nsh 模块',
+      demo: {
+        title: 'Chat.tsx',
+        badge: '运行中',
+        frame: '在线示例：AI 聊天',
+        caption: '示例应用里的 AI 聊天，用 TSX 编写，在这里由 Native Shell 的 WebAssembly 运行时实时运行。回复是本地脚本模拟的流式输出；可以点建议或用 + 重放场景。',
+        pending: '在线预览尚未构建：运行 bun run dev（或 cargo xtask web）。',
       },
-      legendHost: '原生应用：宿主自己的 UIKit / Android 代码',
-      legendModule: 'nsh 模块：生成的 TSX，在沙箱中运行（此处为 Web 预览）',
       replay: '重播',
       capKicker: 'AI 友好',
       capTitle: '为模型编写、为宿主把关而设计。',
@@ -68,17 +63,13 @@ const copy = zh
         ['building', 'Built at Longbridge'],
       ],
       snippetLang: 'Swift',
-      host: {
-        title: 'Assistant',
-        ask: 'How are my tech stocks doing today?',
-        reply: 'Here’s your watchlist, live:',
-        generating: 'Generating module…',
-        badge: 'Host app',
-        input: 'Ask anything…',
-        tag: 'nsh module',
+      demo: {
+        title: 'Chat.tsx',
+        badge: 'Live',
+        frame: 'Live demo: AI chat',
+        caption: 'The gallery’s AI chat, written in TSX and running live here on the Native Shell WebAssembly runtime. Replies are scripted and streamed locally; tap a suggestion or + to replay a scenario.',
+        pending: 'The live preview is not built yet: run bun run dev (or cargo xtask web).',
       },
-      legendHost: 'Native app: the host’s own UIKit / Android code',
-      legendModule: 'nsh module: generated TSX in a sandbox (web preview here)',
       replay: 'Replay',
       capKicker: 'AI friendly',
       capTitle: 'Designed for models to write and hosts to trust.',
@@ -99,20 +90,20 @@ const copy = zh
 
 const caps = zh
   ? [
-      { id: 'tsx', icon: 'file', title: '模型擅长的格式', body: '一个模块就是一个 TSX 文件：信号、少量宿主元素和 Tailwind 类。没有构建配置，没有 node_modules。', chips: ['TSX', 'signal()', 'class'] },
+      { id: 'native', icon: 'phone', title: '真正的原生视图', body: '模块由 UIKit 与 Android 视图组成，地图、网页视图这类原生组件可以直接嵌入，没有图层问题；系统的文本选区、拷贝与翻译菜单、输入法和无障碍都原样可用。', chips: ['UIView', 'android.view.View'] },
+      { id: 'tsx', icon: 'file', title: '模型擅长的格式', body: '一个模块就是一个 TSX 文件：信号、少量宿主元素和 Tailwind 类。没有构建配置，无需 NPM。', chips: ['TSX', 'signal()', 'class'] },
       { id: 'types', icon: 'braces', title: '精确的生成式契约', body: '每个元素、属性和模块都有从 Rust 源码生成的 TypeScript 声明，文档也以 llms.txt 提供给模型。', chips: ['.nsh/types', 'llms.txt'] },
       { id: 'check', icon: 'check', title: '无需设备即可验证', body: 'nsh trace 无界面地运行模块并报告错误；编译器还能在进程内或浏览器里运行。生成、检查、重试。', chips: ['nsh trace', 'compile_module'] },
       { id: 'sandbox', icon: 'lock', title: '不可信，也能安全运行', body: '每个视图一个 QuickJS 虚拟机，内存、调用时长和节点数都有上限，只能使用宿主授予的能力。', chips: ['NshLimits', 'grantCapabilities'] },
       { id: 'signed', icon: 'shield', title: '签名下发，可吊销', body: '模块以 Ed25519 签名的 .nshpkg 到达；发布密钥由离线根密钥认证，设备端检查吊销列表。', chips: ['nsh publish', 'NshTrust'] },
-      { id: 'native', icon: 'phone', title: '真正的原生视图', body: '模块由 UIKit 与 Android 视图组成：系统的文本选区、拷贝与翻译菜单、输入法和无障碍都原样可用。', chips: ['UIView', 'android.view.View'] },
     ]
   : [
-      { id: 'tsx', icon: 'file', title: 'A format models write well', body: 'A module is one TSX file: signals, a few host elements and Tailwind classes. No build configuration, no node_modules.', chips: ['TSX', 'signal()', 'class'] },
+      { id: 'native', icon: 'phone', title: 'Real native views', body: 'Modules are made of UIKit and Android views: native components such as maps and web views embed with no layering problems, and the system’s text selection, Copy and Translate menu, input and accessibility just work.', chips: ['UIView', 'android.view.View'] },
+      { id: 'tsx', icon: 'file', title: 'A format models write well', body: 'A module is one TSX file: signals, a few host elements and Tailwind classes. No build configuration, no NPM.', chips: ['TSX', 'signal()', 'class'] },
       { id: 'types', icon: 'braces', title: 'An exact, generated contract', body: 'Every element, prop and module has TypeScript declarations generated from the Rust sources; the docs are served to models as llms.txt.', chips: ['.nsh/types', 'llms.txt'] },
       { id: 'check', icon: 'check', title: 'Checked without a device', body: 'nsh trace runs a module headless and reports errors; the compiler also runs in-process or in a browser. Generate, check, retry.', chips: ['nsh trace', 'compile_module'] },
       { id: 'sandbox', icon: 'lock', title: 'Untrusted, and contained', body: 'One QuickJS VM per view, with memory, call-time and node limits, reaching only the capabilities the host grants.', chips: ['NshLimits', 'grantCapabilities'] },
       { id: 'signed', icon: 'shield', title: 'Signed, revocable delivery', body: 'Modules arrive as Ed25519-signed .nshpkg files; release keys are certified by an offline root and revocations are checked on device.', chips: ['nsh publish', 'NshTrust'] },
-      { id: 'native', icon: 'phone', title: 'Real native views', body: 'Modules are made of UIKit and Android views, so the system’s text selection, Copy and Translate menu, input and accessibility just work.', chips: ['UIView', 'android.view.View'] },
     ];
 
 const uses = zh
@@ -209,44 +200,22 @@ const icon = (name: string, size = 16) =>
       </div>
 
       <figure class="stage rise rise--2" data-stage>
-        <!-- The host app in a card frame of the site's design (no device
-             chrome): a slim bar naming the app, the app on an inset surface. -->
+        <!-- The gallery's AI chat (demos/home-chat.tsx), live, in a frame of
+             the site's design: a slim bar, the app on an inset surface. -->
         <div class="device">
           <div class="device__bar">
-            <span class="host__avatar" set:html={icon('spark', 13)} />
-            <span class="host__title">{copy.host.title}</span>
-            <span class="device__badge">{copy.host.badge}</span>
+            <span class="device__tile" set:html={icon('spark', 13)} />
+            <span class="device__title">{copy.demo.title}</span>
+            <span class="device__badge"><i aria-hidden="true"></i>{copy.demo.badge}</span>
           </div>
           <div class="device__screen">
-            <div class="host__chat">
-              <div class="bubble bubble--me step step--1">{copy.host.ask}</div>
-              <div class="host__reply step step--2">
-                <span class="host__reply-avatar" set:html={icon('spark', 12)} />
-                <span class="typing" aria-hidden="true"><i></i><i></i><i></i></span>
-                <p class="host__reply-text">{copy.host.reply}</p>
-              </div>
-              <div class="module step step--3">
-                <span class="module__tag"><span class="module__tag-dot"></span>{copy.host.tag}</span>
-                <div class="module__frame">
-                  <div class="module__pending" aria-hidden="true">
-                    <div class="module__pending-head"><span class="spinner"></span>{copy.host.generating}</div>
-                    <div class="module__progress"><i></i></div>
-                  </div>
-                  {player
-                    ? <iframe data-module src={moduleSrc} title={copy.host.tag} loading="eager" tabindex="-1"></iframe>
-                    : null}
-                </div>
-              </div>
-            </div>
-            <div class="host__input" aria-hidden="true">
-              <span>{copy.host.input}</span>
-              <span class="host__send" set:html={icon('arrow', 13)} />
-            </div>
+            {player
+              ? <iframe data-chat src={chatSrc} title={copy.demo.frame} loading="eager"></iframe>
+              : <p class="device__pending">{copy.demo.pending}</p>}
           </div>
         </div>
         <figcaption class="legend">
-          <span><i class="legend__swatch legend__swatch--host"></i>{copy.legendHost}</span>
-          <span><i class="legend__swatch legend__swatch--module"></i>{copy.legendModule}</span>
+          <span>{copy.demo.caption}</span>
           <button type="button" class="legend__replay" data-replay>{copy.replay}</button>
         </figcaption>
       </figure>
@@ -406,52 +375,20 @@ const icon = (name: string, size = 16) =>
 </main>
 
 <script>
-  // The hero's story: the question, the assistant thinking, the module being
-  // generated, then the live module. Played once; Replay restarts it. The
-  // module appears when both the story and its frame are ready.
-  const MIN_STORY_MS = 3200;
+  // The hero's chat follows the page's theme: the player's `?theme=` when
+  // it loads, a message when the theme changes. Replay reloads it, which
+  // plays the scenario again.
   for (const stage of document.querySelectorAll<HTMLElement>('[data-stage]')) {
-    const frame = stage.querySelector<HTMLIFrameElement>('[data-module]');
-    // The module follows the page's theme: the player's `?theme=` when it
-    // loads, a message when the theme changes.
+    const frame = stage.querySelector<HTMLIFrameElement>('[data-chat]');
+    if (!frame) continue;
     const theme = () => (document.documentElement.classList.contains('light') ? 'light' : 'dark');
     const themed = (src: string) => src.replace(/theme=(dark|light)/, `theme=${theme()}`);
-    if (frame && themed(frame.src) !== frame.src) frame.src = themed(frame.src);
-    new MutationObserver(() => {
-      if (!frame) return;
-      frame.contentWindow?.postMessage({ theme: theme() }, '*');
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    let loaded = !frame;
-    let timer = 0;
-    const reveal = () => stage.classList.add('is-live');
-    const play = () => {
-      stage.classList.remove('is-playing', 'is-live');
-      void stage.offsetWidth;
-      stage.classList.add('is-playing');
-      clearTimeout(timer);
-      const started = performance.now();
-      const check = () => {
-        if (loaded && performance.now() - started >= MIN_STORY_MS) reveal();
-        else timer = window.setTimeout(check, 120);
-      };
-      check();
-    };
-    frame?.addEventListener('load', () => {
-      // The page loads first; the WebAssembly runtime needs a moment more.
-      window.setTimeout(() => (loaded = true), 900);
+    if (themed(frame.src) !== frame.src) frame.src = themed(frame.src);
+    new MutationObserver(() => frame.contentWindow?.postMessage({ theme: theme() }, '*')).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
     });
-    stage.querySelector('[data-replay]')?.addEventListener('click', () => {
-      if (frame) frame.src = themed(frame.src);
-      loaded = !frame;
-      play();
-    });
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      stage.classList.add('is-playing');
-      loaded = true;
-      reveal();
-    } else {
-      play();
-    }
+    stage.querySelector('[data-replay]')?.addEventListener('click', () => (frame.src = themed(frame.src)));
   }
 </script>
 
@@ -500,82 +437,29 @@ const icon = (name: string, size = 16) =>
   .hero__snippet span { padding: 0.55rem 0.65rem; border-right: 1px solid var(--line); color: var(--faint); }
   .hero__snippet code { padding: 0.55rem 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--code-fg); }
 
-  /* The host app: a card frame (the site's card finish), a slim bar with
-     the app's name, the app itself on an inset surface. */
-  .stage { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+  /* The live chat in a card frame of the site's design (the card finish),
+     a slim bar with the file and a live badge, the app on an inset surface;
+     phone width, so the app lays out as on a phone. */
+  .stage { --w: 392px; margin: 0; display: flex; flex-direction: column; align-items: center; gap: 1.1rem; }
   .device {
-    --w: 352px;
     width: var(--w); padding: 0 8px 8px; border: 1px solid var(--border); border-radius: 20px;
     background: var(--card) var(--finish-card-bg); box-shadow: var(--finish-card), var(--shadow-window);
   }
-  .device__bar { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px; }
-  .device__badge { margin-left: auto; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--finish-raised-bg); box-shadow: var(--finish-raised); color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+  .device__bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px; }
+  .device__tile { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--finish-accent-bg); box-shadow: var(--finish-accent); color: var(--on-citrus); }
+  .device__title { color: var(--muted-foreground); font: 0.75rem/1 var(--font-mono); }
+  .device__badge { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); font-size: 11px; font-weight: 600; }
+  .device__badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   .device__screen {
-    position: relative; height: 456px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-    background: var(--inset); box-shadow: var(--finish-inset); color: var(--foreground);
-    display: flex; flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", sans-serif;
+    position: relative; height: 600px; border-radius: 14px; overflow: hidden;
+    background: var(--inset); box-shadow: 0 0 0 1px var(--line);
   }
-  .host__avatar { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--finish-accent-bg); box-shadow: var(--finish-accent); color: var(--on-citrus); }
-  .host__title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-  .host__chat { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 14px 10px; overflow: hidden; }
-  .bubble--me { align-self: flex-end; max-width: 78%; padding: 9px 13px; border-radius: 18px 18px 5px 18px; background: var(--finish-accent-bg); box-shadow: var(--finish-accent); color: var(--on-citrus); font-size: 14px; font-weight: 500; line-height: 1.35; }
-  .host__reply { display: flex; align-items: flex-start; gap: 8px; min-height: 22px; }
-  .host__reply-avatar { flex-shrink: 0; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid var(--border); background: var(--finish-raised-bg); box-shadow: var(--finish-raised); color: var(--citrus); margin-top: 1px; }
-  .host__reply-text { margin: 0; font-size: 14px; line-height: 1.4; color: var(--foreground); }
-  .typing { display: inline-flex; gap: 4px; align-items: center; height: 22px; }
-  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
-  /* The composer: a recessed field with a light round send button. */
-  .host__input { display: flex; align-items: center; justify-content: space-between; margin: 0 12px 10px; padding: 7px 7px 7px 15px; border: 1px solid var(--line); border-radius: 22px; background: var(--inset); box-shadow: var(--finish-inset); color: var(--faint); font-size: 14px; }
-  .host__send { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--finish-primary-bg); box-shadow: var(--finish-primary); color: var(--brand-contrast); transform: rotate(-90deg); }
+  .device__screen::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: var(--finish-inset); pointer-events: none; }
+  .device__screen iframe { display: block; width: 100%; height: 100%; border: 0; }
+  .device__pending { display: grid; place-items: center; height: 100%; margin: 0; padding: 2rem; color: var(--muted-foreground); font-size: 0.85rem; text-align: center; }
 
-  /* The module region: the one part nsh draws. */
-  .module { position: relative; margin-top: 4px; }
-  .module__frame {
-    position: relative; height: 262px; border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden;
-    background: var(--card) var(--finish-card-bg); box-shadow: var(--finish-card);
-  }
-  .module::after {
-    content: ""; position: absolute; inset: -5px; border-radius: 21px; pointer-events: none;
-    border: 1.5px dashed color-mix(in srgb, var(--citrus) 85%, transparent);
-  }
-  .module__tag {
-    position: absolute; z-index: 2; top: -14px; right: 10px; display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 8px; border-radius: 999px; background: var(--finish-accent-bg); color: var(--on-citrus);
-    font: 600 10.5px/1.2 var(--font-mono); letter-spacing: 0.02em; box-shadow: var(--finish-accent);
-  }
-  .module__tag-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--on-citrus); }
-  /* The card's top highlight, drawn over the live module too. */
-  .module__frame::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; box-shadow: inset 0 1px 0 var(--highlight); pointer-events: none; }
-  .module iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transform: scale(.985); transition: opacity .45s ease, transform .6s cubic-bezier(.16, 1, .3, 1); }
-  .module__pending { position: absolute; inset: 0; padding: 16px; display: flex; flex-direction: column; justify-content: center; gap: 12px; transition: opacity .35s ease; }
-  .module__pending-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--foreground); }
-  .spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--citrus); animation: spin .8s linear infinite; }
-  /* Generating: one row and a thin line that fills while the story runs. */
-  .module__progress { height: 2px; border-radius: 1px; background: var(--line); overflow: hidden; }
-  .module__progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--citrus); }
-
-  /* The story (entrance only). */
-  .step { opacity: 0; }
-  .host__reply-text { display: none; }
-  .is-playing .step--1 { animation: rise .62s cubic-bezier(.16, 1, .3, 1) .35s both; }
-  .is-playing .step--2 { animation: rise .5s cubic-bezier(.16, 1, .3, 1) 1s both; }
-  .is-playing .step--3 { animation: rise .62s cubic-bezier(.16, 1, .3, 1) 1.7s both; }
-  .is-playing .typing i { animation: blink 1s ease-in-out infinite; }
-  .is-playing .typing i:nth-child(2) { animation-delay: .15s; }
-  .is-playing .typing i:nth-child(3) { animation-delay: .3s; }
-  .is-playing .module__progress i { animation: fill 1.4s cubic-bezier(.4, 0, .2, 1) 1.9s both; }
-  .is-live .typing { display: none; }
-  .is-live .host__reply-text { display: block; animation: rise .4s ease both; }
-  .is-live .module__pending { opacity: 0; }
-  .is-live .module iframe { opacity: 1; transform: none; }
-
-  .legend { display: grid; gap: 6px; justify-items: start; max-width: min(400px, 100%); font-size: 0.8rem; color: var(--muted-foreground); }
-  .legend span { display: inline-flex; align-items: center; gap: 8px; }
-  .legend__swatch { width: 14px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-  .legend__swatch--host { background: var(--raised); box-shadow: inset 0 0 0 1px var(--border); }
-  .legend__swatch--module { border: 1.5px dashed var(--citrus); }
-  .legend__replay { margin-top: 2px; padding: 0; border: 0; background: none; color: var(--foreground); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--brand-line); }
+  .legend { display: grid; gap: 8px; justify-items: start; max-width: var(--w); font-size: 0.8rem; line-height: 1.5; color: var(--muted-foreground); }
+  .legend__replay { padding: 0; border: 0; background: none; color: var(--foreground); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--brand-line); }
 
   /* Capability grid: hairline cells, one diagram box each. */
   .caps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
@@ -674,15 +558,7 @@ const icon = (name: string, size = 16) =>
     .rise { animation: rise .62s cubic-bezier(.16, 1, .3, 1) both; }
     .rise--2 { animation-delay: .07s; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .step { opacity: 1 !important; animation: none !important; }
-    .module__progress i { width: 100% !important; animation: none !important; }
-    .spinner { animation: none !important; }
-  }
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  @keyframes blink { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fill { from { width: 0; } to { width: 100%; } }
 
   @media (max-width: 1080px) {
     .hero__inner { grid-template-columns: minmax(0, 1fr); gap: 3rem; }
@@ -699,6 +575,6 @@ const icon = (name: string, size = 16) =>
     .platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .platform:nth-child(2) { border-right: 0; }
     .platform:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
-    .device { --w: min(352px, calc(100vw - 2rem)); }
+    .stage { --w: min(392px, calc(100vw - 2rem)); }
   }
 </style>

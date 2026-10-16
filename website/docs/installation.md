@@ -100,7 +100,7 @@ On Linux, build the CLI and the Android runtime from a checkout (`cargo build -p
 
 ## Editor setup
 
-nsh needs no `node_modules`. `nsh init` writes a `tsconfig.json` and the type declarations of everything nsh provides into `.nsh/types`, and every command that builds the app keeps them up to date. Any editor that uses the TypeScript language server (VS Code, Zed, Neovim, WebStorm) type-checks the app with them. See [Project structure](./project-structure.md#tsconfigjson-and-nshtypes).
+nsh needs no NPM. `nsh init` writes a `tsconfig.json` and the type declarations of everything nsh provides into `.nsh/types`, and every command that builds the app keeps them up to date. Any editor that uses the TypeScript language server (VS Code, Zed, Neovim, WebStorm) type-checks the app with them. See [Project structure](./project-structure.md#tsconfigjson-and-nshtypes).
 
 ## Next steps
 
