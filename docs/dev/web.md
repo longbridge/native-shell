@@ -12,6 +12,11 @@ builds keep their caches), and bundles each demo with `nsh build --release` into
 ignored by git). Check the crate with `cargo clippy -p nsh-platform-web --target wasm32-unknown-unknown`: off
 WebAssembly it is empty. `.cargo/config.toml` gives wasm32 an 8 MiB stack (QuickJS recursion).
 
+QuickJS is C, so the build needs a clang that targets wasm32 and an `llvm-ar` (CI: Ubuntu's `clang` and `llvm`, with
+`AR_wasm32_unknown_unknown=llvm-ar`). Apple's clang has no WebAssembly target: on macOS point
+`CC_wasm32_unknown_unknown` and `AR_wasm32_unknown_unknown` at an LLVM toolchain's `clang` and `llvm-ar` (Homebrew's
+`llvm`, or the Android NDK's `toolchains/llvm/prebuilt/*/bin`).
+
 ## What WebAssembly changes in the shared crates
 
 - **No threads.** `nsh_engine::LocalEngine` drives the engine from the host's event loop: `pump()` handles what was
