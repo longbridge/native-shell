@@ -6,6 +6,10 @@
   `EndDrag`, `onMomentumScrollBegin` / `End` (a glide caught by a new drag ends with `onMomentumScrollEnd`). Snapping is decided
   by `ScrollBehavior::snap_target` (core) on iOS and its Java port on Android, from the release offset, the projected glide and
   the velocity. Lists keep the visible rows in place when items are inserted above them (`splice`).
+- **Content container** (`<Scroll>`): `contentContainerStyle` / `contentContainerClass` are the renderer's
+  (`dom.rs` `scroll_content`): the first one set makes a view the scroll view's children move into (also the ones
+  already there; later inserts and removals go to it), and styles it. The core lays a scroll view's children out in
+  the scroll view itself, so without it nothing changes (no extra view).
 - **Zooming** (`<Scroll>`, not lists): `maximumZoomScale` above `minimumZoomScale` makes the content zoomable; `zoomScale`
   zooms when it changes, `bouncesZoom`, `pinchGestureEnabled`, `centerContent` (content smaller than the viewport is centered);
   ref `zoomTo({ scale, x, y, animated })` (content point `x`, `y` in the middle); `onScroll` reports `zoomScale` and the zoomed
@@ -16,7 +20,9 @@
   number of fingers, OverScroller flings, rubber bands past the edges and the zoom limits). Pinches start only after
   Android's minimum span (about 27 mm between the fingers). Zoom reports go to the core (`EngineControl::zoom`).
 - **List** props: `each`, `estimatedItemSize`, `numColumns`, `inverted` (chat: item 0 at the bottom, starts at the end and keeps its
-  distance from the end as content changes), `stickyHeaderIndices` (one column, not inverted), `ListHeaderComponent` /
+  distance from the end as content changes), `maintainVisibleContentPosition` (`autoscrollToBottomThreshold`: a list
+  that is not inverted follows its end while within that distance of it, `ListState::anchor_end`; scrolled up, growth
+  below the viewport moves nothing; not yet a `VirtualList` method for Rust components), `stickyHeaderIndices` (one column, not inverted), `ListHeaderComponent` /
   `ListFooterComponent` / `ListEmptyComponent` / `ItemSeparatorComponent` (a component or an element), `contentContainerStyle`
   (padding and gaps, numbers), `initialScrollIndex`, `onEndReached` + `onEndReachedThreshold`, `onViewableItemsChanged` +
   `viewabilityConfig` (`itemVisiblePercentThreshold` / `viewAreaCoveragePercentThreshold` / `minimumViewTime`), `keyExtractor`,

@@ -57,8 +57,24 @@ final class Mounter {
     private static final int CANVAS = 28;
     private static final int COMPONENT = 29;
     private static final int COMPONENT_PROPS = 30;
+    private static final int OVERFLOW = 31;
+    private static final int ACCESSIBILITY_LABEL = 32;
+    private static final int APPEARANCE = 33;
     /** The surface lays out right to left: native widgets mirror. */
     boolean rtl;
+    /** The app's appearance (`nsh_core::platform::Appearance`): 0 the system's, 1 light, 2 dark. */
+    int appearance;
+    /** The status bar the app asked for last (style, hidden, background), applied again when the appearance changes. */
+    private int barStyle = -1;
+    private boolean barHidden;
+    private Integer barBackground;
+
+    /** Dark appearance as shown: the app's, else the system's. */
+    boolean night() {
+        if (appearance != 0) return appearance == 2;
+        return (context.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    }
 
     /** A screen's options (`encode.rs` `screen_config`). */
     static final class ScreenOptions {
@@ -72,6 +88,10 @@ final class Mounter {
     private static final class Dynamic {
         float opacity = 1, tx, ty, sx = 1, sy = 1, rotate, rotateX, rotateY, perspective;
         int background;
+        /** Border colors, shadow color (its opacity in the alpha) and radius (px). */
+        int[] borderColors = new int[4];
+        int shadowColor;
+        float shadowRadius = 0.01f;
     }
 
     /** One part of a layout animation (`encode.rs` `layout_transition`). */
@@ -107,6 +127,13 @@ final class Mounter {
     int touchListeners;
     /** One per root view (the surface, modals). */
     final java.util.ArrayList<TouchTracker> touchTrackers = new java.util.ArrayList<>();
+    /** The text with a selection (one at a time, as in TextView). */
+    TextBox selectedText;
+
+    /** A finger went down at the screen point: a selection elsewhere ends. */
+    void touchDown(float rawX, float rawY) {
+        if (selectedText != null && !selectedText.selectionContains(rawX, rawY)) selectedText.clearSelection();
+    }
     /** Scroll views a JS responder keeps from scrolling. */
     private final java.util.ArrayList<ScrollBox> blockedScrolls = new java.util.ArrayList<>();
     /** `hitSlop` of views that have one (px: top, right, bottom, left). */
@@ -196,9 +223,10 @@ final class Mounter {
                         linkEvents[i] = (b.getInt() & 0xffffffffL) | ((long) b.getInt() << 32);
                     }
                     boolean selectable = b.getInt() != 0;
+                    Integer selectionColor = optColor(b);
                     if (v instanceof TextBox) {
                         TextBox t = (TextBox) v;
-                        t.selectable = selectable;
+                        t.setSelectable(selectable, selectionColor);
                         t.setLayout((Layout) layout, x * density, y * density, w * density, h * density);
                         t.setLinks(linkData, linkEvents);
                         if (links > 0 && t.press == null) t.press = new Pressable(t, this, t.id);
@@ -249,6 +277,17 @@ final class Mounter {
                     }
                     break;
                 }
+                case OVERFLOW: {
+                    View v = views.get(b.getInt());
+                    boolean some = b.getInt() != 0;
+                    float x = b.getFloat(), y = b.getFloat(), w = b.getFloat(), h = b.getFloat();
+                    if (v instanceof Box) {
+                        ((Box) v).overflow = some
+                                ? new android.graphics.RectF(x * density, y * density, (x + w) * density, (y + h) * density)
+                                : null;
+                    }
+                    break;
+                }
                 case TRACK_STATES: {
                     int id = b.getInt(), states = b.getInt();
                     trackStates(id, states);
@@ -261,6 +300,11 @@ final class Mounter {
                     b.position(b.position() + words * 4);
                     View v = views.get(id);
                     if (v instanceof CanvasBox) drawing((CanvasBox) v, code, objects);
+                    break;
+                }
+                case APPEARANCE: {
+                    appearance = b.getInt();
+                    if (barStyle == 0) SystemUi.statusBar(context, barStyle, barHidden, barBackground, night());
                     break;
                 }
                 case LAYOUT_DIRECTION: {
@@ -332,6 +376,16 @@ final class Mounter {
                     break;
                 }
                 case VIEW_PROPS: viewProps(b, objects); break;
+                case ACCESSIBILITY_LABEL: {
+                    int id = b.getInt();
+                    String label = string(objects, b.getInt());
+                    View v = views.get(id);
+                    A11y a = a11y.get(id);
+                    if (v == null || a == null) break;
+                    a.label = label;
+                    a.apply(v);
+                    break;
+                }
                 case SCREEN_CONFIG: screenConfig(b, objects); break;
                 case NATIVE_PROPS: nativeProps(b, objects); break;
                 case STICKY_CELLS: {
@@ -428,7 +482,7 @@ final class Mounter {
     private void create(int id, int kind) {
         View v;
         switch (kind) {
-            case 1: v = new TextBox(context, id); break;
+            case 1: v = new TextBox(context, this, id); break;
             case 2: {
                 ImageBox[] self = new ImageBox[1];
                 self[0] = new ImageBox(context, id, new Images.Callback() {
@@ -750,6 +804,10 @@ final class Mounter {
         Effects fx = Effects.read(b, density);
         d.opacity = opacity;
         d.background = background;
+        d.borderColors = borderColors;
+        int shadowAlpha = Math.round(((shadowColor >>> 24) & 0xff) * Math.max(0, Math.min(1, sOpacity)));
+        d.shadowColor = (shadowAlpha << 24) | (shadowColor & 0x00ffffff);
+        d.shadowRadius = Math.max(0.01f, sRadius * density);
         if (v == null) return;
         Dynamic old = statics.get(id);
         statics.put(id, d);
@@ -764,11 +822,10 @@ final class Mounter {
             }
             decor.borderStyle = borderStyle;
             decor.continuous = continuous;
-            int alpha = Math.round(((shadowColor >>> 24) & 0xff) * Math.max(0, Math.min(1, sOpacity)));
-            decor.shadowColor = (alpha << 24) | (shadowColor & 0x00ffffff);
+            decor.shadowColor = d.shadowColor;
             decor.shadowDx = sdx * density;
             decor.shadowDy = sdy * density;
-            decor.shadowRadius = Math.max(0.01f, sRadius * density);
+            decor.shadowRadius = d.shadowRadius;
             decor.originX = originXFraction ? originX : originX * density;
             decor.originXFraction = originXFraction;
             decor.originY = originYFraction ? originY : originY * density;
@@ -1032,10 +1089,15 @@ final class Mounter {
         Decor backface = decor(v);
         if (backface != null) backface.applyBackface(v);
         Decor decor = decor(v);
-        if (decor != null && decor.fill != d.background) {
+        if (decor != null && (decor.fill != d.background || decor.shadowColor != d.shadowColor
+                || decor.shadowRadius != d.shadowRadius || !java.util.Arrays.equals(decor.borderColors, d.borderColors))) {
             decor.fill = d.background;
+            decor.shadowColor = d.shadowColor;
+            decor.shadowRadius = d.shadowRadius;
+            System.arraycopy(d.borderColors, 0, decor.borderColors, 0, 4);
             v.invalidate();
         }
+        if (v instanceof TextBox) ((TextBox) v).setColor(false, 0);
     }
 
     /** `perspective` as a camera distance (React Native's normalization). */
@@ -1189,6 +1251,11 @@ final class Mounter {
             rippleColor = optColor(b);
             rippleRadius = b.getFloat();
         }
+        if (b.getInt() != 0) {
+            panActivations.put(id, new float[] {b.getFloat(), b.getFloat(), b.getFloat(), b.getFloat()});
+        } else {
+            panActivations.remove(id);
+        }
         if (v == null) return;
         Feedback f = feedback.get(id);
         if (f == null) feedback.put(id, f = new Feedback());
@@ -1270,6 +1337,37 @@ final class Mounter {
                     int color = Float.floatToRawIntBits(value);
                     if (decor != null && decor.fill != color) {
                         decor.fill = color;
+                        v.invalidate();
+                    }
+                    break;
+                }
+                case 11: {
+                    Decor decor = decor(v);
+                    int color = Float.floatToRawIntBits(value);
+                    if (decor != null && (decor.borderColors[0] != color || decor.borderColors[1] != color
+                            || decor.borderColors[2] != color || decor.borderColors[3] != color)) {
+                        java.util.Arrays.fill(decor.borderColors, color);
+                        v.invalidate();
+                    }
+                    break;
+                }
+                case 12:
+                    if (v instanceof TextBox) ((TextBox) v).setColor(true, Float.floatToRawIntBits(value));
+                    break;
+                case 13: {
+                    Decor decor = decor(v);
+                    int color = Float.floatToRawIntBits(value);
+                    if (decor != null && decor.shadowColor != color) {
+                        decor.shadowColor = color;
+                        v.invalidate();
+                    }
+                    break;
+                }
+                case 14: {
+                    Decor decor = decor(v);
+                    float radius = Math.max(0.01f, value * density);
+                    if (decor != null && decor.shadowRadius != radius) {
+                        decor.shadowRadius = radius;
                         v.invalidate();
                     }
                     break;
@@ -1635,7 +1733,10 @@ final class Mounter {
                 boolean hidden = b.getInt() != 0;
                 b.getInt(); // animated: the system animates bar changes
                 Integer background = optColor(b);
-                SystemUi.statusBar(context, style, hidden, background);
+                barStyle = style;
+                barHidden = hidden;
+                barBackground = background;
+                SystemUi.statusBar(context, style, hidden, background, night());
                 break;
             }
             case 12: {
@@ -1692,6 +1793,23 @@ final class Mounter {
                 float x = b.getFloat(), y = b.getFloat();
                 boolean animated = b.getInt() != 0;
                 if (v instanceof ScrollBox) ((ScrollBox) v).zoomTo(scale, hasCenter, x, y, animated);
+                break;
+            }
+            case 22: {
+                SystemUi.setClipboard(context, (String) objects[b.getInt()]);
+                break;
+            }
+            case 23: {
+                int request = b.getInt();
+                boolean hasOnly = b.getInt() != 0;
+                String text = SystemUi.readClipboard(context, hasOnly);
+                boolean has = text != null;
+                if (hasOnly || text == null) {
+                    eventMap(1, Native.CLIPBOARD, new String[] {"id", "has"}, new Object[] {(double) request, has});
+                } else {
+                    eventMap(1, Native.CLIPBOARD, new String[] {"id", "has", "text"},
+                            new Object[] {(double) request, true, text});
+                }
                 break;
             }
             case 19: {
@@ -1838,6 +1956,11 @@ final class Mounter {
         return Native.hasPan(handle(), id);
     }
 
+    /** `panActivation`s, by view. */
+    private final android.util.SparseArray<float[]> panActivations = new android.util.SparseArray<>();
+    /** Scroll views an activated pan gate blocks. */
+    private final java.util.ArrayList<ScrollBox> gatedScrolls = new java.util.ArrayList<>();
+
     private void clearJsResponder() {
         for (ScrollBox s : blockedScrolls) s.jsBlocked = false;
         blockedScrolls.clear();
@@ -1849,8 +1972,31 @@ final class Mounter {
     }
 
     /** See {@link Native#touch}. */
-    void touches(int phase, int[] ids, int[] targets, int[] pathLengths, int[] paths, float[] coords, boolean[] changed, long time) {
-        Native.touch(handle(), phase, ids, targets, pathLengths, paths, coords, changed, time);
+    void touches(int phase, int[] ids, int[] targets, int[] pathLengths, int[] paths, float[] coords, boolean[] changed, long time, int activated) {
+        Native.touch(handle(), phase, ids, targets, pathLengths, paths, coords, changed, time, activated);
+    }
+
+    /** `panActivation` of view {@code id} (points: active x, y, fail x, y; NaN: none), or null. */
+    float[] panActivation(int id) {
+        return panActivations.get(id);
+    }
+
+    /** The pan gate of {@code v} activated: the scroll views around it stop taking the touches. */
+    void gateBlock(View v) {
+        gateRelease();
+        for (ViewParent p = v.getParent(); p != null; p = p.getParent()) {
+            if (p instanceof ScrollBox) {
+                ((ScrollBox) p).gateBlocked = true;
+                gatedScrolls.add((ScrollBox) p);
+            }
+        }
+        if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+    }
+
+    /** The touches of an activated pan gate ended. */
+    void gateRelease() {
+        for (ScrollBox s : gatedScrolls) s.gateBlocked = false;
+        gatedScrolls.clear();
     }
 
     void event(int id, int kind) {

@@ -34,6 +34,9 @@ pub(crate) struct NshViewIvars {
     /// The view handles presses: an accessibility element by default, and
     /// "activate" presses it.
     pressable: std::cell::Cell<bool>,
+    /// The area descendants cover outside the bounds (`MountItem::Overflow`):
+    /// touches there are looked for in the subviews.
+    overflow: std::cell::Cell<Option<CGRect>>,
 }
 
 define_class!(
@@ -138,6 +141,11 @@ impl NshView {
             unsafe { msg_send![super(self), hitTest: point, withEvent: event] }
         };
         match mode {
+            PointerEvents::Auto | PointerEvents::BoxNone
+                if self.outside_in_overflow(point, event) =>
+            {
+                self.hit_overflow(point, event)
+            }
             PointerEvents::Auto => hit(),
             PointerEvents::None => None,
             PointerEvents::BoxNone => {
@@ -149,6 +157,38 @@ impl NshView {
                 (visible && self.inside(point, event)).then(|| Retained::into_super(self.retain()))
             }
         }
+    }
+
+    /// The point is outside the view (and its hit slop) but in the area
+    /// its descendants cover, which UIKit's hit test never looks at.
+    fn outside_in_overflow(&self, point: CGPoint, event: Option<&UIEvent>) -> bool {
+        let Some(e) = self.ivars().overflow.get() else {
+            return false;
+        };
+        point.x >= e.origin.x
+            && point.y >= e.origin.y
+            && point.x < e.origin.x + e.size.width
+            && point.y < e.origin.y + e.size.height
+            && !self.clipsToBounds()
+            && self.isUserInteractionEnabled()
+            && !self.isHidden()
+            && self.alpha() > 0.01
+            && !self.inside(point, event)
+    }
+
+    /// UIKit's hit test of the subviews, without its bounds check: the
+    /// topmost subview with a target under the point; never the view itself
+    /// (the point is outside it).
+    fn hit_overflow(&self, point: CGPoint, event: Option<&UIEvent>) -> Option<Retained<UIView>> {
+        let subviews = self.subviews();
+        for i in (0..subviews.count()).rev() {
+            let sub = subviews.objectAtIndex(i);
+            let local = self.convertPoint_toView(point, Some(&sub));
+            if let Some(hit) = sub.hitTest_withEvent(local, event) {
+                return Some(hit);
+            }
+        }
+        None
     }
 
     fn inside(&self, point: CGPoint, event: Option<&UIEvent>) -> bool {
@@ -257,6 +297,17 @@ impl NshView {
     pub(crate) fn set_props(&self, props: ViewProps, control: &EngineControl) {
         *self.ivars().props.borrow_mut() = props;
         *self.ivars().control.borrow_mut() = Some(control.clone());
+    }
+
+    /// The area descendants cover outside the bounds, in the view's
+    /// coordinates (`MountItem::Overflow`).
+    pub(crate) fn set_overflow(&self, extent: Option<CGRect>) {
+        self.ivars().overflow.set(extent);
+    }
+
+    /// Replaces the label of the props set last (`MountItem::AccessibilityLabel`).
+    pub(crate) fn set_accessibility_label(&self, label: Option<std::sync::Arc<str>>) {
+        self.ivars().props.borrow_mut().accessibility.label = label;
     }
 
     /// The view has press handlers.

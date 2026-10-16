@@ -799,6 +799,50 @@ fn scroll_reports_content_size() {
     )));
 }
 
+/// A scroll view's content size set twice in one batch (a row relaid in
+/// two passes) reaches the platform once, with the last size: a transient
+/// smaller size would clamp the offset before the content grows back.
+#[test]
+fn scroll_content_is_sent_once_per_batch() {
+    let mut c = core();
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::Scroll,
+            },
+            style_op(2, &[("height", StyleValue::Number(200.0))]),
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    c.commit();
+    let key = c.key(2).unwrap();
+    c.set_scroll_content(key, Size::new(320.0, 277.0));
+    c.set_scroll_content(key, Size::new(320.0, 909.0));
+    let sizes: Vec<_> = c
+        .mount
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::ScrollContent { id: 2, size } => Some(size.height),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sizes, [909.0]);
+    // The next batch sends its own.
+    c.mount.clear();
+    c.batches += 1;
+    c.set_scroll_content(key, Size::new(320.0, 300.0));
+    assert!(matches!(
+        c.mount[..],
+        [MountItem::ScrollContent { id: 2, .. }]
+    ));
+}
+
 /// Plays JS: creates a cell per new slot, renders a fixed-height
 /// row for each bind and confirms the index.
 fn render_binds(
@@ -964,6 +1008,43 @@ fn list_keeps_visible_content_anchored() {
         shift > 0.0,
         "rows above the viewport grew; content must be shifted down"
     );
+}
+
+#[test]
+fn animated_background_colors_replace_gradients() {
+    let mut c = core();
+    let mut s = Style::default();
+    s.set_background_images(vec![crate::effects::Gradient {
+        kind: crate::effects::GradientKind::Linear { angle: 180.0 },
+        stops: Vec::new(),
+        repeating: false,
+    }]);
+    s.animated.push((AnimationProp::BackgroundColor, 7));
+    apply(
+        &mut c,
+        vec![
+            Op::Animation(AnimationOp::CreateValue {
+                node: 7,
+                value: 1.0,
+            }),
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            Op::SetStyle {
+                id: 2,
+                style: Box::new(s),
+                patch: StylePatch::default(),
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    assert!(view_style_of(&batch, 2).is_none_or(|s| s.effects.is_none()));
 }
 
 #[test]
@@ -1775,6 +1856,57 @@ fn view_props_and_gestures_reach_the_platform() {
     );
 }
 
+/// A label that follows app state goes alone, not with all the view's
+/// props; any other change (or the first props) sends them all.
+#[test]
+fn a_changing_label_is_sent_alone() {
+    use crate::props::AccessibilityProp;
+    let label = |v: &str| Op::SetProp {
+        id: 2,
+        prop: Prop::Accessibility(AccessibilityProp::Label(Some(v.into()))),
+    };
+    let mut c = core();
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            label("0 items"),
+            Op::Insert {
+                parent: 1,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(|i| matches!(i, MountItem::ViewProps { id: 2, props } if props.accessibility.label.as_deref() == Some("0 items"))));
+    apply(&mut c, vec![label("1 item")]);
+    let batch = c.commit().unwrap();
+    assert_eq!(batch.items.len(), 1, "{:?}", batch.items);
+    assert!(
+        matches!(&batch.items[0], MountItem::AccessibilityLabel { id: 2, label: Some(l) } if &**l == "1 item")
+    );
+    // With another prop in the same commit, everything goes once.
+    apply(
+        &mut c,
+        vec![
+            label("2 items"),
+            Op::SetProp {
+                id: 2,
+                prop: Prop::TestId(Some("counter".into())),
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    assert_eq!(batch.items.len(), 1, "{:?}", batch.items);
+    assert!(
+        matches!(&batch.items[0], MountItem::ViewProps { id: 2, props } if props.accessibility.label.as_deref() == Some("2 items"))
+    );
+}
+
 #[test]
 fn screens_fill_their_stack_below_the_header() {
     let mut c = core();
@@ -1839,6 +1971,22 @@ fn screens_fill_their_stack_below_the_header() {
     );
     assert!(batch.items.iter().any(
         |i| matches!(i, MountItem::ScreenConfig { id: 3, config } if config.header_height == 64.0)
+    ));
+    // The header the platform measured replaces the estimate (Catalyst
+    // can show its bar in the window's title bar).
+    c.set_screen_header(3, Some(52.0));
+    let batch = c.commit().unwrap();
+    assert_eq!(
+        frame_of(&batch, 4),
+        Some(Rect {
+            x: 0.0,
+            y: 52.0,
+            width: 320.0,
+            height: 428.0
+        })
+    );
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ScreenConfig { id: 3, config } if config.header_height == 52.0)
     ));
     // Without a header, the content starts at the top.
     apply(
@@ -2164,6 +2312,44 @@ fn important_classes_win_over_inline_styles() {
 }
 
 #[test]
+fn the_apps_appearance_wins_over_the_systems() {
+    use crate::platform::Appearance;
+    let mut c = core();
+    view_with_classes(&mut c, 2, "bg-white dark:bg-black");
+    let background = |batch: &MountBatch| view_style_of(batch, 2).map(|s| s.background_color);
+    assert_eq!(background(&c.commit().unwrap()), Some(Color(0xffff_ffff)));
+    let appearance = |c: &mut Core<FakeEngine>, a| {
+        apply(
+            c,
+            vec![Op::SetProp {
+                id: ROOT_ID,
+                prop: Prop::Appearance(a),
+            }],
+        )
+    };
+    appearance(&mut c, Appearance::Dark);
+    let batch = c.commit().unwrap();
+    assert_eq!(background(&batch), Some(Color(0x0000_00ff)));
+    assert!(batch.items.iter().any(|i| matches!(
+        i,
+        MountItem::Appearance {
+            appearance: Appearance::Dark
+        }
+    )));
+    // The system turning light changes nothing; following it again does.
+    c.set_class_environment(crate::tailwind::ClassEnvironment::default());
+    assert!(c.commit().is_none_or(|b| background(&b).is_none()));
+    c.set_class_environment(crate::tailwind::ClassEnvironment {
+        dark: true,
+        ..Default::default()
+    });
+    appearance(&mut c, Appearance::Light);
+    assert_eq!(background(&c.commit().unwrap()), Some(Color(0xffff_ffff)));
+    appearance(&mut c, Appearance::System);
+    assert_eq!(background(&c.commit().unwrap()), Some(Color(0x0000_00ff)));
+}
+
+#[test]
 fn dark_mode_and_breakpoints_restyle_natively() {
     let mut c = core();
     view_with_classes(&mut c, 2, "bg-white dark:bg-black p-2 md:p-8");
@@ -2425,6 +2611,29 @@ fn underlay_shows_while_pressed() {
         Color(0xffff_ffff)
     );
     assert_eq!(view_style_of(&batch, 3).unwrap().opacity, 0.5);
+}
+
+#[test]
+fn underlay_replaces_gradients_while_pressed() {
+    let mut c = core();
+    view_with_classes(&mut c, 2, "bg-linear-to-b from-white to-black");
+    apply(
+        &mut c,
+        vec![Op::SetProp {
+            id: 2,
+            prop: Prop::UnderlayColor(Color::parse("#dddddd")),
+        }],
+    );
+    let batch = c.commit().unwrap();
+    assert!(view_style_of(&batch, 2).unwrap().effects.is_some());
+    c.set_states(2, crate::tailwind::state::PRESSED);
+    let batch = c.commit().unwrap();
+    let style = view_style_of(&batch, 2).unwrap();
+    assert_eq!(style.background_color, Color(0xdddd_ddff));
+    assert!(style.effects.is_none());
+    c.set_states(2, 0);
+    let batch = c.commit().unwrap();
+    assert!(view_style_of(&batch, 2).unwrap().effects.is_some());
 }
 
 #[test]
@@ -4153,15 +4362,9 @@ mod components {
             .expect("a spring");
         assert_eq!(texts(&batch), ["springing"]);
         let mut finished = vec![
-            nsh_animation::Finished {
-                animation,
-                finished: true,
-            },
+            nsh_animation::Finished::new(animation, true),
             // JS's (even ids) stay for JS.
-            nsh_animation::Finished {
-                animation: 8,
-                finished: true,
-            },
+            nsh_animation::Finished::new(8, true),
         ];
         c.animations_finished(&mut finished);
         assert_eq!(finished.len(), 1);
@@ -4544,6 +4747,7 @@ mod touch {
         EventPayload::Touch(Box::new(TouchEvent {
             phase,
             timestamp: t,
+            activated: None,
             points: vec![TouchPoint {
                 id: 7,
                 target: path[0],
@@ -4733,6 +4937,89 @@ mod touch {
         );
     }
 
+    /// A view scrubbed sideways: it waits for the platform's pan (its
+    /// start claim is not asked meanwhile).
+    #[derive(Default)]
+    struct Scrub {
+        log: Vec<String>,
+    }
+
+    impl Component for Scrub {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view()
+                .child(
+                    view()
+                        .size(px(100.0))
+                        .claim_touches(TouchClaim::on_start())
+                        .claim_touches(TouchClaim::on_pan(crate::PanActivation::horizontal(
+                            10.0, 10.0,
+                        )))
+                        .on_responder_grant(cx.listener(
+                            |this: &mut Self, _: &ResponderEvent, cx| {
+                                this.log.push("grant".into());
+                                cx.notify();
+                            },
+                        )),
+                )
+                .child(text(self.log.join("|")))
+        }
+    }
+
+    #[test]
+    fn a_pan_claim_waits_for_the_platform_to_activate_it() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Scrub>(|| ()));
+        let batch = c.commit().unwrap();
+        let (id, activation) = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::ViewProps { id, props } => props.pan_activation.map(|a| (*id, a)),
+                _ => None,
+            })
+            .expect("the activation is mounted");
+        assert_eq!(activation, crate::PanActivation::horizontal(10.0, 10.0));
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::Start, &[id], 0.0, 0.0),
+        );
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::Move, &[id], 5.0, 16.0),
+        );
+        // Nothing to mount: no claim before the activation.
+        assert!(c.commit().is_none_or(|b| commands(&b).is_empty()));
+        let mut activated = touch(TouchPhase::Move, &[id], 14.0, 32.0);
+        if let EventPayload::Touch(t) = &mut activated {
+            t.activated = Some(id);
+        }
+        c.component_event(ROOT_ID, EventKind::Touch, &activated);
+        let batch = c.commit().unwrap();
+        assert_eq!(log(&batch), Some("grant".into()), "{batch:?}");
+        assert_eq!(
+            commands(&batch),
+            [(id, Command::SetJsResponder { block: true })]
+        );
+    }
+
+    #[test]
+    fn a_pan_activation_decides_by_axis() {
+        let pan = crate::PanActivation::horizontal(10.0, 8.0);
+        assert_eq!(pan.decide(4.0, 3.0), None);
+        assert_eq!(pan.decide(-11.0, 3.0), Some(true));
+        assert_eq!(pan.decide(4.0, -9.0), Some(false));
+        // Both passed by one move: the fail offset wins.
+        assert_eq!(pan.decide(20.0, 9.0), Some(false));
+        let any = crate::PanActivation::default();
+        assert_eq!(any.decide(6.0, 6.0), None);
+        assert_eq!(any.decide(8.0, 8.0), Some(true));
+    }
+
     /// A card scaled and turned by two-finger gestures.
     #[derive(Default)]
     struct Card {
@@ -4875,4 +5162,175 @@ mod painter {
         assert_eq!(ops[5], CanvasOp::LineDashOffset(Num::Slot(0)));
         assert_eq!(drawing.slots.len(), 1);
     }
+}
+
+/// A row (2) holding a field (3) whose absolutely placed menu (4) hangs
+/// below it, inside a card (5): row and card get the menu's area, the
+/// field does not reach out of the card, a clipping card stops it.
+#[test]
+fn overflowing_children_mount_their_area() {
+    let mut c = core();
+    let create = |id| Op::Create { id, tag: Tag::View };
+    let insert = |parent, child| Op::Insert {
+        parent,
+        child,
+        before: None,
+    };
+    apply(
+        &mut c,
+        vec![
+            create(5),
+            create(2),
+            create(4),
+            style_op(5, &[("padding", StyleValue::Number(10.0))]),
+            style_op(2, &[("height", StyleValue::Number(40.0))]),
+            style_op(
+                4,
+                &[
+                    ("position", StyleValue::Str("absolute")),
+                    ("top", StyleValue::Number(40.0)),
+                    ("left", StyleValue::Number(0.0)),
+                    ("width", StyleValue::Number(100.0)),
+                    ("height", StyleValue::Number(120.0)),
+                ],
+            ),
+            insert(2, 4),
+            insert(5, 2),
+            insert(ROOT_ID, 5),
+        ],
+    );
+    let batch = c.commit().unwrap();
+    let overflow = |batch: &MountBatch, id: NodeId| {
+        batch.items.iter().rev().find_map(|i| match i {
+            MountItem::Overflow { id: i, extent } if *i == id => Some(*extent),
+            _ => None,
+        })
+    };
+    // The row is 300 wide (the card's padding), 40 tall: the menu reaches
+    // 120 below it.
+    assert_eq!(
+        overflow(&batch, 2),
+        Some(Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 300.0,
+            height: 160.0,
+        }))
+    );
+    // In the card (60 tall: 40 + padding) at (10, 10): down to 170.
+    assert_eq!(
+        overflow(&batch, 5),
+        Some(Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 320.0,
+            height: 170.0,
+        }))
+    );
+    // Leaves have nothing to report, and nothing is sent again unchanged.
+    assert_eq!(overflow(&batch, 4), None);
+    c.apply(style_op(2, &[("height", StyleValue::Number(40.0))]))
+        .unwrap();
+    if let Some(batch) = c.commit() {
+        assert_eq!(overflow(&batch, 2), None);
+    }
+    // A clipping card has no area (what is outside is not drawn), and the
+    // menu inside the row now fits: the row's area goes away.
+    c.apply(style_op(
+        5,
+        &[
+            ("padding", StyleValue::Number(10.0)),
+            ("overflow", StyleValue::Str("hidden")),
+        ],
+    ))
+    .unwrap();
+    c.apply(style_op(2, &[("height", StyleValue::Number(200.0))]))
+        .unwrap();
+    let batch = c.commit().unwrap();
+    assert_eq!(overflow(&batch, 5), Some(None));
+    assert_eq!(overflow(&batch, 2), Some(None));
+}
+
+/// `measure` gives the frame in the parent and the position in the root
+/// view, minus the offsets of the scroll views around.
+#[test]
+fn measures_in_root_coordinates() {
+    let mut c = core();
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::Scroll,
+            },
+            Op::Create {
+                id: 4,
+                tag: Tag::View,
+            },
+            Op::Create {
+                id: 6,
+                tag: Tag::View,
+            },
+            style_op(
+                2,
+                &[
+                    ("marginTop", StyleValue::Number(50.0)),
+                    ("height", StyleValue::Number(300.0)),
+                ],
+            ),
+            style_op(
+                4,
+                &[
+                    ("padding", StyleValue::Number(20.0)),
+                    ("height", StyleValue::Number(1000.0)),
+                ],
+            ),
+            style_op(
+                6,
+                &[
+                    ("marginTop", StyleValue::Number(500.0)),
+                    ("height", StyleValue::Number(30.0)),
+                ],
+            ),
+            Op::Insert {
+                parent: 4,
+                child: 6,
+                before: None,
+            },
+            Op::Insert {
+                parent: 2,
+                child: 4,
+                before: None,
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    c.commit().unwrap();
+    let m = c.measure(6).unwrap();
+    assert_eq!(
+        m.frame,
+        Rect {
+            x: 20.0,
+            y: 520.0,
+            width: 280.0,
+            height: 30.0,
+        }
+    );
+    assert_eq!((m.page_x, m.page_y), (20.0, 570.0));
+    c.set_scroll_offset(2, 0.0, 400.0, u32::MAX);
+    let m = c.measure(6).unwrap();
+    assert_eq!((m.page_x, m.page_y), (20.0, 170.0));
+    // Detached or unknown: nothing to measure.
+    c.apply(Op::Remove {
+        parent: 4,
+        child: 6,
+    })
+    .unwrap();
+    c.commit();
+    assert_eq!(c.measure(6), None);
+    assert_eq!(c.measure(1000), None);
 }

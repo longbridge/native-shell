@@ -56,6 +56,8 @@ final class Native {
     static final int TEXT_LAYOUT = 44;
     static final int CONTENT_SIZE_CHANGE = 45;
     static final int BACK_REQUEST = 46;
+    static final int NATIVE_EVENT = 47;
+    static final int CLIPBOARD = 48;
 
     static native long create(NshView view, float density, boolean trace);
 
@@ -110,8 +112,9 @@ final class Native {
     /**
      * values: safe area top, right, bottom, left, keyboard height, keyboard
      * animation duration (s), font scale, 1 if the language is right to left.
+     * locale: the default locale's language tag (`Intl`'s default).
      */
-    static native void environment(long handle, float[] values, boolean dark);
+    static native void environment(long handle, float[] values, boolean dark, String locale);
 
     static native void event(long handle, int id, int kind, String text, int count, float x, float y);
 
@@ -143,7 +146,7 @@ final class Native {
      * {@code coords}, dp) and whether it changed. {@code time}: ms.
      */
     static native void touch(long handle, int phase, int[] ids, int[] targets, int[] pathLengths, int[] paths,
-            float[] coords, boolean[] changed, long time);
+            float[] coords, boolean[] changed, long time, int activated);
 
     static native boolean hasPan(long handle, int id);
 

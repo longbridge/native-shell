@@ -62,6 +62,9 @@ const TRACK_STATES: i32 = 27;
 const CANVAS: i32 = 28;
 const COMPONENT: i32 = 29;
 const COMPONENT_PROPS: i32 = 30;
+const OVERFLOW: i32 = 31;
+const ACCESSIBILITY_LABEL: i32 = 32;
+const APPEARANCE: i32 = 33;
 
 /// An entry of the object table.
 pub(crate) enum Obj {
@@ -198,6 +201,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     e.int((l.events.bits() >> 32) as u32 as i32);
                 }
                 e.bool(text.selectable);
+                opt_color(&mut e, text.selection_color);
             }
             MountItem::Events { id, events } => {
                 e.int(EVENTS);
@@ -276,10 +280,24 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(LAYOUT_DIRECTION);
                 e.bool(rtl);
             }
+            MountItem::Appearance { appearance } => {
+                e.int(APPEARANCE);
+                e.int(appearance as i32);
+            }
             MountItem::Canvas { id, drawing } => {
                 e.int(CANVAS);
                 e.int(id as i32);
                 canvas(&mut e, &drawing);
+            }
+            MountItem::Overflow { id, extent } => {
+                e.int(OVERFLOW);
+                e.int(id as i32);
+                e.bool(extent.is_some());
+                let r = extent.unwrap_or_default();
+                e.float(r.x);
+                e.float(r.y);
+                e.float(r.width);
+                e.float(r.height);
             }
             MountItem::TrackStates { id, states } => {
                 e.int(TRACK_STATES);
@@ -360,6 +378,11 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(VIEW_PROPS);
                 e.int(id as i32);
                 view_props(&mut e, &props);
+            }
+            MountItem::AccessibilityLabel { id, label } => {
+                e.int(ACCESSIBILITY_LABEL);
+                e.int(id as i32);
+                e.opt_string(label.as_deref());
             }
             MountItem::ScreenConfig { id, config } => {
                 e.int(SCREEN_CONFIG);
@@ -527,10 +550,20 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                         e.string(name.to_string());
                         e.string(args.to_string());
                     }
+                    Command::SetClipboard(text) => {
+                        e.int(22);
+                        e.string(text);
+                    }
+                    Command::ReadClipboard { id, has_only } => {
+                        e.int(23);
+                        e.int(id as i32);
+                        e.bool(has_only);
+                    }
                     // Turned into a mount item / `ScrollTo` by the core.
                     Command::LayoutAnimation(_)
                     | Command::SetStatusBar(_)
                     | Command::ScrollToIndex { .. }
+                    | Command::Measure { .. }
                     | Command::ScrollToEnd { .. } => e.int(-1),
                 }
             }
@@ -918,6 +951,20 @@ fn view_props(e: &mut Encoded, p: &ViewProps) {
         }
         None => e.int(0),
     }
+    match p.pan_activation {
+        Some(a) => {
+            e.int(1);
+            for v in [
+                a.active_offset_x,
+                a.active_offset_y,
+                a.fail_offset_x,
+                a.fail_offset_y,
+            ] {
+                e.float(v.unwrap_or(f32::NAN));
+            }
+        }
+        None => e.int(0),
+    }
 }
 
 /// Index of `role` in `A11y.java`'s class name table.
@@ -1005,6 +1052,8 @@ fn input(e: &mut Encoded, c: &InputConfig) {
         KeyboardType::Email => 3,
         KeyboardType::Phone => 4,
         KeyboardType::Url => 5,
+        KeyboardType::Numeric => 6,
+        KeyboardType::NumbersAndPunctuation => 7,
     });
     e.int(match c.return_key {
         ReturnKeyType::Default => 0,
@@ -1205,6 +1254,11 @@ fn canvas(e: &mut Encoded, d: &nsh_core::canvas::Drawing) {
                 e.int(f.weight as i32);
                 e.bool(f.italic);
                 e.opt_string(f.family.as_deref());
+                e.int(f.variant.0 as i32);
+            }
+            Op::FontVariantNumeric(v) => {
+                e.int(43);
+                e.int(v.0 as i32);
             }
             Op::TextAlign(a) => {
                 e.int(38);

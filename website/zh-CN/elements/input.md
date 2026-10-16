@@ -57,7 +57,7 @@ function NameField() {
 
 | 属性 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `keyboardType` | `"default" \| "number-pad" \| "numeric" \| "decimal-pad" \| "email-address" \| "phone-pad" \| "url"` | `"default"` | 键盘布局。 |
+| `keyboardType` | `"default" \| "number-pad" \| "decimal-pad" \| "numeric" \| "numbers-and-punctuation" \| "email-address" \| "phone-pad" \| "url"` | `"default"` | 键盘布局（[各取值](../docs/forms-and-keyboard.md#键盘与自动填充)；`numbers-and-punctuation` 在 iOS 上有负号）。 |
 | `returnKeyType` | `"default" \| "done" \| "go" \| "next" \| "search" \| "send"` | `"default"` | 回车键的标签。 |
 | `autoCapitalize` | `"none" \| "sentences" \| "words" \| "characters"` | `"sentences"` | 自动大写。 |
 | `autoCorrect` | `boolean` | `true` | 系统自动更正。 |
@@ -79,6 +79,7 @@ function NameField() {
 |---|---|---|
 | `textContentType` | `AutoComplete \| TextContentType` | `autoComplete` 在 iOS 上的名称（`"oneTimeCode"`、`"newPassword"` 等）。 |
 | `inputAccessoryViewID` | `string` | 一个 `InputAccessoryView`（[`nsh/ios`](../modules/nsh-ios.md)）的 `nativeID`，输入框获得焦点时显示在键盘上方。 |
+| `keyboardAppearance` | `"default" \| "light" \| "dark"` | 键盘的外观；`"default"` 跟随系统外观。Android 的键盘跟随系统主题。 |
 
 ```tsx
 <Input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />

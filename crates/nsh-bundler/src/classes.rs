@@ -102,10 +102,13 @@ impl<'a> Visit<'a> for Checker<'_> {
             return walk::walk_jsx_attribute(self, attr);
         };
         match (name.name.as_str(), &attr.value) {
-            ("class", Some(JSXAttributeValue::StringLiteral(s))) => {
+            ("class" | "contentContainerClass", Some(JSXAttributeValue::StringLiteral(s))) => {
                 self.classes(&s.value, s.span.start + 1);
             }
-            ("class", Some(JSXAttributeValue::ExpressionContainer(c))) => {
+            (
+                "class" | "contentContainerClass",
+                Some(JSXAttributeValue::ExpressionContainer(c)),
+            ) => {
                 if let Some(e) = c.expression.as_expression() {
                     self.expression(e);
                 }

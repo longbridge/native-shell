@@ -134,14 +134,7 @@ fn call_args(
 /// Sends call `name` to node `id` (1: a module's); with `returns`, returns
 /// a promise of its result.
 fn send(ctx: *mut JsContext, id: u32, name: &str, args: &[JsValue], returns: bool) -> JsValue {
-    let c = components(ctx);
-    let call = if returns {
-        let n = c.calls.get().wrapping_add(1).max(1);
-        c.calls.set(n);
-        n
-    } else {
-        0
-    };
+    let call = if returns { next_call(ctx) } else { 0 };
     let json = match call_args(ctx, call, args) {
         Ok(json) => json,
         Err(e) => return e,
@@ -159,7 +152,22 @@ fn send(ctx: *mut JsContext, id: u32, name: &str, args: &[JsValue], returns: boo
     if !returns {
         return UNDEFINED;
     }
-    if id == 1 && !c.root_listens.replace(true) {
+    promise(ctx, call, id == 1)
+}
+
+/// A new call number (never 0: no reply).
+fn next_call(ctx: *mut JsContext) -> u32 {
+    let c = components(ctx);
+    let n = c.calls.get().wrapping_add(1).max(1);
+    c.calls.set(n);
+    n
+}
+
+/// The promise of call `call`'s result; `on_root`: answered on the root,
+/// which then listens to `$return`.
+fn promise(ctx: *mut JsContext, call: u32, on_root: bool) -> JsValue {
+    let c = components(ctx);
+    if on_root && !c.root_listens.replace(true) {
         let settle = reactive::new_function(ctx, c"settle", settle_root, 1);
         let r = dom::set_handler(ctx, 1, EventKind::NativeEvent, settle);
         // SAFETY: ours.
@@ -173,6 +181,22 @@ fn send(ctx: *mut JsContext, id: u32, name: &str, args: &[JsValue], returns: boo
     let promise = unsafe { qjs::JS_NewPromiseCapability(ctx, funcs.as_mut_ptr()) };
     c.pending.borrow_mut().insert(call, (funcs[0], funcs[1]));
     promise
+}
+
+/// `ref.measure()`: a promise of where node `id` is after this turn's
+/// layout, which the core answers on the root (`Command::Measure`).
+pub(crate) fn measure(ctx: *mut JsContext, id: u32) -> JsValue {
+    let call = next_call(ctx);
+    if let Err(e) = dom::push_op(
+        ctx,
+        Op::Command {
+            id,
+            command: Command::Measure { call },
+        },
+    ) {
+        return e;
+    }
+    promise(ctx, call, true)
 }
 
 /// Settles the call a `$return` event answers (`{ c, v }` or `{ c, e }`);
@@ -542,11 +566,15 @@ fn render_component(
         .events
         .iter()
         .any(|e| has(ctx, props, &handler_name(e.name)));
-    if handles_events || spec.methods.iter().any(|m| m.returns.is_some()) {
-        let mut edata = [props];
-        // SAFETY: the function keeps a dup of `edata`.
+    // Lazy children: made while this signal (the core's `$children`) is
+    // true.
+    let lazy = (spec.lazy_children && spec.takes_children() && has(ctx, props, "children"))
+        .then(|| Owned(ctx, reactive::new_signal(ctx, qjs::JS_FALSE)));
+    if handles_events || lazy.is_some() || spec.methods.iter().any(|m| m.returns.is_some()) {
+        let mut edata = [props, lazy.as_ref().map_or(UNDEFINED, |l| l.1)];
+        // SAFETY: the function keeps dups of `edata`.
         let on = Owned(ctx, unsafe {
-            qjs::JS_NewCFunctionData(ctx, Some(on_native_event), 1, 0, 1, edata.as_mut_ptr())
+            qjs::JS_NewCFunctionData(ctx, Some(on_native_event), 1, 0, 2, edata.as_mut_ptr())
         });
         dom::set_handler(
             ctx,
@@ -594,7 +622,18 @@ fn render_component(
     // them.
     if spec.takes_children() && has(ctx, props, "children") {
         let reader = Owned(ctx, prop_reader(ctx, props, "children"));
-        dom::insert_value_at(ctx, node, reader.1, anchor.as_ref().map(|a| a.1))?;
+        let children = match &lazy {
+            Some(shown) => {
+                let c = Owned(ctx, dom::cond_value(ctx, shown.1, reader.1));
+                // SAFETY: a live value.
+                if unsafe { qjs::JS_IsException(c.1) } {
+                    return Err(c.take());
+                }
+                c
+            }
+            None => reader,
+        };
+        dom::insert_value_at(ctx, node, children.1, anchor.as_ref().map(|a| a.1))?;
     }
     Ok(guard.take())
 }
@@ -694,8 +733,8 @@ unsafe extern "C" fn on_native_event(
     _magic: c_int,
     data: *mut JsValue,
 ) -> JsValue {
-    // SAFETY: one data value (the props).
-    let props = unsafe { *data };
+    // SAFETY: two data values (the props, the lazy children's signal).
+    let (props, lazy) = unsafe { (*data, *data.add(1)) };
     let event = arg(argc, argv, 0);
     match settle(ctx, event) {
         Ok(true) => return UNDEFINED,
@@ -703,6 +742,14 @@ unsafe extern "C" fn on_native_event(
         Err(e) => return e,
     }
     let name = get(ctx, event, "name");
+    if string_arg(ctx, name).as_deref() == Some("$children") {
+        // SAFETY: ours; the signal takes the data.
+        unsafe { qjs::JS_FreeValue(ctx, name) };
+        if !unsafe { qjs::JS_IsUndefined(lazy) } {
+            reactive::set_signal(ctx, lazy, get(ctx, event, "data"));
+        }
+        return UNDEFINED;
+    }
     let handler = string_arg(ctx, name).map(|n| get(ctx, props, &handler_name(&n)));
     // SAFETY: values got are freed; the handler is called with the data.
     unsafe {

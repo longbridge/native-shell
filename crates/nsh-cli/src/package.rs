@@ -47,6 +47,10 @@ pub(crate) struct AppConfig {
     /// Read and checked by the bundler.
     #[serde(default, rename = "capabilities")]
     _capabilities: Option<serde::de::IgnoredAny>,
+    /// `"light"` / `"dark"` / `"system"`: the app's appearance (checked by
+    /// the bundler, which hands it to the runtime); packages also start in
+    /// it (the launch screen, the window's theme).
+    pub(crate) appearance: Option<String>,
     /// Read and checked by the bundler.
     #[serde(default, rename = "theme")]
     _theme: Option<serde::de::IgnoredAny>,
@@ -242,6 +246,7 @@ fn package_android(
             version_code: config.build.unwrap_or(1),
             activity: "com.longbridge.nsh.AppActivity",
             dev: false,
+            dark: config.appearance.as_deref() == Some("dark"),
             runtime: &runtime,
             icon: config.icon.as_deref(),
             assets,
@@ -318,6 +323,12 @@ fn info_plist(
         Value::Dictionary(Default::default()),
     );
     d.insert("UIApplicationSupportsMultipleScenes".into(), false.into());
+    // The app's own appearance, from the launch screen on.
+    match config.appearance.as_deref() {
+        Some("light") => d.insert("UIUserInterfaceStyle".into(), s("Light")),
+        Some("dark") => d.insert("UIUserInterfaceStyle".into(), s("Dark")),
+        _ => None,
+    };
     d.insert(
         "UISupportedInterfaceOrientations".into(),
         Value::Array(vec![

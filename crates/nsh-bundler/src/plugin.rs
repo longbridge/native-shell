@@ -50,6 +50,8 @@ pub(crate) struct ThemeSetup {
     pub(crate) theme: nsh_core::tailwind::Theme,
     /// The theme of the Rust components (a gpui-kit theme file), checked.
     pub(crate) ui: Option<String>,
+    /// `"appearance"`: `"light"` or `"dark"` (`None`: the system's).
+    pub(crate) appearance: Option<&'static str>,
 }
 
 /// File types imported as image assets.
@@ -98,11 +100,13 @@ impl NshPlugin {
             Some(json) => serde_json::Value::String(json.clone()).to_string(),
             None => "null".to_owned(),
         };
-        (self.tailwind.json.is_some() || self.tailwind.ui.is_some()).then(|| {
+        let setup = &self.tailwind;
+        (setup.json.is_some() || setup.ui.is_some() || setup.appearance.is_some()).then(|| {
             format!(
-                "_$setup({}, {});",
-                json(&self.tailwind.json),
-                json(&self.tailwind.ui)
+                "_$setup({}, {}, {});",
+                json(&setup.json),
+                json(&setup.ui),
+                json(&setup.appearance.map(str::to_owned))
             )
         })
     }

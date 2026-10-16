@@ -121,6 +121,8 @@ struct PropAttr {
     rename: Option<String>,
     /// More names a `PropEnum` variant is read from.
     aliases: Vec<String>,
+    /// `Children` made only while the render places them.
+    lazy: bool,
 }
 
 fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
@@ -143,14 +145,22 @@ fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
             } else if meta.path.is_ident("alias") {
                 out.aliases.push(meta.value()?.parse::<LitStr>()?.value());
                 Ok(())
+            } else if meta.path.is_ident("lazy") {
+                out.lazy = true;
+                Ok(())
             } else {
                 Err(meta.error(
-                    "expected `default`, `default = …`, `rename = \"…\"` or `alias = \"…\"`",
+                    "expected `default`, `default = …`, `rename = \"…\"`, `alias = \"…\"` or `lazy`",
                 ))
             }
         })?;
     }
     Ok(out)
+}
+
+/// Whether field `ident` is not the `Children` field found so far.
+fn kind_is_not_children(children: &Option<Ident>, ident: &Ident) -> bool {
+    children.as_ref() != Some(ident)
 }
 
 /// The last segment of a type path (`Slot`, `Option`) and its first
@@ -183,7 +193,9 @@ enum Kind {
 ///   Fields start with their default (`Default::default()` without one);
 ///   JS clearing a prop restores it.
 /// - `Option<Slot>`: a named slot, JSX the app passes in that prop.
-/// - `Children`: the JSX children.
+/// - `Children`: the JSX children; with `#[prop(lazy)]` JS makes them only
+///   while the render places them (made again each time it does, released
+///   when it stops: a sheet's content starts fresh when it opens).
 /// - `Items`: virtualized rows (in JS `each`, a row renderer and `List`'s
 ///   data props), at most one, and not with `Children`.
 ///
@@ -217,6 +229,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     let mut set_arms = Vec::new();
     let mut slot_arms = Vec::new();
     let mut children = None;
+    let mut lazy_children = false;
     let mut items: Option<Ident> = None;
     let mut items_js: Option<String> = None;
     for field in &fields.named {
@@ -326,7 +339,14 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                     }
                 });
                 children = Some(ident.clone());
+                lazy_children = attr.lazy;
             }
+        }
+        if attr.lazy && kind_is_not_children(&children, ident) {
+            return Err(syn::Error::new(
+                field.span(),
+                "`#[prop(lazy)]` is for the `Children` field",
+            ));
         }
     }
     let set_children = match &children {
@@ -356,6 +376,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
 
         impl #impl_generics #ui::Props for #name #ty_generics #where_clause {
             const ITEMS: ::core::option::Option<&'static str> = #items_const;
+            const LAZY_CHILDREN: bool = #lazy_children;
 
             fn doc() -> &'static str {
                 #doc

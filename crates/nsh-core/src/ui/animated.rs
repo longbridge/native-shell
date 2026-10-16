@@ -464,7 +464,50 @@ impl NativeValue {
         self.start(Driver::Decay {
             velocity,
             deceleration,
+            clamp: None,
+            bounce: 0.0,
         })
+    }
+
+    /// Like [`Self::decay`], within `min..=max`: it stops at a bound, or
+    /// bounces back from it keeping `bounce` (0..1) of its speed.
+    pub fn decay_within(
+        &self,
+        velocity: Option<f32>,
+        deceleration: f32,
+        (min, max): (f32, f32),
+        bounce: f32,
+    ) -> AnimationEnd {
+        self.start(Driver::Decay {
+            velocity,
+            deceleration,
+            clamp: Some((min, max)),
+            bounce,
+        })
+    }
+
+    /// Sets the offset added to the value (React Native's `setOffset`):
+    /// bindings see value + offset, animations and `set` move the value.
+    pub fn set_offset(&self, offset: f32) {
+        self.0.0.act(AnimationOp::SetOffset {
+            node: self.0.id(),
+            offset,
+        });
+    }
+
+    /// Adds the offset to the value and clears it.
+    pub fn flatten_offset(&self) {
+        self.0
+            .0
+            .act(AnimationOp::FlattenOffset { node: self.0.id() });
+    }
+
+    /// Moves the value into the offset, leaving the value 0 (a drag then
+    /// starts from where the last one left it).
+    pub fn extract_offset(&self) {
+        self.0
+            .0
+            .act(AnimationOp::ExtractOffset { node: self.0.id() });
     }
 
     /// See [`NativeNode::interpolate`].
@@ -616,6 +659,28 @@ impl Animation {
             Driver::Decay {
                 velocity,
                 deceleration,
+                clamp: None,
+                bounce: 0.0,
+            },
+        )
+    }
+
+    /// Like [`Self::decay`], within `min..=max`: it stops at a bound, or
+    /// bounces back from it keeping `bounce` (0..1) of its speed.
+    pub fn decay_within(
+        value: &NativeValue,
+        velocity: Option<f32>,
+        deceleration: f32,
+        (min, max): (f32, f32),
+        bounce: f32,
+    ) -> Self {
+        Self::run(
+            value,
+            Driver::Decay {
+                velocity,
+                deceleration,
+                clamp: Some((min, max)),
+                bounce,
             },
         )
     }

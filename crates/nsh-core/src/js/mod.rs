@@ -130,6 +130,12 @@ mod tests {
             ("InputHostProps", "  onChangeText?: (text: string) => void;"),
             ("IOSInputHostProps", "  inputAccessoryViewID?: string;"),
             (
+                "IOSInputHostProps",
+                "  keyboardAppearance?: KeyboardAppearance;",
+            ),
+            ("TextHostProps", "  selectionColor?: ColorValue;"),
+            ("InputHostProps", "  selectionColor?: ColorValue;"),
+            (
                 "ImageHostProps",
                 "  onLoad?: (e: { width: number; height: number }) => void;",
             ),
@@ -161,7 +167,13 @@ mod tests {
             let end = at + elements[at..].find("\n}").unwrap();
             assert!(elements[at..end].contains(prop), "{interface}: {prop}");
         }
-        assert!(elements.contains("\"number-pad\" | \"numeric\""));
+        assert!(elements.contains(
+            "export type KeyboardType = \"default\" | \"number-pad\" | \"decimal-pad\" | \"numeric\" | \"numbers-and-punctuation\""
+        ));
+        assert!(
+            elements
+                .contains("export type KeyboardAppearance = \"default\" | \"light\" | \"dark\";")
+        );
         let animation = super::animation::declarations();
         assert!(animation.contains("  back(s?: number): EasingCurve;"));
         assert!(

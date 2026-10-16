@@ -108,6 +108,12 @@ The `active:` Tailwind variant is the third option. It applies classes while the
 
 Keep the extended area inside the parent's bounds (give the small view some margin or padding around it): hit testing reaches a child through its parent, so a touch outside the parent never gets to the child's slop.
 
+## Children outside their parent
+
+A child placed outside its parent's bounds (`position: "absolute"` with `overflow` left visible, such as a dropdown under its field) takes touches where it is drawn, like any other view: nsh hit-tests the descendants that reach outside a view natively. A parent with `overflow: "hidden"` clips them, and then they neither show nor take touches there. The area is computed from the layout, so a child moved out of its parent by a `transform` only takes touches inside the parent's bounds.
+
+Mind the drawing order: a dropdown is drawn over the siblings of its field only if the field comes after them or has a higher `zIndex`, and touches go to what is drawn on top.
+
 ## pointerEvents
 
 `pointerEvents` decides which views of a subtree can be the target of a touch. It is evaluated natively during hit testing, so it costs nothing per touch.
@@ -231,6 +237,27 @@ Each handler gets a `GestureResponderEvent`:
 />
 ```
 
+### Where a view is: measure
+
+`locationX` / `locationY` are relative to the view the finger went down on, which may be a child of the view you care about (a slider's knob). `ref.measure()` tells you where a view is, so you can use `pageX` / `pageY` instead:
+
+```tsx
+let track!: YNode;
+let origin = 0;
+<View
+  ref={track}
+  onStartShouldSetResponder={() => true}
+  onResponderGrant={async (e) => {
+    const x = e.pageX;
+    origin = (await track.measure())?.pageX ?? 0;
+    seek(x - origin);
+  }}
+  onResponderMove={(e) => seek(e.pageX - origin)}
+/>;
+```
+
+It resolves once the changes made so far are laid out, to `{ x, y, width, height, pageX, pageY }`: the frame in the parent (as `onLayout` reports it) and the top left corner in the surface, or in the modal the view is in, the same coordinates as touches' `pageX` / `pageY`. The offsets of the scroll views and lists around it are taken into account; transforms (animations included) are not. It resolves to `null` for a view that is not on screen.
+
 ## The responder system
 
 When JS has to own a touch sequence (finger drawing, a custom slider, a gesture the native recognizers do not offer), use the gesture responder system. One view at a time is the **responder** and receives the moves; views negotiate who that is.
@@ -241,6 +268,8 @@ Becoming the responder:
 |---|---|---|
 | `onStartShouldSetResponder` | `boolean` | Asked when a finger goes down, from the target outwards. Return `true` to become the responder. |
 | `onMoveShouldSetResponder` | `boolean` | Asked on every move while there is no responder (or to take it over). |
+
+These four get a second argument, `gestureState`: the gesture since the first finger went down, with the same fields as [PanResponder's](#panresponder) (`dx`, `dy`, `vx`, `vy`, `moveX`, `moveY`, `x0`, `y0`, `numberActiveTouches`). A swipe that claims only horizontal moves: `onMoveShouldSetResponder={(e, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy)}`. That decision still reaches JS a move late, so a scroll view around may start scrolling first; for drags inside scroll views use [`panActivation`](#pans-inside-scroll-views-panactivation).
 | `onStartShouldSetResponderCapture` | `boolean` | As above, asked from the outside in, before the bubbling ones. A parent uses it to take a touch from its children. |
 | `onMoveShouldSetResponderCapture` | `boolean` | The move version. |
 
@@ -340,12 +369,34 @@ The callbacks get `(event, gestureState)`:
 
 The callbacks are `onStartShouldSetPanResponder(Capture)`, `onMoveShouldSetPanResponder(Capture)`, `onPanResponderGrant`, `onPanResponderReject`, `onPanResponderStart`, `onPanResponderMove`, `onPanResponderEnd`, `onPanResponderRelease`, `onPanResponderTerminate`, `onPanResponderTerminationRequest` and `onShouldBlockNativeResponder`. The last one defaults to `true`: a granted PanResponder keeps native scroll views from taking its touches.
 
+## Pans inside scroll views: panActivation
+
+A chart scrubbed sideways inside a vertical scroll view has to take horizontal drags and leave vertical ones to the scroll view. Claiming the touch on start blocks scrolling from the first pixel, and deciding in `onMoveShouldSetResponder` is too late: by the time JS answers, the scroll view may have taken the touch. `panActivation` lets the platform decide on the main thread, as the finger moves:
+
+```tsx
+<View
+  panActivation={{ activeOffsetX: 10, failOffsetY: 10 }}
+  onResponderGrant={(e) => scrub(e.locationX)}
+  onResponderMove={(e) => scrub(e.locationX)}
+  onResponderRelease={() => scrub(null)}
+>
+  <Chart />
+</View>
+```
+
+| Field | Description |
+|---|---|
+| `activeOffsetX`, `activeOffsetY` | The pan activates once the finger has moved further than this from where it went down, along that axis (either direction, points). |
+| `failOffsetX`, `failOffsetY` | The pan fails once the finger has moved further than this first: the scroll views keep the touches. |
+
+Without active offsets the pan activates after 10 points in any direction. Until it activates, the scroll views around wait for it (iOS) and the view is not asked to become the responder: its `…ShouldSetResponder` handlers are skipped. When it activates, the scroll views can no longer take these touches and the view becomes the responder (`onResponderGrant`, then the moves); when it fails, the scroll view scrolls as usual. `PanResponder`'s `panHandlers` work with it too: spread them next to the prop, and `onPanResponderGrant` runs at the activation.
+
 > [!NOTE]
 > Velocities differ by API: `PanResponder`'s `vx` / `vy` are points per millisecond, while `onPanEnd`'s `velocityX` / `velocityY` and the `velocity` option of `spring` / `decay` are points per second. Multiply `vx` by 1000 before passing it to a spring.
 
 ## Why some answers are props
 
-The main thread never waits for JS. When the system needs an answer on the spot (may this pan gesture begin, does this point hit the view, should this tap dismiss the keyboard), nsh answers natively from props mounted beforehand: `pan` (its axes), `pinch`, `hitSlop`, `pointerEvents`, `keyboardShouldPersistTaps`. Your JS handlers hear about what happened afterwards. That is why these are declarative props rather than callbacks, and why the responder system's negotiation, which does call JS, only decides between JS responders and never blocks a native gesture.
+The main thread never waits for JS. When the system needs an answer on the spot (may this pan gesture begin, does this point hit the view, should this tap dismiss the keyboard), nsh answers natively from props mounted beforehand: `pan` (its axes), `pinch`, `hitSlop`, `pointerEvents`, `keyboardShouldPersistTaps`, `panActivation`. Your JS handlers hear about what happened afterwards. That is why these are declarative props rather than callbacks, and why the responder system's negotiation, which does call JS, only decides between JS responders and never blocks a native gesture.
 
 ## Related
 

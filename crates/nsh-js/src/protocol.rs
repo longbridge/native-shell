@@ -640,7 +640,7 @@ fn decode_animation(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimationOp> {
         ANIMATION_START => {
             let animation = r.int()? as nsh_animation::AnimationId;
             let config = r.value()?;
-            let driver = decode_driver(r, &config)?;
+            let driver = decode_driver(r.ctx, &config)?;
             AnimationOp::Start {
                 node,
                 animation,
@@ -649,6 +649,16 @@ fn decode_animation(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimationOp> {
         }
         ANIMATION_STOP => AnimationOp::Stop { node },
         ANIMATION_RELEASE => AnimationOp::Release { node },
+        ANIMATION_SET_OFFSET => AnimationOp::SetOffset {
+            node,
+            offset: r.number()?,
+        },
+        ANIMATION_FLATTEN_OFFSET => AnimationOp::FlattenOffset { node },
+        ANIMATION_EXTRACT_OFFSET => AnimationOp::ExtractOffset { node },
+        ANIMATION_READ => AnimationOp::Read {
+            node,
+            request: r.int()? as nsh_animation::AnimationId,
+        },
         other => {
             return Err(Exception::throw_type(
                 r.ctx,
@@ -708,10 +718,20 @@ fn decode_output(r: &Reader<'_, '_>, outputs: &Value<'_>) -> rquickjs::Result<Ou
     }
 }
 
-fn decode_driver(r: &Reader<'_, '_>, config: &Value<'_>) -> rquickjs::Result<Driver> {
+/// A driver config (`{ type, to, ... }`), as `Animated` passes them.
+pub(crate) fn driver<'js>(ctx: &Ctx<'js>, config: &Value<'js>) -> rquickjs::Result<Driver> {
+    decode_driver(ctx, config)
+}
+
+/// An `Easing` value (`linear` when it is none).
+pub(crate) fn easing(value: Value<'_>) -> Easing {
+    nsh_core::js::animation::easing(&Js(value)).unwrap_or(Easing::Linear)
+}
+
+fn decode_driver(ctx: &Ctx<'_>, config: &Value<'_>) -> rquickjs::Result<Driver> {
     let Some(c) = config.as_object() else {
         return Err(Exception::throw_type(
-            r.ctx,
+            ctx,
             "animation config must be an object",
         ));
     };
@@ -735,10 +755,21 @@ fn decode_driver(r: &Reader<'_, '_>, config: &Value<'_>) -> rquickjs::Result<Dri
         "decay" => Driver::Decay {
             velocity: num("velocity")?,
             deceleration: num("deceleration")?.unwrap_or(0.998),
+            clamp: match c.get::<_, Option<Vec<f64>>>("clamp")? {
+                Some(bounds) if bounds.len() == 2 => Some((bounds[0] as f32, bounds[1] as f32)),
+                Some(_) => {
+                    return Err(Exception::throw_type(
+                        ctx,
+                        "decay: `clamp` must be [min, max]",
+                    ));
+                }
+                None => None,
+            },
+            bounce: num("bounce")?.unwrap_or(0.0),
         },
         other => {
             return Err(Exception::throw_type(
-                r.ctx,
+                ctx,
                 &format!("unknown animation type `{other}`"),
             ));
         }
@@ -783,7 +814,7 @@ fn decode_composite(
         },
         _ => Composite::Run {
             node: o.get::<_, f64>("node")? as nsh_animation::NodeId,
-            driver: decode_driver(r, spec)?,
+            driver: decode_driver(r.ctx, spec)?,
         },
     })
 }

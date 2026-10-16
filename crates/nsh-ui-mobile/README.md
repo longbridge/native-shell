@@ -26,7 +26,8 @@ stays native. JS only gets the events the component emits.
   `header: Option<Slot>` (`.slot(props.header, |h| h.px_4())`), `children: Children` (`.child(props.children)`, or
   `.children_each(props.children, |child, at| ..)` to wrap each), `items: Items` for virtualized rows
   (`.list(props.items, |l| l.estimated_item_size(48.0), |row, at| ..)`; in JS `each` and a row renderer, like `List`).
-  `at` tells the index, the count, first and last.
+  `at` tells the index, the count, first and last. `#[prop(lazy)]` on `children` has JS make them only while the
+  render places them (`Sheet`: fresh content on each opening).
   `Group` and `ListView` are the examples. A Rust component fills them the same way: `.child(..)`, `.fill("header",
   ..)`, and `ListView::element(props).items(virtual_list(n, row).header(..))` for the rows.
 - **State** lives in the component's fields, set up from the first props in `setup` and adjusted in `props_changed`;

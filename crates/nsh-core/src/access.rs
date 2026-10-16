@@ -99,6 +99,8 @@ pub struct Capabilities {
     pub webview: Option<Vec<HostPattern>>,
     /// The app may set the status bar.
     pub status_bar: bool,
+    /// The app may read and write the system clipboard (`nsh/clipboard`).
+    pub clipboard: bool,
 }
 
 /// The parts of a URL the checks look at.
@@ -153,13 +155,18 @@ impl Capabilities {
             },
             webview: Some(any),
             status_bar: true,
+            clipboard: true,
         }
     }
 
     /// Parses `capabilities` from `nsh.json` (or a grant in the same form).
     pub fn from_json(value: &Value) -> Result<Self, String> {
         let obj = object(value, "capabilities")?;
-        known(obj, "capabilities", &["network", "webview", "statusBar"])?;
+        known(
+            obj,
+            "capabilities",
+            &["network", "webview", "statusBar", "clipboard"],
+        )?;
         let mut caps = Capabilities::default();
         if let Some(network) = obj.get("network") {
             let network = object(network, "capabilities.network")?;
@@ -230,6 +237,11 @@ impl Capabilities {
                 .as_bool()
                 .ok_or("capabilities.statusBar must be a boolean")?;
         }
+        if let Some(clipboard) = obj.get("clipboard") {
+            caps.clipboard = clipboard
+                .as_bool()
+                .ok_or("capabilities.clipboard must be a boolean")?;
+        }
         Ok(caps)
     }
 
@@ -267,6 +279,7 @@ impl Capabilities {
             obj.insert("webview".into(), Value::Object(w));
         }
         obj.insert("statusBar".into(), self.status_bar.into());
+        obj.insert("clipboard".into(), self.clipboard.into());
         Value::Object(obj)
     }
 
@@ -403,6 +416,11 @@ impl Access {
     pub fn allows_status_bar(&self) -> bool {
         self.each(|c| c.status_bar)
     }
+
+    /// Whether the app may read and write the system clipboard.
+    pub fn allows_clipboard(&self) -> bool {
+        self.each(|c| c.clipboard)
+    }
 }
 
 #[cfg(test)]
@@ -425,6 +443,7 @@ mod tests {
         assert!(access.allows_media("logo.png"));
         assert!(!access.allows_webview("https://example.com/"));
         assert!(!access.allows_status_bar());
+        assert!(!access.allows_clipboard());
         assert!(Access::all().is_unrestricted());
     }
 
@@ -456,9 +475,14 @@ mod tests {
     #[test]
     fn the_embedder_grants_at_most() {
         let a = Access {
-            declared: caps(r#"{ "network": { "hosts": ["a.com", "b.com"] }, "statusBar": true }"#),
-            granted: Some(caps(r#"{ "network": { "hosts": ["b.com"] } }"#)),
+            declared: caps(
+                r#"{ "network": { "hosts": ["a.com", "b.com"] }, "statusBar": true, "clipboard": true }"#,
+            ),
+            granted: Some(caps(
+                r#"{ "network": { "hosts": ["b.com"] }, "clipboard": true }"#,
+            )),
         };
+        assert!(a.allows_clipboard());
         assert!(!a.allows_http("GET", "https://a.com/"));
         assert!(a.allows_http("GET", "https://b.com/"));
         assert!(!a.allows_status_bar());

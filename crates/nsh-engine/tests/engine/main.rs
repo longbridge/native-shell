@@ -19,6 +19,7 @@ mod counter;
 mod errors;
 mod fetch;
 mod hot;
+mod js_touch;
 mod list;
 mod list_bench;
 mod native;

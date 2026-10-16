@@ -12,6 +12,7 @@ mod graph;
 mod ops;
 
 pub use crate::{
+    driver::{sample_driver, sample_easing},
     graph::{AnimationValue, Finished, Graph},
     ops::{
         AnimationId, AnimationOp, AnimationProp, Composite, Curve, Driver, EaseMode, Easing,

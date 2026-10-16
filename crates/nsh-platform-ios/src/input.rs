@@ -5,8 +5,8 @@
 use std::cell::Cell;
 
 use nsh_core::{
-    AutoCapitalize, AutoFill, Color, InputConfig, KeyboardType, NodeId, Rect, ReturnKeyType,
-    TextAlign,
+    AutoCapitalize, AutoFill, Color, InputConfig, KeyboardAppearance, KeyboardType, NodeId, Rect,
+    ReturnKeyType, TextAlign,
 };
 use objc2::{
     AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
@@ -20,9 +20,9 @@ use objc2_foundation::{
 };
 use objc2_ui_kit::{
     NSFontAttributeName, NSForegroundColorAttributeName, NSTextAlignment, UIColor, UIControl,
-    UIControlEvents, UIEdgeInsets, UIKeyboardType, UILabel, UIResponder, UIReturnKeyType,
-    UITextAutocapitalizationType, UITextAutocorrectionType, UITextField, UITextView, UIView,
-    UIViewAutoresizing,
+    UIControlEvents, UIEdgeInsets, UIKeyboardAppearance, UIKeyboardType, UILabel, UIResponder,
+    UIReturnKeyType, UITextAutocapitalizationType, UITextAutocorrectionType, UITextField,
+    UITextView, UIView, UIViewAutoresizing,
 };
 
 use crate::{target::EventTarget, text};
@@ -531,7 +531,9 @@ fn traits(view: &AnyObject, config: &InputConfig) {
     let keyboard = match config.keyboard {
         KeyboardType::Default => UIKeyboardType::Default,
         KeyboardType::Number => UIKeyboardType::NumberPad,
-        KeyboardType::Decimal => UIKeyboardType::DecimalPad,
+        // React Native's `numeric`: digits and a decimal separator.
+        KeyboardType::Decimal | KeyboardType::Numeric => UIKeyboardType::DecimalPad,
+        KeyboardType::NumbersAndPunctuation => UIKeyboardType::NumbersAndPunctuation,
         KeyboardType::Email => UIKeyboardType::EmailAddress,
         KeyboardType::Phone => UIKeyboardType::PhonePad,
         KeyboardType::Url => UIKeyboardType::URL,
@@ -550,6 +552,11 @@ fn traits(view: &AnyObject, config: &InputConfig) {
         AutoCapitalize::Words => UITextAutocapitalizationType::Words,
         AutoCapitalize::Characters => UITextAutocapitalizationType::AllCharacters,
     };
+    let appearance = match config.keyboard_appearance {
+        KeyboardAppearance::Default => UIKeyboardAppearance::Default,
+        KeyboardAppearance::Light => UIKeyboardAppearance::Light,
+        KeyboardAppearance::Dark => UIKeyboardAppearance::Dark,
+    };
     let correct = if config.auto_correct {
         UITextAutocorrectionType::Default
     } else {
@@ -560,6 +567,7 @@ fn traits(view: &AnyObject, config: &InputConfig) {
     unsafe {
         send(view, sel!(setSecureTextEntry:), Bool::new(config.secure));
         send(view, sel!(setKeyboardType:), keyboard.0);
+        send(view, sel!(setKeyboardAppearance:), appearance.0);
         send(view, sel!(setReturnKeyType:), return_key.0);
         send(view, sel!(setAutocapitalizationType:), capitalize.0);
         send(view, sel!(setAutocorrectionType:), correct.0);

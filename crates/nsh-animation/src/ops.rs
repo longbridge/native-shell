@@ -12,6 +12,16 @@ pub enum AnimationProp {
     Opacity,
     /// `backgroundColor`, from a color interpolation.
     BackgroundColor,
+    /// `borderColor`: the color of every side.
+    BorderColor,
+    /// `color` of a text: the whole text takes it.
+    Color,
+    /// `shadowColor`.
+    ShadowColor,
+    /// `shadowOpacity`, 0..1.
+    ShadowOpacity,
+    /// `shadowRadius`, in points.
+    ShadowRadius,
     /// The value of entry `n` of the view's `transform` list (translations
     /// in points, rotations and skews in degrees).
     Transform(u8),
@@ -26,6 +36,11 @@ impl AnimationProp {
         Some(match name {
             "opacity" => AnimationProp::Opacity,
             "backgroundColor" => AnimationProp::BackgroundColor,
+            "borderColor" => AnimationProp::BorderColor,
+            "color" => AnimationProp::Color,
+            "shadowColor" => AnimationProp::ShadowColor,
+            "shadowOpacity" => AnimationProp::ShadowOpacity,
+            "shadowRadius" => AnimationProp::ShadowRadius,
             _ => return None,
         })
     }
@@ -116,6 +131,12 @@ pub enum Driver {
         velocity: Option<f32>,
         /// Fraction of velocity kept per millisecond, e.g. `0.998`.
         deceleration: f32,
+        /// Bounds `(min, max)` the value stays within: it stops at a bound,
+        /// or bounces back from it with `bounce`.
+        clamp: Option<(f32, f32)>,
+        /// The fraction of its speed the value keeps when it bounces off a
+        /// bound (0: it stops there).
+        bounce: f32,
     },
 }
 
@@ -267,6 +288,35 @@ pub enum AnimationOp {
     Release {
         /// Node.
         node: NodeId,
+    },
+    /// Sets the offset added to a value (React Native's `setOffset`): the
+    /// value evaluates to its own value plus the offset; animations, `Set`
+    /// and gestures move its own value.
+    SetOffset {
+        /// Value node.
+        node: NodeId,
+        /// The offset.
+        offset: f32,
+    },
+    /// Merges a value's offset into it and clears the offset (React
+    /// Native's `flattenOffset`).
+    FlattenOffset {
+        /// Value node.
+        node: NodeId,
+    },
+    /// Moves a value into its offset, leaving it 0 (React Native's
+    /// `extractOffset`: a drag then starts from 0).
+    ExtractOffset {
+        /// Value node.
+        node: NodeId,
+    },
+    /// Reports the current value of any node as a [`crate::Finished`] of
+    /// `request` (with its `value`), so JS can read it back.
+    Read {
+        /// The node.
+        node: NodeId,
+        /// Reported back with the value.
+        request: AnimationId,
     },
 }
 

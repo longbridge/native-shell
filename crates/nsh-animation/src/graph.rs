@@ -30,19 +30,35 @@ impl AnimationValue {
     }
 }
 
-/// A finished (or interrupted) animation, to report back to JS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A finished (or interrupted) animation, to report back to JS; also the
+/// answer to an [`AnimationOp::Read`].
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Finished {
-    /// The animation.
+    /// The animation (or the read request).
     pub animation: AnimationId,
     /// False if it was stopped or replaced before reaching its end.
     pub finished: bool,
+    /// The node's value, for a read.
+    pub value: Option<f32>,
+}
+
+impl Finished {
+    /// The end of `animation`.
+    pub fn new(animation: AnimationId, finished: bool) -> Self {
+        Finished {
+            animation,
+            finished,
+            value: None,
+        }
+    }
 }
 
 #[derive(Debug)]
 enum Node {
     Value {
         value: f32,
+        /// Added when evaluated (`setOffset`).
+        offset: f32,
         velocity: f32,
         running: Option<Running>,
     },
@@ -197,7 +213,9 @@ impl Step {
                     let id = g.next_leaf.max(LEAF_IDS);
                     g.next_leaf = id.wrapping_add(1).max(LEAF_IDS);
                     if !g.start(*node, id, *driver, Some(at), finished) {
-                        return Some((true, at));
+                        // The value is gone (released): the composite
+                        // cannot go on (a loop would spin forever).
+                        return Some((false, at));
                     }
                     g.started.push(*node);
                     *leaf = Some(id);
@@ -364,6 +382,7 @@ impl Graph {
                 node,
                 Node::Value {
                     value,
+                    offset: 0.0,
                     velocity: 0.0,
                     running: None,
                 },
@@ -440,6 +459,7 @@ impl Graph {
                     finished.push(Finished {
                         animation: program.id,
                         finished: false,
+                        value: None,
                     });
                 }
                 if let Some(i) = self.baselines.iter().position(|(k, _)| *k == key) {
@@ -456,10 +476,7 @@ impl Graph {
                 if let Some(i) = self.programs.iter().position(|p| p.id == animation) {
                     let mut program = self.programs.remove(i);
                     program.root.stop(self, finished);
-                    finished.push(Finished {
-                        animation,
-                        finished: false,
-                    });
+                    finished.push(Finished::new(animation, false));
                 }
             }
             AnimationOp::Release { node } => {
@@ -468,6 +485,30 @@ impl Graph {
                     *slot = None;
                 }
             }
+            AnimationOp::SetOffset { node, offset: new } => {
+                if let Some(Some(Node::Value { offset, .. })) = self.nodes.get_mut(node as usize) {
+                    *offset = new;
+                }
+            }
+            AnimationOp::FlattenOffset { node } => {
+                if let Some(Some(Node::Value { value, offset, .. })) =
+                    self.nodes.get_mut(node as usize)
+                {
+                    *value += std::mem::take(offset);
+                }
+            }
+            AnimationOp::ExtractOffset { node } => {
+                if let Some(Some(Node::Value { value, offset, .. })) =
+                    self.nodes.get_mut(node as usize)
+                {
+                    *offset += std::mem::take(value);
+                }
+            }
+            AnimationOp::Read { node, request } => finished.push(Finished {
+                animation: request,
+                finished: true,
+                value: Some(self.eval(node).number()),
+            }),
         }
     }
 
@@ -485,6 +526,7 @@ impl Graph {
             value,
             velocity,
             running,
+            ..
         })) = self.nodes.get_mut(node as usize)
         else {
             return false;
@@ -497,6 +539,7 @@ impl Graph {
             finished.push(Finished {
                 animation: old.id,
                 finished: false,
+                value: None,
             });
         }
         if !self.animating.contains(&node) {
@@ -548,6 +591,7 @@ impl Graph {
             finished.push(Finished {
                 animation: old.id,
                 finished: false,
+                value: None,
             });
         }
         self.animating.retain(|&n| n != node);
@@ -594,6 +638,7 @@ impl Graph {
             value,
             velocity,
             running: running @ Some(_),
+            ..
         })) = self.nodes.get_mut(node as usize)
         else {
             return (false, true);
@@ -607,6 +652,7 @@ impl Graph {
             let end = Finished {
                 animation: r.id,
                 finished: true,
+                value: None,
             };
             if r.id >= LEAF_IDS {
                 self.leaf_ends.push((end, r.end_time(now)));
@@ -632,6 +678,7 @@ impl Graph {
                         finished.push(Finished {
                             animation: p.id,
                             finished: done,
+                            value: None,
                         });
                         false
                     }
@@ -670,7 +717,9 @@ impl Graph {
             return AnimationValue::Number(0.0);
         }
         match self.nodes.get(node as usize) {
-            Some(Some(Node::Value { value, .. })) => AnimationValue::Number(*value),
+            Some(Some(Node::Value { value, offset, .. })) => {
+                AnimationValue::Number(*value + *offset)
+            }
             Some(Some(Node::Interpolate {
                 input,
                 input_range,
@@ -881,7 +930,8 @@ mod tests {
             finished,
             vec![Finished {
                 animation: 7,
-                finished: true
+                finished: true,
+                value: None,
             }]
         );
         assert!(!g.is_animating());
@@ -928,7 +978,8 @@ mod tests {
             finished,
             vec![Finished {
                 animation: 1,
-                finished: false
+                finished: false,
+                value: None,
             }]
         );
         // A gesture takes over: stops the running animation.
@@ -937,7 +988,8 @@ mod tests {
             finished.last(),
             Some(&Finished {
                 animation: 2,
-                finished: false
+                finished: false,
+                value: None,
             })
         );
         assert_eq!(g.value(1), Some(42.0));
@@ -1005,7 +1057,8 @@ mod tests {
             f,
             vec![Finished {
                 animation: 5,
-                finished: true
+                finished: true,
+                value: None,
             }]
         );
         assert!(!g.is_animating());
@@ -1045,7 +1098,8 @@ mod tests {
             f,
             vec![Finished {
                 animation: 9,
-                finished: false
+                finished: false,
+                value: None,
             }]
         );
         let stopped = g.value(2).unwrap();
@@ -1085,7 +1139,8 @@ mod tests {
             f,
             vec![Finished {
                 animation: 3,
-                finished: true
+                finished: true,
+                value: None,
             }]
         );
 
@@ -1113,7 +1168,8 @@ mod tests {
             f,
             vec![Finished {
                 animation: 4,
-                finished: false
+                finished: false,
+                value: None,
             }]
         );
         assert!(!g.is_animating());
@@ -1209,5 +1265,105 @@ mod tests {
             &mut f,
         );
         let _ = g.eval(1);
+    }
+
+    #[test]
+    fn offsets_and_reads() {
+        let mut g = Graph::default();
+        let mut f = Vec::new();
+        values(&mut g, &mut f, &[1]);
+        g.set(1, 10.0, &mut f);
+        g.apply(
+            AnimationOp::SetOffset {
+                node: 1,
+                offset: 5.0,
+            },
+            &mut f,
+        );
+        assert_eq!(g.eval(1).number(), 15.0);
+        assert_eq!(g.value(1), Some(10.0));
+        // A drag starting from 0, on top of where the value was.
+        g.apply(AnimationOp::ExtractOffset { node: 1 }, &mut f);
+        assert_eq!((g.value(1), g.eval(1).number()), (Some(0.0), 15.0));
+        g.set(1, 3.0, &mut f);
+        g.apply(AnimationOp::FlattenOffset { node: 1 }, &mut f);
+        assert_eq!((g.value(1), g.eval(1).number()), (Some(18.0), 18.0));
+        g.apply(
+            AnimationOp::CreateMath {
+                node: 2,
+                op: MathOp::Mul,
+                a: Operand::Node(1),
+                b: Operand::Const(2.0),
+            },
+            &mut f,
+        );
+        g.apply(
+            AnimationOp::Read {
+                node: 2,
+                request: 40,
+            },
+            &mut f,
+        );
+        assert_eq!(
+            f,
+            [Finished {
+                animation: 40,
+                finished: true,
+                value: Some(36.0),
+            }]
+        );
+    }
+
+    #[test]
+    fn loops_end_when_their_values_are_released() {
+        let mut g = Graph::default();
+        let mut f = Vec::new();
+        values(&mut g, &mut f, &[1, 2]);
+        for (animation, key, node, spec) in [
+            // A loop that is animating its value when it goes.
+            (
+                3,
+                1,
+                1,
+                Composite::Run {
+                    node: 1,
+                    driver: timing(10.0, 100.0),
+                },
+            ),
+            // One waiting in a delay when it goes.
+            (
+                5,
+                2,
+                2,
+                Composite::Sequence(vec![
+                    Composite::Delay(100.0),
+                    Composite::Run {
+                        node: 2,
+                        driver: timing(10.0, 100.0),
+                    },
+                ]),
+            ),
+        ] {
+            g.apply(
+                AnimationOp::StartComposite {
+                    animation,
+                    key,
+                    spec: Composite::Loop {
+                        child: Box::new(spec),
+                        iterations: None,
+                        reset: true,
+                    },
+                },
+                &mut f,
+            );
+            run(&mut g, &mut f, 0.0, 0.5);
+            assert!(f.is_empty() && g.is_animating());
+            g.apply(AnimationOp::ReleaseComposite { key }, &mut f);
+            g.apply(AnimationOp::Release { node }, &mut f);
+            run(&mut g, &mut f, 0.5, 1.0);
+            assert_eq!(f, [Finished::new(animation, false)]);
+            assert!(!g.is_animating());
+            f.clear();
+        }
     }
 }

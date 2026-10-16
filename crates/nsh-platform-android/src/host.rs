@@ -20,7 +20,7 @@ use jni::{
 use nsh_core::{EventKind, EventPayload, MountBatch, MountItem, NodeId, PayloadValue, Size};
 use nsh_engine::{
     App, Assets, Bundle, ColorScheme, Engine, EngineConfig, EngineControl, Environment, Idiom,
-    Insets, MountSink, Policy, Root,
+    Insets, Locale, MountSink, Policy, Root,
 };
 
 use crate::{
@@ -533,13 +533,15 @@ extern "system" fn Java_com_longbridge_nsh_Native_resize(
 /// `values`: safe area top, right, bottom, left, keyboard height, keyboard
 /// animation duration, font scale, right to left (1), reduce motion (1),
 /// density, screen reader (1), API level, idiom (0 phone, 1 pad, 3 TV).
+/// `locale`: `Locale.getDefault()`'s language tag.
 #[unsafe(no_mangle)]
 extern "system" fn Java_com_longbridge_nsh_Native_environment(
-    env: JNIEnv<'_>,
+    mut env: JNIEnv<'_>,
     _: JClass<'_>,
     handle: jlong,
     values: JFloatArray<'_>,
     dark: jboolean,
+    locale: JString<'_>,
 ) {
     // SAFETY: Java passes its live handle.
     let host = unsafe { host(handle) };
@@ -568,6 +570,9 @@ extern "system" fn Java_com_longbridge_nsh_Native_environment(
         3 => Idiom::Tv,
         _ => Idiom::Phone,
     };
+    if let Ok(tag) = env.get_string(&locale) {
+        environment.locale = Locale::parse(&String::from(tag)).unwrap_or_default();
+    }
     environment.color_scheme = if dark != 0 {
         ColorScheme::Dark
     } else {
@@ -654,6 +659,7 @@ extern "system" fn Java_com_longbridge_nsh_Native_touch(
     coords: JFloatArray<'_>,
     changed: jni::objects::JBooleanArray<'_>,
     time: jlong,
+    activated: jint,
 ) {
     // SAFETY: Java passes its live handle.
     let host = unsafe { host(handle) };
@@ -718,6 +724,7 @@ extern "system" fn Java_com_longbridge_nsh_Native_touch(
                 phase,
                 timestamp: time as f64,
                 points,
+                activated: (activated >= 0).then_some(activated as NodeId),
             })),
         );
     }
@@ -801,6 +808,8 @@ extern "system" fn Java_com_longbridge_nsh_Native_eventMap(
                 "loaded" => "loaded",
                 "total" => "total",
                 "error" => "error",
+                "text" => "text",
+                "has" => "has",
                 _ => continue,
             };
             if let Some(v) = read(&mut env, i) {

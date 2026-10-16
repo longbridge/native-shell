@@ -169,6 +169,7 @@ events! {
     ContentSizeChange = "onContentSizeChange": "The size of an input's text changed (payload: `width`, `height`; raised by the core).",
     BackRequest = "onBackRequest": "The user tried to leave a screen with `preventBack` (back button, header back button).",
     NativeEvent = "onNativeEvent": "A registered native component emitted an event (payload: [`EventPayload::Native`]).",
+    Clipboard = "onClipboard": "A clipboard read finished (root only; payload: `id`, `has`: whether it holds text, `text`: the text, unless only `has` was asked).",
 }
 
 /// What an input holds, for the system's autofill and suggestions
@@ -318,6 +319,9 @@ pub struct TouchEvent {
     pub timestamp: f64,
     /// The fingers down during the event (with those that lifted).
     pub points: Vec<TouchPoint>,
+    /// A view around the fingers whose `panActivation` the platform
+    /// activated with this event: it becomes the responder.
+    pub activated: Option<NodeId>,
 }
 
 /// A set of [`EventKind`]s.
@@ -455,7 +459,7 @@ pub enum EventPayload {
 
 impl TouchEvent {
     /// Folds a later move into this pending one: the later positions,
-    /// changed if either moved them.
+    /// changed if either moved them, and either's activated pan.
     pub fn merge_move(&mut self, later: TouchEvent) {
         let mut later = later;
         for p in &mut later.points {
@@ -463,6 +467,7 @@ impl TouchEvent {
                 p.changed |= old.changed;
             }
         }
+        later.activated = later.activated.or(self.activated);
         *self = later;
     }
 }
@@ -497,12 +502,20 @@ pub enum KeyboardType {
     /// Full keyboard.
     #[default]
     Default,
-    /// Digits only (`number-pad`).
-    #[prop(rename = "number-pad", alias = "numeric")]
+    /// Digits only (`number-pad`): no sign, no decimal separator.
+    #[prop(rename = "number-pad")]
     Number,
     /// Digits and a decimal separator (`decimal-pad`).
     #[prop(rename = "decimal-pad")]
     Decimal,
+    /// Numbers (`numeric`, React Native's): iOS's decimal pad, Android's
+    /// number keyboard with a sign and a decimal separator.
+    Numeric,
+    /// Digits, a sign and punctuation (`numbers-and-punctuation`): iOS's
+    /// numbers and punctuation keyboard, Android's signed decimal number
+    /// keyboard (the closest it has).
+    #[prop(rename = "numbers-and-punctuation")]
+    NumbersAndPunctuation,
     /// E-mail addresses (`email-address`).
     #[prop(rename = "email-address")]
     Email,
@@ -511,6 +524,18 @@ pub enum KeyboardType {
     Phone,
     /// URLs (`url`).
     Url,
+}
+
+/// The keyboard's look (`keyboardAppearance`, iOS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
+pub enum KeyboardAppearance {
+    /// The system's: follows the app's appearance (default).
+    #[default]
+    Default,
+    /// Light.
+    Light,
+    /// Dark.
+    Dark,
 }
 
 /// Label of the return key (`returnKeyType`).
@@ -932,6 +957,25 @@ pub enum Command {
     },
     /// Move the screen reader's focus to this view.
     AccessibilityFocus,
+    /// Measure the view with this commit's layout (`ref.measure()`):
+    /// answered by the core as a `$return` event on the root for call
+    /// `call` ([`crate::Measurement`] as JSON, or null when the view is not
+    /// laid out); never mounted.
+    Measure {
+        /// The call to answer.
+        call: u32,
+    },
+    /// Put `text` on the system clipboard (on the root; `Clipboard.setString`).
+    SetClipboard(String),
+    /// Read the system clipboard and report it as [`EventKind::Clipboard`]
+    /// `id` (on the root): `has` and, unless `has_only`, `text`. Asking
+    /// only whether it holds text does not read it (no iOS paste notice).
+    ReadClipboard {
+        /// The request.
+        id: u32,
+        /// Only whether it holds text (`Clipboard.hasString`).
+        has_only: bool,
+    },
     /// A call on a registered native component (`ref.command(name, args)`).
     Native {
         /// The command.
@@ -1087,6 +1131,13 @@ pub enum Prop {
     /// to the end and keeps its distance from the end as content changes.
     #[prop(js = "inverted", on = LIST)]
     Inverted(bool),
+    /// `maintainVisibleContentPosition`: with `autoscrollToBottomThreshold`, a list
+    /// (not inverted) at the end of its content, or within that many points of it,
+    /// stays at the end as the content grows or the viewport shrinks (a reply
+    /// streaming into its last item); scrolled further up, it keeps the visible
+    /// content where it is. Items inserted above the visible ones never move them.
+    #[prop(js = "maintainVisibleContentPosition", with = crate::js::host_values::visible_content, reset = Prop::FollowEnd(None), ts = "{ autoscrollToBottomThreshold?: number }", on = LIST)]
+    FollowEnd(Option<f32>),
     /// `stickyHeaderIndices`: items that stick to the start while scrolled past
     /// (one column, not inverted).
     #[prop(js = "stickyHeaderIndices", with = crate::js::host_values::sticky, reset = Prop::StickyIndices(Vec::new()), on = LIST)]
@@ -1135,6 +1186,10 @@ pub enum Prop {
     /// `keyboardType`: the keyboard layout.
     #[prop(js = "keyboardType", on = INPUT)]
     KeyboardType(KeyboardType),
+    /// `keyboardAppearance` (iOS): the keyboard's light or dark look;
+    /// Android's keyboards follow the system's theme.
+    #[prop(ios = "keyboardAppearance", on = INPUT)]
+    KeyboardAppearance(KeyboardAppearance),
     /// `returnKeyType`: the label of the return key.
     #[prop(js = "returnKeyType", on = INPUT)]
     ReturnKeyType(ReturnKeyType),
@@ -1171,8 +1226,9 @@ pub enum Prop {
     /// `inputAccessoryViewID`).
     #[prop(js = "nativeID")]
     NativeId(Option<Box<str>>),
-    /// `selectionColor`: the caret and the selection.
-    #[prop(js = "selectionColor", on = INPUT)]
+    /// `selectionColor`: an input's caret and selection, the highlight of a
+    /// `selectable` text's selection.
+    #[prop(js = "selectionColor", on = INPUT | TEXT)]
     SelectionColor(Option<Color>),
     /// `autoComplete` (iOS: also `textContentType`): what an input holds, for
     /// autofill (React Native's values, e.g. "username", "current-password",
@@ -1194,6 +1250,12 @@ pub enum Prop {
     /// `hitSlop`: extends the touch area beyond the bounds.
     #[prop(js = "hitSlop", with = crate::js::host_values::hit_slop, reset = Prop::HitSlop(EdgeInsets::default()), ts = "number | { top?: number; right?: number; bottom?: number; left?: number }")]
     HitSlop(EdgeInsets),
+    /// `panActivation`: the view's touch responder waits for a pan that the
+    /// platform activates past an offset on one axis (and fails past one on
+    /// the other), deciding on the main thread so the scroll views around
+    /// it keep the touches until then.
+    #[prop(js = "panActivation")]
+    PanActivation(Option<crate::props::PanActivation>),
     /// `activeOpacity`: the opacity while pressed (native, no JS round trip).
     #[prop(js = "activeOpacity", min = 0, max = 1)]
     ActiveOpacity(Option<f32>),
@@ -1209,6 +1271,10 @@ pub enum Prop {
     /// `I18nManager`).
     #[prop(js = "layoutDirectionRtl", internal)]
     LayoutDirection(bool),
+    /// The app's appearance (on the root, from `nsh.json` and
+    /// `setColorScheme`).
+    #[prop(js = "appearance", internal)]
+    Appearance(crate::platform::Appearance),
     /// Padding added to the style's own (safe areas, the keyboard), in
     /// points on the physical edges; set by components
     /// (`Element::inset_padding`), never by JS.

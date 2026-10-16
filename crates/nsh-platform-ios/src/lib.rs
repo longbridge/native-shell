@@ -37,6 +37,7 @@ mod surface;
 mod system;
 mod target;
 mod text;
+mod text_selection;
 mod text_view;
 mod touch;
 mod video;

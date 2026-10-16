@@ -21,7 +21,9 @@ pub struct SheetProps {
     /// Shown.
     #[prop(default)]
     pub open: bool,
-    /// The content.
+    /// The content: made when the sheet opens and released when it has
+    /// closed, so it starts fresh each time.
+    #[prop(lazy)]
     pub children: Children,
 }
 

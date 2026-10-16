@@ -244,6 +244,8 @@ mount(App);
 | `onStartShouldSetResponderCapture` | `boolean` | 同上，但从外向内询问，先于冒泡阶段。父视图用它从子视图手里拿走触摸。 |
 | `onMoveShouldSetResponderCapture` | `boolean` | 移动时的版本。 |
 
+这四个回调还有第二个参数 `gestureState`：从第一根手指按下以来的手势，字段与 [PanResponder](#panresponder) 的相同（`dx`、`dy`、`vx`、`vy`、`moveX`、`moveY`、`x0`、`y0`、`numberActiveTouches`）。只接管水平滑动：`onMoveShouldSetResponder={(e, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy)}`。这个决定到达 JS 时已经晚了一次移动，外层的滚动视图可能已经开始滚动；滚动视图里的拖动请用 [`panActivation`](#滚动视图里的拖动panactivation)。
+
 成为响应者之后：
 
 | 属性 | 说明 |
@@ -340,12 +342,34 @@ mount(Ball);
 
 可用的回调有 `onStartShouldSetPanResponder(Capture)`、`onMoveShouldSetPanResponder(Capture)`、`onPanResponderGrant`、`onPanResponderReject`、`onPanResponderStart`、`onPanResponderMove`、`onPanResponderEnd`、`onPanResponderRelease`、`onPanResponderTerminate`、`onPanResponderTerminationRequest` 和 `onShouldBlockNativeResponder`。最后一个默认为 `true`：成为响应者的 PanResponder 会阻止原生滚动视图接管它的触摸。
 
+## 滚动视图里的拖动：panActivation
+
+纵向滚动视图里一个可以横向拖动查看数值的图表，需要接管横向拖动、把纵向拖动留给滚动视图。按下时就接管触摸会让滚动从第一个像素起就被挡住；在 `onMoveShouldSetResponder` 里判断又太晚：等 JS 回答时，滚动视图可能已经拿走了触摸。`panActivation` 让平台在主线程上随着手指移动来决定：
+
+```tsx
+<View
+  panActivation={{ activeOffsetX: 10, failOffsetY: 10 }}
+  onResponderGrant={(e) => scrub(e.locationX)}
+  onResponderMove={(e) => scrub(e.locationX)}
+  onResponderRelease={() => scrub(null)}
+>
+  <Chart />
+</View>
+```
+
+| 字段 | 说明 |
+|---|---|
+| `activeOffsetX`、`activeOffsetY` | 手指沿该轴离按下的位置超过这个距离（任一方向，单位点）时，拖动激活。 |
+| `failOffsetX`、`failOffsetY` | 手指先超过这个距离时拖动失败：触摸留给滚动视图。 |
+
+没有激活偏移时，任一方向移动 10 点后激活。激活之前，外层的滚动视图会等待它（iOS），视图也不会被询问是否成为响应者：它的 `…ShouldSetResponder` 回调会被跳过。激活后，滚动视图不能再拿走这些触摸，视图成为响应者（先 `onResponderGrant`，再收到移动）；失败时滚动视图照常滚动。`PanResponder` 的 `panHandlers` 也可以一起用：和这个属性放在同一个视图上，`onPanResponderGrant` 在激活时运行。
+
 > [!NOTE]
 > 不同 API 的速度单位不同：`PanResponder` 的 `vx` / `vy` 是每毫秒的点数，而 `onPanEnd` 的 `velocityX` / `velocityY` 以及 `spring` / `decay` 的 `velocity` 选项是每秒的点数。把 `vx` 传给弹簧前要乘以 1000。
 
 ## 为什么有些答案是属性
 
-主线程从不等待 JS。当系统需要立即得到答案时（这个拖动手势能否开始、这个点是否命中视图、这次点击是否应该收起键盘），nsh 根据事先挂载好的属性在原生端直接回答：`pan`（它的轴）、`pinch`、`hitSlop`、`pointerEvents`、`keyboardShouldPersistTaps`。你的 JS 处理函数事后才得知发生了什么。所以这些是声明式的属性而不是回调；也正因如此，会调用 JS 的响应者协商只在 JS 响应者之间做决定，从不阻塞原生手势。
+主线程从不等待 JS。当系统需要立即得到答案时（这个拖动手势能否开始、这个点是否命中视图、这次点击是否应该收起键盘），nsh 根据事先挂载好的属性在原生端直接回答：`pan`（它的轴）、`pinch`、`hitSlop`、`pointerEvents`、`keyboardShouldPersistTaps`、`panActivation`。你的 JS 处理函数事后才得知发生了什么。所以这些是声明式的属性而不是回调；也正因如此，会调用 JS 的响应者协商只在 JS 响应者之间做决定，从不阻塞原生手势。
 
 ## 相关内容
 

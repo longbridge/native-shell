@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use nsh_core::{
-    ApproxTextEngine, Command, EventKind, EventPayload, MountBatch, MountItem, PayloadValue,
-    ROOT_ID, Size, StatusBarStyle,
+    ApproxTextEngine, Command, EventKind, EventPayload, KeyboardAppearance, KeyboardType,
+    MountBatch, MountItem, PayloadValue, ROOT_ID, Size, StatusBarStyle,
 };
 use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Insets};
 
@@ -20,6 +20,17 @@ fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
 
 /// The app, compiled by nsh and loaded as bytecode.
 fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
+    start_with(app, environment, None, None)
+}
+
+/// [`start_in`] with the capabilities the app declares (JSON, `nsh.json`'s
+/// `capabilities` form) and an `nsh.json`.
+fn start_with(
+    app: &str,
+    environment: Environment,
+    capabilities: Option<&str>,
+    config: Option<&str>,
+) -> (Engine, Receiver<MountBatch>) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-components-{}-{}",
@@ -29,6 +40,9 @@ fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch
     std::fs::create_dir_all(&dir).unwrap();
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
+    if let Some(config) = config {
+        std::fs::write(dir.join("nsh.json"), config).unwrap();
+    }
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
@@ -40,7 +54,11 @@ fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
-        app: nsh_engine::App::Js(unsafe { Bundle::bytecode(bytecode) }),
+        app: nsh_engine::App::Js(
+            unsafe { Bundle::bytecode(bytecode) }
+                .with_capabilities_json(capabilities)
+                .unwrap(),
+        ),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -188,6 +206,50 @@ fn until(rx: &Receiver<MountBatch>, mut done: impl FnMut(&MountBatch) -> bool) -
 
 fn shows(batch: &MountBatch, wanted: &str) -> bool {
     text_ids(batch, wanted).is_some()
+}
+
+const LAZY_SHEET: &str = r#"import { mount, signal, untracked, Text } from "nsh";
+import { Sheet } from "nsh/ui/mobile";
+
+const open = signal(false);
+const count = signal(1);
+// Made when the sheet opens: shows the count of that moment.
+function Content() {
+  const at = untracked(() => count());
+  return <Text>{`opened at ${at}`}</Text>;
+}
+setTimeout(() => { count.set(3); open.set(true); }, 50);
+setTimeout(() => open.set(false), 150);
+setTimeout(() => { count.set(5); open.set(true); }, 250);
+
+mount(() => <Sheet open={open()}><Content /></Sheet>);
+"#;
+
+/// A sheet's content (`#[prop(lazy)]` children) is made when it opens,
+/// released when it closes, and made again on the next opening.
+#[test]
+fn a_sheet_makes_its_content_when_it_opens() {
+    let (_engine, rx) = start(LAZY_SHEET);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(
+        !first
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::Text { .. })),
+        "closed: no content"
+    );
+    let batches = until(&rx, |b| shows(b, "opened at 3"));
+    assert!(
+        batches.iter().any(|b| shows(b, "opened at 3")),
+        "made on opening"
+    );
+    let batches = until(&rx, |b| shows(b, "opened at 5"));
+    assert!(
+        batches.iter().any(|b| shows(b, "opened at 5")),
+        "made again"
+    );
 }
 
 #[test]
@@ -663,6 +725,220 @@ fn runtime_modules() {
     assert_eq!(focused, Some(note));
 }
 
+const MEASURE: &str = r#"import { mount, signal, Scroll, Text, View, type YNode } from "nsh";
+
+const shown = signal("waiting");
+let box!: YNode;
+let ghost!: YNode;
+const detached = <View ref={(n: YNode) => (ghost = n)} />;
+setTimeout(async () => {
+  const m = (await box.measure())!;
+  const none = await ghost.measure();
+  shown.set(`at ${m.x},${m.y} ${m.width}x${m.height} page ${m.pageX},${m.pageY} ${none}`);
+}, 0);
+
+mount(() => (
+  <View>
+    <Text>{shown()}</Text>
+    <Scroll
+      style={{ marginTop: 50, height: 300 }}
+      onScroll={async () => shown.set(`scrolled ${(await box.measure())!.pageY}`)}
+    >
+      <View style={{ padding: 20, height: 1000 }}>
+        <View ref={box} style={{ marginTop: 500, height: 30 }} />
+      </View>
+    </Scroll>
+  </View>
+));
+void detached;
+"#;
+
+/// `ref.measure()` answers after layout, with the frame in the parent and
+/// the position in the root view, following the scroll view's offset.
+#[test]
+fn measure_reports_frames_and_page_positions() {
+    let (engine, rx) = start(MEASURE);
+    let mut scroll = None;
+    let batches = until(&rx, |batch| {
+        for item in &batch.items {
+            if let MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Scroll,
+            } = item
+            {
+                scroll = Some(*id);
+            }
+        }
+        batch
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::Text { text, .. } if text.text.starts_with("at ")))
+    });
+    let shown: Vec<_> = batches
+        .iter()
+        .flat_map(|b| &b.items)
+        .filter_map(|i| match i {
+            MountItem::Text { text, .. } => Some(text.text.to_string()),
+            _ => None,
+        })
+        .collect();
+    // The text above the scroll view is one line (17 points with the approximate text engine) tall.
+    assert!(
+        shown
+            .iter()
+            .any(|t| t == "at 20,520 350x30 page 20,587 null"),
+        "{shown:?}"
+    );
+    engine
+        .control()
+        .scroll(scroll.expect("scroll view"), 0.0, 400.0, 0);
+    let after = until(&rx, |b| shows(b, "scrolled 187"));
+    assert!(after.iter().any(|b| shows(b, "scrolled 187")));
+}
+
+const CLIPBOARD: &str = r#"import { mount, signal, Text } from "nsh";
+import { Clipboard } from "nsh/clipboard";
+
+const shown = signal("waiting");
+setTimeout(async () => {
+  const before = await Clipboard.hasString();
+  Clipboard.setString("copied");
+  const has = await Clipboard.hasString();
+  const text = await Clipboard.getString();
+  shown.set(`${before} ${has} ${text}`);
+}, 0);
+
+mount(() => <Text>{shown()}</Text>);
+"#;
+
+/// A platform's clipboard: answers the core's reads from what it set.
+fn serve_clipboard(engine: &Engine, rx: &Receiver<MountBatch>, wanted: &str) -> Vec<Command> {
+    let control = engine.control();
+    let mut board: Option<String> = None;
+    let mut commands = Vec::new();
+    until(rx, |batch| {
+        for item in &batch.items {
+            let MountItem::Command {
+                id: ROOT_ID,
+                command,
+            } = item
+            else {
+                continue;
+            };
+            match command {
+                Command::SetClipboard(text) => board = Some(text.clone()),
+                Command::ReadClipboard { id, has_only } => {
+                    let mut payload = vec![
+                        ("id", PayloadValue::Number(*id as f64)),
+                        ("has", PayloadValue::Bool(board.is_some())),
+                    ];
+                    if let (false, Some(text)) = (has_only, &board) {
+                        payload.push(("text", PayloadValue::Str(text.clone())));
+                    }
+                    control.dispatch_event(
+                        ROOT_ID,
+                        EventKind::Clipboard,
+                        EventPayload::Map(payload),
+                    );
+                }
+                _ => continue,
+            }
+            commands.push(command.clone());
+        }
+        shows(batch, wanted)
+    });
+    commands
+}
+
+#[test]
+fn the_clipboard_round_trips_through_the_platform() {
+    let (engine, rx) = start(CLIPBOARD);
+    let commands = serve_clipboard(&engine, &rx, "false true copied");
+    assert_eq!(
+        commands,
+        [
+            Command::ReadClipboard {
+                id: 1,
+                has_only: true
+            },
+            Command::SetClipboard("copied".into()),
+            Command::ReadClipboard {
+                id: 2,
+                has_only: true
+            },
+            Command::ReadClipboard {
+                id: 3,
+                has_only: false
+            },
+        ]
+    );
+}
+
+#[test]
+fn the_clipboard_needs_its_capability() {
+    let (engine, rx) = start_with(CLIPBOARD, Environment::default(), Some("{}"), None);
+    // Nothing reaches the platform, and reads find nothing.
+    let commands = serve_clipboard(&engine, &rx, "false false ");
+    assert!(commands.is_empty(), "{commands:?}");
+    let (engine, rx) = start_with(
+        CLIPBOARD,
+        Environment::default(),
+        Some(r#"{ "clipboard": true }"#),
+        None,
+    );
+    serve_clipboard(&engine, &rx, "false true copied");
+}
+
+const INPUT_TRAITS: &str = r##"import { mount, Input, Text } from "nsh";
+
+mount(() => (
+  <>
+    <Input keyboardType="numeric" ios={{ keyboardAppearance: "dark" }} />
+    <Input keyboardType="numbers-and-punctuation" />
+    <Text selectable selectionColor="#ff0000">Pick me</Text>
+  </>
+));
+"##;
+
+#[test]
+fn inputs_and_selectable_text_carry_their_traits() {
+    let (_engine, rx) = start(INPUT_TRAITS);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let inputs: Vec<_> = first
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::Input { config, .. } => Some((config.keyboard, config.keyboard_appearance)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        inputs,
+        [
+            (KeyboardType::Numeric, KeyboardAppearance::Dark),
+            (
+                KeyboardType::NumbersAndPunctuation,
+                KeyboardAppearance::Default
+            ),
+        ]
+    );
+    let text = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Text { text, .. } if text.text == "Pick me" => Some(text.clone()),
+            _ => None,
+        })
+        .expect("the text");
+    assert!(text.selectable);
+    assert_eq!(
+        text.selection_color,
+        Some(nsh_core::Color::rgba(255, 0, 0, 255))
+    );
+}
+
 const ROWS: &str = r#"import { mount, Text } from "nsh";
 import { Group, ListView } from "nsh/ui/mobile";
 
@@ -774,3 +1050,51 @@ mount(() => (
   </View>
 ));
 "#;
+
+const APPEARANCE: &str = r#"import { mount, Text, View } from "nsh";
+import { colorScheme, setColorScheme } from "nsh/device";
+
+setTimeout(() => setColorScheme("light"), 20);
+
+mount(() => (
+  <View class="bg-white dark:bg-black">
+    <Text>{`scheme ${colorScheme()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn the_apps_appearance_overrides_the_systems() {
+    let (_engine, rx) = start_with(
+        APPEARANCE,
+        Environment::default(),
+        None,
+        Some(r#"{ "appearance": "dark" }"#),
+    );
+    let background = |batches: &[MountBatch]| {
+        batches
+            .iter()
+            .flat_map(|b| &b.items)
+            .rev()
+            .find_map(|i| match i {
+                MountItem::ViewStyle { style, .. } if style.background_color.0 & 0xff == 0xff => {
+                    Some(style.background_color)
+                }
+                _ => None,
+            })
+    };
+    // Dark from the start, though the system is light.
+    let first = until(&rx, |b| shows(b, "scheme dark"));
+    assert!(first.iter().any(|b| shows(b, "scheme dark")));
+    assert_eq!(background(&first), Some(nsh_core::Color(0x0000_00ff)));
+    assert!(first.iter().flat_map(|b| &b.items).any(|i| matches!(
+        i,
+        MountItem::Appearance {
+            appearance: nsh_core::platform::Appearance::Dark
+        }
+    )));
+    // `setColorScheme` switches at once.
+    let later = until(&rx, |b| shows(b, "scheme light"));
+    assert!(later.iter().any(|b| shows(b, "scheme light")), "{later:?}");
+    assert_eq!(background(&later), Some(nsh_core::Color(0xffff_ffff)));
+}

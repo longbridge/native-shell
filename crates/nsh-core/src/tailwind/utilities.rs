@@ -157,6 +157,42 @@ impl Decl {
     }
 
     /// The text color this declares, for `placeholder:` rules.
+    /// Sets the background color.
+    pub(crate) fn sets_background_color(&self) -> bool {
+        matches!(
+            self,
+            Decl::Set(StyleKey::BackgroundColor, _)
+                | Decl::Adaptive(StyleKey::BackgroundColor, _)
+                | Decl::Style(StyleDecl::Set(StyleKey::BackgroundColor, _))
+        )
+    }
+
+    /// Sets (or removes) a gradient background, or a part of one.
+    pub(crate) fn sets_background_image(&self) -> bool {
+        let gradient = |p: &Part| {
+            matches!(
+                p,
+                Part::Gradient(_)
+                    | Part::GradientNone
+                    | Part::From(_)
+                    | Part::Via(_)
+                    | Part::To(_)
+                    | Part::FromPos(_)
+                    | Part::ViaPos(_)
+                    | Part::ToPos(_)
+            )
+        };
+        match self {
+            Decl::Style(StyleDecl::Set(
+                StyleKey::BackgroundImage | StyleKey::ExperimentalBackgroundImage,
+                _,
+            )) => true,
+            Decl::Part(p) => gradient(p),
+            Decl::AdaptivePart(p) => gradient(&p[0]),
+            _ => false,
+        }
+    }
+
     pub(crate) fn text_color(&self) -> Option<Color> {
         match self {
             Decl::Set(StyleKey::Color, PatchValue::Str(s)) => Color::parse(s),

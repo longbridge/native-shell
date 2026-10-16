@@ -546,6 +546,17 @@ fn props_json(p: &ViewProps) -> String {
     if let Some(d) = p.long_press_delay {
         let _ = write!(s, ",\"longPressDelay\":{d}");
     }
+    if let Some(a) = p.pan_activation {
+        let n = |v: Option<f32>| v.map_or("null".to_owned(), |v| v.to_string());
+        let _ = write!(
+            s,
+            ",\"panActivation\":[{},{},{},{}]",
+            n(a.active_offset_x),
+            n(a.active_offset_y),
+            n(a.fail_offset_x),
+            n(a.fail_offset_y)
+        );
+    }
     if let Some(l) = &a.label {
         let _ = write!(s, ",\"label\":{}", json_str(l));
     }
@@ -736,7 +747,9 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
                 push_str(&mut out.s, &css);
             }
             out.s.push(']');
-            out.bool(text.selectable).end();
+            out.bool(text.selectable)
+                .opt_str(text.selection_color.map(css_color).as_deref())
+                .end();
         }
         MountItem::Events { id, events } => {
             out.item("e").num(*id);
@@ -794,6 +807,7 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
             out.item("sb").num(*id).num(*dx).num(*dy).end();
         }
         MountItem::LayoutDirection { rtl } => out.item("dir").bool(*rtl).end(),
+        MountItem::Appearance { appearance } => out.item("appearance").num(*appearance as u8).end(),
         MountItem::StickyCells { id, cells } => {
             out.item("sticky").num(*id);
             out.s.push_str(",[");
@@ -829,6 +843,9 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
         }
         MountItem::ViewProps { id, props } => {
             out.item("vp").num(*id).raw(&props_json(props)).end();
+        }
+        MountItem::AccessibilityLabel { id, label } => {
+            out.item("al").num(*id).opt_str(label.as_deref()).end();
         }
         MountItem::LayoutAnimation(a) => {
             out.item("la")
@@ -904,7 +921,9 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
         },
         MountItem::Command { id, command } => encode_command(out, *id, command),
         MountItem::Component { id, name } => out.item("comp").num(*id).str(name).end(),
+        // Browsers hit-test what overflows a box themselves.
         MountItem::ComponentProps { .. }
+        | MountItem::Overflow { .. }
         | MountItem::AnimationBindings { .. }
         | MountItem::Animation(_) => {}
     }
@@ -968,6 +987,18 @@ fn encode_command(out: &mut Out, id: u32, command: &Command) {
             out.item("cmd").num(id).str("injectJavaScript").str(s).end();
         }
         Command::Seek(t) => out.item("cmd").num(id).str("seek").num(*t).end(),
+        Command::SetClipboard(text) => out.item("cmd").num(id).str("setClipboard").str(text).end(),
+        Command::ReadClipboard {
+            id: request,
+            has_only,
+        } => {
+            out.item("cmd")
+                .num(id)
+                .str("readClipboard")
+                .num(*request)
+                .bool(*has_only)
+                .end();
+        }
         other => log::debug!("web: command {other:?} is not supported"),
     }
 }

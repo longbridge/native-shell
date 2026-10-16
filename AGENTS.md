@@ -58,7 +58,7 @@ crates/
                        `compiler`: the playground's TSX compiler (`nsh-playground.wasm`)
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
-  nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / dev / run / package; keygen /
+  nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / check / dev / run / package; keygen /
                        certify / publish / verify / revoke; apps with Rust components of their own (`rust_app.rs`: the crate
                        nsh.json `"rust"` names has a `#[native_module("…")]` fn; docs/dev/tooling.md); what it prints (`ui.rs`:
                        one line per step, tools' output only on failure, `-v` for everything; docs/dev/tooling.md "Output")
@@ -111,6 +111,8 @@ cargo build -p nsh-ios-host --target aarch64-apple-ios-sim                      
 cargo build -p nsh-ios-app --target aarch64-apple-ios-sim                              # the release runner (`nsh package --target ios-simulator`)
 ./target/debug/nsh trace examples/counter                                  # headless run: prints mount items and the time of every commit
 ./target/release/nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0       # headless scrolling (10pt per frame): per-frame list cost
+./target/debug/nsh trace examples/hopper --tap label:Plan --wait 500 --safe-area 47,0,34,0   # tap by testID / label / text, run timers, insets
+./target/debug/nsh check examples/hopper                                   # type check (TypeScript 7's native tsc, downloaded once; no Node)
 ./target/debug/nsh run examples/counter --trace                            # dev server + Catalyst host (390×844), hot reload on save
 ./target/debug/nsh run examples/gallery --target ios                       # in an iOS simulator (boots one; needs the nsh-ios-host sim build)
 ./target/debug/nsh run examples/gallery --target android                   # on an emulator / device (needs `cargo xtask android --dev`)

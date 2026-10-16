@@ -102,7 +102,8 @@ final class CanvasBox extends Box {
                 case 24: case 25: return skipPaint();
                 case 30: i += 1 + code[i]; return true;
                 case 36: i += 2; return true;
-                case 37: i += 4; return true;
+                case 37: i += 5; return true;
+                case 43: i += 1; return true;
                 case 40: case 41: i += 4; return true;
                 case 42: i += 1 + 1 + 4 + 4; return true;
                 default: return false;
@@ -145,6 +146,8 @@ final class CanvasBox extends Box {
         int fontWeight = 400;
         boolean italic;
         String family;
+        /** The font's OpenType feature bits, and `fontVariantNumeric`'s. */
+        int variant, numeric;
         int align, baseline;
         final Matrix ctm = new Matrix();
 
@@ -156,6 +159,7 @@ final class CanvasBox extends Box {
             s.cap = cap; s.join = join; s.composite = composite; s.dash = dash;
             s.shadowColor = shadowColor; s.shadowBlur = shadowBlur; s.shadowX = shadowX; s.shadowY = shadowY;
             s.fontSize = fontSize; s.fontWeight = fontWeight; s.italic = italic; s.family = family;
+            s.variant = variant; s.numeric = numeric;
             s.align = align; s.baseline = baseline;
             s.ctm.set(ctm);
             return s;
@@ -284,8 +288,10 @@ final class CanvasBox extends Box {
                 s.italic = code[i++] != 0;
                 int family = code[i++];
                 s.family = family >= 0 ? (String) objects[family] : null;
+                s.variant = code[i++];
                 return true;
             }
+            case 43: s.numeric = code[i++]; return true;
             case 38: s.align = code[i++]; return true;
             case 39: s.baseline = code[i++]; return true;
             case 40: case 41: {
@@ -661,6 +667,10 @@ final class CanvasBox extends Box {
         paint.setAntiAlias(true);
         paint.setTextSize(s.fontSize);
         paint.setTypeface(TextLayouts.typeface(s.family, s.fontWeight, s.italic));
+        // `fontVariantNumeric` replaces the font's number forms (bits as
+        // `nsh_core::FontVariant`: 1 is small caps).
+        String features = TextLayouts.features(s.numeric != 0 ? (s.variant & 1) | s.numeric : s.variant);
+        if (features != null) paint.setFontFeatureSettings(features);
         float width = paint.measureText(text);
         Paint.FontMetrics fm = paint.getFontMetrics();
         float ascent = -fm.ascent, descent = fm.descent;

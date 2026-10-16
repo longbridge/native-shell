@@ -183,6 +183,45 @@ fn gradients() {
 }
 
 #[test]
+fn state_backgrounds_show_over_gradients() {
+    let classes = "bg-linear-to-b from-zinc-700 to-zinc-800 active:bg-zinc-600";
+    let pressed = |classes| {
+        let (env, _) = cx(0);
+        styled_with(classes, env, (390.0, 844.0), state::PRESSED).0
+    };
+    assert!(
+        !styled(classes)
+            .view
+            .effects
+            .as_ref()
+            .unwrap()
+            .background_images
+            .is_empty()
+    );
+    let s = pressed(classes);
+    assert!(s.view.effects.is_none());
+    assert_eq!(s.view.background_color, Color(0x52_52_5c_ff));
+    // A state that sets its own gradient keeps it.
+    let s = pressed("bg-linear-to-b from-zinc-700 active:bg-zinc-600 active:from-zinc-500");
+    assert_eq!(s.view.effects.as_ref().unwrap().background_images.len(), 1);
+    // A later plain color is not feedback.
+    let env = ClassEnvironment {
+        dark: true,
+        ..Default::default()
+    };
+    let (s, _) = styled_with(
+        "bg-linear-to-b from-zinc-700 active:bg-zinc-600 dark:bg-black",
+        env,
+        (390.0, 844.0),
+        state::PRESSED,
+    );
+    assert_eq!(s.view.effects.as_ref().unwrap().background_images.len(), 1);
+    // Plain colors keep CSS's order: the gradient is drawn over them.
+    let s = styled("bg-zinc-600 bg-linear-to-b from-zinc-700");
+    assert_eq!(s.view.effects.as_ref().unwrap().background_images.len(), 1);
+}
+
+#[test]
 fn transforms() {
     let s = styled("-translate-x-1/2 translate-y-2 rotate-45 scale-110");
     let ops = s.view.transform.ops();

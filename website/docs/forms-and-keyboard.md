@@ -64,6 +64,7 @@ An input is **uncontrolled** without `value`: it keeps its own text, starting at
 | `blurOnSubmit` | `boolean` | `true` | Return unfocuses a single-line input. |
 | `caretHidden` | `boolean` | `false` | No caret is drawn. |
 | `selectionColor` | `ColorValue` | | The caret and the selection. |
+| `ios={{ keyboardAppearance }}` | `"default" \| "light" \| "dark"` | `"default"` | The keyboard's look (iOS). |
 | `selection` | `{ start: number; end?: number }` | | The controlled selection, in UTF-16 units. |
 | `allowFontScaling` | `boolean` | `true` | Follow the system text size. |
 | `maxFontSizeMultiplier` | `number` | | The upper bound of the system scale (0: none). |
@@ -96,10 +97,13 @@ An input is styled like text: `fontSize`, `color`, `fontFamily`, `textAlign`, `l
 | `"default"` | Text. |
 | `"email-address"` | Text with `@` and `.` at hand. |
 | `"url"` | Text with `/` and `.com`. |
-| `"number-pad"` | Digits only. |
-| `"numeric"` | Digits and, on some keyboards, signs. |
+| `"number-pad"` | Digits only: no sign, no decimal separator (codes, PINs). |
 | `"decimal-pad"` | Digits and a decimal separator. |
+| `"numeric"` | As React Native: iOS's decimal pad; on Android digits with a sign and a decimal separator. |
+| `"numbers-and-punctuation"` | Digits, a minus sign and punctuation (iOS's numbers and punctuation keyboard; on Android digits with a sign and a decimal separator). Use it for negative numbers on iOS. |
 | `"phone-pad"` | A phone dial pad. |
+
+On iOS, `ios={{ keyboardAppearance: "dark" }}` (or `"light"`, `"default"`) gives the keyboard a light or dark look regardless of the system's appearance, for a dark app in light mode. Android's keyboards always follow the system's theme.
 
 `autoComplete` tells the system what the field holds, so it can offer saved names, addresses, passwords and one-time codes from messages. It takes these values: `"name"`, `"given-name"`, `"family-name"`, `"email"`, `"tel"`, `"username"`, `"current-password"`, `"new-password"`, `"one-time-code"`, `"street-address"`, `"postal-code"`, `"country"`, `"cc-number"`, `"cc-exp"`, `"cc-csc"`, `"url"`, `"birthdate-full"` and others, or `"off"`. iOS's own names (`"emailAddress"`, `"oneTimeCode"`, ...) are accepted too, in `autoComplete` or `ios={{ textContentType }}`.
 

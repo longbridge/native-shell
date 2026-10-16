@@ -80,7 +80,8 @@ Besides the [common props](./index.md#common-props) (with `style` typed as `Text
 | `maxFontSizeMultiplier` | `number` | `0` | The upper bound of the system scale; `0` is none. |
 | `adjustsFontSizeToFit` | `boolean` | `false` | Shrink the font until the text fits its lines (`numberOfLines`) and its box. |
 | `minimumFontScale` | `number` | | How far `adjustsFontSizeToFit` shrinks at most (0..1; at least 0.1). |
-| `selectable` | `boolean` | `false` | A long press highlights the block and offers Copy. |
+| `selectable` | `boolean` | `false` | The user can select ranges of the text: a long press selects a word, handles extend it, the edit menu copies it. |
+| `selectionColor` | `ColorValue` | | The highlight (and handles) of the selection of selectable text; the platform's accent by default. |
 | `onTextLayout` | `(e: { lines: TextLayoutLine[] }) => void` | | The laid-out lines after each layout. |
 
 The `select-text` Tailwind class is the same as `selectable`.
@@ -125,7 +126,7 @@ None of its own.
 
 ## Platform notes
 
-- `selectable` copies whole blocks: there is no range selection. iOS shows the edit menu, Android a floating action mode.
+- Selection stays inside one text block (one `<Text>` and its spans); it does not run across blocks. iOS shows its edit menu (Copy, Select All, Look Up, Translate, Share), Android a floating toolbar (Copy, Select all, Share).
 - Text decorations other than a solid single line (`double`, `dotted`, `dashed`, `wavy`) are drawn by nsh on iOS.
 - iOS texts draw no gradient backgrounds or inset shadows.
 - `fontScale()` from [`nsh/device`](../modules/nsh-device.md) reports the current system text scale.

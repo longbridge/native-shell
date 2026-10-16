@@ -182,12 +182,27 @@ impl<'a> ModuleCx<'a> {
             .push(super::services::announce(message.into()));
     }
 
+    /// Puts `text` on the system clipboard (TS: `Clipboard.setString`).
+    pub fn set_clipboard(&mut self, text: impl Into<String>) {
+        self.inner
+            .actions
+            .push(super::services::set_clipboard(text.into()));
+    }
+
     /// Shows `message` at the bottom of the screen (Android's toasts);
     /// nothing happens elsewhere.
     pub fn toast(&mut self, message: impl Into<String>, duration: super::ToastDuration) {
         self.inner
             .actions
             .push(super::services::toast(message.into(), duration));
+    }
+
+    /// Shows the surface in `appearance` whatever the system's (TS:
+    /// `setColorScheme`): [`crate::ui::RenderCx::dark`] (the theme's
+    /// mode), `dark:` classes and the platform's controls follow it;
+    /// [`crate::platform::Appearance::System`] follows the system again.
+    pub fn set_color_scheme(&mut self, appearance: crate::platform::Appearance) {
+        self.inner.actions.push(Action::Appearance(appearance));
     }
 
     /// Lays the surface out right to left whatever the user's language

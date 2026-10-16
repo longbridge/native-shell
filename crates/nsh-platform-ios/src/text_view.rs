@@ -1,9 +1,11 @@
-use std::{cell::RefCell, ptr::NonNull, sync::Arc};
+use std::{cell::RefCell, sync::Arc};
 
-use block2::RcBlock;
 use nsh_core::{AttributedText, Rect, TextLayout, TextLink};
 use objc2::{
-    DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, rc::Retained,
+    DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send,
+    rc::Retained,
+    runtime::{AnyObject, ProtocolObject, Sel},
+    sel,
 };
 use objc2_core_foundation::{
     CFArray, CFDictionary, CFIndex, CFNumber, CFRange, CFString, CFType, CGAffineTransform,
@@ -11,15 +13,21 @@ use objc2_core_foundation::{
 };
 use objc2_core_graphics::{CGColor, CGContext};
 use objc2_core_text::{CTFont, CTRun, kCTFontAttributeName};
-use objc2_foundation::{NSObject, NSString};
+use objc2_foundation::{
+    NSArray, NSAttributedStringKey, NSComparisonResult, NSDictionary, NSInteger, NSObject,
+    NSObjectProtocol, NSRange, NSString,
+};
 use objc2_ui_kit::{
-    UIAccessibilityTraitStaticText, UIAccessibilityTraits, UIColor, UIGraphicsGetCurrentContext,
-    UILongPressGestureRecognizer, UIPasteboard, UIResponder, UIView,
+    NSWritingDirection, UIAccessibilityTraitStaticText, UIAccessibilityTraits, UIColor,
+    UIGraphicsGetCurrentContext, UIKeyInput, UIResponder, UITextInput, UITextInputDelegate,
+    UITextInputTokenizer, UITextInputTraits, UITextLayoutDirection, UITextPosition, UITextRange,
+    UITextSelectionRect, UITextStorageDirection, UIView,
 };
 
 use crate::{
     native_view::NshView,
     text::{CoreTextLayout, LaidLine, decoration_key, strikethrough_key, underline_key},
+    text_selection::{self, Selection},
 };
 
 /// Draws the decoration lines CoreText does not: strikethroughs, and
@@ -162,17 +170,13 @@ fn stroke_decoration(
 
 #[derive(Default)]
 pub(crate) struct TextViewIvars {
-    layout: RefCell<Option<(TextLayout, Rect)>>,
+    pub(crate) layout: RefCell<Option<(TextLayout, Rect)>>,
     /// The content, for accessibility and the block's shadow.
-    text: RefCell<Option<Arc<AttributedText>>>,
-    /// `selectable`: the long press that offers to copy the text.
-    select: RefCell<Option<Retained<UILongPressGestureRecognizer>>>,
-    /// The copy menu shows: the text is highlighted.
-    selected: std::cell::Cell<bool>,
-    /// Observes the menu hiding while it shows.
-    menu_observer: RefCell<
-        Option<Retained<objc2::runtime::ProtocolObject<dyn objc2_foundation::NSObjectProtocol>>>,
-    >,
+    pub(crate) text: RefCell<Option<Arc<AttributedText>>>,
+    /// `selectable`: the range selection (`text_selection.rs`).
+    pub(crate) selection: Selection,
+    /// An animated `color` (`0xRRGGBBAA`): the whole text is drawn in it.
+    color: std::cell::Cell<Option<u32>>,
 }
 
 define_class!(
@@ -213,63 +217,60 @@ define_class!(
         }
 
         #[unsafe(method(canPerformAction:withSender:))]
-        fn can_perform_action(&self, action: objc2::runtime::Sel, _sender: Option<&objc2::runtime::AnyObject>) -> bool {
-            self.selectable() && action == objc2::sel!(copy:)
+        fn can_perform_action(&self, action: Sel, sender: Option<&AnyObject>) -> bool {
+            // (No early returns: the method's result is converted to BOOL.)
+            let editing = [
+                sel!(cut:),
+                sel!(paste:),
+                sel!(delete:),
+                sel!(toggleBoldface:),
+                sel!(toggleItalics:),
+                sel!(toggleUnderline:),
+            ];
+            if !self.selectable() || editing.contains(&action) {
+                // Nothing edits the text.
+                false
+            } else if action == sel!(copy:) {
+                self.has_selection()
+            } else if action == sel!(selectAll:) {
+                !self.all_selected() && self.text_length() > 0
+            } else {
+                // The system's own (Look Up, Translate, Share) where it offers them.
+                // SAFETY: calling the superclass implementation.
+                let can: bool =
+                    unsafe { msg_send![super(self), canPerformAction: action, withSender: sender] };
+                can
+            }
         }
 
         #[unsafe(method(copy:))]
-        fn copy(&self, _sender: Option<&objc2::runtime::AnyObject>) {
-            if let Some(text) = self.ivars().text.borrow().as_ref() {
-                // Without the placeholders of attachments.
-                let copied = text.text.replace(nsh_core::ATTACHMENT_CHAR, "");
-                // SAFETY: a plain setter.
-                unsafe { UIPasteboard::generalPasteboard().setString(Some(&NSString::from_str(&copied))) };
+        fn copy(&self, _sender: Option<&AnyObject>) {
+            if let Some(text) = self.selected_string() {
+                crate::system::set_clipboard(&text);
             }
-            self.set_selected(false);
+        }
+
+        #[unsafe(method(selectAll:))]
+        fn select_all(&self, _sender: Option<&AnyObject>) {
+            let len = self.text_length();
+            if len > 0 {
+                self.change_selection(Some((0, len)));
+            }
         }
 
         #[unsafe(method(resignFirstResponder))]
         fn resign_first_responder(&self) -> bool {
-            self.set_selected(false);
             // SAFETY: calling the superclass implementation.
-            unsafe { msg_send![super(self), resignFirstResponder] }
+            let resigned: bool = unsafe { msg_send![super(self), resignFirstResponder] };
+            if resigned {
+                self.end_selection();
+            }
+            resigned
         }
 
-        #[unsafe(method(handleSelect:))]
-        fn handle_select(&self, recognizer: &UILongPressGestureRecognizer) {
-            if recognizer.state() != objc2_ui_kit::UIGestureRecognizerState::Began || !self.selectable() {
-                return;
-            }
-            self.becomeFirstResponder();
-            self.set_selected(true);
-            // UIEditMenuInteraction needs iOS 16; the menu controller works
-            // everywhere.
-            #[allow(deprecated)]
-            {
-                let menu = objc2_ui_kit::UIMenuController::sharedMenuController(self.mtm());
-                menu.showMenuFromView_rect(self, self.bounds());
-            }
-            // The highlight goes when the menu does.
-            let weak = objc2::rc::Weak::from_retained(&self.retain());
-            let observer = RcBlock::new(move |_: NonNull<objc2_foundation::NSNotification>| {
-                if let Some(view) = weak.load() {
-                    view.set_selected(false);
-                }
-            });
-            let center = objc2_foundation::NSNotificationCenter::defaultCenter();
-            // SAFETY: the observer removes itself in its first call below
-            // via `set_selected(false)` being idempotent; the block only
-            // holds a weak reference.
-            #[allow(deprecated)]
-            let token = unsafe {
-                center.addObserverForName_object_queue_usingBlock(
-                    Some(objc2_ui_kit::UIMenuControllerDidHideMenuNotification),
-                    None,
-                    Some(&objc2_foundation::NSOperationQueue::mainQueue()),
-                    &observer,
-                )
-            };
-            *self.ivars().menu_observer.borrow_mut() = Some(token);
+        #[unsafe(method_id(inputView))]
+        fn input_view(&self) -> Option<Retained<UIView>> {
+            Some(self.sel_input_view())
         }
 
         #[unsafe(method(drawRect:))]
@@ -279,18 +280,6 @@ define_class!(
             let Some(text) = layout.downcast::<CoreTextLayout>() else { return };
             let Some(ctx) = UIGraphicsGetCurrentContext() else { return };
             let c = Some(&*ctx);
-            if self.ivars().selected.get() {
-                // The whole text is what the menu copies.
-                let tint = self
-                    .tintColor()
-                    .unwrap_or_else(UIColor::systemBlueColor)
-                    .colorWithAlphaComponent(0.25);
-                tint.setFill();
-                objc2_ui_kit::UIRectFill(CGRect::new(
-                    CGPoint::new(content.x as CGFloat, content.y as CGFloat),
-                    CGSize::new(content.width as CGFloat, content.height as CGFloat),
-                ));
-            }
             CGContext::save_g_state(c);
             // CoreText draws in a y-up space with the origin at the bottom of
             // the box.
@@ -309,6 +298,14 @@ define_class!(
                     Some(&*unsafe { color.CGColor() }),
                 );
             }
+            // An animated color: the text (decorations too) drawn as is into
+            // a layer, then painted over in the color where it drew, so
+            // its antialiasing stays; the layer casts the shadow.
+            let color = self.ivars().color.get();
+            if color.is_some() {
+                // SAFETY: no auxiliary info.
+                unsafe { CGContext::begin_transparency_layer(c, None) };
+            }
             for line in &text.lines {
                 CGContext::set_text_position(c, line.origin.x, line.origin.y);
                 // SAFETY: a valid line and context.
@@ -317,9 +314,195 @@ define_class!(
                     draw_decorations(&ctx, line);
                 }
             }
+            if let Some(color) = color {
+                CGContext::set_blend_mode(c, objc2_core_graphics::CGBlendMode::SourceIn);
+                CGContext::set_fill_color_with_color(
+                    c,
+                    crate::decor::cg_color(nsh_core::Color(color)).as_deref(),
+                );
+                // Wherever the text drew (glyphs may reach past the box);
+                // the clip bounds the rest.
+                CGContext::fill_rect(c, CGContext::clip_bounding_box(c));
+                CGContext::end_transparency_layer(c);
+            }
             CGContext::restore_g_state(c);
         }
     }
+
+    unsafe impl NSObjectProtocol for TextView {}
+
+    unsafe impl UITextInputTraits for TextView {}
+
+    // Not editable: the input methods do nothing.
+    unsafe impl UIKeyInput for TextView {
+        #[unsafe(method(hasText))]
+        fn key_has_text(&self) -> bool {
+            self.has_text()
+        }
+
+        #[unsafe(method(insertText:))]
+        fn insert_text(&self, _text: &NSString) {}
+
+        #[unsafe(method(deleteBackward))]
+        fn delete_backward(&self) {}
+    }
+
+    unsafe impl UITextInput for TextView {
+        #[unsafe(method_id(textInRange:))]
+        fn text_in_range(&self, range: &UITextRange) -> Option<Retained<NSString>> {
+            self.sel_text_in(range)
+        }
+
+        #[unsafe(method(replaceRange:withText:))]
+        fn replace_range(&self, _range: &UITextRange, _text: &NSString) {}
+
+        #[unsafe(method_id(selectedTextRange))]
+        fn selected_text_range(&self) -> Option<Retained<UITextRange>> {
+            self.sel_selected_range()
+        }
+
+        #[unsafe(method(setSelectedTextRange:))]
+        fn set_selected_text_range(&self, range: Option<&UITextRange>) {
+            self.sel_set_selected_range(range);
+        }
+
+        #[unsafe(method_id(markedTextRange))]
+        fn marked_text_range(&self) -> Option<Retained<UITextRange>> {
+            None
+        }
+
+        #[unsafe(method_id(markedTextStyle))]
+        fn marked_text_style(&self) -> Option<Retained<NSDictionary<NSAttributedStringKey, AnyObject>>> {
+            None
+        }
+
+        #[unsafe(method(setMarkedTextStyle:))]
+        fn set_marked_text_style(&self, _style: Option<&NSDictionary<NSAttributedStringKey, AnyObject>>) {}
+
+        #[unsafe(method(setMarkedText:selectedRange:))]
+        fn set_marked_text(&self, _text: Option<&NSString>, _range: NSRange) {}
+
+        #[unsafe(method(unmarkText))]
+        fn unmark_text(&self) {}
+
+        #[unsafe(method_id(beginningOfDocument))]
+        fn beginning_of_document(&self) -> Retained<UITextPosition> {
+            self.sel_position(0)
+        }
+
+        #[unsafe(method_id(endOfDocument))]
+        fn end_of_document(&self) -> Retained<UITextPosition> {
+            self.sel_position(self.text_length())
+        }
+
+        #[unsafe(method_id(textRangeFromPosition:toPosition:))]
+        fn text_range(&self, from: &UITextPosition, to: &UITextPosition) -> Option<Retained<UITextRange>> {
+            Some(self.sel_range(from, to))
+        }
+
+        #[unsafe(method_id(positionFromPosition:offset:))]
+        fn position_offset(&self, position: &UITextPosition, offset: NSInteger) -> Option<Retained<UITextPosition>> {
+            self.sel_moved(position, offset)
+        }
+
+        #[unsafe(method_id(positionFromPosition:inDirection:offset:))]
+        fn position_direction(
+            &self,
+            position: &UITextPosition,
+            direction: UITextLayoutDirection,
+            offset: NSInteger,
+        ) -> Option<Retained<UITextPosition>> {
+            self.sel_moved_in(position, direction, offset)
+        }
+
+        #[unsafe(method(comparePosition:toPosition:))]
+        fn compare_position(&self, position: &UITextPosition, other: &UITextPosition) -> NSComparisonResult {
+            match text_selection::offset(position).cmp(&text_selection::offset(other)) {
+                std::cmp::Ordering::Less => NSComparisonResult::Ascending,
+                std::cmp::Ordering::Equal => NSComparisonResult::Same,
+                std::cmp::Ordering::Greater => NSComparisonResult::Descending,
+            }
+        }
+
+        #[unsafe(method(offsetFromPosition:toPosition:))]
+        fn offset_from(&self, from: &UITextPosition, to: &UITextPosition) -> NSInteger {
+            text_selection::offset(to) as NSInteger - text_selection::offset(from) as NSInteger
+        }
+
+        #[unsafe(method_id(inputDelegate))]
+        fn input_delegate(&self) -> Option<Retained<ProtocolObject<dyn UITextInputDelegate>>> {
+            self.sel_delegate()
+        }
+
+        #[unsafe(method(setInputDelegate:))]
+        fn set_input_delegate(&self, delegate: Option<&ProtocolObject<dyn UITextInputDelegate>>) {
+            self.sel_set_delegate(delegate);
+        }
+
+        #[unsafe(method_id(tokenizer))]
+        fn tokenizer(&self) -> Retained<ProtocolObject<dyn UITextInputTokenizer>> {
+            self.sel_tokenizer()
+        }
+
+        #[unsafe(method_id(positionWithinRange:farthestInDirection:))]
+        fn farthest(&self, range: &UITextRange, direction: UITextLayoutDirection) -> Option<Retained<UITextPosition>> {
+            Some(self.sel_farthest(range, direction))
+        }
+
+        #[unsafe(method_id(characterRangeByExtendingPosition:inDirection:))]
+        fn extending(&self, position: &UITextPosition, direction: UITextLayoutDirection) -> Option<Retained<UITextRange>> {
+            Some(self.sel_extend(position, direction))
+        }
+
+        #[unsafe(method(baseWritingDirectionForPosition:inDirection:))]
+        fn writing_direction(&self, _position: &UITextPosition, _direction: UITextStorageDirection) -> NSWritingDirection {
+            self.sel_direction()
+        }
+
+        #[unsafe(method(setBaseWritingDirection:forRange:))]
+        fn set_writing_direction(&self, _direction: NSWritingDirection, _range: &UITextRange) {}
+
+        #[unsafe(method(firstRectForRange:))]
+        fn first_rect(&self, range: &UITextRange) -> CGRect {
+            self.sel_first_rect(range)
+        }
+
+        #[unsafe(method(caretRectForPosition:))]
+        fn caret_rect(&self, position: &UITextPosition) -> CGRect {
+            self.sel_caret(position)
+        }
+
+        #[unsafe(method_id(selectionRectsForRange:))]
+        fn selection_rects(&self, range: &UITextRange) -> Retained<NSArray<UITextSelectionRect>> {
+            self.sel_rects(range)
+        }
+
+        #[unsafe(method_id(closestPositionToPoint:))]
+        fn closest(&self, point: CGPoint) -> Option<Retained<UITextPosition>> {
+            self.sel_closest(point, None)
+        }
+
+        #[unsafe(method_id(closestPositionToPoint:withinRange:))]
+        fn closest_within(&self, point: CGPoint, range: &UITextRange) -> Option<Retained<UITextPosition>> {
+            self.sel_closest(point, Some(range))
+        }
+
+        #[unsafe(method_id(characterRangeAtPoint:))]
+        fn character_at(&self, point: CGPoint) -> Option<Retained<UITextRange>> {
+            self.sel_character_at(point)
+        }
+
+        #[unsafe(method(isEditable))]
+        fn is_editable(&self) -> bool {
+            false
+        }
+
+        #[unsafe(method_id(textInputView))]
+        fn text_input_view(&self) -> Retained<UIView> {
+            self.retain().into_super().into_super()
+        }
+    }
+
 );
 
 impl TextView {
@@ -336,34 +519,27 @@ impl TextView {
         view
     }
 
+    /// Draws the whole text in `color` (an animated `color`), or in its
+    /// own colors.
+    pub(crate) fn set_color(&self, color: Option<nsh_core::Color>) {
+        let color = color.map(|c| c.0);
+        if self.ivars().color.replace(color) != color {
+            self.setNeedsDisplay();
+        }
+    }
+
     pub(crate) fn set_layout(&self, text: Arc<AttributedText>, layout: TextLayout, content: Rect) {
-        let selectable = text.selectable;
+        let (selectable, color) = (text.selectable, text.selection_color);
+        let changed = self
+            .ivars()
+            .text
+            .borrow()
+            .as_ref()
+            .is_none_or(|t| t.text != text.text);
         *self.ivars().layout.borrow_mut() = Some((layout, content));
         *self.ivars().text.borrow_mut() = Some(text);
-        let mut select = self.ivars().select.borrow_mut();
-        match (select.is_some(), selectable) {
-            (false, true) => {
-                // SAFETY: `handleSelect:` is implemented by the view, which
-                // the recognizer is attached to.
-                let r = unsafe {
-                    UILongPressGestureRecognizer::initWithTarget_action(
-                        UILongPressGestureRecognizer::alloc(self.mtm()),
-                        Some(self),
-                        Some(objc2::sel!(handleSelect:)),
-                    )
-                };
-                self.addGestureRecognizer(&r);
-                self.setUserInteractionEnabled(true);
-                *select = Some(r);
-            }
-            (true, false) => {
-                if let Some(r) = select.take() {
-                    self.removeGestureRecognizer(&r);
-                }
-                drop(select);
-                self.set_selected(false);
-            }
-            _ => {}
+        if selectable || self.ivars().selection.is_on() {
+            self.set_selectable(selectable, color, changed);
         }
         self.setNeedsDisplay();
     }
@@ -374,19 +550,6 @@ impl TextView {
             .borrow()
             .as_ref()
             .is_some_and(|t| t.selectable)
-    }
-
-    fn set_selected(&self, on: bool) {
-        if self.ivars().selected.replace(on) != on {
-            self.setNeedsDisplay();
-        }
-        if !on && let Some(token) = self.ivars().menu_observer.borrow_mut().take() {
-            // SAFETY: an observer token from this center.
-            unsafe {
-                objc2_foundation::NSNotificationCenter::defaultCenter()
-                    .removeObserver(objc2::runtime::ProtocolObject::as_ref(&token))
-            };
-        }
     }
 
     /// Whether the text has pressable spans.

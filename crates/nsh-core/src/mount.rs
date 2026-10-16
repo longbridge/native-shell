@@ -5,9 +5,9 @@ use nsh_animation::{AnimationOp, AnimationProp};
 use crate::{
     geometry::{Rect, Size},
     ops::{
-        AutoCapitalize, Command, EventMask, ImageSource, KeyboardDismissMode, KeyboardTaps,
-        KeyboardType, ModalAnimation, ModalPresentation, NodeId, ResizeMode, ReturnKeyType,
-        ScreenAnimation, SnapAlignment, WebSource,
+        AutoCapitalize, Command, EventMask, ImageSource, KeyboardAppearance, KeyboardDismissMode,
+        KeyboardTaps, KeyboardType, ModalAnimation, ModalPresentation, NodeId, ResizeMode,
+        ReturnKeyType, ScreenAnimation, SnapAlignment, WebSource,
     },
     props::{EdgeInsets, GestureValues, LayoutAnimation, ViewProps},
     style::{Color, TextAlign, ViewStyle},
@@ -396,6 +396,8 @@ pub struct InputConfig {
     pub secure: bool,
     /// Keyboard layout.
     pub keyboard: KeyboardType,
+    /// The keyboard's look (iOS).
+    pub keyboard_appearance: KeyboardAppearance,
     /// Label of the return key.
     pub return_key: ReturnKeyType,
     /// Automatic capitalization.
@@ -436,6 +438,7 @@ impl Default for InputConfig {
             placeholder_color: None,
             secure: false,
             keyboard: KeyboardType::Default,
+            keyboard_appearance: KeyboardAppearance::Default,
             return_key: ReturnKeyType::Default,
             auto_capitalize: AutoCapitalize::Sentences,
             auto_correct: true,
@@ -516,6 +519,19 @@ pub enum MountItem {
         /// New frame.
         frame: Rect,
     },
+    /// The area the view's descendants cover outside its bounds, in its
+    /// own coordinates (it contains the bounds), while overflow is visible;
+    /// `None` when they stay inside. UIKit and Android only look for the
+    /// target of a touch inside a view's bounds: platforms look in the
+    /// descendants of views with an area too, so children placed outside
+    /// their parent (a dropdown under its field) can be touched. Sent only
+    /// when it changes; from layout frames (transforms are not included).
+    Overflow {
+        /// View.
+        id: NodeId,
+        /// The area, or `None`.
+        extent: Option<Rect>,
+    },
     /// Set the visual style of a view.
     ViewStyle {
         /// View.
@@ -592,6 +608,13 @@ pub enum MountItem {
         /// Right to left.
         rtl: bool,
     },
+    /// The app's appearance changed ([`crate::Core::set_appearance`]):
+    /// native controls (alerts, the status bar's default style, system
+    /// views) show it instead of the system's.
+    Appearance {
+        /// What the app asks for.
+        appearance: crate::platform::Appearance,
+    },
     /// The sticky cells of a list (replaces the previous set): each one
     /// is translated along the main axis by `clamp(offset - start, 0,
     /// end - start)` on every scroll, natively.
@@ -643,6 +666,15 @@ pub enum MountItem {
         id: NodeId,
         /// The properties (replace the previous ones).
         props: Box<ViewProps>,
+    },
+    /// Change the accessibility label of a view whose [`ViewProps`] were
+    /// mounted before, and nothing else: a label following app state
+    /// changes alone, so the rest is not sent again.
+    AccessibilityLabel {
+        /// View.
+        id: NodeId,
+        /// `accessibilityLabel` (`None`: none).
+        label: Option<Arc<str>>,
     },
     /// Animate the frame changes, insertions and removals that follow in
     /// this batch.

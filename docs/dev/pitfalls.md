@@ -114,6 +114,16 @@ Things that were found the hard way. Read the section of the area you change bef
   its cancel action and runs it on a tap outside, so sheets without one get a hidden cancel answering "dismissed".
 - **Catalyst: a mouse drag does not scroll a UIScrollView** (Mac behavior); test scrolling with trackpad-style scroll wheel
   events (with phases), which also produce drag and momentum callbacks. Mouse drags do reach views as touches.
+- **Catalyst: the Mac idiom moves a navigation bar's contents into the window's toolbar** (`UINavigationBar.behavioralStyle`
+  resolves to `.mac`; macOS 26 does it even with the scene's `titlebar.toolbar` nil): the back button sits next to the traffic
+  lights, the title is gone (or is the window's) and the header's colors do not apply. Stacks' bars (and the bar measuring
+  the header height) set `preferredBehavioralStyle = .pad` (iOS 16+) to stay in the window, and standalone apps hide the
+  window's title and toolbar (`UITitlebar`, which objc2 does not declare: `app.rs` sends its setters by name), so the title
+  bar is a transparent strip over the in-window header, like iOS's status bar; apps embedding nsh on Catalyst should hide
+  theirs the same way. The core's estimate of a header (the bar's height plus the safe area's top) can still miss what UIKit
+  lays out, which showed the screen's root view in a band under the bar: screens report the top of their controller view's
+  safe area (the bottom of whatever bar UIKit shows) as their header (`Core::set_screen_header`), and the stack's bar gets
+  the screen's appearance as well as its navigation item.
 - **Catalyst's Mac idiom presents page / form sheets as macOS sheets** at a default size wider than a 390pt window: they get
   the window's size as `preferredContentSize`. Standalone apps have a white root view (UIKit windows are black).
 - **iOS clamps shared corner radii itself** (`rounded-full` is 9999): Core Animation does not reliably clamp a `cornerRadius`

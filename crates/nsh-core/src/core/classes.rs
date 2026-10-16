@@ -9,6 +9,7 @@ use super::{Core, Key, Kind, NO_KEY, dirty, pressable};
 use crate::{
     mount::MountItem,
     ops::NodeId,
+    platform::{Appearance, ColorScheme},
     style::{Color, Style, ViewStyle},
     tailwind::{ClassEnvironment, ClassList, ClassProps, Context, Theme, deps, position, state},
     text::TextEngine,
@@ -24,7 +25,43 @@ pub(super) struct ClassNames {
 impl<M: TextEngine> Core<M> {
     /// Sets the environment class variants depend on (`dark:`, `ios:`,
     /// `motion-reduce:`): nodes whose classes depend on it are styled again.
-    pub fn set_class_environment(&mut self, env: ClassEnvironment) {
+    pub fn set_class_environment(&mut self, mut env: ClassEnvironment) {
+        self.system_dark = env.dark;
+        env.dark = self.shown_dark();
+        self.apply_class_environment(env);
+    }
+
+    /// Dark appearance as shown: the app's, else the system's.
+    pub(super) fn shown_dark(&self) -> bool {
+        let system = if self.system_dark {
+            ColorScheme::Dark
+        } else {
+            ColorScheme::Light
+        };
+        self.appearance.resolve(system) == ColorScheme::Dark
+    }
+
+    /// The appearance the app asks for (`nsh.json` `"appearance"`, TS
+    /// `setColorScheme`, [`crate::ui::Context::set_color_scheme`]): what
+    /// `dark:` variants and the components' theme follow in place of the
+    /// system's; the platform applies it to its own controls
+    /// ([`MountItem::Appearance`]).
+    pub fn set_appearance(&mut self, appearance: Appearance) {
+        if self.appearance == appearance {
+            return;
+        }
+        self.appearance = appearance;
+        self.mount.push(MountItem::Appearance { appearance });
+        let dark = self.shown_dark();
+        let mut env = self.class_env;
+        env.dark = dark;
+        self.apply_class_environment(env);
+        let mut environment = self.components.environment;
+        environment.dark = dark;
+        self.apply_environment(environment);
+    }
+
+    fn apply_class_environment(&mut self, env: ClassEnvironment) {
         if self.class_env == env {
             return;
         }
@@ -129,12 +166,16 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// The view style of `key` as platforms take it: fractional
-    /// translations resolved, an underlay shown while pressed.
+    /// translations resolved, an underlay shown while pressed (in place of
+    /// the background color and gradients).
     pub(super) fn mounted_view_style(&self, key: Key) -> Box<ViewStyle> {
         let node = &self.nodes[key as usize];
         let mut style = node.mounted_view_style();
         if let Some((color, _)) = self.showing_underlay(key) {
+            // The underlay replaces the whole background, gradients too:
+            // drawn over the color, they would hide the feedback.
             style.background_color = color;
+            style.clear_background_images();
         }
         if node.parent != NO_KEY
             && let Some((_, opacity)) = self.showing_underlay(node.parent)

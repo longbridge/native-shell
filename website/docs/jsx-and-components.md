@@ -171,7 +171,7 @@ Fragments (`<>…</>`) group elements without a view.
 ```
 
 - **`<If when else>`** renders its children while `when` is truthy, else the `else` element. It renders a branch again only when the condition's truthiness changes, not every time `when` is re-evaluated.
-- **`<Each of key>`** renders its only child, a function, once per item. Rows are kept by `key(item)` (default: the item itself; objects by identity, primitives by value): when the array changes, kept rows are moved rather than rebuilt, and new rows are made only for new keys. The function receives **accessors**, `todo()` and `index()`, because a kept row's item and position can change.
+- **`<Each of key>`** renders its only child, a function, once per item. Rows are kept by `key(item)` (default: the item itself; objects by identity, primitives by value): when the array changes, kept rows are moved rather than rebuilt, and new rows are made only for new keys. The function receives **accessors**, `todo()` and `index()`, because a kept row's item and position can change. `key="index"` (or `key={(item, i) => i}`; the key function gets the index too) keeps rows by position instead: a list of strings that changes in place, such as text streamed in, keeps its rows and only their `item()` changes.
 
 A ternary or `&&` in JSX also works (`{busy() ? <Spinner /> : <Content />}`), but it builds its branch again every time anything it reads changes. Prefer `<If>` when a branch is more than a few elements.
 
@@ -179,7 +179,7 @@ For long or infinite lists, use [`List`](./lists.md): it creates views only for 
 
 ## Refs
 
-`ref` gives you the native node of a host element, a `YNode`, for imperative calls: `focus()`, `blur()`, `scrollTo()`, `scrollToIndex()`, ... A variable is assigned, a function is called:
+`ref` gives you the native node of a host element, a `YNode`, for imperative calls: `focus()`, `blur()`, `scrollTo()`, `scrollToIndex()`, `measure()` ([where a view is](./touch-and-gestures.md#where-a-view-is-measure)), ... A variable is assigned, a function is called:
 
 ```tsx
 import type { YNode } from "nsh";

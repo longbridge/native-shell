@@ -5,6 +5,7 @@
 
 mod android;
 mod build;
+mod check;
 mod dev;
 mod entry;
 mod init;
@@ -81,13 +82,33 @@ enum Command {
         /// whose `App.tsx` is the entry.
         #[arg(default_value = ".")]
         entry: PathBuf,
-        /// Number of taps to send to the first pressable view.
+        /// Number of taps to send to the first pressable view (without
+        /// `--tap`).
         #[arg(long, default_value_t = 2)]
         taps: u32,
-        /// Idle time before tapping, in milliseconds. The default lets the
+        /// Tap a view (repeatable, in order): `id:<testID>`,
+        /// `label:<accessibilityLabel>`, `text:<text>`, `view:<id>`, or a
+        /// bare string matched as a testID, a label, then a text. A match
+        /// that is not pressable taps its nearest pressable ancestor.
+        #[arg(long, value_name = "SELECTOR")]
+        tap: Vec<String>,
+        /// Idle time before tapping, in milliseconds: the app must render
+        /// nothing for this long (at most 10 s). The default lets the
         /// engine's idle GC run first, so retention bugs show up.
         #[arg(long, default_value_t = 1200)]
         idle_ms: u64,
+        /// Run timers and animations this long before the first tap and
+        /// after each one, in milliseconds, instead of waiting until the
+        /// app is idle.
+        #[arg(long, value_name = "MS")]
+        wait: Option<u64>,
+        /// Keep running this long after the last tap, in milliseconds.
+        #[arg(long, value_name = "MS", default_value_t = 0)]
+        duration: u64,
+        /// Simulated safe area insets in points: `top,right,bottom,left`
+        /// (or one value for all four), e.g. `47,0,34,0`.
+        #[arg(long, value_name = "INSETS", value_parser = trace::parse_insets)]
+        safe_area: Option<nsh_engine::Insets>,
         /// Scroll the first scroll view / list by this many points, in
         /// 10 pt frames, and print each frame's batch.
         #[arg(long)]
@@ -98,6 +119,20 @@ enum Command {
         /// Viewport height in points.
         #[arg(long, default_value_t = 844.0)]
         height: f32,
+    },
+    /// Type check an app with TypeScript's native compiler (TypeScript 7,
+    /// downloaded once from the npm registry; no Node needed).
+    Check {
+        /// The entry module, or the app's directory (default: the current one),
+        /// whose `App.tsx` is the entry.
+        #[arg(default_value = ".")]
+        entry: PathBuf,
+        /// The `tsc` to run instead of the pinned TypeScript 7.
+        #[arg(long, env = "NSH_TSC")]
+        tsc: Option<PathBuf>,
+        /// Further arguments for `tsc` (after `--`).
+        #[arg(last = true)]
+        args: Vec<String>,
     },
     /// Serve an app to dev hosts (simulators, devices) and push rebuilds.
     Dev {
@@ -284,6 +319,7 @@ impl Command {
         match self {
             Command::Build { entry, .. }
             | Command::Trace { entry, .. }
+            | Command::Check { entry, .. }
             | Command::Dev { entry, .. }
             | Command::Run { entry, .. }
             | Command::Publish { entry, .. } => Some(entry),
@@ -351,11 +387,29 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
         Command::Trace {
             entry,
             taps,
+            tap,
             idle_ms,
+            wait,
+            duration,
+            safe_area,
             scroll,
             width,
             height,
-        } => trace::trace(&entry, taps, idle_ms, scroll, width, height),
+        } => trace::trace(
+            &entry,
+            trace::TraceOptions {
+                taps,
+                tap,
+                idle_ms,
+                wait,
+                duration,
+                scroll,
+                width,
+                height,
+                safe_area: safe_area.unwrap_or_default(),
+            },
+        ),
+        Command::Check { entry, tsc, args } => check::check(&entry, tsc.as_deref(), &args),
         Command::Dev {
             entry,
             port,

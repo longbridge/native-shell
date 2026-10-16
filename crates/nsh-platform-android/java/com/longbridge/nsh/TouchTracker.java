@@ -21,6 +21,14 @@ final class TouchTracker {
     private final View root;
     private final ArrayList<Tracked> tracked = new ArrayList<>();
 
+    // The pan gate of the gesture (`panActivation`): the view around the
+    // first finger that has one, its offsets (points), where the finger
+    // went down (px) and its state: 0 waiting, 1 activated, 2 none or failed.
+    private View gate;
+    private int gateId, gatePointer, gateState = 2;
+    private float[] gateOffsets;
+    private float gateX, gateY;
+
     private static final class Tracked {
         int pointer, id, target;
         View view;
@@ -43,7 +51,10 @@ final class TouchTracker {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN: {
-                if (action == MotionEvent.ACTION_DOWN) tracked.clear();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    tracked.clear();
+                    mounter.touchDown(e.getRawX(), e.getRawY());
+                }
                 if (mounter.touchListeners == 0) return false;
                 int i = e.getActionIndex();
                 Tracked t = hit(e.getX(i), e.getY(i));
@@ -51,8 +62,9 @@ final class TouchTracker {
                 t.pointer = e.getPointerId(i);
                 t.id = nextId++;
                 tracked.add(t);
+                if (action == MotionEvent.ACTION_DOWN) findGate(t, e.getX(i), e.getY(i));
                 update(e);
-                report(0, new int[] {t.id}, true);
+                report(0, new int[] {t.id}, true, -1);
                 return true;
             }
             case MotionEvent.ACTION_MOVE: {
@@ -60,7 +72,9 @@ final class TouchTracker {
                 if (!update(e)) return false;
                 int[] all = new int[tracked.size()];
                 for (int i = 0; i < all.length; i++) all[i] = tracked.get(i).id;
-                report(1, all, false);
+                // Decided before the views below see the move, so the scroll
+                // views around stop taking it at once.
+                report(1, all, false, decideGate(e));
                 return false;
             }
             case MotionEvent.ACTION_UP:
@@ -70,10 +84,11 @@ final class TouchTracker {
                     Tracked t = tracked.get(i);
                     if (t.pointer != pointer) continue;
                     update(e);
-                    report(2, new int[] {t.id}, false);
+                    report(2, new int[] {t.id}, false, -1);
                     tracked.remove(i);
                     break;
                 }
+                if (tracked.isEmpty()) endGate();
                 return false;
             }
             case MotionEvent.ACTION_CANCEL:
@@ -89,9 +104,68 @@ final class TouchTracker {
         if (tracked.isEmpty()) return;
         int[] all = new int[tracked.size()];
         for (int i = 0; i < all.length; i++) all[i] = tracked.get(i).id;
-        report(3, all, false);
+        report(3, all, false, -1);
         tracked.clear();
+        endGate();
     }
+
+    /** The view with a `panActivation` around the first finger's target, if any. */
+    private void findGate(Tracked t, float x, float y) {
+        endGate();
+        for (View v = t.view; v != null; ) {
+            if (v instanceof Node) {
+                float[] offsets = mounter.panActivation(((Node) v).nodeId());
+                if (offsets != null) {
+                    gate = v;
+                    gateId = ((Node) v).nodeId();
+                    gateOffsets = offsets;
+                    gatePointer = t.pointer;
+                    gateX = x;
+                    gateY = y;
+                    gateState = 0;
+                    return;
+                }
+            }
+            if (v == root) break;
+            ViewParent p = v.getParent();
+            v = p instanceof View ? (View) p : null;
+        }
+    }
+
+    /**
+     * Whether the gate's pan activates with this move (`PanActivation::decide`
+     * in the core): its node id, else -1.
+     */
+    private int decideGate(MotionEvent e) {
+        if (gateState != 0) return -1;
+        int i = e.findPointerIndex(gatePointer);
+        if (i < 0) return -1;
+        float d = mounter.density;
+        float dx = Math.abs(e.getX(i) - gateX) / d, dy = Math.abs(e.getY(i) - gateY) / d;
+        float[] o = gateOffsets;
+        if (dx > o[2] || dy > o[3]) {
+            // NaN offsets never compare greater: no limit.
+            gateState = 2;
+            return -1;
+        }
+        boolean active = Float.isNaN(o[0]) && Float.isNaN(o[1])
+                ? Math.hypot(dx, dy) > MIN_PAN_DISTANCE
+                : dx > o[0] || dy > o[1];
+        if (!active) return -1;
+        gateState = 1;
+        mounter.gateBlock(gate);
+        return gateId;
+    }
+
+    private void endGate() {
+        if (gateState == 1) mounter.gateRelease();
+        gate = null;
+        gateOffsets = null;
+        gateState = 2;
+    }
+
+    /** `PanActivation::MIN_DISTANCE`: how far a pan without active offsets moves before it activates (points). */
+    private static final float MIN_PAN_DISTANCE = 10;
 
     /** Positions of the tracked fingers; false if none moved. */
     private boolean update(MotionEvent e) {
@@ -107,8 +181,11 @@ final class TouchTracker {
         return moved;
     }
 
-    /** phase: 0 start, 1 move, 2 end, 3 cancel. {@code paths}: send the changed fingers' paths. */
-    private void report(int phase, int[] changed, boolean paths) {
+    /**
+     * phase: 0 start, 1 move, 2 end, 3 cancel. {@code paths}: send the changed fingers' paths;
+     * {@code activated}: the node whose pan gate activated, or -1.
+     */
+    private void report(int phase, int[] changed, boolean paths, int activated) {
         int n = tracked.size();
         int[] ids = new int[n], targets = new int[n], pathLengths = new int[n];
         boolean[] isChanged = new boolean[n];
@@ -138,7 +215,7 @@ final class TouchTracker {
             System.arraycopy(tracked.get(i).path, 0, flat, k, pathLengths[i]);
             k += pathLengths[i];
         }
-        mounter.touches(phase, ids, targets, pathLengths, flat, coords, isChanged, android.os.SystemClock.uptimeMillis());
+        mounter.touches(phase, ids, targets, pathLengths, flat, coords, isChanged, android.os.SystemClock.uptimeMillis(), activated);
     }
 
     /** The node view under ({@code x}, {@code y}) of the root and the nodes around it listening to touches. */
@@ -182,12 +259,18 @@ final class TouchTracker {
                     Matrix inverse = new Matrix();
                     if (m.invert(inverse)) inverse.mapPoints(pt);
                 }
-                if (pt[0] < 0 || pt[1] < 0 || pt[0] >= c.getWidth() || pt[1] >= c.getHeight()) continue;
+                boolean inside = pt[0] >= 0 && pt[1] >= 0 && pt[0] < c.getWidth() && pt[1] < c.getHeight();
+                // Outside the child, a descendant placed outside it may
+                // still be there (`MountItem::Overflow`).
+                if (!inside && !(c instanceof Box && ((Box) c).overflow != null && !((Box) c).clip
+                        && ((Box) c).overflow.contains(pt[0], pt[1]))) continue;
                 View hit = deepest(c, pt[0], pt[1]);
                 if (hit != null) return hit;
             }
         }
         if (pointerEvents == 2) return null;
+        // Reached through its overflow area: only its descendants count.
+        if (x < 0 || y < 0 || x >= v.getWidth() || y >= v.getHeight()) return null;
         return v instanceof Node ? v : null;
     }
 }

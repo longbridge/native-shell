@@ -6,7 +6,7 @@ order: 15
 
 # Web APIs
 
-Besides the ECMAScript standard library, an nsh app's JS environment has a set of web platform globals: `fetch` with `Headers`, `Request` and `Response`; the Streams Standard; `URL` and `URLSearchParams`; `TextEncoder` / `TextDecoder`; `Blob`, `File` and `FormData`; `EventTarget`, `Event` and `AbortController`; timers, `requestAnimationFrame` and `console`. They are implemented natively in Rust, follow the WHATWG standards, and need no import. Many libraries written for the browser (HTTP clients, URL and encoding helpers, stream utilities) work unchanged.
+Besides the ECMAScript standard library, an nsh app's JS environment has a set of web platform globals: `fetch` with `Headers`, `Request` and `Response`; the Streams Standard; `URL` and `URLSearchParams`; `TextEncoder` / `TextDecoder`; `Blob`, `File` and `FormData`; `EventTarget`, `Event` and `AbortController`; timers, `requestAnimationFrame` and `console`; and `Intl` for number and date formatting, which QuickJS lacks. They are implemented natively in Rust, follow the WHATWG standards, and need no import. Many libraries written for the browser (HTTP clients, URL and encoding helpers, stream utilities) work unchanged.
 
 There is no DOM: no `window`, `document`, `localStorage`, `XMLHttpRequest`, `WebSocket`, `crypto` or `structuredClone`. UI is built with [elements](../elements/index.md) and [components](../components/index.md), not with HTML.
 
@@ -22,6 +22,7 @@ The TypeScript declarations of all of these are generated into `.nsh/types/nsh/g
 | [Text encoding](#text-encoding) | `TextEncoder`, `TextDecoder` |
 | [Blobs and form data](#blobs-and-form-data) | `Blob`, `File`, `FormData` |
 | [Fetch](#fetch) | `fetch`, `Headers`, `Request`, `Response` |
+| [Number and date formatting](#number-and-date-formatting) | `Intl.NumberFormat`, `Intl.DateTimeFormat`, `toLocaleString` |
 | [Streams](#streams) | `ReadableStream`, `WritableStream`, `TransformStream`, readers, writers, controllers, `ByteLengthQueuingStrategy`, `CountQueuingStrategy`, `TextEncoderStream`, `TextDecoderStream` |
 
 ## Console and timing
@@ -620,6 +621,26 @@ for await (const line of res.body!.pipeThrough(new TextDecoderStream()).pipeThro
   console.log(line);
 }
 ```
+
+## Number and date formatting
+
+QuickJS has no `Intl` of its own; nsh adds one, formatting in Rust: `Intl.NumberFormat`, `Intl.DateTimeFormat` and `Intl.getCanonicalLocales`, and the `toLocaleString` of numbers and BigInts and `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString` of dates, which take the same `locales` and `options`. Their declarations are TypeScript's own (the `ES2023` library), so they are not in `globals.d.ts`.
+
+```ts
+(1234567.891).toLocaleString();                                              // "1,234,567.891" (en-US)
+(1234.5).toLocaleString("de-DE", { style: "currency", currency: "EUR" });  // "1.234,50 €"
+new Intl.NumberFormat("en", { notation: "compact" }).format(1_500_000);      // "1.5M"
+new Intl.NumberFormat("en", { style: "percent", signDisplay: "exceptZero" }).format(0.042); // "+4%"
+new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });   // "09:05"
+new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date); // "Oct 16, 2026, 3:04 PM"
+```
+
+Without `locales`, the device's locale is used: its region format (iOS `NSLocale.currentLocale`, Android `Locale.getDefault()`), `en-US` in `nsh trace` and on the web.
+
+- **Numbers**: the `decimal`, `percent`, `currency` (`currencyDisplay` `symbol`, `narrowSymbol`, `code`) and `unit` (common units: lengths, masses, durations, data sizes, temperatures, speeds) styles; `minimumIntegerDigits`, `minimum` / `maximumFractionDigits`, `minimum` / `maximumSignificantDigits`, `roundingPriority`, `trailingZeroDisplay`, `useGrouping`, `signDisplay`; `standard`, `scientific`, `engineering` and `compact` notation (`compactDisplay` `short` / `long`). Rounding is half away from zero, on the number as written (`1.005` rounds to `1.01`, as in browsers). `format` also takes BigInts and decimal strings, exactly. `formatToParts` and `resolvedOptions` work as in browsers.
+- **Dates**: `weekday`, `year`, `month` (`numeric`, `2-digit`, `short`, `long`, `narrow`), `day`, `hour`, `minute`, `second`, `fractionalSecondDigits`, `hour12` / `hourCycle`, `timeZoneName` and `dateStyle` / `timeStyle`, in the Gregorian calendar. `timeZone` takes the device's zone, `UTC` or an offset (`"+08:00"`); other zone names throw a `RangeError` (there is no time zone database).
+- **Locales**: the locale data is a table of common languages (English, German, French, Spanish, Italian, Portuguese, Dutch, Russian, Swedish, Polish, Turkish, Indonesian, Vietnamese, Thai, Hindi, Chinese, Japanese, Korean) with their regional variants (`en-GB`, `en-IN`, `de-CH`, `es-MX`, `pt-PT`, `zh-TW`, ...), not the whole of CLDR, so details can differ from a browser's output. A locale without data falls back to the next one asked for, then the device's, then `en-US`; Russian, Swedish, Polish, Turkish, Indonesian, Vietnamese, Thai and Hindi dates have no month names (their months are written as numbers, their weekdays in English). Digits are always Latin.
+- **Not there**: `Intl.Collator` (`String.prototype.localeCompare` is QuickJS's, which ignores the locale), `PluralRules`, `RelativeTimeFormat`, `ListFormat`, `DisplayNames`, `Segmenter` and `Intl.Locale`; `currencySign: "accounting"` and `currencyDisplay: "name"` format as `standard` and `code`.
 
 ## Performance
 

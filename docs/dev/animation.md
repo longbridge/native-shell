@@ -9,9 +9,24 @@
   `delay` / `loop` build a `Composite` tree that runs entirely natively (`AnimationOp::StartComposite`): each step starts at the exact end
   time of the previous one (no frame gaps), `stop()` / `reset()` (back to the values at start) / `start(cb)` report `finished` once
   for the whole tree; leaf animations get internal ids (`LEAF_IDS`) that never reach JS. Composites are released when JS
-  lets go of them (their finalizers queue `ReleaseComposite`). Rust components build the same trees with
-  `nsh_core::ui::Animation` (composite keys odd, JS's even).
-  Bindable: `opacity`, `backgroundColor`, and the translate / scale / rotate parts of `transform`. Driven on the main thread by `CADisplayLink`,
+  lets go of them (their finalizers queue `ReleaseComposite`); a run goes on after that. A run does not keep its
+  composite (or the values it animates) alive: `nsh-js` remembers live composites by key (`Animations::composites`),
+  not in the run's promise, so an endless `Animated.loop` whose values its component released stops with them (a step on
+  a released value ends the run unfinished, rather than counting as done, which made loops spin). Rust components build
+  the same trees with `nsh_core::ui::Animation` (composite keys odd, JS's even).
+  `decay` takes `clamp: [min, max]` and `bounce`: at a bound it stops, or a new segment of the closed form starts from the
+  bound at the exact time it got there with `-bounce` of its speed (frame-rate independent, several per frame if need be).
+  Values have an offset (`setOffset` / `flattenOffset` / `extractOffset`, React Native's): they evaluate to value +
+  offset; drivers, `set` and gestures move the value. JS reads a node back with `getValue()` (and `stop()`'s promise):
+  `AnimationOp::Read` answers with a `Finished` carrying `value`, through the same path as animation ends.
+  `Easing.sample`, `Animated.sampleSpring` / `sampleDecay` return the curves from `nsh_animation::sample_easing` /
+  `sample_driver` (the drivers' own code, stepped like frames), so drawn curves are what runs.
+  Bindable: `opacity`, `backgroundColor`, `borderColor` (all sides), a text's `color` (the whole text: iOS and Android draw
+  it into a layer and paint over it in the color, `SourceIn` / `SRC_IN`), `shadowColor` / `shadowOpacity` /
+  `shadowRadius`, and the translate / scale / rotate parts of `transform`. iOS shapes the decoration with the bound
+  values (and the layers for them even while they are transparent: `bound_style`), then sets the colors and shadow
+  on those layers each frame; Android and web get them as properties (`Mounter.java` codes 11–14; the web composes
+  `box-shadow`, dropping layered `boxShadow`s while bound). Driven on the main thread by `CADisplayLink`,
   paused while nothing animates. `scrollValue` writes the scroll offset into a native value in the same frame; `pan` lets drags drive native values
   directly, and JS receives the velocity when the drag ends. Native values referenced by a view's style (or `pan`, `scrollValue`, ...) are kept by its node
   (`nsh-js` `dom.rs`) and derived nodes hold their inputs, so bindings do not break when JS objects are collected.

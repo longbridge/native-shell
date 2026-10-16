@@ -4,7 +4,7 @@
 //! items (the Android animator's design, `nsh-platform-android/src/animation.rs`).
 
 use nsh_animation::{AnimationProp, AnimationValue, Finished, Graph, NodeId};
-use nsh_core::{Color, GestureValues, MAX_TRANSFORMS, MountItem, Transform};
+use nsh_core::{Color, GestureValues, MAX_TRANSFORMS, MountItem, Shadow, Transform};
 use rustc_hash::FxHashMap;
 
 use crate::encode::{Out, css_color, css_transform};
@@ -23,8 +23,8 @@ pub(crate) struct UiAnimation {
     /// View id -> bound properties.
     bindings: FxHashMap<u32, Vec<(AnimationProp, NodeId)>>,
     /// View id -> static transform list, whose animated entries the
-    /// bindings replace.
-    statics: FxHashMap<u32, Transform>,
+    /// bindings replace, and shadow, whose bound parts they replace.
+    statics: FxHashMap<u32, (Transform, Shadow)>,
     gestures: FxHashMap<u32, Gestures>,
     /// Scroll view id -> (value node, horizontal).
     scrolls: FxHashMap<u32, (NodeId, bool)>,
@@ -51,7 +51,7 @@ impl UiAnimation {
                 }
             }
             MountItem::ViewStyle { id, style } => {
-                self.statics.insert(*id, style.transform);
+                self.statics.insert(*id, (style.transform, style.shadow));
             }
             MountItem::Gestures { id, values } => {
                 if values.is_empty() {
@@ -169,8 +169,32 @@ impl UiAnimation {
         for (&view, bindings) in &self.bindings {
             let mut overrides = [None; MAX_TRANSFORMS];
             let mut transformed = false;
+            let statics = self.statics.get(&view).copied();
+            let mut shadow: Option<Shadow> = None;
+            let static_shadow = statics.map_or(Shadow::DEFAULT, |s| s.1);
             for &(prop, node) in bindings {
                 match prop {
+                    // `nsh.js` puts these on the border overlay and the
+                    // text's runs.
+                    AnimationProp::BorderColor => {
+                        out.animation(view, "border-color", &value_css(self.graph.eval(node)));
+                    }
+                    AnimationProp::Color => {
+                        out.animation(view, "color", &value_css(self.graph.eval(node)));
+                    }
+                    AnimationProp::ShadowColor => {
+                        if let AnimationValue::Color(c) = self.graph.eval(node) {
+                            shadow.get_or_insert(static_shadow).color = Color(c);
+                        }
+                    }
+                    AnimationProp::ShadowOpacity => {
+                        shadow.get_or_insert(static_shadow).opacity =
+                            self.graph.eval(node).number().clamp(0.0, 1.0);
+                    }
+                    AnimationProp::ShadowRadius => {
+                        shadow.get_or_insert(static_shadow).radius =
+                            self.graph.eval(node).number().max(0.0);
+                    }
                     AnimationProp::Opacity => {
                         out.animation(view, "opacity", &self.graph.eval(node).number().to_string());
                     }
@@ -192,12 +216,22 @@ impl UiAnimation {
                     }
                 }
             }
+            if let Some(s) = shadow {
+                // The view's `box-shadow` (layered `boxShadow`s are not
+                // kept while its shadow is bound).
+                let c = s.color.0;
+                let alpha = ((c & 0xff) as f32 * s.opacity).round().clamp(0.0, 255.0) as u32;
+                let css = format!(
+                    "{}px {}px {}px {}",
+                    s.offset_x,
+                    s.offset_y,
+                    s.radius,
+                    css_color(Color((c & !0xff) | alpha))
+                );
+                out.animation(view, "box-shadow", &css);
+            }
             if transformed {
-                let statics = self
-                    .statics
-                    .get(&view)
-                    .copied()
-                    .unwrap_or(Transform::IDENTITY);
+                let statics = statics.map_or(Transform::IDENTITY, |s| s.0);
                 let css = css_transform(&statics, |i| overrides[i]);
                 out.animation(view, "transform", css.trim_end());
             }

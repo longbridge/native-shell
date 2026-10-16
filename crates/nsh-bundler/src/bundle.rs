@@ -108,9 +108,9 @@ pub fn capabilities(
         .transpose()
 }
 
-/// The `"tailwind"` and `"theme"` of the `nsh.json` next to the entry,
-/// checked. `"theme"` is a gpui-kit theme file's path (relative to
-/// `nsh.json`) or its content.
+/// The `"tailwind"`, `"theme"` and `"appearance"` of the `nsh.json` next to
+/// the entry, checked. `"theme"` is a gpui-kit theme file's path (relative
+/// to `nsh.json`) or its content.
 fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::ThemeSetup>, BundleError> {
     let path = dir.join("nsh.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -134,6 +134,18 @@ fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::ThemeSetup>, Bund
         nsh_core::ui::Theme::from_json(&json)
             .map_err(|e| BundleError::other(format!("nsh.json: theme: {e}")))?;
         setup.ui = Some(json);
+    }
+    if let Some(appearance) = config.get("appearance") {
+        setup.appearance = match appearance.as_str() {
+            Some("light") => Some("light"),
+            Some("dark") => Some("dark"),
+            Some("system") => None,
+            _ => {
+                return Err(BundleError::other(
+                    "nsh.json: appearance: expected \"light\", \"dark\" or \"system\"",
+                ));
+            }
+        };
     }
     Ok(Arc::new(setup))
 }

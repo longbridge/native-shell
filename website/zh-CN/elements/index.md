@@ -58,7 +58,7 @@ mount(App);
 
 | 属性 | 类型 | 说明 |
 |---|---|---|
-| `style` | `StyleProp<ViewStyle>`（`<Text>` 和 `<Input>` 为 `TextStyle`，`<Image>` 为 `ImageStyle`） | 内联样式，或从左到右合并的样式数组（假值项会被跳过）。优先级高于 `class`。参见[样式参考](../modules/style-reference.md)。 |
+| `style` | `StyleProp<ViewStyle>`（`<Text>` 和 `<Input>` 为 `TextStyle`，`<Image>` 为 `ImageStyle`） | 内联样式，或从左到右合并的样式数组（假值项会被跳过；数组可以嵌套，所以 `style={[base, props.style]}` 中的 `props.style` 本身也可以是数组）。优先级高于 `class`。参见[样式参考](../modules/style-reference.md)。 |
 | `class` | `string` | Tailwind 类名，在原生侧解析（`"flex-row gap-2 p-4 dark:bg-zinc-900"`）。后面的类覆盖前面的类。参见 [Tailwind](../docs/tailwind.md)。 |
 | `classList` | `Record<string, boolean \| null \| undefined>` | 值为真时才应用的类（`{ "opacity-50": busy() }`）。 |
 | `disabled` | `boolean` | 忽略按压（也没有按压反馈），应用 `disabled:` 类，并禁用输入框等控件。 |
@@ -115,7 +115,10 @@ mount(App);
 `onResponderStart`、`onResponderMove`、`onResponderEnd`、`onResponderRelease`、`onResponderTerminate` 和
 `onResponderTerminationRequest`。每个处理函数都会收到一个 `GestureResponderEvent`
 （`{ identifier, locationX, locationY, pageX, pageY, target, timestamp, touches, changedTouches, nativeEvent,
-stopPropagation() }`）。`onResponderGrant` 返回 `true` 可阻止原生滚动视图接管触摸。
+stopPropagation() }`）；`…ShouldSetResponder` 回调还会收到 `gestureState`（`dx`、`dy`、`vx`、`vy` 等）。
+`onResponderGrant` 返回 `true` 可阻止原生滚动视图接管触摸。`panActivation`
+（`{ activeOffsetX, activeOffsetY, failOffsetX, failOffsetY }`）让视图只在平台激活它的拖动后才成为响应者，
+滚动视图里的拖动因此把另一个轴留给滚动视图（[触摸与手势](../docs/touch-and-gestures.md#滚动视图里的拖动panactivation)）。
 [`nsh/gesture`](../modules/nsh-gesture.md) 中的 `PanResponder` 就构建在它们之上。
 
 ### 无障碍

@@ -271,3 +271,101 @@ fn canvases_redraw_when_what_they_read_changes() {
     assert!(matches!(d[1].ops[0], CanvasOp::LineWidth(Num::Const(2.0))));
     assert_eq!(d[1].ops.len(), 2);
 }
+
+/// A `draw` that derives a node from a native value, run again: the same
+/// node (no new one in the graph each time), the same slot.
+const DERIVED: &str = r#"import { signal, mount } from "nsh";
+import { createNativeValue } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
+
+const n = signal(1);
+const v = createNativeValue(0);
+setTimeout(() => n.set(2), 30);
+setTimeout(() => n.set(3), 60);
+
+mount(() => (
+  <Canvas
+    style={{ width: 10, height: 10 }}
+    draw={(ctx) => {
+      ctx.lineWidth = n();
+      ctx.globalAlpha = v.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
+      ctx.translate(v.mul(10), 0);
+      ctx.stroke();
+    }}
+  />
+));
+"#;
+
+#[test]
+fn redrawing_derives_the_same_nodes() {
+    let (_engine, rx) = start(DERIVED);
+    let mut drawings = Vec::new();
+    let mut derived = 0;
+    while drawings.len() < 3
+        && let Ok(batch) = rx.recv_timeout(Duration::from_secs(2))
+    {
+        for item in batch.items {
+            match item {
+                MountItem::Canvas { drawing, .. } => drawings.push(drawing.slots.clone()),
+                MountItem::Animation(
+                    nsh_animation::AnimationOp::CreateInterpolate { .. }
+                    | nsh_animation::AnimationOp::CreateMath { .. },
+                ) => derived += 1,
+                _ => {}
+            }
+        }
+    }
+    assert_eq!(drawings.len(), 3);
+    assert_eq!(
+        derived, 2,
+        "one interpolation and one product, for all three drawings"
+    );
+    assert_eq!(drawings[0].len(), 2);
+    assert!(drawings.iter().all(|s| *s == drawings[0]), "{drawings:?}");
+}
+
+/// Hit tests answered natively while drawing and, on a kept context,
+/// afterwards; `fontVariantNumeric` records with the font kept apart.
+const HIT: &str = r#"import { signal, mount } from "nsh";
+import { Canvas, Path2D, CanvasRenderingContext2D } from "nsh/canvas";
+
+const later = signal("");
+const p = new Path2D();
+p.rect(0, 0, 10, 10);
+let kept: CanvasRenderingContext2D | undefined;
+setTimeout(() => later.set(`later ${kept!.isPointInPath(p, 25, 5)} ${kept!.isPointInPath(p, 5, 5)}`), 30);
+
+mount(() => (
+  <Canvas
+    style={{ width: 100, height: 100 }}
+    draw={(ctx) => {
+      kept ??= ctx;
+      const log: unknown[] = [];
+      ctx.translate(20, 0);
+      log.push(ctx.isPointInPath(p, 25, 5), ctx.isPointInPath(p, 5, 5));
+      ctx.beginPath();
+      ctx.arc(0, 20, 5, 0, 7);
+      log.push(ctx.isPointInPath(20, 20), ctx.isPointInPath(30, 20), ctx.isPointInStroke(20, 25.2), ctx.isPointInStroke(20, 20));
+      ctx.fontVariantNumeric = "tabular-nums";
+      ctx.font = "12px system-ui";
+      log.push(ctx.fontVariantNumeric);
+      ctx.fillText(log.join("|") + later(), 0, 0);
+    }}
+  />
+));
+"#;
+
+#[test]
+fn hit_tests_and_number_forms_are_native() {
+    let (_engine, rx) = start(HIT);
+    let drawings = drawings(&rx, 2);
+    let text = format!("{drawings:#?}");
+    assert!(
+        text.contains("true|false|true|false|true|false|tabular-numslater true false"),
+        "{text}"
+    );
+    assert!(drawings[0].ops.iter().any(|op| matches!(
+        op,
+        CanvasOp::FontVariantNumeric(v) if v.0 == nsh_core::FontVariant::TABULAR_NUMS
+    )));
+}

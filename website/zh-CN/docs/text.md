@@ -151,11 +151,13 @@ Tailwind 类 `truncate` 和 `line-clamp-*` 效果相同；同时设置时以属�
 
 ## 选择
 
-`selectable` 允许用户复制文字：长按会高亮整个段落并提供“拷贝”（iOS 的编辑菜单，Android 的浮动操作模式）。选择的单位是整个段落，不支持选择部分范围。类 `select-text` 效果相同。
+`selectable` 允许用户像在系统自带的文本视图中那样选择和复制文字：长按选中手指下的词，拖动选择柄移动选区两端，编辑菜单提供“拷贝”和“全选”（iOS 还有查询、翻译和共享；Android 还有分享）。选区只在一个文本块之内。`selectionColor` 设置高亮和选择柄的颜色。类 `select-text` 与 `selectable` 效果相同。
 
 ```tsx
-<Text selectable>{orderNumber}</Text>
+<Text selectable selectionColor="#7c3aed">{orderNumber}</Text>
 ```
+
+要在代码中复制（比如“复制”按钮），使用 [`nsh/clipboard`](../modules/nsh-clipboard.md)。
 
 ## onTextLayout
 

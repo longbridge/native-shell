@@ -99,7 +99,8 @@ An app declares what it may reach outside its VM in `nsh.json`:
       "http": [{ "host": "quotes.example.com", "methods": ["GET"], "pathPrefix": "/v1/" }]
     },
     "webview": { "hosts": ["*.example.com"] },
-    "statusBar": true
+    "statusBar": true,
+    "clipboard": true
   }
 }
 ```
@@ -145,6 +146,10 @@ allows them without allowing any remote page.
 `"statusBar": true` lets the app change the status bar (the `StatusBar` component and its functions in
 [`nsh/ui/mobile`](../components/status-bar.md)).
 
+### `clipboard`
+
+`"clipboard": true` lets the app read and write the system clipboard ([`nsh/clipboard`](../modules/nsh-clipboard.md)). Copying from a selectable text's edit menu is the user's own act and needs no capability.
+
 ### What a refusal looks like
 
 | Request | Result |
@@ -152,6 +157,7 @@ allows them without allowing any remote page.
 | `fetch` | The promise rejects; the request never reaches the network. |
 | Remote image | The image fails with `onError`. |
 | Video source, web view source, status bar change | Nothing is shown or changed. |
+| Clipboard | `setString` does nothing; `getString` resolves `""` and `hasString` `false`. |
 
 Each refusal is logged once, saying which key to add:
 

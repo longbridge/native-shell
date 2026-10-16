@@ -37,7 +37,7 @@ function App() {
 mount(App);
 ```
 
-`<Scroll>` 没有 `contentContainerStyle`：像上面那样，把内边距和间距放在唯一的子视图上。横向滚动视图使用 `horizontal`，并以一个横排视图作为子元素：
+上面的子视图也可以交给滚动视图自己：`contentContainerStyle`（或 `contentContainerClass`）把子元素包进一个带该样式、随内容一起滚动的视图。`flexGrow: 1` 让它至少和视口一样高，内容较短时可以居中，较长时照常滚动。横向滚动视图使用 `horizontal`，并以一个横排视图作为子元素：
 
 ```tsx
 <Scroll horizontal showsIndicator={false}>

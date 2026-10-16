@@ -13,7 +13,7 @@ use std::{cell::RefCell, f64::consts::TAU, sync::Arc};
 
 use nsh_animation::AnimationValue;
 use nsh_core::{
-    Color,
+    Color, FontVariant,
     canvas::{
         CanvasFont, CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite,
         Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp, arc_sweep,
@@ -181,6 +181,8 @@ struct State {
     composite: Composite,
     shadow: (Color, f64, f64, f64),
     font: CanvasFont,
+    /// `fontVariantNumeric`.
+    numeric: FontVariant,
     align: CanvasTextAlign,
     baseline: CanvasTextBaseline,
     ctm: Affine,
@@ -201,6 +203,7 @@ impl Default for State {
             composite: Composite::SourceOver,
             shadow: (Color::TRANSPARENT, 0.0, 0.0, 0.0),
             font: CanvasFont::default(),
+            numeric: FontVariant::default(),
             align: CanvasTextAlign::Start,
             baseline: CanvasTextBaseline::Alphabetic,
             ctm: Affine::IDENTITY,
@@ -343,6 +346,7 @@ impl<'a> Replay<'a> {
                 self.state.shadow.3 = *y as f64;
             }
             CanvasOp::Font(f) => self.state.font = f.clone(),
+            CanvasOp::FontVariantNumeric(v) => self.state.numeric = *v,
             CanvasOp::TextAlign(a) => self.state.align = *a,
             CanvasOp::TextBaseline(b) => self.state.baseline = *b,
             CanvasOp::FillText {
@@ -666,7 +670,7 @@ impl<'a> Replay<'a> {
         }
         let c = self.ctx();
         let s = &self.state;
-        let font = crate::text::make_font(&s.font.text_style());
+        let font = crate::text::make_font(&s.font.with_numeric(s.numeric).text_style());
         let string =
             CFMutableAttributedString::new(None, 0).expect("CFAttributedStringCreateMutable");
         let whole = CFRange {

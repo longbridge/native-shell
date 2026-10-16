@@ -99,15 +99,15 @@ pub(crate) use self::{
     back::BackListener,
     component::{AnyInstance, caught},
     element::{ElKind, ErasedCx, Globals, PlaceFn, Provided, RenderReads, RenderScope},
-    task::{Action, AnswerSlot, Executor},
+    task::{Action, AnswerSlot, ClipboardRead, Executor},
 };
 pub use crate::{
     AccessibilityRole, AccessibilityState, AutoCapitalize, AutoFill, BlendMode, BoxShadow, Dialog,
     DialogButton, DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload,
-    KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty,
-    LayoutTransition, ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType,
-    ScreenAnimation, SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent,
-    TransformKind, TransformOrigin, Viewability,
+    KeyboardAppearance, KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation,
+    LayoutCurve, LayoutProperty, LayoutTransition, ModalAnimation, ModalPresentation,
+    PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation, SnapAlignment, StatusBarConfig,
+    StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, TransformOrigin, Viewability,
     platform::{Idiom, Os},
     style::{Color, OriginLen},
 };
@@ -168,6 +168,7 @@ pub mod prelude {
         JsObject,
         JsValue,
         // Scrolling and lists.
+        KeyboardAppearance,
         KeyboardDismissMode,
         KeyboardTaps,
         KeyboardType,

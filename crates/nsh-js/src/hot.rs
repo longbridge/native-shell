@@ -13,8 +13,13 @@
 //! are registered by module and name and rendered through a stable proxy.
 //! Running a module again swaps the implementation behind its proxies; the
 //! mounted instances whose code changed render again. Contexts keep their
-//! identity across updates, so providers and consumers stay connected.
-//! `mount` calls made while a module runs are undone when it runs again.
+//! identity across updates, so providers and consumers stay connected, and
+//! so do the top-level signals and navigators the bundler marks
+//! (`keep`) while their initializer's code is the same. A `mount` call made
+//! again with the same component (a proxy) keeps what it mounted: only the
+//! components whose code changed render again, and a navigator keeps its
+//! screens. Other `mount` calls of a module that runs again are undone, from
+//! the first one that differs, and made anew.
 
 use std::{
     cell::RefCell,
@@ -58,8 +63,14 @@ struct Inner {
     components: HashMap<String, Component>,
     /// "module:name" -> context.
     contexts: HashMap<String, V>,
-    /// Module id -> what its `mount` calls return (disposers).
-    renders: HashMap<String, Vec<V>>,
+    /// "module:name" -> the signature of a kept value's initializer, and
+    /// the value.
+    kept: HashMap<String, (String, V)>,
+    /// Module id -> what its `mount` calls mounted.
+    renders: HashMap<String, Vec<Render>>,
+    /// Module id -> the renders of its previous run, while it runs again:
+    /// the next `mount` call with the same component keeps the first.
+    pending: HashMap<String, Vec<Render>>,
     /// Specifier -> namespace of the native modules the app imports.
     natives: V,
     entry: Option<String>,
@@ -70,6 +81,14 @@ struct Inner {
     forced: bool,
     /// Components to render again once the update ran.
     stale: Vec<String>,
+}
+
+/// A `mount` call.
+struct Render {
+    /// The component it mounted.
+    app: V,
+    /// What `mount` returned: undoes it.
+    dispose: V,
 }
 
 struct Module {
@@ -113,12 +132,13 @@ fn with<T>(ctx: Ctx, f: impl FnOnce(&mut Inner) -> T) -> T {
 fn install(ctx: Ctx) -> Raw {
     let made = (|| -> R<V> {
         let obj = new_object(ctx)?;
-        let methods: [(&std::ffi::CStr, js::Native, i32); 5] = [
+        let methods: [(&std::ffi::CStr, js::Native, i32); 6] = [
             (c"define", define, 3),
             (c"start", start, 2),
             (c"update", update, 1),
             (c"component", component, 4),
             (c"context", context, 3),
+            (c"keep", keep, 4),
         ];
         for (name, f, length) in methods {
             let f = function(ctx, name, f, length)?;
@@ -147,14 +167,49 @@ fn install(ctx: Ctx) -> Raw {
     }
 }
 
-/// `mount` ran: what it returned is undone when the module running now
-/// runs again.
-pub(crate) fn rendered(ctx: Ctx, dispose: Raw) {
+/// `mount(app)` ran: what it returned is undone when the module running
+/// now runs again (unless that run mounts `app` again: [`reuse`]).
+pub(crate) fn rendered(ctx: Ctx, app: Raw, dispose: Raw) {
     with(ctx, |h| {
         if let Some(id) = h.current.clone() {
-            h.renders.entry(id).or_default().push(V::dup(ctx, dispose));
+            h.renders.entry(id).or_default().push(Render {
+                app: V::dup(ctx, app),
+                dispose: V::dup(ctx, dispose),
+            });
         }
     });
+}
+
+/// `mount(app, props)` is called while a module runs again: when its
+/// previous run's next render mounted the same `app` without props, that
+/// render stays and its disposer (a new reference) is returned. Otherwise
+/// the previous run's remaining renders are undone, so this one mounts
+/// after what stays.
+pub(crate) fn reuse(ctx: Ctx, app: Raw, props: Raw) -> Option<Raw> {
+    // SAFETY: an inline tag check.
+    let has_props = unsafe { qjs::JS_IsObject(props) };
+    let (kept, undo) = with(ctx, |h| {
+        let id = h.current.clone()?;
+        let pending = h.pending.get_mut(&id)?;
+        if !has_props && pending.first().is_some_and(|r| js::same(r.app.raw(), app)) {
+            let render = pending.remove(0);
+            let dispose = render.dispose.clone_ref();
+            h.renders.entry(id).or_default().push(render);
+            Some((Some(dispose), Vec::new()))
+        } else {
+            Some((None, std::mem::take(pending)))
+        }
+    })?;
+    undo_renders(ctx, undo);
+    kept.map(V::take)
+}
+
+fn undo_renders(ctx: Ctx, renders: Vec<Render>) {
+    for render in renders {
+        if js::call(ctx, render.dispose.raw(), UNDEFINED, &[]).is_err() {
+            js::report_exception(ctx);
+        }
+    }
 }
 
 native! {
@@ -297,25 +352,18 @@ fn load(ctx: Ctx, id: &str) -> R<V> {
 
 /// Runs module `id` (again).
 fn run(ctx: Ctx, id: &str) -> R<()> {
-    let Some((factory, kept, fixed, disposers)) = with(ctx, |h| {
+    let Some((factory, kept, fixed)) = with(ctx, |h| {
         let factory = h.factories.get(id)?.clone_ref();
         let module = h.modules.get_mut(id)?;
         module.components = 0;
-        Some((
-            factory,
-            module.exports.clone_ref(),
-            h.fixed.contains(id),
-            // Renders made by an earlier run of this module are replaced.
-            h.renders.remove(id).unwrap_or_default(),
-        ))
+        // Renders made by an earlier run of this module are kept or
+        // replaced by this run's `mount` calls (`reuse`).
+        let previous = h.renders.remove(id).unwrap_or_default();
+        h.pending.insert(id.to_owned(), previous);
+        Some((factory, module.exports.clone_ref(), h.fixed.contains(id)))
     }) else {
         return Err(type_error(ctx, &format!("nsh hot: no module {id}")));
     };
-    for dispose in disposers {
-        if js::call(ctx, dispose.raw(), UNDEFINED, &[]).is_err() {
-            js::report_exception(ctx);
-        }
-    }
     let exports = if fixed {
         kept.clone_ref()
     } else {
@@ -335,6 +383,9 @@ fn run(ctx: Ctx, id: &str) -> R<()> {
         &[module.raw(), exports.raw(), require.raw()],
     );
     with(ctx, |h| h.current = previous);
+    // What this run did not mount again.
+    let left = with(ctx, |h| h.pending.remove(id).unwrap_or_default());
+    undo_renders(ctx, left);
     ran?;
     if !js::same(exports.raw(), kept.raw()) {
         forward(ctx, &kept, &exports)?;
@@ -590,6 +641,28 @@ native! {
                 Ok(V::dup(ctx, made))
             }
         }
+    }
+}
+
+native! {
+    /// `keep(module, name, signature, value)`: the value first made under
+    /// that name while its initializer's signature stays the same (a
+    /// signal keeps its value, a navigator its routes); otherwise `value`.
+    fn keep(ctx, _this, args) {
+        let key = format!(
+            "{}:{}",
+            js::to_string(ctx, args.get(0))?,
+            js::to_string(ctx, args.get(1))?
+        );
+        let sig = js::to_string(ctx, args.get(2))?;
+        let made = args.get(3);
+        Ok(with(ctx, |h| match h.kept.get(&key) {
+            Some((kept_sig, kept)) if *kept_sig == sig => kept.clone_ref(),
+            _ => {
+                h.kept.insert(key, (sig, V::dup(ctx, made)));
+                V::dup(ctx, made)
+            }
+        }))
     }
 }
 

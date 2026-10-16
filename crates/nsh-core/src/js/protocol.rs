@@ -26,4 +26,12 @@ codes! { ANIMATION:
     ANIMATION_RESET_COMPOSITE = 10,
     /// composite key
     ANIMATION_RELEASE_COMPOSITE = 11,
+    /// node, offset
+    ANIMATION_SET_OFFSET = 12,
+    /// node
+    ANIMATION_FLATTEN_OFFSET = 13,
+    /// node
+    ANIMATION_EXTRACT_OFFSET = 14,
+    /// node, request id
+    ANIMATION_READ = 15,
 }

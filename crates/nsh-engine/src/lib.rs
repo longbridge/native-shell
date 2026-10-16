@@ -25,7 +25,7 @@ pub use nsh_core::{
     js::Limits,
     platform::{
         ColorScheme, Environment, FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest, Idiom,
-        Insets, Os,
+        Insets, Locale, Os,
     },
     ui::{Root, Theme},
 };
@@ -434,6 +434,7 @@ enum Message {
     Wake,
     Environment(Environment),
     RootSize(NodeId, Size, EdgeInsets),
+    ScreenHeader(NodeId, Option<f32>),
     Frame,
     States(NodeId, u8),
     /// An event of a request (by the hop it is for: events of a hop the
@@ -516,6 +517,12 @@ impl EngineControl {
     /// of it covered by system UI.
     pub fn set_root_size(&self, id: NodeId, size: Size, insets: EdgeInsets) {
         let _ = self.tx.send(Message::RootSize(id, size, insets));
+    }
+
+    /// The platform measured where the content of screen `id` starts below
+    /// its header (`None`: let the core estimate it).
+    pub fn set_screen_header(&self, id: NodeId, height: Option<f32>) {
+        let _ = self.tx.send(Message::ScreenHeader(id, height));
     }
 
     /// Applies a development update in place. When it cannot be applied,
@@ -1244,7 +1251,7 @@ impl<M: TextEngine> State<M> {
             }
             if let Some(batch) = self.core.commit() {
                 match &mut merged {
-                    Some(m) => m.items.extend(batch.items),
+                    Some(m) => extend_frame(&mut m.items, batch.items),
                     None => merged = Some(batch),
                 }
             }
@@ -1392,6 +1399,7 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
             }
         }
         Message::RootSize(id, size, insets) => state.core.set_root_size(id, size, insets),
+        Message::ScreenHeader(id, height) => state.core.set_screen_header(id, height),
         Message::Frame => {
             state.frame_requested = false;
             state.core.run_frame(Instant::now());
@@ -1411,4 +1419,64 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
         Message::Shutdown => return false,
     }
     true
+}
+
+/// Appends a commit's items to the frame's. A scroll view's content size
+/// that the frame already sets is updated to the later size (unless the
+/// view scrolls in between): a row relaid over two commits must not send
+/// the platform a transient size, which clamps the offset before the
+/// content grows back (a list jumping when a row expands).
+fn extend_frame(frame: &mut Vec<nsh_core::MountItem>, items: Vec<nsh_core::MountItem>) {
+    use nsh_core::MountItem;
+    let start = frame.len();
+    frame.extend(items);
+    for k in start..frame.len() {
+        let MountItem::ScrollContent { id, size } = frame[k] else {
+            continue;
+        };
+        let earlier = frame[..k].iter().rposition(|m| {
+            matches!(m, MountItem::ScrollContent { id: e, .. } | MountItem::ScrollBy { id: e, .. } if *e == id)
+        });
+        if let Some(j) = earlier
+            && let MountItem::ScrollContent { size: s, .. } = &mut frame[j]
+        {
+            *s = size;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nsh_core::{MountItem, Size};
+
+    #[test]
+    fn a_frame_sends_a_scroll_views_last_content_size() {
+        let content = |height| MountItem::ScrollContent {
+            id: 2,
+            size: Size::new(390.0, height),
+        };
+        let heights = |frame: &[MountItem]| -> Vec<f32> {
+            frame
+                .iter()
+                .filter_map(|m| match m {
+                    MountItem::ScrollContent { size, .. } => Some(size.height),
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut frame = vec![content(313.0)];
+        super::extend_frame(&mut frame, vec![content(544.0)]);
+        assert_eq!(heights(&frame), [544.0, 544.0]);
+        // A scroll in between keeps the size it scrolled against.
+        let mut frame = vec![
+            content(313.0),
+            MountItem::ScrollBy {
+                id: 2,
+                dx: 0.0,
+                dy: 10.0,
+            },
+        ];
+        super::extend_frame(&mut frame, vec![content(544.0)]);
+        assert_eq!(heights(&frame), [313.0, 544.0]);
+    }
 }

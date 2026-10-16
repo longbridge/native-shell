@@ -456,6 +456,13 @@ impl<'a, C: Component> Context<'a, C> {
             .push(super::services::announce(message.into()));
     }
 
+    /// Puts `text` on the system clipboard (TS: `Clipboard.setString`).
+    pub fn set_clipboard(&mut self, text: impl Into<String>) {
+        self.inner
+            .actions
+            .push(super::services::set_clipboard(text.into()));
+    }
+
     /// Shows `message` at the bottom of the screen (Android's toasts, TS:
     /// `Toast.show`); nothing happens elsewhere.
     pub fn toast(&mut self, message: impl Into<String>, duration: super::ToastDuration) {
@@ -482,6 +489,14 @@ impl<'a, C: Component> Context<'a, C> {
         let (answer, action) = super::services::prefetch(uri.into());
         self.inner.actions.push(action);
         answer
+    }
+
+    /// Shows the surface in `appearance` whatever the system's (TS:
+    /// `setColorScheme`): [`crate::ui::RenderCx::dark`] (the theme's
+    /// mode), `dark:` classes and the platform's controls follow it;
+    /// [`crate::platform::Appearance::System`] follows the system again.
+    pub fn set_color_scheme(&mut self, appearance: crate::platform::Appearance) {
+        self.inner.actions.push(Action::Appearance(appearance));
     }
 
     /// Lays the surface out right to left whatever the user's language
@@ -966,6 +981,25 @@ pub trait Element: IntoElement + Sized {
         self
     }
 
+    /// Binds the color of every border side to a node of colors.
+    fn bind_border_color(self, value: &impl super::Animated) -> Self {
+        self.bind(nsh_animation::AnimationProp::BorderColor, value)
+    }
+
+    /// Binds a text's color (the whole text) to a node of colors.
+    fn bind_color(self, value: &impl super::Animated) -> Self {
+        self.bind(nsh_animation::AnimationProp::Color, value)
+    }
+
+    /// Binds `prop` (anything but a transform step or a canvas argument)
+    /// to a native value.
+    fn bind(mut self, prop: nsh_animation::AnimationProp, value: &impl super::Animated) -> Self {
+        let node = value.native_node();
+        let decl = crate::StyleDecl::Animated(prop, node.id());
+        self.node().attrs.animated.push((decl, node));
+        self
+    }
+
     /// Appends a transform step driven by a native value, after the styles'
     /// transforms.
     fn bind_transform(mut self, kind: crate::TransformKind, value: &impl super::Animated) -> Self {
@@ -1189,6 +1223,9 @@ pub trait Interactive: Element {
     /// hears them alone (`on_responder_*`), and native scroll views around
     /// it stop taking them over. Several claims may be given.
     fn claim_touches(mut self, claim: super::TouchClaim) -> Self {
+        if let Some(pan) = claim.pan {
+            super::host::set(self.node(), Prop::PanActivation(Some(pan)));
+        }
         super::responder::of(self.node()).claims.push(claim);
         self
     }
@@ -1539,6 +1576,12 @@ impl Text {
     /// The user can select and copy it.
     pub fn selectable(mut self, selectable: bool) -> Self {
         super::host::set(&mut self.0, Prop::Selectable(selectable));
+        self
+    }
+
+    /// The highlight of its selection, when it is selectable.
+    pub fn selection_color(mut self, color: Color) -> Self {
+        super::host::set(&mut self.0, Prop::SelectionColor(Some(color)));
         self
     }
 

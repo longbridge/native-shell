@@ -151,11 +151,13 @@ Prefer limiting the scale over turning it off: large text is an accessibility se
 
 ## Selection
 
-`selectable` lets the user copy the text: a long press highlights the whole paragraph and offers Copy (the iOS edit menu, an Android floating action mode). Selection covers whole paragraphs, not ranges. The class `select-text` does the same.
+`selectable` lets the user select and copy the text, as in the system's own text views: a long press selects the word under the finger, the handles move the selection's ends, and the edit menu offers Copy and Select All (iOS adds Look Up, Translate and Share; Android Share). A selection stays inside one text block. `selectionColor` colors the highlight and the handles. The class `select-text` does the same as `selectable`.
 
 ```tsx
-<Text selectable>{orderNumber}</Text>
+<Text selectable selectionColor="#7c3aed">{orderNumber}</Text>
 ```
+
+To copy from code (a Copy button), use [`nsh/clipboard`](../modules/nsh-clipboard.md).
 
 ## onTextLayout
 

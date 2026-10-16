@@ -27,7 +27,28 @@
   (`declarations_match_the_modules`), every web class's members with its spec (`web_classes_declare_their_members`),
   the globals with a host's (`globals_match_the_host`: what is declared exists, and every global the host adds to
   QuickJS-NG's is declared), every event has a type or is internal, and every imported name has one home.
-- To check the declarations themselves, run `tsc -p . --skipLibCheck false` in an app.
+- To check the declarations themselves, run `nsh check -- --skipLibCheck false` in an app.
+
+### `nsh check`
+
+The bundler strips types without checking them (Oxc), and no Rust type checker for TypeScript exists: checking means
+running TypeScript itself. The options were:
+
+- **Bundle the JS compiler** (`typescript.js`, ~9 MB) and run it in QuickJS: QuickJS is 10–50× slower than V8 at this
+  workload (tens of seconds for a small app) and the compiler needs a host for files and `lib.*.d.ts`; no.
+- **Require Node** (`npx tsc`, `bunx tsc`): what apps did before; the only Node dependency of the toolchain.
+- **Run TypeScript's native compiler**: TypeScript 7 (July 2026) is the Go port, shipped on npm as one executable per
+  platform (`@typescript/typescript-<os>-<arch>`, `package/lib/tsc` with its `lib.*.d.ts` next to it) behind the
+  `typescript` package's optional dependencies. It needs no Node and checks the same as TypeScript 6.
+
+`nsh check` does the last (`crates/nsh-cli/src/check.rs`): it writes `.nsh/types` as every command does, then runs
+`tsc -p <app dir> --noEmit` (arguments after `--` are passed on). The compiler is a pinned release (`TYPESCRIPT`),
+downloaded from the npm registry's tarball URL the first time (ureq, no npm client), checked against the
+`dist.integrity` (SHA-512) recorded in the source for each host it supports (macOS and Linux, arm64 and x64), unpacked
+into nsh's cache (`NSH_CACHE`, else `~/Library/Caches/nsh` / `$XDG_CACHE_HOME/nsh`) and kept there. `--tsc <path>` /
+`NSH_TSC` run another `tsc` (a TypeScript 5 / 6 one, an offline copy). Updating TypeScript is a change of the version
+and the integrities (`npm view @typescript/typescript-<os>-<arch>@<version> dist.integrity`). The distribution
+(`cargo xtask dist`) does not ship the compiler: it is 24 MB per platform and most runs of `nsh` never check types.
 
 ## Output
 
@@ -104,12 +125,38 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   before the JSX is compiled) wraps top-level components (capitalized functions whose body has JSX) in stable proxies
   keyed by module and name, with a signature of their code plus the module's other code: a proxy is a memo over a
   version signal, so instances render again only when their signature changed (or a dependency module changed) and the
-  rest of the app keeps its state. Top-level `context()` results keep their identity (taking the new default). `mount`
-  calls are undone when their module runs again. A component that throws reports the error and renders nothing until
-  the fix. A patch that throws shows the error and the next save recovers; a patch that cannot be applied (`false`)
+  rest of the app keeps its state. Top-level `context()` results keep their identity (taking the new default), and
+  top-level `const`s made by `signal()` or `createNavigator()` (matched by the callee's name, as `context`) keep their
+  value while their initializer's code is the same (`__nsh_hot.keep`, keyed by module and name; a changed initializer
+  starts afresh). A function passed to a top-level `mount()` is a component too (`mount#<n>`). When a module runs
+  again, a `mount` call with the same component as its previous run's next one (the same proxy: `mount(App)`, or the
+  inline function's) and no props keeps that mount; from the first one that differs, the rest of the previous run's
+  mounts are undone and mounted anew (`hot.rs` `reuse`). So what an update keeps:
+  - an edit of a component (in any module, the entry too) renders its instances again: their own signals start
+    afresh, and so does the state of the components they render (rendering a component again makes its children
+    anew); everything outside them keeps its state;
+  - an edit of a module's other code (a top-level constant, a helper) renders every component of that module again,
+    and of the modules importing it up to the ones made only of components;
+  - a navigator made at the top of a module keeps its routes, so a stack rendered again shows the same screens (the
+    screens' contents render anew); a top-level signal keeps its value;
+  - a changed `mount` call (another component, props) mounts the app again.
+  `crates/nsh-engine/tests/engine/hot.rs` covers each case. A component that throws reports the error and renders
+  nothing until the fix. A patch that throws shows the error and the next save recovers; a patch that cannot be applied (`false`)
   makes the host reload. Verified on the iOS simulator, the Android emulator and Mac Catalyst.
 - Stacks are symbolicated with source maps: bundling produces a hidden source map (the TSX→JSX→JS maps are composed with
   `rolldown_sourcemap::collapse_sourcemaps`), sent along with the bundle; the engine rewrites `bundle.js:L:C` to `App.tsx:L:C` before reporting.
+
+## `nsh trace`
+
+`crates/nsh-cli/src/trace.rs` runs the app in the CLI's process (`ApproxTextEngine`, a channel as the mount sink, 60 Hz
+frames from a timer thread) and prints every batch. It keeps a model of the native tree from the mount items
+(inserts, removals, `ViewProps`' `testID` and `accessibilityLabel`, texts, event masks) to find what to tap:
+`--tap id:<testID>`, `label:<accessibilityLabel>`, `text:<text>`, `view:<id>` or a bare string (testID, then label,
+then text), the first match in tree order below the root, or its nearest pressable ancestor; it is dispatched as
+`Press`. Without `--tap`, `--taps <n>` taps the first pressable view. Waits are bounded so apps with timers or
+animations end: before the taps the app must be quiet for `--idle-ms` (at most 10 s), after each tap for 100 ms (also
+at most 10 s); `--wait <ms>` runs exactly that long instead, `--duration <ms>` keeps running after the last tap.
+`--safe-area <top,right,bottom,left>` sets the environment's insets (`useSafeAreaInsets`, `SafeAreaView`, screens).
 
 ## Apps with Rust components of their own (`nsh.json` `"rust"`)
 

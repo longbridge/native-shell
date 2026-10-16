@@ -12,9 +12,9 @@ use super::{
     events::{self, NativeEvent, Selection, VideoInfo, VideoProgress, WebNavigation},
 };
 use crate::{
-    AutoCapitalize, AutoFill, Color, EventKind, HeaderSlot, JsonValue, KeyboardType,
-    ModalAnimation, ModalPresentation, ModalProp, NativeProp, Prop, ResizeMode, ReturnKeyType,
-    ScreenAnimation, ScreenProp, ScrollProp, Size, Tag, WebSource,
+    AutoCapitalize, AutoFill, Color, EventKind, HeaderSlot, JsonValue, KeyboardAppearance,
+    KeyboardType, ModalAnimation, ModalPresentation, ModalProp, NativeProp, Prop, ResizeMode,
+    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, Size, Tag, WebSource,
     canvas::{
         CanvasFont, CanvasGradient, CanvasImage, CanvasOp, CanvasTextAlign, CanvasTextBaseline,
         Composite, Drawing, FillRule, LineCap, LineJoin, Num, Paint, Path, PathOp,
@@ -306,6 +306,12 @@ impl Input {
     /// The software keyboard's layout.
     pub fn keyboard_type(self, kind: KeyboardType) -> Self {
         self.set(Prop::KeyboardType(kind))
+    }
+
+    /// The software keyboard's light or dark look (iOS; TS:
+    /// `ios={{ keyboardAppearance }}`).
+    pub fn keyboard_appearance(self, appearance: KeyboardAppearance) -> Self {
+        self.set(Prop::KeyboardAppearance(appearance))
     }
 
     /// The return key's label.
@@ -1266,6 +1272,15 @@ impl Painter {
             Some(font) => self.op(CanvasOp::Font(font)),
             None => self,
         }
+    }
+
+    /// The number forms of text (TS: `fontVariantNumeric`): with
+    /// [`crate::style::FontVariant::TABULAR_NUMS`] figures have equal widths, so changing
+    /// values do not jitter; `FontVariant::default()` keeps the font's.
+    pub fn font_variant_numeric(self, numeric: crate::style::FontVariant) -> Self {
+        self.op(CanvasOp::FontVariantNumeric(crate::style::FontVariant(
+            numeric.0 & !crate::style::FontVariant::SMALL_CAPS,
+        )))
     }
 
     /// Where text sits relative to its x.

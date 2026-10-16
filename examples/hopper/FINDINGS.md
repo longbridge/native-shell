@@ -4,16 +4,29 @@ Hopper Lab was written against nsh as it is, without changing the runtime, to se
 These are the gaps it ran into, each with what the app does instead. Fix them in the runtime and delete the
 workaround here in the same change.
 
+## Open
+
 | # | Area | Finding | Workaround in the app |
 |---|---|---|---|
-| 1 | Touch, layout | A child placed outside its parent's bounds (`position: "absolute"`, `overflow` visible) draws but cannot be touched: UIKit only hit-tests inside the parent's bounds. A dropdown under a picker row ignored taps and the tap went to what was behind it. There is no popover / anchored overlay primitive either. | The easing menu lives in a box that covers both the picker and the curve (`cards/ThrottleProfile.tsx`), with a sibling backdrop to close it. |
-| 2 | Touch | `locationX` / `locationY` are relative to the view the finger went down on (React Native's semantics), and there is no `measure()` / `measureInWindow()` to turn `pageX` into a position in another view. A slider whose knob is a child got positions relative to the knob. | Every child of the slider has `pointerEvents="none"` (`ui.tsx` `Slider`), so the target is always the slider. |
-| 3 | Gestures | A responder that keeps the touch (grant returns `true`) blocks the scroll view around it from the first pixel; there is no direction-locked pan (start only after moving horizontally, let vertical moves scroll), like gesture-handler's `activeOffsetX` / `failOffsetY`. Charts that scrub horizontally make the page hard to scroll on a phone. | None: charts take the touch (`ui.tsx` `track`). |
-| 4 | Input | No keyboard for signed numbers: `number-pad` and `numeric` both map to iOS `NumberPad`, which has no minus key (`numbers-and-punctuation` is missing). | A ± button in the field flips the sign (`cards/FlightPlan.tsx`). |
-| 5 | Navigation, Catalyst | On Mac Catalyst a white band shows under the title bar and the title is black. The navigation bar sometimes merges into the window's title bar, where `headerBackgroundColor` / `headerTitleColor` do not apply, but the screen still pads its content by the fixed `header_height` (`nsh-platform-ios` `navigation.rs` `apply_header`), so the screen's root view (`systemBackgroundColor`, white in light mode) shows in the gap. The iOS simulator is right. Fix: inset by the real `safeAreaInsets.top`, give the screen's root view a clear (or the screen's) background, and style Catalyst's title bar. | None. |
-| 6 | Animation | `borderColor` cannot be bound to a native value (`warn js::protocol style borderColor cannot be animated natively`); only opacity, background color and transforms can. A switch's knob ring could not animate. | The knob animates its background color instead (`ui.tsx` `Switch`). |
-| 7 | Runtime | QuickJS has no `Intl`: `toLocaleString("en-US")` does not group thousands. | A regex formatter where needed. |
-| 8 | Mobile UI | `nsh/ui/mobile` has no switch, slider, segmented control, stepper styled for dark themes, menu or tab bar; each app writes them. | `ui.tsx` and the tab bar in `App.tsx` (about 500 lines). |
-| 9 | Canvas | No `isPointInPath`: tapping a shape in a drawing means redoing its geometry for hit testing. | Hand-written hit tests in the drawings' design units (`cards/Mass.tsx`, `cards/Rcs.tsx`). |
-| 10 | Tooling | Type checking needs `tsc` from npm (`bunx tsc -p .`), although the toolchain otherwise needs no Node: an `nsh check` would close that. | Checked with `bunx --bun tsc -p examples/hopper`. |
-| 11 | Hot reload | A hot update of the entry renders the app again: a pushed screen pops back to the root and component state (a resized landing zone) resets. | None. |
+| 1 | Mobile UI | `nsh/ui/mobile` has no switch, slider, segmented control, stepper styled for dark themes, menu or tab bar; each app writes them. | `ui.tsx` and the tab bar in `App.tsx` (about 500 lines). |
+| 2 | Touch, layout | There is no popover / anchored overlay primitive (children outside their parent can be touched now, see below). | The easing menu lives in a box that covers both the picker and the curve (`cards/ThrottleProfile.tsx`). |
+
+## Fixed in the runtime, workaround still in the app
+
+| Finding | Now | Workaround to remove |
+|---|---|---|
+| A child outside its parent's bounds draws but cannot be touched. | Hit testing reaches children that overflow a parent with visible overflow (`MountItem::Overflow`). | The easing menu's covering box (`cards/ThrottleProfile.tsx`). |
+| `locationX` is relative to the touched view, and there is no `measure()`. | `ref.measure()` gives the view's `pageX` / `pageY`. | `pointerEvents="none"` on the slider's children (`ui.tsx` `Slider`). |
+| No keyboard for signed numbers. | `keyboardType="numbers-and-punctuation"`. | The ± button (`cards/FlightPlan.tsx`). |
+| `borderColor` cannot be animated natively. | `borderColor`, `color` and shadows bind to native values. | The knob animates its background instead (`ui.tsx` `Switch`). |
+| QuickJS has no `Intl`. | `Intl.NumberFormat` / `DateTimeFormat` and `toLocaleString`, formatted in Rust. | The regex formatter. |
+| No `isPointInPath`. | `ctx.isPointInPath` / `isPointInStroke`, answered in Rust. | Hand-written hit tests (`cards/Mass.tsx`, `cards/Rcs.tsx`). |
+
+## Fixed
+
+- No direction-locked pan: the `panActivation` prop decides natively which of a pan and its scroll view takes the
+  touch, and the negotiation callbacks get a `gestureState`.
+- Mac Catalyst header band and colors: the content sits below the measured header, and the bar stays in the window.
+- Type checking needed `tsc` from npm: `nsh check`.
+- A hot update of the entry popped pushed screens and reset state: top-level signals and navigators keep their state,
+  and an unchanged `mount(App)` is kept (editing `App` itself still resets the state inside it).

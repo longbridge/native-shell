@@ -53,6 +53,9 @@ mount(App);
   after the panel has slid out of view, and it keeps covering the screen.
 - **Closing from your code**: setting `open` to false removes the sheet at once, without the slide-down animation, and
   does not call `onClose`.
+- **Content**: the children are made when the sheet opens and released once it is closed, so they start fresh each
+  time (a form is empty again, a component reads the current state when it is made). Keep what must survive a close
+  in a signal outside the sheet.
 
 The sheet is presented in a transparent [modal](../elements/modal.md), so it covers everything, including a navigation
 header and a tab bar. It can be declared anywhere in the tree.

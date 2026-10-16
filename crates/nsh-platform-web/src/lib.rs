@@ -453,6 +453,8 @@ pub unsafe extern "C" fn nsh_event(
                             "right" => "right",
                             "bottom" => "bottom",
                             "left" => "left",
+                            "text" => "text",
+                            "has" => "has",
                             _ => return None,
                         };
                         let v = match v {
@@ -526,6 +528,10 @@ pub unsafe extern "C" fn nsh_touch(ptr: *const u8, len: usize) -> f64 {
         phase,
         timestamp: f(&value, "time"),
         points,
+        activated: value
+            .get("activated")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as nsh_core::NodeId),
     };
     send(|app| {
         app.control.dispatch_event(

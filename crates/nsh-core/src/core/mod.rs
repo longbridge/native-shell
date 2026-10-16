@@ -1,6 +1,7 @@
 mod classes;
 mod components;
 mod list;
+mod measure;
 mod services;
 #[cfg(test)]
 mod tests;
@@ -13,6 +14,7 @@ use slab::Slab;
 use taffy::{AvailableSpace, NodeId as LayoutId, Overflow, Position, TaffyTree};
 
 use self::list::{ExtraKind, ListState};
+pub use self::measure::Measurement;
 use crate::{
     geometry::{Rect, Size},
     mount::{
@@ -77,6 +79,9 @@ mod dirty {
     pub(super) const CANVAS: u32 = 1 << 16;
     /// Emit [`crate::MountItem::ComponentProps`].
     pub(super) const COMPONENT: u32 = 1 << 17;
+    /// Emit [`crate::MountItem::AccessibilityLabel`] (unless
+    /// [`VIEW_PROPS`] sends everything).
+    pub(super) const LABEL: u32 = 1 << 18;
 }
 
 /// A layout root other than the surface's: screens, modals and header
@@ -87,6 +92,10 @@ struct RootState {
     reported: Option<Size>,
     /// Safe-area insets the platform reported for the root (modals).
     insets: EdgeInsets,
+    /// Height of the header the platform measured above the content
+    /// (screens; until then, estimated from the bar's height and the safe
+    /// area).
+    header: Option<f32>,
     /// The size and header height the root was last laid out with.
     laid_out: Option<(Size, f32)>,
     /// Screen options (screens).
@@ -114,6 +123,8 @@ struct Paragraph {
     ellipsize_set: bool,
     /// `selectable` as set (it wins over `select-*` classes).
     selectable: Option<bool>,
+    /// `selectionColor` of selectable text.
+    selection_color: Option<crate::Color>,
     /// `adjustsFontSizeToFit`.
     fit: bool,
     /// `minimumFontScale`.
@@ -129,6 +140,7 @@ impl Default for Paragraph {
             max_font_multiplier: 0.0,
             ellipsize_set: false,
             selectable: None,
+            selection_color: None,
             fit: false,
             min_font_scale: 0.0,
         }
@@ -242,11 +254,19 @@ struct ScrollState {
     keyboard_dismiss: KeyboardDismissMode,
     /// Last content size sent to the platform.
     content: Option<Size>,
+    /// Where in the mount items the last `ScrollContent` was queued: a
+    /// later size in the same batch replaces it, so a row relaid in two
+    /// passes never sends the platform a transient size (which would clamp
+    /// the offset before the content grows back). With the batch it is in
+    /// ([`Core::batches`]).
+    content_item: Option<(u64, usize)>,
     behavior: ScrollBehavior,
     /// Minimum milliseconds between `onScroll` events.
     event_throttle_ms: f32,
     /// The zoom scale the platform reported.
     zoom: f32,
+    /// The content offset the platform reported.
+    offset: (f32, f32),
 }
 
 impl Default for ScrollState {
@@ -259,9 +279,11 @@ impl Default for ScrollState {
             scroll_value: None,
             keyboard_dismiss: KeyboardDismissMode::None,
             content: None,
+            content_item: None,
             behavior: ScrollBehavior::default(),
             event_throttle_ms: 0.0,
             zoom: 1.0,
+            offset: (0.0, 0.0),
         }
     }
 }
@@ -356,6 +378,9 @@ struct Node {
     created: bool,
     /// Last frame sent to the platform.
     frame: Rect,
+    /// The area descendants cover outside the bounds, as last mounted
+    /// (`MountItem::Overflow`).
+    overflow: Option<Rect>,
     dirty: u32,
     queued: bool,
     /// In `Core::pending_text`.
@@ -445,6 +470,7 @@ impl Node {
             gestures: GestureValues::default(),
             created: false,
             frame: Rect::UNSET,
+            overflow: None,
             attached: Vec::new(),
             elevation: 0.0,
             dirty: 0,
@@ -567,6 +593,9 @@ pub struct Core<M: TextEngine> {
     root: Key,
     viewport: Size,
     mount: Vec<MountItem>,
+    /// Batches handed out so far: tells this batch's mount indexes from
+    /// earlier ones'.
+    batches: u64,
     /// Imperative calls, run after everything else in the batch.
     commands: Vec<(NodeId, Command)>,
     /// Animates the layout changes of the next commit.
@@ -577,8 +606,13 @@ pub struct Core<M: TextEngine> {
     needs_layout: bool,
     /// Parsed classes and the theme.
     tailwind: Tailwind,
-    /// What class variants read from the environment.
+    /// What class variants read from the environment (`dark` as shown:
+    /// [`Core::set_appearance`]).
     class_env: ClassEnvironment,
+    /// The appearance the app asked for.
+    appearance: crate::platform::Appearance,
+    /// The platform reports dark appearance.
+    system_dark: bool,
     /// [`Core::set_max_nodes`].
     max_nodes: usize,
     /// What the app may reach ([`Core::set_access`]).
@@ -625,6 +659,7 @@ impl<M: TextEngine> Core<M> {
             root,
             viewport,
             mount: Vec::new(),
+            batches: 0,
             commands: Vec::new(),
             layout_animation: None,
             font_scale: 1.0,
@@ -632,6 +667,8 @@ impl<M: TextEngine> Core<M> {
             needs_layout: true,
             tailwind: Tailwind::new(),
             class_env: ClassEnvironment::default(),
+            appearance: crate::platform::Appearance::System,
+            system_dark: false,
         }
     }
 
@@ -661,6 +698,21 @@ impl<M: TextEngine> Core<M> {
         {
             root.reported = Some(size);
             root.insets = insets;
+            self.needs_layout = true;
+        }
+    }
+
+    /// The platform measured where the content of screen `id` starts below
+    /// the header it shows (`None`: estimate it from the bar's height and
+    /// the safe area). Used for screens that lay their content out below
+    /// the header (not large titles or transparent headers).
+    pub fn set_screen_header(&mut self, id: NodeId, height: Option<f32>) {
+        let Ok(key) = self.key(id) else { return };
+        let height = height.filter(|h| h.is_finite() && *h >= 0.0);
+        if let Some(root) = self.nodes[key as usize].root.as_mut()
+            && root.header != height
+        {
+            root.header = height;
             self.needs_layout = true;
         }
     }
@@ -738,6 +790,9 @@ impl<M: TextEngine> Core<M> {
         let Ok(key) = self.key(id) else { return };
         let node = &mut self.nodes[key as usize];
         let horizontal = node.scroll.as_ref().is_some_and(|s| s.horizontal);
+        if let Some(scroll) = node.scroll.as_mut() {
+            scroll.offset = (x, y);
+        }
         if let Some(list) = node.list.as_mut() {
             list.reported(if horizontal { x } else { y }, applied);
         }
@@ -1007,6 +1062,14 @@ impl<M: TextEngine> Core<M> {
                 self.block_native(touch::Side::Js, None);
                 Ok(())
             }
+            // A released node: no layout, but the call is answered.
+            Op::Command {
+                id,
+                command: Command::Measure { call },
+            } if self.key(id).is_err() => {
+                self.answer_measure(id, call);
+                Ok(())
+            }
             Op::Command { id, command } => {
                 self.key(id)?;
                 self.commands.push((id, command));
@@ -1031,6 +1094,7 @@ impl<M: TextEngine> Core<M> {
             self.mount.clear();
             None
         } else {
+            self.batches += 1;
             Some(MountBatch {
                 items: std::mem::take(&mut self.mount),
             })
@@ -1077,6 +1141,12 @@ impl<M: TextEngine> Core<M> {
         }
         // On laid out views; dropped for views that were never shown.
         for (id, mut command) in std::mem::take(&mut self.commands) {
+            // Answered here, with this commit's layout (null for views that
+            // are gone or not shown).
+            if let Command::Measure { call } = command {
+                self.answer_measure(id, call);
+                continue;
+            }
             let Ok(key) = self.key(id) else { continue };
             let node = &self.nodes[key as usize];
             if !node.created {
@@ -1089,6 +1159,15 @@ impl<M: TextEngine> Core<M> {
                     let message = not_granted("Image.getSize / prefetch of", uri, "network");
                     self.answer_image_info(*request, Err(message.clone()));
                     self.deny(message);
+                    continue;
+                }
+                Command::SetClipboard(_) | Command::ReadClipboard { .. }
+                    if !self.access.allows_clipboard() =>
+                {
+                    if let Command::ReadClipboard { id: request, .. } = &command {
+                        self.answer_clipboard(*request, None, false);
+                    }
+                    self.deny("the clipboard is not granted: add `\"clipboard\": true` to capabilities in nsh.json".into());
                     continue;
                 }
                 Command::StatusBar(_) if !self.access.allows_status_bar() => {
@@ -1334,6 +1413,14 @@ impl<M: TextEngine> Core<M> {
             direction,
             logical,
         } = style;
+        if animated
+            .iter()
+            .any(|(p, _)| matches!(p, AnimationProp::BackgroundColor))
+        {
+            // The animated color must show: a gradient drawn over it would
+            // hide it.
+            view.clear_background_images();
+        }
         if key != self.root {
             node.direction = direction;
         }
@@ -1737,6 +1824,11 @@ impl<M: TextEngine> Core<M> {
                     list.set_inverted(inverted);
                 }
             }
+            Prop::FollowEnd(threshold) => {
+                if let Some(list) = node.list.as_mut() {
+                    list.set_follow_end(threshold);
+                }
+            }
             Prop::StickyIndices(indices) => {
                 if let Some(list) = node.list.as_mut() {
                     list.set_sticky(indices);
@@ -1807,6 +1899,12 @@ impl<M: TextEngine> Core<M> {
                     self.mark_text_block(key);
                 }
             }
+            Prop::SelectionColor(color) if node.input.is_none() => {
+                if node.paragraph.selection_color != color {
+                    node.paragraph.selection_color = color;
+                    self.mark_text_block(key);
+                }
+            }
             Prop::AdjustsFontSizeToFit(_) | Prop::MinimumFontScale(_) => {
                 let before = (node.paragraph.fit, node.paragraph.min_font_scale);
                 match prop {
@@ -1844,6 +1942,13 @@ impl<M: TextEngine> Core<M> {
                     flags |= dirty::VIEW_PROPS;
                 }
             }
+            Prop::PanActivation(value) => {
+                let props = node.props.get_or_insert_default();
+                if props.pan_activation != value {
+                    props.pan_activation = value;
+                    flags |= dirty::VIEW_PROPS;
+                }
+            }
             Prop::InsetPadding(insets) | Prop::InsetMargin(insets) => {
                 let slot = usize::from(matches!(prop, Prop::InsetMargin(_)));
                 let mut all = node.insets.as_deref().copied().unwrap_or_default();
@@ -1877,6 +1982,14 @@ impl<M: TextEngine> Core<M> {
                     self.mount.push(MountItem::LayoutDirection { rtl });
                     self.update_direction(key);
                     self.root_direction_changed(rtl);
+                }
+                return Ok(());
+            }
+            Prop::Appearance(appearance) => {
+                // The app's appearance (the root's): `nsh.json`,
+                // `setColorScheme`.
+                if key == self.root {
+                    self.set_appearance(appearance);
                 }
                 return Ok(());
             }
@@ -1935,6 +2048,10 @@ impl<M: TextEngine> Core<M> {
                 }
             }
             Prop::Accessibility(prop) => {
+                // A label changing on mounted props goes alone: it is
+                // the one that follows app state (a count, a value).
+                let label_only =
+                    node.props.is_some() && matches!(prop, AccessibilityProp::Label(_));
                 let props = node.props.get_or_insert_default();
                 let a = &mut props.accessibility;
                 let before = a.clone();
@@ -1954,7 +2071,11 @@ impl<M: TextEngine> Core<M> {
                     AccessibilityProp::Actions(v) => a.actions = v,
                 }
                 if *a != before {
-                    flags |= dirty::VIEW_PROPS;
+                    flags |= if label_only {
+                        dirty::LABEL
+                    } else {
+                        dirty::VIEW_PROPS
+                    };
                 }
             }
             Prop::KeyboardDismissMode(mode) => {
@@ -2117,6 +2238,10 @@ impl<M: TextEngine> Core<M> {
                     }
                     Prop::KeyboardType(keyboard) => {
                         c.keyboard = keyboard;
+                        false
+                    }
+                    Prop::KeyboardAppearance(appearance) => {
+                        c.keyboard_appearance = appearance;
                         false
                     }
                     Prop::ReturnKeyType(key) => {
@@ -2732,6 +2857,12 @@ impl<M: TextEngine> Core<M> {
                     props.pointer_events = p;
                 }
                 self.mount.push(MountItem::ViewProps { id, props });
+            } else if flags & dirty::LABEL != 0 {
+                let label = node
+                    .props
+                    .as_ref()
+                    .and_then(|p| p.accessibility.label.clone());
+                self.mount.push(MountItem::AccessibilityLabel { id, label });
             }
             if flags & dirty::SCREEN != 0
                 && let Some(config) = self.screen_config(key)
@@ -2942,6 +3073,7 @@ impl<M: TextEngine> Core<M> {
                 .selectable
                 .or(class.and_then(|c| c.selectable))
                 .unwrap_or(false),
+            selection_color: node.paragraph.selection_color,
             ..AttributedText::default()
         };
         let base = inherited.inherit(&node.text_style);
@@ -3246,15 +3378,20 @@ impl<M: TextEngine> Core<M> {
                 };
                 let s = self.layout.layout(stack_layout).expect("taffy layout").size;
                 let c = &root.screen;
-                let header = if c.header_shown {
+                let measured = root
+                    .header
+                    .filter(|_| !c.large_title && !c.header_transparent);
+                let header = if !c.header_shown {
+                    0.0
+                } else if let Some(measured) = measured {
+                    measured
+                } else {
                     let bar = if c.large_title {
                         self.header_heights.1
                     } else {
                         self.header_heights.0
                     };
                     bar + self.top_overlap(parent)
-                } else {
-                    0.0
                 };
                 let size = Size::new(s.width, s.height);
                 (size, header, definite(size))
@@ -3667,6 +3804,7 @@ impl<M: TextEngine> Core<M> {
                 }
             }
             self.nodes[key as usize].children = children;
+            self.update_overflow(key);
         }
     }
 
@@ -3707,7 +3845,31 @@ impl<M: TextEngine> Core<M> {
             && scroll.content != Some(size)
         {
             let old = scroll.content.replace(size);
-            self.mount.push(MountItem::ScrollContent { id, size });
+            // Items are only inserted before it since (a `ScrollBy`, the
+            // layout animation), so it is at its index or later.
+            let batch = self.batches;
+            let queued = scroll
+                .content_item
+                .filter(|&(b, _)| b == batch)
+                .and_then(|(_, i)| {
+                    let at = self.mount.get(i..)?.iter().position(
+                        |m| matches!(m, MountItem::ScrollContent { id: queued, .. } if *queued == id),
+                    )?;
+                    Some(i + at)
+                });
+            if let Some(j) = queued {
+                self.mount[j] = MountItem::ScrollContent { id, size };
+            }
+            // A scroll queued after it must still come before the new size.
+            let scrolled_since = queued.is_some_and(|j| {
+                self.mount[j + 1..]
+                    .iter()
+                    .any(|m| matches!(m, MountItem::ScrollBy { id: s, .. } if *s == id))
+            });
+            if queued.is_none() || scrolled_since {
+                scroll.content_item = Some((batch, self.mount.len()));
+                self.mount.push(MountItem::ScrollContent { id, size });
+            }
             // Right to left, a horizontal scroll view starts at its right
             // end and keeps its distance from it as the content changes.
             if kind == Kind::Scroll && scroll.horizontal && rtl {
@@ -3794,7 +3956,8 @@ impl<M: TextEngine> Core<M> {
             list.offset += anchor;
             // A splice above the viewport already moved the offset.
             anchor += list.take_splice_anchor();
-            // Inverted lists keep their distance from the end instead.
+            // Inverted lists keep their distance from the end instead;
+            // `maintainVisibleContentPosition` follows the end near it.
             anchor += list.anchor_end();
 
             // Scroll commands for the list, now that sizes are known: the
@@ -3939,6 +4102,7 @@ impl<M: TextEngine> Core<M> {
                         this.emit_frames(child);
                     }
                     this.nodes[cell as usize].children = children;
+                    this.update_overflow(cell);
                 }
                 Some(main_of(size))
             };

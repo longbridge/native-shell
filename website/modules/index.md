@@ -35,6 +35,7 @@ Types are generated from the runtime: `nsh init`, `nsh build`, `nsh dev` and `ns
 | `nsh/device` | `windowSize`, `colorScheme`, `fontScale`, `Platform`, `PixelRatio`, `I18nManager` | [nsh/device](./nsh-device.md) |
 | `nsh/gesture` | `PanResponder` | [nsh/gesture](./nsh-gesture.md) |
 | `nsh/image` | `Image` (the element), `Image.getSize`, `Image.prefetch` | [nsh/image](./nsh-image.md) |
+| `nsh/clipboard` | `Clipboard.setString`, `Clipboard.getString`, `Clipboard.hasString` | [nsh/clipboard](./nsh-clipboard.md) |
 | `nsh/native` | `nativeComponent` (components the embedding app registers) | [nsh/native](./nsh-native.md) |
 | `nsh/accessibility` | `AccessibilityInfo`, `screenReaderEnabled`, `reduceMotion` | [nsh/accessibility](./nsh-accessibility.md) |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | [nsh/ios](./nsh-ios.md) |
@@ -42,7 +43,7 @@ Types are generated from the runtime: `nsh init`, `nsh build`, `nsh dev` and `ns
 | `nsh/webview` | `WebView` | [nsh/webview](./nsh-webview.md) |
 | `nsh/video` | `Video` | [nsh/video](./nsh-video.md) |
 | `nsh/ui/mobile` | Navigation (`createNavigator`, `Stack`, `Screen`, `Modal`), `SafeAreaView`, `StatusBar`, `Alert`, `ActionSheet`, `Keyboard`, `Button`, `TextField`, ... | [Components](../components/index.md) |
-| Globals | `fetch`, `URL`, `TextEncoder`, `Blob`, `FormData`, `AbortController`, timers, `console`, `requestAnimationFrame`, ... (no import) | [Web APIs](./web-apis.md) |
+| Globals | `fetch`, `URL`, `TextEncoder`, `Blob`, `FormData`, `AbortController`, `Intl`, timers, `console`, `requestAnimationFrame`, ... (no import) | [Web APIs](./web-apis.md) |
 
 Reference pages that are not modules:
 

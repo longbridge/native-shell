@@ -51,6 +51,8 @@ quote = "1"
 syn = { version = "2", features = ["full"] }
 ed25519-dalek = { version = "2.1", default-features = false, features = ["std", "fast", "zeroize"] }
 sha2 = "0.10"
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
 base64 = "0.22"
 getrandom = "0.3"
 slab = "0.4"
@@ -164,6 +166,7 @@ objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
   "UITextField",
   "UITextInput",
   "UITextInputTraits",
+  "UITextInteraction",
   "UITextView",
   "UITraitCollection",
   "UIView",

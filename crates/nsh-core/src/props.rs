@@ -282,6 +282,77 @@ pub struct ViewProps {
     pub accessibility: Accessibility,
     /// `testID`: an identifier for UI tests.
     pub test_id: Option<Arc<str>>,
+    /// `panActivation`: the view's touch responder waits for a pan the
+    /// platform recognizes.
+    pub pan_activation: Option<PanActivation>,
+}
+
+/// When a pan on a view activates (`panActivation`; react-native-gesture-
+/// handler's `activeOffsetX` / `failOffsetY`), decided by the platform on
+/// the main thread as the fingers move: once the finger has moved further
+/// than an active offset from where it went down, the pan activates (the
+/// view becomes the touch responder and the scroll views around it can no
+/// longer take these touches); once it has moved further than a fail offset
+/// first, the pan fails and the scroll views keep the touches. Offsets are
+/// distances in points along one axis, either direction. Without active
+/// offsets, the pan activates after [`PanActivation::MIN_DISTANCE`] in any
+/// direction.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PanActivation {
+    /// Activates once the finger moved further than this horizontally.
+    pub active_offset_x: Option<f32>,
+    /// Activates once the finger moved further than this vertically.
+    pub active_offset_y: Option<f32>,
+    /// Fails once the finger moved further than this horizontally first.
+    pub fail_offset_x: Option<f32>,
+    /// Fails once the finger moved further than this vertically first.
+    pub fail_offset_y: Option<f32>,
+}
+
+impl PanActivation {
+    /// How far the finger moves before a pan without active offsets
+    /// activates, in points.
+    pub const MIN_DISTANCE: f32 = 10.0;
+
+    /// A pan that activates horizontally past `active` and fails when it
+    /// moves vertically past `fail` first (a scrubber in a vertical scroll
+    /// view).
+    pub const fn horizontal(active: f32, fail: f32) -> Self {
+        Self {
+            active_offset_x: Some(active),
+            active_offset_y: None,
+            fail_offset_x: None,
+            fail_offset_y: Some(fail),
+        }
+    }
+
+    /// A pan that activates vertically past `active` and fails when it
+    /// moves horizontally past `fail` first.
+    pub const fn vertical(active: f32, fail: f32) -> Self {
+        Self {
+            active_offset_x: None,
+            active_offset_y: Some(active),
+            fail_offset_x: Some(fail),
+            fail_offset_y: None,
+        }
+    }
+
+    /// The decision once the finger moved by (`dx`, `dy`) since it went
+    /// down: `Some(true)` activates, `Some(false)` fails (a fail offset
+    /// passed wins over an active one passed by the same move), `None`
+    /// waits. The platforms ask it on every move until it decides.
+    pub fn decide(&self, dx: f32, dy: f32) -> Option<bool> {
+        let past = |limit: Option<f32>, d: f32| limit.is_some_and(|l| d.abs() > l);
+        if past(self.fail_offset_x, dx) || past(self.fail_offset_y, dy) {
+            return Some(false);
+        }
+        let activates = if self.active_offset_x.is_some() || self.active_offset_y.is_some() {
+            past(self.active_offset_x, dx) || past(self.active_offset_y, dy)
+        } else {
+            dx.hypot(dy) > Self::MIN_DISTANCE
+        };
+        activates.then_some(true)
+    }
 }
 
 /// Native animation values driven by gestures on a view.

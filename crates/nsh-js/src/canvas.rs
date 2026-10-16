@@ -21,8 +21,8 @@ use std::{
 };
 
 use nsh_core::{
-    EventKind, Op, Tag,
-    canvas::{CanvasFont, CanvasOp, PathOp},
+    EventKind, FontVariant, Op, Tag,
+    canvas::{CanvasFont, CanvasOp, FillRule, PathOp, point_in_path, point_in_stroke},
     js::{
         canvas::*,
         host::{HostInput, HostList},
@@ -228,6 +228,9 @@ struct Recording {
     size: JsValue,
     /// Contexts: `draw` returned; later calls (from a timer) are ignored.
     closed: bool,
+    /// Closed contexts: what `draw` recorded, for hit tests afterwards
+    /// (`isPointInPath` in a press handler).
+    drawn: Option<Rc<Vec<Rec>>>,
 }
 
 /// The drawing state: the properties set, by name (owned values).
@@ -385,6 +388,8 @@ fn classes(ctx: *mut JsContext) -> Classes {
                 (c"fillText", fill_text, 4),
                 (c"strokeText", stroke_text, 4),
                 (c"measureText", measure_text, 1),
+                (c"isPointInPath", is_point_in_path, 4),
+                (c"isPointInStroke", is_point_in_stroke, 3),
                 (c"createLinearGradient", linear_gradient, 4),
                 (c"createRadialGradient", radial_gradient, 6),
                 (c"createConicGradient", conic_gradient, 3),
@@ -445,6 +450,7 @@ fn new_recording(ctx: *mut JsContext, class: qjs::JSClassID) -> JsValue {
                 stack: Vec::new(),
                 size: UNDEFINED,
                 closed: false,
+                drawn: None,
             }));
             qjs::JS_SetOpaque(obj, data as *mut c_void);
         }
@@ -973,13 +979,20 @@ native!(
     measure_text,
     |ctx, this, a| {
         let text = dom::string_arg(ctx, at(a, 0)).unwrap_or_default();
-        let font = recording(ctx, this)
-            .and_then(|r| r.state.get("font"))
-            .and_then(|f| dom::string_arg(ctx, f));
-        let font = font
+        let state = |name| {
+            recording(ctx, this)
+                .and_then(|r| r.state.get(name))
+                .and_then(|f| dom::string_arg(ctx, f))
+        };
+        let numeric = state("fontVariantNumeric")
+            .as_deref()
+            .and_then(FontVariant::parse)
+            .unwrap_or_default();
+        let font = state("font")
             .as_deref()
             .and_then(CanvasFont::parse)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .with_numeric(numeric);
         let shared = dom::shared(ctx);
         let width = shared
             .measurer
@@ -994,6 +1007,61 @@ native!(
         }
     }
 );
+
+/// `isPointInPath([path,] x, y, rule?)` / `isPointInStroke([path,] x,
+/// y)`: answered in Rust from what the context recorded so far (after
+/// `draw` returned: all it drew), without the platform.
+fn point_in(ctx: *mut JsContext, this: JsValue, a: &[JsValue], stroke: bool) -> JsValue {
+    let Some(r) = recording(ctx, this) else {
+        return throw_not_recording(ctx);
+    };
+    let recorded = match &r.drawn {
+        Some(d) if r.closed => d.clone(),
+        _ => Rc::new(r.out.clone()),
+    };
+    let (path, rest) = if is_path(ctx, at(a, 0)) {
+        (Some(at(a, 0)), a.get(1..).unwrap_or_default())
+    } else {
+        (None, a)
+    };
+    let (x, y) = (
+        number(ctx, at(rest, 0)) as f32,
+        number(ctx, at(rest, 1)) as f32,
+    );
+    let rule = match dom::string_arg(ctx, at(rest, 2)).as_deref() {
+        Some("evenodd") => FillRule::EvenOdd,
+        _ => FillRule::NonZero,
+    };
+    let path = path.and_then(|p| {
+        let mut used = Vec::new();
+        let rec = to_rec(ctx, p, &mut used, 0);
+        free_values(ctx, used);
+        let list = RecList(Rc::new(vec![Rec::Num(CV_STROKE as f64), rec]));
+        match decode(&list, 0, 2).ok()?.ops.pop()? {
+            CanvasOp::Stroke(path) => path,
+            _ => None,
+        }
+    });
+    let len = recorded.len();
+    let Ok(drawing) = decode(&RecList(recorded), 0, len) else {
+        return qjs::JS_FALSE;
+    };
+    // JS does not see native values' current values: they count as 0.
+    let slot = |_| 0.0;
+    let hit = if stroke {
+        point_in_stroke(&drawing.ops, path.as_deref(), x, y, slot)
+    } else {
+        point_in_path(&drawing.ops, path.as_deref(), rule, x, y, slot)
+    };
+    if hit { qjs::JS_TRUE } else { qjs::JS_FALSE }
+}
+
+native!(is_point_in_path, |ctx, this, a| point_in(
+    ctx, this, a, false
+));
+native!(is_point_in_stroke, |ctx, this, a| point_in(
+    ctx, this, a, true
+));
 
 /// A gradient of `kind` (0 linear, 1 radial, 2 conic) over `count`
 /// numbers of `a`: its recording is `[kind, ...geometry, stops]`, the
@@ -1289,9 +1357,11 @@ unsafe extern "C" fn canvas_draw(
         let (out, used) = match recording(ctx, context) {
             Some(r) => {
                 r.closed = true;
-                (std::mem::take(&mut r.out), std::mem::take(&mut r.used))
+                let out = Rc::new(std::mem::take(&mut r.out));
+                r.drawn = Some(out.clone());
+                (out, std::mem::take(&mut r.used))
             }
-            None => (Vec::new(), Vec::new()),
+            None => (Rc::default(), Vec::new()),
         };
         qjs::JS_FreeValue(ctx, context);
         // What was recorded is drawn even when `draw` threw (then rethrown).
@@ -1309,7 +1379,7 @@ unsafe extern "C" fn canvas_draw(
 
 /// Sends drawing `out` of `node`, which keeps the native values it reads
 /// (`used`, owned) alive.
-fn send(ctx: *mut JsContext, node: JsValue, out: Vec<Rec>, mut used: Vec<JsValue>) -> JsValue {
+fn send(ctx: *mut JsContext, node: JsValue, out: Rc<Vec<Rec>>, mut used: Vec<JsValue>) -> JsValue {
     let shared = dom::shared(ctx);
     let max = shared.limits.max_canvas_ops;
     if out.len() > max {
@@ -1324,7 +1394,7 @@ fn send(ctx: *mut JsContext, node: JsValue, out: Vec<Rec>, mut used: Vec<JsValue
         return unsafe { qjs::JS_ThrowRangeError(ctx, c"%s".as_ptr(), message.as_ptr()) };
     }
     let len = out.len();
-    let drawing = decode(&RecList(Rc::new(out)), 0, len);
+    let drawing = decode(&RecList(out), 0, len);
     // SAFETY: the array takes the values.
     let array = unsafe { qjs::JS_NewArrayFrom(ctx, used.len() as c_int, used.as_mut_ptr()) };
     dom::retain(ctx, node, "draw", array);
@@ -1400,6 +1470,20 @@ export interface Path2D extends CanvasPath {}"#,
   strokeText(text: string, x: CanvasNumber, y: CanvasNumber, maxWidth?: number): void;
   /** Measured by the platform's text engine with the current `font`. */
   measureText(text: string): TextMetrics;
+  /**
+   * Whether (`x`, `y`) (in points, not transformed) is inside `path` under
+   * the current transform, or inside the current path; answered natively
+   * from what was recorded (after `draw` returned: everything it drew, so a
+   * kept context answers in press handlers). Native values count as 0.
+   */
+  isPointInPath(x: number, y: number, rule?: "nonzero" | "evenodd"): boolean;
+  isPointInPath(path: Path2D, x: number, y: number, rule?: "nonzero" | "evenodd"): boolean;
+  /**
+   * Whether (`x`, `y`) is on the stroke of `path` or the current path, with
+   * the current `lineWidth` and `lineCap` (joins as round, no dashes).
+   */
+  isPointInStroke(x: number, y: number): boolean;
+  isPointInStroke(path: Path2D, x: number, y: number): boolean;
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): CanvasGradient;
   createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): CanvasGradient;
   /** `startAngle` in radians, clockwise from the x axis. */

@@ -323,7 +323,7 @@ impl Host {
             self.ctx.with(|ctx| {
                 let raw = ctx.as_raw().as_ptr();
                 for f in finished {
-                    if crate::animated::finished(raw, f.animation, f.finished).is_err() {
+                    if crate::animated::finished(raw, f).is_err() {
                         self.report::<()>(&ctx, Err(rquickjs::Error::Exception));
                     }
                 }
@@ -711,10 +711,13 @@ declare function If(props: {
 }): import("./types").JSX.Element;
 /** `<Each of={items} key={…}>{(item, index) => …}</Each>`: renders
  * `children(item, index)` for each item of `of` (`item()` and `index()`
- * follow the row); rows are kept by `key` (default: the item). A global. */
+ * follow the row); rows are kept by `key` (default: the item; objects by
+ * identity, other values by value). `key="index"` keeps rows by position:
+ * a changed item updates its row's `item()` instead of making a new row
+ * (a list of strings streamed in, edited in place). A global. */
 declare function Each<T>(props: {
   of: readonly T[] | null | undefined;
-  key?: (item: T) => unknown;
+  key?: "index" | ((item: T, index: number) => unknown);
   children: (item: () => T, index: () => number) => import("./types").JSX.Element;
 }): import("./types").JSX.Element;
 
@@ -845,6 +848,93 @@ const report = (v) => text(String(v));
         assert_eq!((shadow.opacity, shadow.radius), (0.25, 10.0));
         assert_eq!(style.view.radii().to_array(), [12.0, 12.0, 12.0, 0.0]);
         assert_eq!(styles[1].view.shadow, nsh_core::Shadow::DEFAULT);
+    }
+
+    /// `style={[base, props.style]}` where `props.style` is itself a list:
+    /// nested lists merge left to right, falsy entries skipped.
+    #[test]
+    fn styles_flatten_nested_lists() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r##"import { element, prop } from "nsh:rt";
+            const inner = [{ opacity: 0.5 }, false, [null, { backgroundColor: "#00ff00" }]];
+            prop(element("view"), "style", [
+                { flexDirection: "row", backgroundColor: "#ff0000", opacity: 1 },
+                inner,
+                undefined,
+            ]);"##,
+        )
+        .unwrap();
+        let style = ops(&host)
+            .into_iter()
+            .find_map(|op| match op {
+                Op::SetStyle { style, .. } => Some(style),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(format!("{:?}", style.layout.flex_direction), "Row");
+        assert_eq!(style.view.background_color, nsh_core::Color(0x00ff_00ff));
+        assert_eq!(style.view.opacity, 0.5);
+    }
+
+    /// `Intl` and the `toLocaleString`s format natively, in the device's
+    /// locale by default.
+    #[test]
+    fn intl_formats_numbers_and_dates() {
+        let host = Host::new().unwrap();
+        host.eval_source(&format!(
+            r#"{REPORT}
+            report((1234567.891).toLocaleString());
+            report((1234.5).toLocaleString("de-DE", {{ style: "currency", currency: "EUR" }}));
+            report((0.256).toLocaleString("en-US", {{ style: "percent", maximumFractionDigits: 1 }}));
+            report(12345678901234567890n.toLocaleString("en-US"));
+            const compact = new Intl.NumberFormat("en", {{ notation: "compact" }});
+            report([1234, 1500000, 999999].map(compact.format).join(" "));
+            report(new Intl.NumberFormat("en", {{ signDisplay: "always", minimumFractionDigits: 2 }}).format(3));
+            report(new Intl.NumberFormat("en", {{ useGrouping: false }}).format(12345));
+            report(JSON.stringify(new Intl.NumberFormat("en", {{ style: "currency", currency: "USD" }}).formatToParts(-1.5)));
+            report(new Intl.NumberFormat("fr").resolvedOptions().locale);
+            const at = Date.UTC(2026, 9, 16, 15, 4, 5);
+            const utc = {{ timeZone: "UTC" }};
+            report(new Intl.DateTimeFormat("en-US", {{ ...utc, hour: "2-digit", minute: "2-digit", hour12: false }}).format(at));
+            report(new Date(at).toLocaleString("en-US", utc));
+            report(new Date(at).toLocaleDateString("en-US", {{ ...utc, dateStyle: "full" }}));
+            report(new Date(at).toLocaleTimeString("ko-KR", {{ timeZone: "+09:00" }}));
+            report(new Intl.DateTimeFormat("en-US", {{ timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }}).format(new Date(at)));
+            report(new Intl.DateTimeFormat().resolvedOptions().locale);
+            report(new Date(NaN).toLocaleString());
+            try {{ new Intl.NumberFormat("en", {{ style: "currency" }}); }} catch (e) {{ report(e.name); }}
+            try {{ new Intl.DateTimeFormat("en", {{ timeZone: "Mars/Olympus" }}); }} catch (e) {{ report(e.name); }}
+            report(Intl.NumberFormat.supportedLocalesOf(["xx", "ja-jp"]).join());
+            report(Object.prototype.toString.call(Intl));
+            "#
+        ))
+        .unwrap();
+        assert_eq!(
+            reported(&host),
+            [
+                "1,234,567.891",
+                "1.234,50\u{a0}€",
+                "25.6%",
+                "12,345,678,901,234,567,890",
+                "1.2K 1.5M 1M",
+                "+3.00",
+                "12345",
+                r#"[{"type":"minusSign","value":"-"},{"type":"currency","value":"$"},{"type":"integer","value":"1"},{"type":"decimal","value":"."},{"type":"fraction","value":"50"}]"#,
+                "fr",
+                "15:04",
+                "10/16/2026, 3:04:05 PM",
+                "Friday, October 16, 2026",
+                "오전 12:04:05",
+                "Oct 16, 2026, 3:04 PM",
+                "en-US",
+                "Invalid Date",
+                "TypeError",
+                "RangeError",
+                "ja-JP",
+                "[object Intl]",
+            ]
+        );
     }
 
     #[test]

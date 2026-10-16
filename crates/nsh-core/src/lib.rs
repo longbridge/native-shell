@@ -40,7 +40,7 @@ pub use nsh_animation;
 pub use serde_json::Value as JsonValue;
 
 pub use crate::{
-    core::{ApplyError, Core, ListBind},
+    core::{ApplyError, Core, ListBind, Measurement},
     effects::{
         BlendMode, BoxShadow, ColorStop, Cursor, Effects, Filter, Gradient, GradientKind,
         GradientSize, KeyframeAnimation, Keyframes, Outline, Transition, TransitionProps,
@@ -53,7 +53,7 @@ pub use crate::{
     },
     ops::{
         AutoCapitalize, AutoFill, CellSlot, Command, Dialog, DialogButton, DialogButtonStyle,
-        EventKind, EventMask, EventPayload, HeaderSlot, ImageProp, ImageSource,
+        EventKind, EventMask, EventPayload, HeaderSlot, ImageProp, ImageSource, KeyboardAppearance,
         KeyboardDismissMode, KeyboardTaps, KeyboardType, ListContentStyle, ModalAnimation,
         ModalPresentation, ModalProp, NativeProp, NodeId, Op, PayloadValue, Prop, ROOT_ID,
         ResizeMode, ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, SnapAlignment,
@@ -63,8 +63,8 @@ pub use crate::{
     props::{
         Accessibility, AccessibilityActionDef, AccessibilityProp, AccessibilityRole,
         AccessibilityState, AccessibilityValue, Checked, EdgeInsets, GestureValues,
-        LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition, LiveRegion, PointerEvents,
-        Ripple, ViewProps,
+        LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition, LiveRegion, PanActivation,
+        PointerEvents, Ripple, ViewProps,
     },
     style::{
         BorderStyle, Borders, Color, CornerRadii, DecorationStyle, EllipsizeMode, FontFamily,

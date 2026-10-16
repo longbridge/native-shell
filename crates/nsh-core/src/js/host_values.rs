@@ -10,7 +10,7 @@ use crate::{
     ImageSource, KeyboardTaps, ListContentStyle, ModalProp, Prop, ScrollProp, Viewability,
     WebSource,
     mount::ModalConfig,
-    props::{AccessibilityActionDef, AccessibilityValue, Checked, Ripple},
+    props::{AccessibilityActionDef, AccessibilityValue, Checked, PanActivation, Ripple},
     ui::TsTypes,
 };
 
@@ -110,6 +110,27 @@ impl HostValue for Viewability {
 
     fn ts_type(_: &mut TsTypes) -> String {
         "ViewabilityConfig".into()
+    }
+}
+
+/// `{ activeOffsetX, activeOffsetY, failOffsetX, failOffsetY }` (points;
+/// the sign is ignored).
+impl HostValue for PanActivation {
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        if !input.is_object() {
+            return None;
+        }
+        let offset = |key| number(input, key).map(f32::abs);
+        Some(PanActivation {
+            active_offset_x: offset("activeOffsetX"),
+            active_offset_y: offset("activeOffsetY"),
+            fail_offset_x: offset("failOffsetX"),
+            fail_offset_y: offset("failOffsetY"),
+        })
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "PanActivation".into()
     }
 }
 
@@ -439,6 +460,13 @@ pub(crate) fn deceleration<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Sc
         },
         None => input.as_number().unwrap_or(0.0) as f32,
     }))
+}
+
+/// `maintainVisibleContentPosition`: `{ autoscrollToBottomThreshold }`.
+pub(crate) fn visible_content<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Prop> {
+    Some(Prop::FollowEnd(
+        number(input, "autoscrollToBottomThreshold").map(|t| t.max(0.0)),
+    ))
 }
 
 /// `contentOffset`: `{ x, y }`.

@@ -6,8 +6,19 @@
   `textAlignVertical` (the core moves the content box down). `adjustsFontSizeToFit` shrinks the fonts (down to
   `minimumFontScale`, at least 0.1) until the text fits its box and lines (`Paragraph::fit`, a binary search in the core).
   `onTextLayout` reports the final lines (`TextEngine::lines`: range, box, ascender, descender, cap / x height).
-  `selectable` (or `select-text`): a long press highlights the block and offers Copy (iOS `UIMenuController`, Android a
-  floating action mode); whole blocks only, no range selection.
+  `selectable` (or `select-text`): range selection, drawing only (`AttributedText::selectable` /
+  `selection_color`, not part of layout). iOS (`text_selection.rs`): the CoreText `TextView` adopts `UITextInput`
+  (non-editable: no keyboard, `inputView` is empty) and a `UITextInteraction` (`NonEditable`) attached only while the text
+  is selectable gives UIKit's long press, loupe, handles, highlight (the view's tint, which `selectionColor` sets) and edit
+  menu (Copy, Select All, and the system's Look Up / Translate / Share); positions are UTF-16 offsets on the CTLines.
+  Resigning first responder (a tap elsewhere, another input focusing) ends the selection. Android (`TextBox`): a long press
+  selects the word (`BreakIterator`) and the rest of the gesture extends it; handles are the theme's
+  `textSelectHandleLeft/Right` in popup windows (so they escape clipping and take their own touches), the highlight is
+  `Layout.getSelectionPath` in `selectionColor` (55% alpha; the theme's `textColorHighlight` by default) and a floating
+  action mode offers Copy, Select all and Share. A touch elsewhere in the surface (`Mounter.touchDown`), new text or
+  detaching ends it; one selection at a time per surface. Copy leaves attachments' placeholders out on both. Text that is
+  not selectable has no interaction, listener or extra drawing. Web: the browser's own selection, `::selection` in
+  `selectionColor`.
 - **Inline attachments**: any other element inside a `<Text>` (also inside its spans) is an attachment: laid out as its own
   layout root at its content size (`update_attachments`), it becomes an object replacement character (U+FFFC,
   `AttributedText::attachments`) that the engine sizes to it on the baseline (CTRunDelegate; Android a `ReplacementSpan`), so

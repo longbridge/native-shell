@@ -65,6 +65,7 @@ stay with the cell and show up on another item.
 | `horizontal` | `boolean` | `false` | Scrolls sideways. |
 | `numColumns` | `number` | `1` | Items per row (vertical lists). |
 | `inverted` | `boolean` | `false` | Laid out from the end, item 0 last (chat style): starts scrolled to the end and keeps its distance from the end as content changes. |
+| `maintainVisibleContentPosition` | `{ autoscrollToBottomThreshold?: number }` | | Not inverted: at the end of the content, or within that many points of it, the list stays at the end as the content grows or the viewport shrinks; scrolled further up, the visible content stays. |
 | `stickyHeaderIndices` | `number[]` | | Items that stick to the start while scrolled past (one column, not inverted). |
 | `contentContainerStyle` | `ListContentStyle` | | Padding and gaps of the content, in points: `padding`, `paddingHorizontal`, `paddingVertical`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `gap`, `rowGap`, `columnGap`. |
 | `ListHeaderComponent` | `ListSlot` | | Before the items: a component (`Header`) or an element (`<Header />`). |

@@ -21,6 +21,8 @@ See [Animation](../docs/animation.md) for the guide.
 |---|---|
 | `opacity` | `style={{ opacity: value }}` |
 | `backgroundColor` | `style={{ backgroundColor: value.interpolate({ inputRange: [0, 1], outputRange: ["#fff", "#000"] }) }}` |
+| `borderColor`, `color` | The same: a node of colors. `borderColor` colors every side; a `Text`'s `color` colors the whole text |
+| `shadowColor`, `shadowOpacity`, `shadowRadius` | `style={{ shadowOpacity: value }}` (a node of colors for `shadowColor`) |
 | `transform` | `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY`, `rotateZ` steps: `transform: [{ translateX: value }]` |
 | Scroll position | `<Scroll scrollValue={value}>` and `<List scrollValue={value}>` write the scroll offset into it each frame |
 | Gestures | `pan={{ x, y }}`, `pinch={{ scale }}`, `rotation={{ angle }}` on any element: the gesture writes the values directly (see [Touch and gestures](../docs/touch-and-gestures.md)) |
@@ -59,7 +61,7 @@ mount(App);
 ```
 
 > [!NOTE]
-> JS cannot read a native value's current value: it lives on the UI thread and changes there every frame. Keep the target in a variable or a signal when your code needs it, as above. Gesture events report the values at their end (`PanEvent.valueX` / `valueY`).
+> A native value lives on the UI thread and changes there every frame, so JS reads it asynchronously: `await value.getValue()` (or the promise `stop()` returns) gives the value at that moment. Keep the target in a variable or a signal when your code needs it right away, as above. Gesture events report the values at their end (`PanEvent.valueX` / `valueY`).
 
 ## NativeValue
 
@@ -67,20 +69,28 @@ mount(App);
 class NativeValue extends NativeNode {
   constructor(value: number);
   set(value: number): void;
-  stop(): void;
+  stop(): Promise<number>;
+  getValue(): Promise<number>;
+  setOffset(offset: number): void;
+  flattenOffset(): void;
+  extractOffset(): void;
   timing(to: number, options?: { duration?: number; easing?: Easing; delay?: number }): Promise<boolean>;
   spring(to: number, options?: { stiffness?: number; damping?: number; mass?: number; velocity?: number }): Promise<boolean>;
-  decay(options?: { velocity?: number; deceleration?: number }): Promise<boolean>;
+  decay(options?: { velocity?: number; deceleration?: number; clamp?: [number, number]; bounce?: number }): Promise<boolean>;
 }
 ```
 
 | Method | Description |
 |---|---|
 | `set(value)` | Jumps to `value`, stopping any running animation. |
-| `stop()` | Stops the running animation where it is. |
+| `stop()` | Stops the running animation where it is; resolves with the value there. |
+| `getValue()` | Resolves with the current value (with its offset), read on the UI thread. |
+| `setOffset(offset)` | An offset added to the value: bindings see value + offset; `set`, animations and drags move the value. |
+| `flattenOffset()` | Adds the offset to the value and makes it 0. |
+| `extractOffset()` | Moves the value into the offset and makes the value 0 (a drag then starts from where the last one ended). |
 | `timing(to, options)` | Animates to `to` along an easing curve. `duration` in ms (default 300), `easing` (default `"easeInOut"`), `delay` in ms (default 0). |
 | `spring(to, options)` | Springs to `to`. `stiffness` (default 170), `damping` (default 26), `mass` (default 1), `velocity` (initial velocity, units per second). |
-| `decay(options)` | Coasts from `velocity` (units per second) and slows down by `deceleration` per millisecond (default 0.998). Use it after a fling, with the velocity from `onPanEnd`. |
+| `decay(options)` | Coasts from `velocity` (units per second) and slows down by `deceleration` per millisecond (default 0.998). Use it after a fling, with the velocity from `onPanEnd`. With `clamp: [min, max]` it stops at a bound, or bounces back from it keeping `bounce` (0..1, default 0) of its speed. |
 
 Each animation method returns a promise that resolves with `true` when the animation finished and `false` when it was stopped (by `stop`, `set` or another animation of the same value).
 
@@ -142,7 +152,7 @@ const color = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["#22
 const Animated: {
   timing(value: NativeValue, config: { toValue: number; duration?: number; easing?: Easing; delay?: number }): CompositeAnimation;
   spring(value: NativeValue, config: { toValue: number; stiffness?: number; damping?: number; mass?: number; velocity?: number }): CompositeAnimation;
-  decay(value: NativeValue, config?: { velocity?: number; deceleration?: number }): CompositeAnimation;
+  decay(value: NativeValue, config?: { velocity?: number; deceleration?: number; clamp?: [number, number]; bounce?: number }): CompositeAnimation;
   sequence(list: CompositeAnimation[]): CompositeAnimation;
   parallel(list: CompositeAnimation[], config?: { stopTogether?: boolean }): CompositeAnimation;
   stagger(ms: number, list: CompositeAnimation[]): CompositeAnimation;
@@ -154,6 +164,8 @@ const Animated: {
   divide(a: NativeNode, b: NativeNode | number): NativeNode;
   modulo(a: NativeNode, b: NativeNode | number): NativeNode;
   diffClamp(a: NativeNode, min: number, max: number): NativeNode;
+  sampleSpring(config: SpringConfig & { from?: number }, fps?: number): number[];
+  sampleDecay(config: DecayConfig & { from?: number }, fps?: number): number[];
 };
 
 interface CompositeAnimation {
@@ -212,6 +224,7 @@ const Easing: {
   in(e: Easing): Easing;
   out(e: Easing): Easing;
   inOut(e: Easing): Easing;
+  sample(easing: Easing, count: number): number[];
   quad: EasingCurve;
   cubic: EasingCurve;
   poly(n?: number): EasingCurve;
@@ -224,7 +237,7 @@ const Easing: {
 };
 ```
 
-An easing is data, not a JS function: the runtime evaluates it natively. Wherever an `Easing` is accepted you can pass a name (`"easeOut"`), a cubic Bézier as four numbers, or a curve from the `Easing` object.
+An easing is data, not a JS function: the runtime evaluates it natively. To draw one, `Easing.sample(easing, count)` gives its values at `count` evenly spaced points from 0 to 1; `Animated.sampleSpring` and `Animated.sampleDecay` give a spring's or decay's values one per frame (at `fps`, 60 by default) from `from` (0) until it ends. All three come from the native code the animations run. Wherever an `Easing` is accepted you can pass a name (`"easeOut"`), a cubic Bézier as four numbers, or a curve from the `Easing` object.
 
 | Curve | Shape |
 |---|---|
