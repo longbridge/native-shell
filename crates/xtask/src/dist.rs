@@ -5,10 +5,15 @@
 //! dist/nsh/runtime/ios/iphoneos/nsh-ios-app                    packaged app runner
 //! dist/nsh/runtime/ios/iphonesimulator/{nsh-ios-app,nsh-ios-host}
 //! dist/nsh/runtime/ios/maccatalyst/nsh-ios-host                development host
+//! dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        development host, packaged app runner
 //! dist/nsh/runtime/android/{release,dev}/                      classes.dex, lib/<abi>/libnsh.so
 //! dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  embedding in iOS apps
 //! dist/nsh/embed/android/{nsh,nsh-dev}.aar                     embedding in Android apps
 //! ```
+//!
+//! The iOS runtimes and SDK need Xcode: they are built on macOS only. The
+//! Linux runtime is built for this machine, on Linux only (where it runs,
+//! GTK 4 and Pango must be installed).
 
 use std::{
     env, fs,
@@ -36,7 +41,56 @@ pub(crate) fn dist() -> anyhow::Result<()> {
     cargo(&["build", "--release", "-p", "nsh-cli"], "nsh")?;
     copy(&release.join("release/nsh"), &out.join("bin/nsh"))?;
 
-    // iOS runtimes: release runners, development hosts.
+    if cfg!(target_os = "macos") {
+        ios_runtimes(&release, &out)?;
+    }
+    if cfg!(target_os = "linux") {
+        for (package, what) in [
+            ("nsh-linux-host", "the development host for Linux"),
+            ("nsh-linux-app", "the release runner for Linux"),
+        ] {
+            cargo(&["build", "--release", "-p", package], what)?;
+            copy(
+                &release.join("release").join(package),
+                &out.join("runtime/linux").join(package),
+            )?;
+        }
+    }
+
+    // Android runtimes.
+    let abis: Vec<String> = android::ABIS.iter().map(|a| a.to_string()).collect();
+    for (dev, name) in [(false, "release"), (true, "dev")] {
+        let built = android::build(true, dev, &abis)?;
+        let dest = out.join("runtime/android").join(name);
+        copy(&built.join("classes.dex"), &dest.join("classes.dex"))?;
+        for abi in &abis {
+            copy(
+                &built.join("lib").join(abi).join("libnsh.so"),
+                &dest.join("lib").join(abi).join("libnsh.so"),
+            )?;
+        }
+        let aar = out
+            .join("embed/android")
+            .join(if dev { "nsh-dev.aar" } else { "nsh.aar" });
+        make_aar(&built, &abis, dev, &aar)?;
+        term::done(format!(
+            "packed {}",
+            aar.strip_prefix(&root).unwrap_or(&aar).display()
+        ));
+    }
+
+    if cfg!(target_os = "macos") {
+        // iOS embedding: a static framework per platform (Rust + the Swift
+        // module) in an XCFramework.
+        crate::ios::xcframeworks(&out.join("embed/ios"), &out.join("work"))?;
+        fs::remove_dir_all(out.join("work"))?;
+    }
+    term::note(out.strip_prefix(&root).unwrap_or(&out).display());
+    Ok(())
+}
+
+/// The iOS runtimes: release runners, development hosts.
+fn ios_runtimes(release: &Path, out: &Path) -> anyhow::Result<()> {
     for (triple, dir) in [(IOS, "iphoneos"), (IOS_SIM, "iphonesimulator")] {
         cargo(
             &[
@@ -71,34 +125,6 @@ pub(crate) fn dist() -> anyhow::Result<()> {
             &out.join("runtime/ios").join(dir).join("nsh-ios-host"),
         )?;
     }
-
-    // Android runtimes.
-    let abis: Vec<String> = android::ABIS.iter().map(|a| a.to_string()).collect();
-    for (dev, name) in [(false, "release"), (true, "dev")] {
-        let built = android::build(true, dev, &abis)?;
-        let dest = out.join("runtime/android").join(name);
-        copy(&built.join("classes.dex"), &dest.join("classes.dex"))?;
-        for abi in &abis {
-            copy(
-                &built.join("lib").join(abi).join("libnsh.so"),
-                &dest.join("lib").join(abi).join("libnsh.so"),
-            )?;
-        }
-        let aar = out
-            .join("embed/android")
-            .join(if dev { "nsh-dev.aar" } else { "nsh.aar" });
-        make_aar(&built, &abis, dev, &aar)?;
-        term::done(format!(
-            "packed {}",
-            aar.strip_prefix(&root).unwrap_or(&aar).display()
-        ));
-    }
-
-    // iOS embedding: a static framework per platform (Rust + the Swift
-    // module) in an XCFramework.
-    crate::ios::xcframeworks(&out.join("embed/ios"), &out.join("work"))?;
-    fs::remove_dir_all(out.join("work"))?;
-    term::note(out.strip_prefix(&root).unwrap_or(&out).display());
     Ok(())
 }
 

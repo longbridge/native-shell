@@ -21,12 +21,27 @@ pub(crate) enum Target {
     Ios,
     /// The development host on an Android device or emulator.
     Android,
+    /// The Linux (GTK) development host, in a window on this machine.
+    Linux,
 }
 
 impl Target {
+    /// The default: the host that runs on this machine (Mac Catalyst on
+    /// macOS, the GTK host on Linux; Android elsewhere).
+    pub(crate) fn native() -> Target {
+        if cfg!(target_os = "macos") {
+            Target::Catalyst
+        } else if cfg!(target_os = "linux") {
+            Target::Linux
+        } else {
+            Target::Android
+        }
+    }
+
     fn platform(self) -> crate::runtime::Platform {
         match self {
             Target::Catalyst => crate::runtime::Platform::MacCatalyst,
+            Target::Linux => crate::runtime::Platform::Linux,
             Target::Ios | Target::Android => crate::runtime::Platform::IphoneSimulator,
         }
     }
@@ -58,11 +73,11 @@ pub(crate) fn run(
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
             Some(udid)
         }
-        Target::Catalyst | Target::Android => None,
+        Target::Catalyst | Target::Android | Target::Linux => None,
     };
     let session = DevSession::start(entry, port, release)?;
     session.print_urls();
-    let host = crate::runtime::file(target.platform(), "nsh-ios-host")?;
+    let host = crate::runtime::file(target.platform(), false)?;
     let mut args = vec!["--dev-server".to_owned(), session.local_url()];
     if trace {
         args.push("--trace".to_owned());
@@ -72,29 +87,20 @@ pub(crate) fn run(
             let app = package_catalyst(&work, &host)?;
             let exe = app.join("Contents/MacOS/nsh-ios-host");
             // Its own output (AppKit's notes) is kept for when it fails.
-            let (mut child, output) = ui::quiet(
-                Command::new(&exe)
-                    .args(&args)
-                    // A host that crashed must not ask to reopen its windows
-                    // next time (a modal dialog that blocks the window).
-                    .args(["-ApplePersistenceIgnoreState", "YES"]),
-            )
-            .with_context(|| format!("launch {}", exe.display()))?;
-            // A host left running would open a second window next time:
-            // Ctrl-C and SIGTERM close it too.
-            let stoppable = ui::Stoppable::new();
-            let result = session.watch(|| match child.try_wait()? {
-                Some(status) if status.success() => Ok(true),
-                Some(status) => Err(ui::failure(
-                    format!("the Mac Catalyst host exited with {status}"),
-                    output.text(),
-                )),
-                None => Ok(false),
-            });
-            let _ = child.kill();
-            let _ = child.wait();
-            drop(stoppable);
-            result
+            let mut command = Command::new(&exe);
+            command
+                .args(&args)
+                // A host that crashed must not ask to reopen its windows
+                // next time (a modal dialog that blocks the window).
+                .args(["-ApplePersistenceIgnoreState", "YES"]);
+            run_local(&session, &mut command, "the Mac Catalyst host")
+        }
+        // Run in place: unlike Catalyst's, the GTK host needs no app
+        // bundle around it.
+        Target::Linux => {
+            let mut command = Command::new(&host);
+            command.args(&args);
+            run_local(&session, &mut command, "the Linux host")
         }
         Target::Ios => {
             let app = package_ios(&work, &host)?;
@@ -118,6 +124,29 @@ pub(crate) fn run(
         }
         Target::Android => unreachable!("handled above"),
     }
+}
+
+/// Runs `command`, a host in a window on this machine, until its window
+/// closes or the session ends; `what` names it when it fails.
+fn run_local(session: &DevSession, command: &mut Command, what: &str) -> anyhow::Result<()> {
+    // Its own output is kept for when it fails.
+    let (mut child, output) = ui::quiet(command)
+        .with_context(|| format!("launch {}", command.get_program().to_string_lossy()))?;
+    // A host left running would open a second window next time: Ctrl-C and
+    // SIGTERM close it too.
+    let stoppable = ui::Stoppable::new();
+    let result = session.watch(|| match child.try_wait()? {
+        Some(status) if status.success() => Ok(true),
+        Some(status) => Err(ui::failure(
+            format!("{what} exited with {status}"),
+            output.text(),
+        )),
+        None => Ok(false),
+    });
+    let _ = child.kill();
+    let _ = child.wait();
+    drop(stoppable);
+    result
 }
 
 /// Starts a dev session, builds and installs the Android dev host (when
@@ -382,7 +411,7 @@ fn info_plist(target: Target) -> String {
              <key>LSMinimumSystemVersion</key><string>11.0</string>"
         }
         // A launch screen entry opts into the full screen (no letterboxing).
-        Target::Ios | Target::Android => {
+        Target::Ios | Target::Android | Target::Linux => {
             "<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>\n    \
              <key>MinimumOSVersion</key><string>15.0</string>\n    \
              <key>CFBundleSupportedPlatforms</key><array><string>iPhoneSimulator</string></array>\n    \

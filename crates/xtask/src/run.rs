@@ -1,6 +1,6 @@
 //! `cargo run` (the workspace's default task): runs an example app, the
-//! gallery by default, in the Mac Catalyst development host (an Android
-//! device or emulator off macOS) with hot reload
+//! gallery by default, in the Mac Catalyst development host (the GTK host
+//! on Linux, an Android device or emulator elsewhere) with hot reload
 //! (`nsh run`), and rebuilds and restarts it when the runtime's sources
 //! under `crates/` change: components and modules are Rust and live in the
 //! host, so only JS and TSX reload in place.
@@ -28,8 +28,8 @@ pub(crate) struct RunArgs {
     /// module.
     #[arg(default_value = "examples/gallery")]
     entry: String,
-    /// Where to run: `catalyst`, `ios` (a simulator) or `android`; default:
-    /// `catalyst` on macOS, else `android` (the only host off macOS).
+    /// Where to run: `catalyst`, `ios` (a simulator), `android` or `linux`;
+    /// default: `catalyst` on macOS, `linux` on Linux, else `android`.
     #[arg(long)]
     target: Option<String>,
     /// iOS simulator to use (name or UDID).
@@ -66,7 +66,13 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
             let _ = tx.send(());
         }
     })?;
-    watcher.watch(&root.join("crates"), RecursiveMode::Recursive)?;
+    // Canonical: inotify reports paths under the one watched as given, and
+    // `root`'s `..` would make every one look like a dot entry.
+    let crates = root.join("crates");
+    watcher.watch(
+        &crates.canonicalize().unwrap_or(crates),
+        RecursiveMode::Recursive,
+    )?;
     loop {
         let mut app = match build_cli(&root) {
             Ok(()) => Some(launch(&root, &args)?),
@@ -134,6 +140,8 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
     cmd.arg("run").arg(&args.entry).current_dir(root);
     let default = if cfg!(target_os = "macos") {
         "catalyst"
+    } else if cfg!(target_os = "linux") {
+        "linux"
     } else {
         "android"
     };
@@ -152,7 +160,7 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
         .context("launch target/debug/nsh")
 }
 
-/// Stops `nsh run` and everything it started (the Catalyst host).
+/// Stops `nsh run` and everything it started (the Catalyst or Linux host).
 fn stop(app: &mut Child) {
     let Ok(pgid) = libc::pid_t::try_from(app.id()) else {
         let _ = app.kill();

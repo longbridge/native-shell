@@ -122,6 +122,11 @@ impl DevSession {
             let Ok(event) = rx.recv_timeout(Duration::from_millis(200)) else {
                 continue;
             };
+            // inotify reports reads too (FSEvents does not): the build's
+            // own would start the next one, forever.
+            if matches!(event.kind, notify::EventKind::Access(_)) {
+                continue;
+            }
             if let Some(app) = &rust
                 && event.paths.iter().any(|p| app.is_rust(p))
             {
@@ -313,16 +318,20 @@ fn install_commands(dir: &Path) -> Vec<(HostPlatform, String)> {
         path if path.contains(' ') => format!(" '{path}'"),
         path => format!(" {path}"),
     };
+    use crate::run::Target;
+    // The target this machine's `nsh run` defaults to goes without a flag.
+    let run = |target: Target, name: &str| {
+        if target == Target::native() {
+            format!("nsh run{app}")
+        } else {
+            format!("nsh run{app} --target {name}")
+        }
+    };
     vec![
-        (HostPlatform::MacCatalyst, format!("nsh run{app}")),
-        (
-            HostPlatform::IosSimulator,
-            format!("nsh run{app} --target ios"),
-        ),
-        (
-            HostPlatform::Android,
-            format!("nsh run{app} --target android"),
-        ),
+        (HostPlatform::MacCatalyst, run(Target::Catalyst, "catalyst")),
+        (HostPlatform::Linux, run(Target::Linux, "linux")),
+        (HostPlatform::IosSimulator, run(Target::Ios, "ios")),
+        (HostPlatform::Android, run(Target::Android, "android")),
     ]
 }
 
@@ -353,9 +362,9 @@ fn is_source(event: &notify::Event) -> bool {
     })
 }
 
-/// Private IPv4 addresses of physical network interfaces (`en*`), where
-/// devices on the same Wi-Fi or Ethernet can reach this machine. VPN and
-/// proxy tunnels are skipped.
+/// Private IPv4 addresses of physical network interfaces (`en*`; on Linux
+/// also `eth*` and Wi-Fi's `wl*`), where devices on the same Wi-Fi or
+/// Ethernet can reach this machine. VPN and proxy tunnels are skipped.
 fn lan_ips() -> Vec<Ipv4Addr> {
     let mut ips = Vec::new();
     let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
@@ -372,7 +381,7 @@ fn lan_ips() -> Vec<Ipv4Addr> {
                 continue;
             }
             let name = std::ffi::CStr::from_ptr(ifa.ifa_name).to_string_lossy();
-            if !name.starts_with("en") {
+            if !["en", "eth", "wl"].iter().any(|p| name.starts_with(p)) {
                 continue;
             }
             let addr = &*(ifa.ifa_addr as *const libc::sockaddr_in);

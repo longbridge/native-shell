@@ -1,6 +1,7 @@
 //! `nsh package`: builds an installable app from the prebuilt runtime, the
 //! app bundle and its assets. Needs no Rust; iOS packaging uses Xcode's
-//! command line tools (`codesign`, and `actool` for icons).
+//! command line tools (`codesign`, and `actool` for icons), Linux packaging
+//! `tar`.
 
 use std::{
     fs,
@@ -25,6 +26,9 @@ pub(crate) enum PackageTarget {
     IosSimulator,
     /// Android: a signed `.apk`.
     Android,
+    /// Linux (GTK): a directory with the runner, the bundle and a `.desktop`
+    /// file, and the same as a `.tar.gz`.
+    Linux,
 }
 
 /// App metadata: `nsh.json` next to the entry, overridden by flags.
@@ -71,7 +75,8 @@ pub(crate) struct PackageOptions<'a> {
     pub(crate) profile: Option<&'a Path>,
     /// Android release keystore, key alias and password.
     pub(crate) keystore: Option<(&'a Path, &'a str, &'a str)>,
-    /// Install and launch in the simulator afterwards.
+    /// Install and launch in the simulator or on the device afterwards
+    /// (Linux: launch it).
     pub(crate) run: bool,
 }
 
@@ -128,8 +133,11 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         PackageTarget::Android => {
             return package_android(&options, config, &name, &id, &built);
         }
+        PackageTarget::Linux => {
+            return package_linux(&options, config, &name, &id, &executable, &built);
+        }
     };
-    let runner = runtime::file(platform, "nsh-ios-app")?;
+    let runner = runtime::file(platform, true)?;
 
     fs::create_dir_all(options.out)?;
     let app = options.out.join(format!("{name}.app"));
@@ -154,7 +162,9 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
 
     let sdk = match options.target {
         PackageTarget::Ios => "iphoneos",
-        PackageTarget::IosSimulator | PackageTarget::Android => "iphonesimulator",
+        PackageTarget::IosSimulator | PackageTarget::Android | PackageTarget::Linux => {
+            "iphonesimulator"
+        }
     };
     let mut info = info_plist(&name, &id, &executable, config, sdk);
     if let Some(icon) = &config.icon {
@@ -177,7 +187,7 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
                 step.done(format!("launched {id} in the simulator"));
             }
         }
-        PackageTarget::Android => unreachable!("packaged above"),
+        PackageTarget::Android | PackageTarget::Linux => unreachable!("packaged above"),
         PackageTarget::Ios => {
             if options.run {
                 bail!("--run only applies to the simulator and Android");
@@ -277,6 +287,104 @@ fn package_android(
         step.done(format!("launched {id} on {serial}"));
     }
     Ok(())
+}
+
+/// A directory `<out>/<name>`: the release runner as `<executable>`, the
+/// bundle and assets in `nsh/` (where the runner looks, next to itself),
+/// `nsh/app.json` (the window's title, the application id and the app's
+/// appearance, which the window opens in), a
+/// `<id>.desktop` entry and the icon; then the same as `<name>.tar.gz`.
+fn package_linux(
+    options: &PackageOptions<'_>,
+    config: &AppConfig,
+    name: &str,
+    id: &str,
+    executable: &str,
+    built: &crate::build::Built,
+) -> anyhow::Result<()> {
+    let runner = runtime::file(Platform::Linux, true)?;
+    let dir = options.out.join(name);
+    let step = ui::Step::start(format!("packaging {}", ui::path(&dir)));
+    if dir.exists() {
+        fs::remove_dir_all(&dir)?;
+    }
+    let resources = dir.join("nsh");
+    fs::create_dir_all(&resources)?;
+    fs::copy(&runner, dir.join(executable))
+        .with_context(|| format!("copy {}", runner.display()))?;
+    fs::write(resources.join("bundle.qbc"), &built.bytecode)?;
+    if let Some(json) = built.capabilities_json() {
+        fs::write(resources.join("capabilities.json"), json)?;
+    }
+    for asset in &built.assets {
+        let dest = resources.join("assets").join(&asset.path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&asset.source, &dest).with_context(|| format!("copy {}", asset.path))?;
+    }
+    let version = config.version.as_deref().unwrap_or("1.0.0");
+    let mut info = serde_json::json!({ "name": name, "id": id, "version": version });
+    if let Some(appearance) = &config.appearance {
+        info["appearance"] = appearance.as_str().into();
+    }
+    fs::write(resources.join("app.json"), info.to_string())?;
+    if let Some(icon) = &config.icon {
+        fs::copy(icon, dir.join(format!("{id}.png")))
+            .with_context(|| format!("copy {}", icon.display()))?;
+    }
+    fs::write(
+        dir.join(format!("{id}.desktop")),
+        desktop_entry(name, id, executable, config.icon.is_some()),
+    )?;
+    let archive = options.out.join(format!("{name}.tar.gz"));
+    let _ = fs::remove_file(&archive);
+    let output = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(options.out)
+        .arg(name)
+        .output()
+        .context("run tar")?;
+    if !output.status.success() {
+        bail!(
+            "creating {} failed: {}",
+            archive.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    step.done(format!(
+        "packaged {} and {}",
+        ui::path(&dir),
+        ui::path(&archive)
+    ));
+    if options.run {
+        let exe = dir.join(executable);
+        Command::new(&exe)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .with_context(|| format!("launch {}", exe.display()))?;
+        ui::done(format!("launched {name}"));
+    }
+    Ok(())
+}
+
+/// The app's desktop entry. Desktops match windows to it by the file's
+/// name and `StartupWMClass`, which GTK sets from the application id.
+/// `Exec` names the executable on the `PATH` (install the package
+/// directory, or a link to the executable, there).
+fn desktop_entry(name: &str, id: &str, executable: &str, icon: bool) -> String {
+    let icon = if icon {
+        format!("Icon={id}\n")
+    } else {
+        String::new()
+    };
+    format!(
+        "[Desktop Entry]\nType=Application\nName={name}\nExec={executable}\n{icon}StartupWMClass={id}\nTerminal=false\nCategories=Utility;\n"
+    )
 }
 
 fn info_plist(
@@ -515,6 +623,19 @@ mod tests {
         assert!(!profile_allows("", "com.example.app"));
     }
 
+    #[test]
+    fn desktop_entries_match_windows_by_the_app_id() {
+        assert_eq!(
+            desktop_entry("Counter", "com.example.counter", "Counter", true),
+            "[Desktop Entry]\nType=Application\nName=Counter\nExec=Counter\n\
+             Icon=com.example.counter\nStartupWMClass=com.example.counter\nTerminal=false\n\
+             Categories=Utility;\n"
+        );
+        assert!(!desktop_entry("A", "com.example.a", "A", false).contains("Icon="));
+    }
+
+    // `ditto` is macOS's.
+    #[cfg(target_os = "macos")]
     #[test]
     fn ipa_holds_the_app_under_payload() {
         let dir = std::env::temp_dir().join(format!("nsh-ipa-{}", std::process::id()));

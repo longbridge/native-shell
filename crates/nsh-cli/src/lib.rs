@@ -152,8 +152,8 @@ enum Command {
     /// by the flags below.
     Package(Box<PackageArgs>),
     /// Like `dev`, and also run the app in a development host: the Mac
-    /// Catalyst app (default), an iOS simulator, or an Android device or
-    /// emulator.
+    /// Catalyst app (default on macOS), the Linux app (default on Linux), an
+    /// iOS simulator, or an Android device or emulator.
     Run {
         /// The entry module, or the app's directory (default: the current one),
         /// whose `App.tsx` is the entry.
@@ -169,7 +169,7 @@ enum Command {
         #[arg(long)]
         trace: bool,
         /// Where to run.
-        #[arg(long, value_enum, default_value_t = run::Target::Catalyst)]
+        #[arg(long, value_enum, default_value_t = run::Target::native())]
         target: run::Target,
         /// iOS simulator to use (name or UDID); default: a booted one, else
         /// the newest iPhone.
@@ -308,7 +308,8 @@ struct PackageArgs {
     /// Keystore password (also `NSH_KEYSTORE_PASSWORD`).
     #[arg(long, env = "NSH_KEYSTORE_PASSWORD", hide_env_values = true)]
     keystore_password: Option<String>,
-    /// Install and launch the app in the simulator afterwards.
+    /// Install and launch the app in the simulator or on the Android device
+    /// afterwards (Linux: launch it).
     #[arg(long)]
     run: bool,
 }

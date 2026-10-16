@@ -8,12 +8,15 @@
 //! runtime/ios/iphonesimulator/nsh-ios-app    release runner (simulator)
 //! runtime/ios/iphonesimulator/nsh-ios-host   development host (simulator)
 //! runtime/ios/maccatalyst/nsh-ios-host       development host (Mac Catalyst)
+//! runtime/linux/nsh-linux-host               development host (Linux, GTK)
+//! runtime/linux/nsh-linux-app                release runner (Linux)
 //! runtime/android/release/             classes.dex + lib/<abi>/libnsh.so
 //! runtime/android/dev/                 the same with development support
 //! ```
 //!
 //! In a cargo checkout, the same files come from `target/<triple>/<profile>`
-//! (with the profile of this CLI), and are built with cargo first, so a run
+//! (with the profile of this CLI; Linux's from `target/<profile>`, as they
+//! are built for this machine), and are built with cargo first, so a run
 //! never uses a missing or stale host. `NSH_RUNTIME` overrides the root.
 //! An app with a Rust crate of its own gets hosts built for it instead
 //! (`rust_app.rs`).
@@ -36,6 +39,8 @@ pub(crate) enum Platform {
     IphoneSimulator,
     /// Mac Catalyst.
     MacCatalyst,
+    /// Linux (GTK), on this machine.
+    Linux,
 }
 
 impl Platform {
@@ -44,14 +49,27 @@ impl Platform {
             Platform::IphoneOs => "ios/iphoneos",
             Platform::IphoneSimulator => "ios/iphonesimulator",
             Platform::MacCatalyst => "ios/maccatalyst",
+            Platform::Linux => "linux",
         }
     }
 
-    pub(crate) fn triple(self) -> &'static str {
+    /// The cargo target triple (`None`: this machine's).
+    pub(crate) fn triple(self) -> Option<&'static str> {
         match self {
-            Platform::IphoneOs => "aarch64-apple-ios",
-            Platform::IphoneSimulator => "aarch64-apple-ios-sim",
-            Platform::MacCatalyst => "aarch64-apple-ios-macabi",
+            Platform::IphoneOs => Some("aarch64-apple-ios"),
+            Platform::IphoneSimulator => Some("aarch64-apple-ios-sim"),
+            Platform::MacCatalyst => Some("aarch64-apple-ios-macabi"),
+            Platform::Linux => None,
+        }
+    }
+
+    /// The development host (`runner` false) or release runner binary.
+    pub(crate) fn binary(self, runner: bool) -> &'static str {
+        match (self, runner) {
+            (Platform::Linux, false) => "nsh-linux-host",
+            (Platform::Linux, true) => "nsh-linux-app",
+            (_, false) => "nsh-ios-host",
+            (_, true) => "nsh-ios-app",
         }
     }
 
@@ -67,6 +85,7 @@ impl Platform {
             Platform::IphoneOs => "iOS devices",
             Platform::IphoneSimulator => "the iOS simulator",
             Platform::MacCatalyst => "Mac Catalyst",
+            Platform::Linux => "Linux",
         };
         format!("the {what} for {platform}")
     }
@@ -138,12 +157,14 @@ fn android_existing(dir: PathBuf, dev: bool) -> anyhow::Result<PathBuf> {
     )
 }
 
-/// Path of runtime file `name` (`nsh-ios-app`, `nsh-ios-host`) for `platform`:
-/// for an app with a Rust crate, its own build.
-pub(crate) fn file(platform: Platform, name: &str) -> anyhow::Result<PathBuf> {
+/// Path of the development host (`runner` false) or release runner for
+/// `platform` ([`Platform::binary`]): for an app with a Rust crate, its own
+/// build.
+pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> {
     if let Some(app) = crate::rust_app::current() {
-        return app.ios(platform, name == "nsh-ios-app");
+        return app.runtime(platform, runner);
     }
+    let name = platform.binary(runner);
     if let Some(root) = env::var_os("NSH_RUNTIME") {
         return existing(
             PathBuf::from(root).join(platform.dir()).join(name),
@@ -161,21 +182,34 @@ pub(crate) fn file(platform: Platform, name: &str) -> anyhow::Result<PathBuf> {
     // Cargo checkout: target/<profile>/nsh -> target/<triple>/<profile>/<name>.
     let profile = bin.file_name().context("cli profile dir")?;
     if let Some(root) = checkout(bin) {
-        let mut args = vec!["build", "-p", name, "--target", platform.triple()];
+        let mut args = vec!["build", "-p", name];
+        if let Some(triple) = platform.triple() {
+            args.extend(["--target", triple]);
+        }
         match profile.to_str() {
             Some("debug") => {}
             Some("release") => args.push("--release"),
             Some(other) => args.extend(["--profile", other]),
             None => bail!("cli profile dir is not UTF-8"),
         }
-        cargo(&root, &args, &platform.host(name == "nsh-ios-app"))?;
+        // The runner is "release" as opposed to the development host; the
+        // build follows the CLI's own profile, so say which one it is.
+        let what = match profile.to_str() {
+            Some("release") => platform.host(runner),
+            Some(other) => format!("{} ({other} build)", platform.host(runner)),
+            None => platform.host(runner),
+        };
+        cargo(&root, &args, &what)?;
     }
-    let built = bin
+    let mut built = bin
         .parent()
         .context("cli is not in a target directory")?
-        .join(platform.triple())
-        .join(profile)
-        .join(name);
+        .to_path_buf();
+    if let Some(triple) = platform.triple() {
+        built.push(triple);
+    }
+    built.push(profile);
+    built.push(name);
     existing(built, platform, name)
 }
 
@@ -199,10 +233,13 @@ fn existing(path: PathBuf, platform: Platform, name: &str) -> anyhow::Result<Pat
     if path.exists() {
         return Ok(path);
     }
+    let target = platform
+        .triple()
+        .map(|triple| format!(" --target {triple}"))
+        .unwrap_or_default();
     bail!(
-        "{name} for {} not found at {}\nin a nsh checkout, build it with: cargo build -p {name} --target {}",
+        "{name} for {} not found at {}\nin a nsh checkout, build it with: cargo build -p {name}{target}",
         platform.dir(),
         path.display(),
-        platform.triple()
     )
 }

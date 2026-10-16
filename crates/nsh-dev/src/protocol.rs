@@ -64,6 +64,8 @@ pub enum HostPlatform {
     Ios,
     /// A host on an Android device or emulator.
     Android,
+    /// The Linux (GTK) host.
+    Linux,
     /// A platform this version does not know.
     #[serde(other)]
     Other,
