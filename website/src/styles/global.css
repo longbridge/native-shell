@@ -116,7 +116,11 @@
   --accent-border: transparent;
   --nav-active: rgb(255 255 255 / 6%);
   --nav-hover: rgb(255 255 255 / 3.5%);
-  --callout-tint: 11%;
+  --callout-tint: 9%;
+  --callout-tint-end: 3%;
+  --callout-base: var(--card);
+  --callout-edge: transparent;
+  --callout-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -12px rgb(0 0 0 / 45%);
   /* A faint grain over the page, as on the gallery's surfaces. */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  .07 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
@@ -223,6 +227,10 @@ html.light {
   --nav-active: rgb(0 0 0 / 4.5%);
   --nav-hover: rgb(0 0 0 / 2.8%);
   --callout-tint: 7%;
+  --callout-tint-end: 7%;
+  --callout-base: var(--background);
+  --callout-edge: var(--highlight);
+  --callout-shadow: 0 0 0 transparent;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.1  0 0 0 0 0.05  .09 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
   color-scheme: light;
@@ -365,7 +373,8 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   display: inline-flex;
   align-items: center;
   height: 2rem;
-  padding: 0 0.65rem;
+  padding: 0 calc(0.65rem - 1px);
+  border: 1px solid transparent;
   border-radius: 8px;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
@@ -374,7 +383,6 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   transition: background 140ms ease, color 140ms ease;
 }
 .site-nav__link:hover { background: var(--nav-hover); color: var(--foreground); }
-.site-nav__link.active { background: var(--nav-active); color: var(--foreground); font-weight: 600; }
 
 .site-nav__actions { display: flex; align-items: center; gap: 0.25rem; margin-left: auto; }
 
@@ -566,10 +574,17 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   transition: color 140ms ease, background 140ms ease;
 }
 .sidebar-item:hover { background-color: var(--nav-hover); color: var(--foreground); }
-/* The current page: a soft tint and a short accent bar, quiet as navigation should be. */
+/* The current page: the important callout's finish (a citrus hairline, a faint tint, a top highlight), so the
+   selection reads as a lit surface rather than a grey block. */
 .sidebar-item.active,
-.sidebar-item.active:hover { position: relative; background-color: var(--nav-active); color: var(--foreground); font-weight: 600; }
-.sidebar-item.active::before { content: ""; position: absolute; top: 0.45rem; bottom: 0.45rem; left: 0; width: 2px; border-radius: 1px; background: var(--citrus); }
+.sidebar-item.active:hover,
+.site-nav__link.active {
+  border: 1px solid color-mix(in srgb, var(--important) 25%, transparent);
+  background-color: color-mix(in srgb, var(--important) var(--callout-tint), var(--background));
+  box-shadow: inset 0 1px 0 var(--callout-edge);
+  color: var(--foreground);
+  font-weight: 600;
+}
 
 .docs-sidebar__toggle { display: none; }
 
@@ -822,7 +837,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   pre[data-language="html"]::before { content: "HTML"; }
   pre[data-language="yaml"]::before { content: "YAML"; }
   pre[data-language="css"]::before { content: "CSS"; }
-  pre[data-language="plaintext"]::before, pre[data-language="txt"]::before, pre:not([data-language])::before { content: "Text"; }
+  pre[data-language="plaintext"]::before, pre[data-language="txt"]::before, pre[data-language="text"]::before, pre:not([data-language])::before { content: "Text"; }
   pre code { display: block; padding: 0.9rem 1.1rem 1rem; overflow-x: auto; background: var(--code-surface); font-size: 0.92em; line-height: 1.7; tab-size: 2; }
 
   /* The copy button sits in the header row: a small glass control. */
@@ -890,8 +905,11 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
     padding: 0.8rem 1rem 0.85rem;
     border: 1px solid color-mix(in srgb, var(--callout) 25%, transparent);
     border-radius: var(--radius-card);
-    background: color-mix(in srgb, var(--callout) var(--callout-tint), var(--background));
-    box-shadow: inset 0 1px 0 var(--highlight);
+    background: linear-gradient(
+      color-mix(in srgb, var(--callout) var(--callout-tint), var(--callout-base)),
+      color-mix(in srgb, var(--callout) var(--callout-tint-end), var(--callout-base))
+    );
+    box-shadow: inset 0 1px 0 var(--callout-edge), var(--callout-shadow);
     color: var(--foreground);
   }
   .callout > * { margin-block: 0.45rem; }

@@ -15,7 +15,9 @@ export function onThemeChange(change: (theme: 'light' | 'dark') => void) {
  * running demo switches without reloading. */
 function themeDemos(root: ParentNode) {
   const themed = (url: string) => url.replace(/([?&]theme=)(dark|light)/, `$1${siteTheme()}`);
-  const frames = [...root.querySelectorAll<HTMLIFrameElement>('.phone__screen iframe[src*="theme="]')];
+  // The frames carry their player URL in `data-player-src`; it gets the
+  // page's theme before the first load, so a demo never loads twice.
+  const frames = [...root.querySelectorAll<HTMLIFrameElement>('.phone__screen iframe[data-player-src]')];
   const links = [...root.querySelectorAll<HTMLAnchorElement>('a[href*="play/index.html?theme="]')];
   const apply = () => {
     const want = siteTheme();
@@ -24,11 +26,11 @@ function themeDemos(root: ParentNode) {
       if (frame.dataset.theme === want) continue;
       // Running: tell the player; not loaded yet (lazy): change the URL.
       if (frame.dataset.loaded) frame.contentWindow?.postMessage({ theme: want }, '*');
-      else frame.setAttribute('src', themed(frame.getAttribute('src')!));
+      else frame.setAttribute('src', themed(frame.dataset.playerSrc!));
       frame.dataset.theme = want;
     }
   };
-  for (const frame of frames) frame.dataset.theme = /theme=light/.test(frame.getAttribute('src')!) ? 'light' : 'dark';
+  for (const frame of frames) frame.dataset.theme = '';
   for (const frame of frames) frame.addEventListener('load', () => (frame.dataset.loaded = '1'));
   apply();
   onThemeChange(apply);

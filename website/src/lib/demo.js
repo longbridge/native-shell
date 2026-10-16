@@ -113,7 +113,7 @@ export function frameBar(title, badge) {
 export function phoneHtml(name, { base = '/', lang = 'en', eager = false } = {}) {
   const t = COPY[lang] ?? COPY.en;
   const screen = hasPlayer()
-    ? `<iframe allow="clipboard-write" src="${escape(playerHref(name, base))}" title="${escape(t.frame(name))}" loading="${eager ? 'eager' : 'lazy'}" width="${SCREEN.width}" height="${SCREEN.height}"></iframe>`
+    ? `<iframe allow="clipboard-write" data-player-src="${escape(playerHref(name, base))}" title="${escape(t.frame(name))}" loading="${eager ? 'eager' : 'lazy'}" width="${SCREEN.width}" height="${SCREEN.height}"></iframe>`
     : `<div class="phone__placeholder">
         <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>
         <p class="phone__placeholder-title">${escape(t.pending)}</p>

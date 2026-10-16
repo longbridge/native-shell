@@ -39,7 +39,8 @@
       .claim{fill:var(--accent);font-size:11px;font-weight:600}
 
       .ptitle{fill:var(--ink);font-size:17px;font-weight:700}
-      .pstatus{fill:var(--ink);font-size:10.5px;font-weight:600}
+      .hlabel{fill:var(--muted);font-size:10.5px;font-weight:600}
+      .htile{fill:var(--accent)}
       .ptag{fill:var(--accent);font-size:9.5px;font-weight:650}
       .pmono{fill:var(--muted);font-size:9.5px}
       .device{fill:var(--card);stroke:var(--line);stroke-width:1.2}
@@ -90,12 +91,11 @@
   <text class="h1" x="24" y="30">One host app, two modules</text>
   <text class="lede" x="24" y="50">Each NshAppView is its own engine: its own thread, VM, limits and grants. No global singletons.</text>
 
-  <!-- the phone: the host's own native screen -->
-  <rect class="device" x="40" y="72" width="250" height="448" rx="38"/>
-  <rect class="screen" x="50" y="82" width="230" height="428" rx="29"/>
-  <text class="pstatus" x="74" y="104">9:41</text>
-  <rect class="solid" x="226" y="96" width="14" height="8" rx="2" opacity=".75"/>
-  <rect class="solid" x="244" y="96" width="18" height="8" rx="2.5" opacity=".75"/>
+  <!-- the host app, in a card frame of the site's design (no device chrome) -->
+  <rect class="device" x="40" y="72" width="250" height="448" rx="18"/>
+  <rect class="htile" x="54" y="85" width="16" height="16" rx="5"/>
+  <text class="hlabel" x="78" y="97">Host app · native screen</text>
+  <rect class="screen" x="50" y="110" width="230" height="400" rx="12"/>
   <text class="ptitle" x="64" y="140">Trip</text>
   <circle class="ghost" cx="76" cy="166" r="10"/>
   <rect class="ghost" x="94" y="159" width="116" height="6" rx="3"/>

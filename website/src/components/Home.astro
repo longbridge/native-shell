@@ -210,7 +210,7 @@ const icon = (name: string, size = 16) =>
           </div>
           <div class="device__screen">
             {player
-              ? <iframe data-chat allow="clipboard-write" src={chatSrc} title={copy.demo.frame} loading="eager"></iframe>
+              ? <iframe data-chat allow="clipboard-write" data-player-src={chatSrc} title={copy.demo.frame} loading="eager"></iframe>
               : <p class="device__pending">{copy.demo.pending}</p>}
           </div>
         </div>
@@ -383,7 +383,9 @@ const icon = (name: string, size = 16) =>
     if (!frame) continue;
     const theme = () => (document.documentElement.classList.contains('light') ? 'light' : 'dark');
     const themed = (src: string) => src.replace(/theme=(dark|light)/, `theme=${theme()}`);
-    if (themed(frame.src) !== frame.src) frame.src = themed(frame.src);
+    // The URL waits in `data-player-src` until the theme is known, so the
+    // chat loads once, in the page's theme.
+    frame.src = themed(frame.dataset.playerSrc!);
     new MutationObserver(() => frame.contentWindow?.postMessage({ theme: theme() }, '*')).observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class'],

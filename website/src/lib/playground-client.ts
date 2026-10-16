@@ -305,5 +305,5 @@ export async function mountPlayground(root: HTMLElement) {
     }
   });
   setStatus(t.loading);
-  frame.src = root.dataset.player!;
+  frame.src = root.dataset.player!.replace(/theme=(dark|light)/, `theme=${siteTheme()}`);
 }
