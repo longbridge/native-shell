@@ -52,7 +52,7 @@ pub(crate) fn package(
     fs::create_dir_all(&resources)?;
     let exe = dir.join(format!("{}.exe", file_stem(name)));
     fs::copy(&runner, &exe).with_context(|| format!("copy {}", runner.display()))?;
-    fs::write(resources.join("bundle.qbc"), &built.bytecode)?;
+    fs::write(resources.join("bundle.nshc"), &built.bytecode)?;
     if let Some(json) = built.capabilities_json() {
         fs::write(resources.join("capabilities.json"), json)?;
     }
@@ -342,7 +342,7 @@ mod tests {
         let app = dir.join("Demo");
         fs::create_dir_all(app.join("nsh/assets")).unwrap();
         fs::write(app.join("Demo.exe"), b"binary").unwrap();
-        fs::write(app.join("nsh/bundle.qbc"), b"code").unwrap();
+        fs::write(app.join("nsh/bundle.nshc"), b"code").unwrap();
         let archive = dir.join("Demo.zip");
         zip_dir(&app, "Demo", &archive).unwrap();
         let mut zip = zip::ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();
@@ -355,11 +355,11 @@ mod tests {
                 "Demo/Demo.exe",
                 "Demo/nsh/",
                 "Demo/nsh/assets/",
-                "Demo/nsh/bundle.qbc"
+                "Demo/nsh/bundle.nshc"
             ]
         );
         let mut code = String::new();
-        std::io::Read::read_to_string(&mut zip.by_name("Demo/nsh/bundle.qbc").unwrap(), &mut code)
+        std::io::Read::read_to_string(&mut zip.by_name("Demo/nsh/bundle.nshc").unwrap(), &mut code)
             .unwrap();
         assert_eq!(code, "code");
         fs::remove_dir_all(&dir).unwrap();

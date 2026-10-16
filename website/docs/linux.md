@@ -32,7 +32,7 @@ bundle on its own:
 
 ```sh
 nsh build my-app --release -o build
-dist/nsh/runtime/linux/nsh-linux-host --bundle build/bundle.qbc --size 1024x768   # in a checkout: target/debug/nsh-linux-host
+dist/nsh/runtime/linux/nsh-linux-host --bundle build/bundle.nshc --size 1024x768   # in a checkout: target/debug/nsh-linux-host
 ```
 
 `--size` is the window's default size; tiling window managers may give the window another one.
@@ -48,7 +48,7 @@ Writes a directory and the same as an archive:
 ```text
 out/<Name>/
   <Name>                 the executable (nsh's release runner)
-  nsh/bundle.qbc         your app, compiled
+  nsh/bundle.nshc        your app, compiled
   nsh/assets/…           the assets it imports
   nsh/app.json           the window title and the application id
   <id>.desktop           a desktop entry (StartupWMClass is the id)
@@ -93,7 +93,7 @@ fn main() -> gtk::glib::ExitCode {
 ```
 
 `AppView::load` replaces whatever ran; `stop` ends the app. `asset_base` tells it where `asset:/` URIs resolve
-(`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.qbc`) load with `unsafe { Bundle::bytecode(bytes) }`:
+(`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.nshc`) load with `unsafe { Bundle::bytecode(bytes) }`:
 QuickJS bytecode is trusted input, so only load it from your own app's files.
 
 Native components are registered with `AppView::register_component`; see [Native components](./native-components.md#registering-on-linux-rust).

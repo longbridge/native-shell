@@ -144,12 +144,12 @@ cargo build -p nsh-windows-host                                                 
 ./target/debug/nsh run examples/gallery --target linux                     # in a GTK window (the default on Linux)
 ./target/debug/nsh-linux-host --script "wait 800; shot a.png; quit"        # Linux host, scripted: screenshots and simulated input
 ./target/debug/nsh run examples/gallery --target windows                   # in a Win32 window, 1200×800 (the default on Windows)
-./target/debug/nsh-windows-host --bundle build/bundle.qbc --script "wait 800; shot a.png; quit"   # Windows host, scripted (connects to `nsh dev` without --bundle)
+./target/debug/nsh-windows-host --bundle build/bundle.nshc --script "wait 800; shot a.png; quit"   # Windows host, scripted (connects to `nsh dev` without --bundle)
 ./target/debug/nsh package examples/gallery --target ios-simulator --run   # installable app (.app / .ipa / .apk)
 cargo xtask android [--release] [--dev]                                            # Android runtime into target/android/<profile>[-dev]
 cargo xtask dist                                                                   # the distribution in dist/nsh
 ./target/debug/nsh dev examples/counter                                    # dev server only (for simulators / devices); prints local and LAN URLs
-./target/debug/nsh build examples/counter --release                        # writes bundle.js / bundle.qbc
+./target/debug/nsh build examples/counter --release                        # writes bundle.js / bundle.nshc
 ./target/debug/nsh keygen keys/root && ./target/debug/nsh keygen keys/release      # signing keys (.secret / .pub)
 ./target/debug/nsh certify --root keys/root.secret --key keys/release.pub --apps 'com.example.*' -o keys/release.cert
 ./target/debug/nsh publish examples/counter --key keys/release.secret --cert keys/release.cert --build 2

@@ -152,7 +152,7 @@ public class NshView extends FrameLayout {
      * @return false (reported to the error listener) if it cannot be read
      */
     public boolean loadBundleFile(File file) {
-        if (file.getName().endsWith(".qbc")) {
+        if (file.getName().endsWith(".nshc")) {
             reportError("bytecode only loads from the APK's assets or a signed package (.nshpkg); load bundle.js");
             return false;
         }
@@ -176,7 +176,7 @@ public class NshView extends FrameLayout {
     }
 
     /**
-     * Runs {@code dir/bundle.qbc} from the APK's assets; app assets come
+     * Runs {@code dir/bundle.nshc} from the APK's assets; app assets come
      * from {@code dir/assets/}.
      *
      * @param dir the directory in the APK's assets
@@ -184,7 +184,7 @@ public class NshView extends FrameLayout {
      */
     public boolean loadAssetBundle(String dir) {
         try {
-            byte[] code = Net.readAll(getContext().getAssets().open(dir + "/bundle.qbc"));
+            byte[] code = Net.readAll(getContext().getAssets().open(dir + "/bundle.nshc"));
             String capabilities = null;
             try {
                 capabilities = new String(Net.readAll(getContext().getAssets().open(dir + "/capabilities.json")),

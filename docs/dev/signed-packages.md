@@ -7,7 +7,7 @@ For code an app downloads (first-party updates, third-party mini apps): `nsh_pac
   (`nsh-ios-app`, `AppActivity`, `NshView.loadAssetBundle`, `NshAppView.loadBundle` for a path inside the main bundle —
   `nsh_platform_ios::in_app_bundle`), bytecode compiled in-process, the dev server the developer connected to (its
   handshake negotiates the version), and verified packages (`Bundle::from_package`). `Bundle::read` and
-  `NshView.loadBundleFile` refuse `.qbc` files; downloaded code is either JS source or a signed package.
+  `NshView.loadBundleFile` refuse `.nshc` files; downloaded code is either JS source or a signed package.
 - **Keys, two levels**: a root key (offline; apps trust its public key, several may be trusted) certifies release keys
   (`nsh certify`: app id patterns `*` / `com.example.*` / an id, and a validity window). Packages are signed by a
   release key and carry its certificate, so release keys rotate without app updates. Key ids are derived (first 8

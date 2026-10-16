@@ -209,4 +209,4 @@ See [Images and assets](./images-and-assets.md) and [Fonts](./fonts.md).
 ## Generated directories
 
 - **`.nsh/`**: the type declarations (`.nsh/types`) and what `nsh run` installs on simulators and devices (the Catalyst host app, the Android development APK). Safe to delete; it is recreated.
-- **`out/`**: the default output of `nsh build` (`bundle.js`, `bundle.js.map`, `bundle.qbc`, `capabilities.json`, `assets/`) and `nsh package` (`.app`, `.ipa`, `.apk`). Change it with `-o`.
+- **`out/`**: the default output of `nsh build` (`bundle.js`, `bundle.js.map`, `bundle.nshc`, `capabilities.json`, `assets/`) and `nsh package` (`.app`, `.ipa`, `.apk`). Change it with `-o`.

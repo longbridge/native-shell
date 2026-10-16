@@ -139,7 +139,7 @@ pub unsafe extern "C" fn nsh_app_destroy(app: *mut NshApp) {
 }
 
 /// Runs a bundle written by `nsh build`, replacing the running app; assets
-/// are read from `assets` next to it. Bytecode (`bundle.qbc`) only loads from
+/// are read from `assets` next to it. Bytecode (`bundle.nshc`) only loads from
 /// inside the app's own bundle: elsewhere only JS source does (signed
 /// bytecode comes in packages). Returns why it cannot, or `NULL`.
 ///

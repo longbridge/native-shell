@@ -35,7 +35,7 @@ outlives `nsh`, however it ends. The host also runs a built bundle on its own:
 
 ```sh
 nsh build my-app --release -o build
-dist\nsh\runtime\windows\nsh-windows-host --bundle build\bundle.qbc --size 390x844   # in a checkout: target\debug\nsh-windows-host
+dist\nsh\runtime\windows\nsh-windows-host --bundle build\bundle.nshc --size 390x844   # in a checkout: target\debug\nsh-windows-host
 ```
 
 `--size` is the window's size in points (`<width>x<height>`).
@@ -51,7 +51,7 @@ Writes a directory and the same as an archive:
 ```text
 out\<Name>\
   <Name>.exe             the executable (nsh's release runner), with the app's icon
-  nsh\bundle.qbc         your app, compiled
+  nsh\bundle.nshc         your app, compiled
   nsh\assets\…           the assets it imports
   nsh\app.json           the window title, the app id, the version and the appearance
 out\<Name>.zip
@@ -99,7 +99,7 @@ fn embed(parent: HWND) -> windows::core::Result<Rc<AppView>> {
 
 The view is a child window: your message loop runs it, and you place it with `MoveWindow` on its `hwnd()` when the
 parent resizes. `AppView::load` replaces whatever ran; `stop` (or destroying the window) ends the app. `asset_base`
-tells it where `asset:/` URIs resolve (`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.qbc`)
+tells it where `asset:/` URIs resolve (`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.nshc`)
 load with `unsafe { Bundle::bytecode(bytes) }` (or `Bundle::read_trusted(path)`, unsafe too): QuickJS bytecode is trusted input, so
 only load it from your own app's files. A standalone window is `nsh_platform_windows::run_app(source, options)`.
 

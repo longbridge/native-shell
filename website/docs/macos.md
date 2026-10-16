@@ -37,7 +37,7 @@ runs a built bundle on its own:
 
 ```sh
 nsh build my-app --release -o build
-dist/nsh/runtime/macos/nsh-macos-host --bundle build/bundle.qbc --size 1200x800   # in a checkout: target/debug/nsh-macos-host
+dist/nsh/runtime/macos/nsh-macos-host --bundle build/bundle.nshc --size 1200x800   # in a checkout: target/debug/nsh-macos-host
 ```
 
 `--size` is the window's initial size; the window can be resized.
@@ -73,7 +73,7 @@ Writes an app bundle:
 out/<Name>.app/Contents/
   Info.plist
   MacOS/<Name>               the executable (nsh's release runner)
-  Resources/nsh/bundle.qbc   your app, compiled
+  Resources/nsh/bundle.nshc  your app, compiled
   Resources/nsh/assets/…     the assets it imports
   Resources/nsh/app.json     the window title and the app's appearance
   Resources/AppIcon.icns     the icon, when nsh.json names one (converted with sips)
@@ -109,8 +109,8 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 ```
 
 `AppView::load` replaces whatever ran; `stop` ends the app. `asset_base` tells it where `asset:/` URIs resolve
-(`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.qbc`) load with
-`unsafe { Bundle::bytecode(bytes) }`: QuickJS bytecode is trusted input, so only load it from your own app's files.
+(`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.nshc`) load with
+`unsafe { Bundle::bytecode(bytes) }`: bytecode is trusted input, so only load it from your own app's files.
 For an app that is only an nsh app, `run_app(source, options)` opens one `AppView` in a window with a standard menu
 (About, Hide, Quit, Edit, Minimize, Zoom, Enter Full Screen, Close) and runs until the window closes.
 

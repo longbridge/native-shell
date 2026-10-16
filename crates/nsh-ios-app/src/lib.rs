@@ -1,5 +1,5 @@
 //! The executable of a packaged nsh app (`nsh package`): runs the bundle
-//! shipped inside the app (`nsh/bundle.qbc`, assets in `nsh/assets`).
+//! shipped inside the app (`nsh/bundle.nshc`, assets in `nsh/assets`).
 //!
 //! A library so that an app with Rust components of its own (`nsh.json`
 //! `"rust"`) builds the release runner with them: its `main` calls
@@ -32,7 +32,7 @@ pub fn main() {
         .and_then(|exe| exe.parent().map(|d| d.join("nsh")))
         .unwrap_or_default();
     // SAFETY: the bytecode is a resource of this (signed) app.
-    let bundle = match unsafe { Bundle::read_trusted(&dir.join("bundle.qbc")) } {
+    let bundle = match unsafe { Bundle::read_trusted(&dir.join("bundle.nshc")) } {
         Ok(bundle) => bundle,
         Err(err) => {
             log::error!("cannot read the app bundle in {}: {err}", dir.display());

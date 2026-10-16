@@ -139,7 +139,7 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 nsh package App.tsx --target macos --run
 ```
 
-写出 `out/<Name>.app`：可执行文件位于 `Contents/MacOS/`，`nsh/bundle.qbc`、`nsh/assets/…` 和 `nsh/app.json`（窗口标题和应用的外观）
+写出 `out/<Name>.app`：可执行文件位于 `Contents/MacOS/`，`nsh/bundle.nshc`、`nsh/assets/…` 和 `nsh/app.json`（窗口标题和应用的外观）
 位于 `Contents/Resources/`。应用使用 ad hoc 签名，要求 macOS 14 及以上；要分发它，请用 Developer ID 签名并进行公证。见
 [macOS](./macos.md#打包)。
 
@@ -149,7 +149,7 @@ nsh package App.tsx --target macos --run
 nsh package App.tsx --target linux --run
 ```
 
-写出 `out/<Name>/`（可执行文件 `<Name>`、`nsh/bundle.qbc`、`nsh/assets/…`、包含窗口标题和应用 id 的 `nsh/app.json`、`<id>.desktop`
+写出 `out/<Name>/`（可执行文件 `<Name>`、`nsh/bundle.nshc`、`nsh/assets/…`、包含窗口标题和应用 id 的 `nsh/app.json`、`<id>.desktop`
 和图标 `<id>.png`），以及同样内容的 `out/<Name>.tar.gz`。请在 Linux 上打包：运行器是为构建它的机器构建的。运行应用的机器上必须装有
 GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 [Linux](./linux.md#打包)。
 
@@ -159,7 +159,7 @@ GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 
 nsh package App.tsx --target windows --run
 ```
 
-写出 `out\<Name>\`（带应用图标的可执行文件 `<Name>.exe`、`nsh\bundle.qbc`、`nsh\assets\…`，以及包含窗口标题、应用 id、版本和外观的
+写出 `out\<Name>\`（带应用图标的可执行文件 `<Name>.exe`、`nsh\bundle.nshc`、`nsh\assets\…`，以及包含窗口标题、应用 id、版本和外观的
 `nsh\app.json`），以及同样内容的 `out\<Name>.zip`。不需要任何工具。请在 Windows 上打包：运行器是为构建它的机器构建的，而且只有
 Windows 能嵌入图标。应用可以从目录被复制到的任何位置运行，不需要安装。见 [Windows](./windows.md#打包)。
 
@@ -181,11 +181,11 @@ Windows 能嵌入图标。应用可以从目录被复制到的任何位置运行
 
 | 目标 | 运行时 | 你的应用 |
 |---|---|---|
-| iOS | `nsh-ios-app` 可执行文件 | `<Name>.app/nsh/bundle.qbc`、`nsh/assets/…` |
-| Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.qbc`、`assets/nsh/assets/…` |
-| macOS | `nsh-macos-app` 可执行文件，重命名为 `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.qbc`、`nsh/assets/…` |
-| Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.qbc`、`nsh/assets/…` |
-| Windows | `nsh-windows-app.exe` 可执行文件，重命名为 `<Name>.exe` | `<Name>\nsh\bundle.qbc`、`nsh\assets\…` |
+| iOS | `nsh-ios-app` 可执行文件 | `<Name>.app/nsh/bundle.nshc`、`nsh/assets/…` |
+| Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.nshc`、`assets/nsh/assets/…` |
+| macOS | `nsh-macos-app` 可执行文件，重命名为 `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nshc`、`nsh/assets/…` |
+| Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.nshc`、`nsh/assets/…` |
+| Windows | `nsh-windows-app.exe` 可执行文件，重命名为 `<Name>.exe` | `<Name>\nsh\bundle.nshc`、`nsh\assets\…` |
 
 打包出的应用不注册任何[原生组件](./native-components.md)；如需使用原生组件，请把 nsh 嵌入你自己的应用。
 

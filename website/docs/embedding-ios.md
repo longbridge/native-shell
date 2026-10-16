@@ -59,7 +59,7 @@ nsh build App.tsx --release --out MyApp/nsh
 
 | File | Contents |
 |---|---|
-| `bundle.qbc` | The app compiled to QuickJS bytecode: the fastest to load. |
+| `bundle.nshc` | The app compiled to bytecode: the fastest to load. |
 | `bundle.js` | The same app as JS source. |
 | `bundle.js.map` | Its source map (stack traces point at your `.tsx` files). |
 | `capabilities.json` | The [capabilities](./sandbox-and-capabilities.md) the app declares, when `nsh.json` has any. |
@@ -126,7 +126,7 @@ The complete sample, a UIKit app that shows a nsh app below its own native heade
 | `static preferredStatusBarStyle`, `prefersStatusBarHidden`, `preferredStatusBarUpdateAnimation` | What the running apps asked for with `StatusBar`: return them from the hosting view controller's overrides. |
 
 > [!IMPORTANT]
-> `bundle.qbc` (bytecode) loads only from inside the app bundle. QuickJS does not validate bytecode, so bytecode from
+> `bundle.nshc` (bytecode) loads only from inside the app bundle. QuickJS does not validate bytecode, so bytecode from
 > anywhere else could corrupt memory: for a file outside the app bundle, load `bundle.js` (JS source), or better, a
 > [signed package](./signed-packages.md).
 

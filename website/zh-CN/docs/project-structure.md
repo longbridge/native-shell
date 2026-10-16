@@ -208,4 +208,4 @@ import Inter from "./assets/Inter.ttf";     // "Inter"
 ## 生成的目录
 
 - **`.nsh/`**：类型声明（`.nsh/types`），以及 `nsh run` 安装到模拟器和设备上的内容（Catalyst 宿主应用、Android 开发 APK）。可以放心删除，会被重新生成。
-- **`out/`**：`nsh build` 的默认输出（`bundle.js`、`bundle.js.map`、`bundle.qbc`、`capabilities.json`、`assets/`）以及 `nsh package` 的输出（`.app`、`.ipa`、`.apk`）。用 `-o` 修改。
+- **`out/`**：`nsh build` 的默认输出（`bundle.js`、`bundle.js.map`、`bundle.nshc`、`capabilities.json`、`assets/`）以及 `nsh package` 的输出（`.app`、`.ipa`、`.apk`）。用 `-o` 修改。

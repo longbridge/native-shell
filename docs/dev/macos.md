@@ -132,7 +132,7 @@ lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.p
 
 ```sh
 nsh build examples/gallery -o /tmp/gallery
-./target/debug/nsh-macos-host --bundle /tmp/gallery/bundle.qbc --size 1200x800 \
+./target/debug/nsh-macos-host --bundle /tmp/gallery/bundle.nshc --size 1200x800 \
   --script "wait 1000; shot /tmp/a.png; tap 83 350; wait 500; shot /tmp/b.png; quit"
 ```
 
