@@ -4465,3 +4465,271 @@ mod components {
         assert_eq!(t.text, "Tapped 1 the link, bold and more\u{fffc}");
     }
 }
+
+/// Rust components' touches and responder (`touch.rs`).
+mod touch {
+    use super::*;
+    use crate::{
+        TouchEvent, TouchPhase, TouchPoint,
+        ui::{ClaimRequest, ResponderEvent, TouchClaim, prelude::*},
+    };
+
+    /// An outer view taking horizontal swipes from an inner one that claims
+    /// touches on start.
+    #[derive(Default)]
+    struct Pad {
+        log: Vec<String>,
+    }
+
+    #[derive(Clone, PartialEq, Props)]
+    struct PadProps {
+        #[prop(default)]
+        keep: bool,
+    }
+
+    impl Pad {
+        fn note(
+            cx: &RenderCx<'_, Self>,
+            what: &'static str,
+            f: fn(&ResponderEvent) -> String,
+        ) -> Listener<ResponderEvent> {
+            cx.listener(move |this: &mut Self, e: &ResponderEvent, cx| {
+                this.log.push(format!("{what}{}", f(e)));
+                cx.notify();
+            })
+        }
+    }
+
+    impl Component for Pad {
+        const NAME: &'static str = "test.pad";
+        type Props = PadProps;
+        type Event = NoEvent;
+
+        fn render(&self, props: &PadProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let none = |_: &ResponderEvent| String::new();
+            view()
+                .on_touch(cx.listener(|this: &mut Self, t: &TouchEvent, _| {
+                    this.log.push(format!("touch {:?}", t.phase));
+                }))
+                .claim_touches(TouchClaim::on_move().capture().ask(cx.listener(
+                    |_: &mut Self, r: &ClaimRequest, _| {
+                        if r.event.gesture.dx.abs() > 50.0 {
+                            r.claim();
+                        }
+                    },
+                )))
+                .on_responder_grant(Self::note(cx, "outer grant", none))
+                .on_responder_reject(Self::note(cx, "outer reject", none))
+                .child(
+                    view()
+                        .size(px(100.0))
+                        .claim_touches(TouchClaim::on_start())
+                        .keep_touches(props.keep)
+                        .on_responder_grant(Self::note(cx, "grant at ", |e| {
+                            format!("{},{}", e.location_x, e.location_y)
+                        }))
+                        .on_responder_move(Self::note(cx, "move ", |e| {
+                            format!("{},{}", e.gesture.dx, e.gesture.dy)
+                        }))
+                        .on_responder_release(Self::note(cx, "release ", |e| {
+                            format!("{:.2}", e.gesture.vx)
+                        }))
+                        .on_responder_terminate(Self::note(cx, "terminate", none)),
+                )
+                .child(text(self.log.join("|")))
+        }
+    }
+
+    fn touch(phase: TouchPhase, path: &[NodeId], x: f32, t: f64) -> EventPayload {
+        EventPayload::Touch(Box::new(TouchEvent {
+            phase,
+            timestamp: t,
+            points: vec![TouchPoint {
+                id: 7,
+                target: path[0],
+                path: if phase == TouchPhase::Start {
+                    path.to_vec()
+                } else {
+                    Vec::new()
+                },
+                page_x: x,
+                page_y: 100.0,
+                location_x: x - 10.0,
+                location_y: 5.0,
+                changed: true,
+            }],
+        }))
+    }
+
+    fn log(batch: &MountBatch) -> Option<String> {
+        batch.items.iter().rev().find_map(|i| match i {
+            MountItem::Text { text, .. } => Some(text.text.clone()),
+            _ => None,
+        })
+    }
+
+    fn commands(batch: &MountBatch) -> Vec<(NodeId, Command)> {
+        batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Command { id, command } => Some((*id, command.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The pad mounted: the core, the outer node and the inner one (both
+    /// listen to touches).
+    fn pad(keep: bool) -> (Core<FakeEngine>, NodeId, NodeId) {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Pad>(move || PadProps { keep }));
+        let batch = c.commit().unwrap();
+        let listening: Vec<NodeId> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Touch) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        let [outer, inner] = listening[..] else {
+            panic!("two listening views: {listening:?}");
+        };
+        (c, outer, inner)
+    }
+
+    #[test]
+    fn an_element_claims_the_touches_on_start_and_blocks_scrolling() {
+        let (mut c, outer, inner) = pad(false);
+        let path = [inner, outer];
+        // The root's touches: the components hear theirs, JS still gets
+        // the event for its own nodes.
+        assert!(!c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::Start, &path, 20.0, 0.0)
+        ));
+        let batch = c.commit().unwrap();
+        assert_eq!(log(&batch).unwrap(), "touch Start|grant at 10,5");
+        assert_eq!(
+            commands(&batch),
+            [(inner, Command::SetJsResponder { block: true })]
+        );
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::Move, &path, 40.0, 16.0),
+        );
+        let batch = c.commit().unwrap();
+        assert_eq!(
+            log(&batch).unwrap(),
+            "touch Start|grant at 10,5|touch Move|move 20,0"
+        );
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::End, &path, 40.0, 32.0),
+        );
+        let batch = c.commit().unwrap();
+        assert!(log(&batch).unwrap().ends_with("|touch End|release 0.88"));
+        assert_eq!(commands(&batch), [(ROOT_ID, Command::ClearJsResponder)]);
+    }
+
+    #[test]
+    fn a_capturing_claim_takes_the_touches_over_unless_they_are_kept() {
+        let (mut c, outer, inner) = pad(false);
+        let path = [inner, outer];
+        let send = |c: &mut Core<FakeEngine>, phase, x, t| {
+            c.component_event(ROOT_ID, EventKind::Touch, &touch(phase, &path, x, t));
+        };
+        send(&mut c, TouchPhase::Start, 0.0, 0.0);
+        send(&mut c, TouchPhase::Move, 30.0, 16.0);
+        // Far enough sideways: the outer view asks and claims.
+        send(&mut c, TouchPhase::Move, 80.0, 32.0);
+        let batch = c.commit().unwrap();
+        let text = log(&batch).unwrap();
+        assert!(
+            text.ends_with("move 30,0|touch Move|terminate|outer grant"),
+            "{text}"
+        );
+        assert_eq!(
+            commands(&batch).last(),
+            Some(&(outer, Command::SetJsResponder { block: true }))
+        );
+
+        // An inner responder that keeps the touches rejects the claim.
+        let (mut c, outer, inner) = pad(true);
+        let path = [inner, outer];
+        let send = |c: &mut Core<FakeEngine>, phase, x, t| {
+            c.component_event(ROOT_ID, EventKind::Touch, &touch(phase, &path, x, t));
+        };
+        send(&mut c, TouchPhase::Start, 0.0, 0.0);
+        send(&mut c, TouchPhase::Move, 80.0, 16.0);
+        let text = log(&c.commit().unwrap()).unwrap();
+        assert!(text.ends_with("|outer reject|move 80,0"), "{text}");
+        // A cancel (a native gesture took over) terminates it.
+        send(&mut c, TouchPhase::Cancel, 80.0, 32.0);
+        let batch = c.commit().unwrap();
+        assert!(log(&batch).unwrap().ends_with("|terminate"));
+        assert_eq!(commands(&batch), [(ROOT_ID, Command::ClearJsResponder)]);
+    }
+
+    #[test]
+    fn js_and_component_responders_share_the_native_block() {
+        let (mut c, outer, inner) = pad(false);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+                Op::Command {
+                    id: 2,
+                    command: Command::SetJsResponder { block: true },
+                },
+            ],
+        );
+        assert_eq!(
+            commands(&c.commit().unwrap()),
+            [(2, Command::SetJsResponder { block: true })]
+        );
+        // A component's responder blocks around itself while it has the
+        // touches; when it lets go, JS's block is back.
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::Start, &[inner, outer], 0.0, 0.0),
+        );
+        assert_eq!(
+            commands(&c.commit().unwrap()),
+            [(inner, Command::SetJsResponder { block: true })]
+        );
+        c.component_event(
+            ROOT_ID,
+            EventKind::Touch,
+            &touch(TouchPhase::End, &[inner, outer], 0.0, 16.0),
+        );
+        assert_eq!(
+            commands(&c.commit().unwrap()),
+            [(2, Command::SetJsResponder { block: true })]
+        );
+        apply(
+            &mut c,
+            vec![Op::Command {
+                id: ROOT_ID,
+                command: Command::ClearJsResponder,
+            }],
+        );
+        assert_eq!(
+            commands(&c.commit().unwrap()),
+            [(ROOT_ID, Command::ClearJsResponder)]
+        );
+    }
+}

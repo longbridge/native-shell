@@ -27,7 +27,9 @@ use crate::{
         ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall, Globals,
         ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position,
         PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
-        StyleRefinement, Theme, caught, view,
+        StyleRefinement, Theme, caught,
+        responder::ResponderEl,
+        view,
         virtual_list::{RowFn, VirtualListEl},
     },
 };
@@ -109,6 +111,8 @@ pub(super) struct Instance {
     /// nested components by their host (a handful: lists beat maps).
     handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
     event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
+    /// The last render's parts in the touch responder, by node.
+    responders: Vec<(NodeId, Rc<ResponderEl>)>,
     /// What the last render read of the environment.
     reads: RenderReads,
     /// The app's `style` on the host, applied after the root's own inline
@@ -138,6 +142,7 @@ impl Instance {
             slots: Vec::new(),
             handlers: Vec::new(),
             event_handlers: Vec::new(),
+            responders: Vec::new(),
             reads: RenderReads::default(),
             app_style,
             dirty: false,
@@ -242,6 +247,8 @@ pub(super) struct Components {
     insets: FxHashMap<NodeId, EdgeInsets>,
     /// JS listens to the back button (`BackHandler`) on the root.
     js_back: bool,
+    /// The touches the components hear and their responder.
+    pub(super) touch: super::touch::TouchState,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -272,6 +279,7 @@ impl Default for Components {
             virtual_lists: FxHashMap::default(),
             insets: FxHashMap::default(),
             js_back: false,
+            touch: super::touch::TouchState::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -1156,6 +1164,7 @@ impl<M: TextEngine> Core<M> {
         }
         inst.handlers.clear();
         inst.event_handlers.clear();
+        inst.responders.clear();
         let old = inst.root.take();
         let old_place = std::mem::replace(&mut inst.children_at, Placement::None);
         // The root is the host itself.
@@ -1179,6 +1188,10 @@ impl<M: TextEngine> Core<M> {
         for (kind, _) in &el.handlers {
             events.set(*kind, true);
         }
+        events.set(
+            EventKind::Touch,
+            events.contains(EventKind::Touch) || el.responder.is_some(),
+        );
         let new_children = std::mem::take(&mut el.children);
         let children = self.reconcile_children(host, old_children, new_children, host, inst);
         inst.root = Some(Expanded {
@@ -1295,6 +1308,11 @@ impl<M: TextEngine> Core<M> {
         for (kind, handler) in &el.handlers {
             mask.set(*kind, true);
             inst.handlers.push((id, *kind, handler.clone()));
+        }
+        // The responder hears the touches the platform reports.
+        if let Some(responder) = &el.responder {
+            mask.set(EventKind::Touch, true);
+            inst.responders.push((id, responder.clone()));
         }
         // Only the events that changed.
         let mut changed = mask.bits() ^ old.bits();
@@ -2019,17 +2037,31 @@ impl<M: TextEngine> Core<M> {
     /// A native event on node `id`: true when a component handled it (its
     /// own parts' events never reach JS, which does not know them).
     pub fn component_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
+        // Touches come on the root with the listening nodes around each
+        // finger: the components hear theirs, JS its own.
+        if kind == EventKind::Touch && id == ROOT_ID {
+            if let EventPayload::Touch(touch) = payload {
+                self.touches(payload, touch);
+            }
+            return false;
+        }
         if self.platform_event(id, kind, payload) {
             return true;
         }
-        let host = if self.is_host(id) {
-            id
-        } else if let Some(&h) = self.components.owners.get(&id) {
-            h
-        } else {
+        let Some(host) = self.host_of(id) else {
             return false;
         };
         self.handle(host, id, kind, payload) || id != host
+    }
+
+    /// The host of the component whose render node `id` is (itself for a
+    /// host).
+    pub(super) fn host_of(&self, id: NodeId) -> Option<NodeId> {
+        if self.is_host(id) {
+            Some(id)
+        } else {
+            self.components.owners.get(&id).copied()
+        }
     }
 
     /// Runs `host`'s component's handler of `kind` on its node `id`; false
@@ -2041,31 +2073,59 @@ impl<M: TextEngine> Core<M> {
         kind: EventKind,
         payload: &EventPayload,
     ) -> bool {
-        let mut cx = self.erased_cx(host);
-        let Some(inst) = self.components.instances.get_mut(&host) else {
+        let Some(listener) = self.handler(host, id, kind) else {
             return false;
         };
-        let Some(listener) = inst
+        self.run_listener(host, &listener, payload)
+    }
+
+    /// `host`'s component's handler of `kind` on its node `id`.
+    pub(super) fn handler(
+        &self,
+        host: NodeId,
+        id: NodeId,
+        kind: EventKind,
+    ) -> Option<Listener<EventPayload>> {
+        self.components
+            .instances
+            .get(&host)?
             .handlers
             .iter()
             .find(|(n, k, _)| *n == id && *k == kind)
             .map(|(_, _, l)| l.clone())
-        else {
-            return false;
-        };
+    }
+
+    /// The part of `host`'s node `id` in the touch responder.
+    pub(super) fn responder_el(&self, host: NodeId, id: NodeId) -> Option<Rc<ResponderEl>> {
+        self.components
+            .instances
+            .get(&host)?
+            .responders
+            .iter()
+            .find(|(n, _)| *n == id)
+            .map(|(_, r)| r.clone())
+    }
+
+    /// Runs `listener` of a node `host`'s render placed with the state it
+    /// changes (its component's, or a list row's owner's); false when that
+    /// component is gone.
+    pub(super) fn run_listener<E: ?Sized>(
+        &mut self,
+        host: NodeId,
+        listener: &Listener<E>,
+        event: &E,
+    ) -> bool {
         let Some(owner) = self.state_owner(host) else {
             return false;
         };
-        if owner != host {
-            cx = self.erased_cx(owner);
-        }
+        let mut cx = self.erased_cx(owner);
         let Some(inst) = self.components.instances.get_mut(&owner) else {
             return false;
         };
         let mut failed = None;
         if let Inner::Component(inner) = &mut inst.inner {
             let (state, props) = inner.parts();
-            failed = caught(|| (listener.0)(state, props, payload, &mut cx)).err();
+            failed = caught(|| (listener.0)(state, props, event, &mut cx)).err();
         }
         self.finish_event(owner, cx);
         if let Some(message) = failed {

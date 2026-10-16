@@ -735,6 +735,8 @@ pub struct ElNode {
     pub(crate) attrs: Attrs,
     pub(crate) style: StyleRefinement,
     pub(crate) handlers: Vec<(EventKind, Listener<EventPayload>)>,
+    /// Its part in the touch responder's negotiation.
+    pub(crate) responder: Option<Rc<super::responder::ResponderEl>>,
     pub(crate) children: Vec<ElNode>,
     pub(crate) kind: ElKind,
 }
@@ -753,6 +755,7 @@ impl ElNode {
             attrs: Attrs::default(),
             style: StyleRefinement::default(),
             handlers: Vec::new(),
+            responder: None,
             children: Vec::new(),
             kind: ElKind::Plain,
         }
@@ -1057,9 +1060,75 @@ pub trait Interactive: Element {
         self.on(EventKind::Layout, events::typed(listener, events::layout))
     }
 
-    /// Touches on it or inside it, every phase (custom gestures).
+    /// Touches on it or inside it, every phase (custom gestures): the
+    /// elements around the finger hear them from it outwards. To have them
+    /// alone, claim them ([`Interactive::claim_touches`]).
     fn on_touch(self, listener: Listener<TouchEvent>) -> Self {
         self.on(EventKind::Touch, events::typed(listener, events::touch))
+    }
+
+    /// Claims the touches of a gesture as `claim` says (TS:
+    /// `onStartShouldSetResponder`, `PanResponder`): as the responder it
+    /// hears them alone (`on_responder_*`), and native scroll views around
+    /// it stop taking them over. Several claims may be given.
+    fn claim_touches(mut self, claim: super::TouchClaim) -> Self {
+        super::responder::of(self.node()).claims.push(claim);
+        self
+    }
+
+    /// As the responder, refuses to hand the touches over to an element
+    /// around it that claims them (TS: `onResponderTerminationRequest`
+    /// returning false); a native scroll view that started dragging first
+    /// still takes them.
+    fn keep_touches(mut self, keep: bool) -> Self {
+        super::responder::of(self.node()).keep = keep;
+        self
+    }
+
+    /// It became the responder (TS: `onResponderGrant`).
+    fn on_responder_grant(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).grant = Some(listener);
+        self
+    }
+
+    /// It claimed the touches, but the responder kept them (TS:
+    /// `onResponderReject`).
+    fn on_responder_reject(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).reject = Some(listener);
+        self
+    }
+
+    /// As the responder, a finger went down (the first one too, after the
+    /// grant; TS: `onResponderStart`).
+    fn on_responder_start(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).start = Some(listener);
+        self
+    }
+
+    /// As the responder, the fingers moved (TS: `onResponderMove`).
+    fn on_responder_move(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).moved = Some(listener);
+        self
+    }
+
+    /// As the responder, a finger lifted (TS: `onResponderEnd`).
+    fn on_responder_end(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).end = Some(listener);
+        self
+    }
+
+    /// The last finger lifted: it is no longer the responder (TS:
+    /// `onResponderRelease`).
+    fn on_responder_release(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).release = Some(listener);
+        self
+    }
+
+    /// Another element or a native gesture took the touches over, or the
+    /// system cancelled them (TS: `onResponderTerminate`).
+    fn on_responder_terminate(mut self, listener: Listener<super::ResponderEvent>) -> Self {
+        super::responder::of(self.node()).terminate = Some(listener);
+        self
     }
 
     /// Drags move these values natively (by the drag's translation from

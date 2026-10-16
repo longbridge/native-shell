@@ -35,6 +35,7 @@ mod events;
 pub(crate) mod host;
 mod module;
 pub mod palette;
+pub(crate) mod responder;
 pub(crate) mod status_bar;
 mod style;
 pub(crate) mod task;
@@ -74,6 +75,7 @@ pub use self::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
         ModuleSpec,
     },
+    responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
     status_bar::StatusBarEntry,
     style::{
         AdaptiveColor, BorderCurve, FontWeight, Length, StyleRefinement, Styled, WritingDirection,
@@ -121,6 +123,7 @@ pub mod prelude {
         CanvasView,
         Child,
         Children,
+        ClaimRequest,
         Color,
         Component,
         ComponentElement,
@@ -166,6 +169,7 @@ pub mod prelude {
         NoEvent,
         Painter,
         PanEvent,
+        PanGesture,
         ParentElement,
         PointerEvents,
         Position,
@@ -173,6 +177,7 @@ pub mod prelude {
         Props,
         RenderCx,
         ResizeMode,
+        ResponderEvent,
         ReturnKeyType,
         Screen,
         ScreenAnimation,
@@ -189,6 +194,7 @@ pub mod prelude {
         Text,
         Theme,
         Timing,
+        TouchClaim,
         Video,
         VideoInfo,
         VideoProgress,

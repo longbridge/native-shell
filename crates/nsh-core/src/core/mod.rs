@@ -3,6 +3,7 @@ mod components;
 mod list;
 #[cfg(test)]
 mod tests;
+mod touch;
 
 use std::sync::Arc;
 
@@ -986,6 +987,23 @@ impl<M: TextEngine> Core<M> {
                 command: Command::SetStatusBar(patch),
             } => {
                 StatusBars::update(&self.components.globals, |bars| bars.set_base(patch));
+                Ok(())
+            }
+            // JS's responder blocks native scroll views as the components'
+            // does: the core sends both sides' blocks.
+            Op::Command {
+                id,
+                command: Command::SetJsResponder { block },
+            } => {
+                self.key(id)?;
+                self.block_native(touch::Side::Js, block.then_some(id));
+                Ok(())
+            }
+            Op::Command {
+                command: Command::ClearJsResponder,
+                ..
+            } => {
+                self.block_native(touch::Side::Js, None);
                 Ok(())
             }
             Op::Command { id, command } => {

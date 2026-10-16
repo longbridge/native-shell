@@ -27,6 +27,7 @@ mod platform;
 mod rust_anim;
 mod rust_app;
 mod rust_styles;
+mod rust_touch;
 mod shutdown;
 
 /// Hands the engine's batches to the test.

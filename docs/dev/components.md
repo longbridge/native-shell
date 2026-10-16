@@ -87,7 +87,8 @@ impl Component for Button {
   slot, as JSX children and slot props do: the content is nodes of this render, placed where the nested component's
   render places the app's). Their abilities are traits: `Styled`, `Accessible`, `Interactive` (`active` /
   `hover` / `focus` styles, `disabled`, `hit_slop`, and the typed events every element has: `on_press`,
-  `on_long_press`, `on_layout(Rect)`, `on_touch(TouchEvent)`, `on_pan_start`, ...), `ParentElement`, `FluentBuilder`
+  `on_long_press`, `on_layout(Rect)`, `on_touch(TouchEvent)`, `on_pan_start`, ..., the touch responder: below),
+  `ParentElement`, `FluentBuilder`
   (`when`, `when_some`, `map`). Each host element has its own props and typed events (`input().value(..)
   .on_change_text(cx.listener(|this, text: &str, cx| ..))`, `scroll().on_scroll(..)`, `modal().on_request_close(..)`);
   `on(kind, listener)` takes any native event with its raw payload. Host props are the core's `Prop`s, kept one per
@@ -119,6 +120,7 @@ impl Component for Button {
   | an error boundary (TS has none) | `fn catch_error(&mut self, error, cx) -> bool`: the nearest component above one whose code panicked (render, listener, method, task) handles it, typically keeping `error`, rendering a fallback and clearing it to try again; the failed one renders nothing until it renders again; unhandled errors are logged (`js` target) |
   | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
+  | `onStartShouldSetResponder`, `onMoveShouldSetResponder(Capture)`, `PanResponder.create` | `.claim_touches(TouchClaim::on_start())` (`::on_move()`, `.capture()`, `.ask(cx.listener(\|this, request: &ClaimRequest, cx\| request.claim()))` to decide with state and the gesture, `.block_native(false)`), `.keep_touches(true)` (`onResponderTerminationRequest` → false); `.on_responder_grant` / `_move` / `_release` / `_terminate` / `_start` / `_end` / `_reject` get a `ResponderEvent` (the finger's `location_x`, `page_x`, ... and `gesture: PanGesture`: `dx`, `dy`, `vx`, `vy`, the centroid; `PanGesture::begin` / `update` follow one from `on_touch`) |
   | `<text>a <text style={link} onPress={f}>b</text> <view/></text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
   | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no render) |
   | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
@@ -307,6 +309,17 @@ directly** and sending the ones that changed, no `split` / `merge` / `spread` (t
 the former JS runtime, cost more JS than the TSX component it replaced), no node for an absent slot, no event listener
 when no handler is passed. Benchmarks against the same Button in TSX: `docs/dev/performance.md` (`examples/bench`,
 `component_bench`).
+
+## Touches and the responder
+
+The platform reports touches on the root, each finger with the listening nodes around it (`docs/dev/elements.md`).
+The core takes the components' nodes on that path (`core/touch.rs`): their `on_touch` handlers hear the touches from
+the finger outwards, then the responder is negotiated among their `claim_touches` as `nsh-js` does among JS's
+handlers (captures from the outermost in, then from the finger outwards; with a responder, only the nodes around it;
+`keep_touches` refuses to hand over), and the responder's listeners get the events with the gesture. Claims without
+`ask` are decided from the element, running no component code. The event goes on to JS for its own nodes; each side
+negotiates its own responder, and the core sends both sides' `SetJsResponder` / `ClearJsResponder` (the one that
+blocked last wins while both do, and the other's block comes back when it lets go).
 
 ## Native components of the embedder
 

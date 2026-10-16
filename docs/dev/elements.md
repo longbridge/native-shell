@@ -95,7 +95,9 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
   negotiation runs as in React Native, natively (`nsh-js` `touch.rs`), asking the app's handlers. A grant returning true
   (PanResponder's default) sends `SetJsResponder`: scroll
   views around stop taking the touches (UIKit: their pan recognizer is disabled; Android: `ScrollBox.jsBlocked`); a native
-  scroll view that starts dragging first cancels the JS touches.
+  scroll view that starts dragging first cancels the JS touches. Rust components' nodes on the path hear the same
+  event first and negotiate their own responder in the core (`claim_touches`, `docs/dev/components.md`); the core
+  sends both sides' blocks.
 - **Accessibility**: `accessible`, `accessibilityLabel` / `Hint` / `Role` (`role`) / `State` / `Value` / `Actions` +
   `onAccessibilityAction`, `accessibilityElementsHidden`, `importantForAccessibility`, `accessibilityLiveRegion`, `testID`
   (Android: resource id). Views without a label read their texts.
