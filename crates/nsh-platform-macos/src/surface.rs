@@ -128,6 +128,8 @@ pub(crate) struct Surface {
     pub(crate) nav: RefCell<crate::navigation::Nav>,
     /// Pointer input state ([`crate::input`]).
     pub(crate) input: crate::input::Input,
+    /// The text selection ([`crate::text::Selected`]).
+    pub(crate) selection: crate::text::Selected,
     engine: RefCell<Option<Engine>>,
     control: RefCell<Option<EngineControl>>,
     rx: RefCell<Option<Receiver<Message>>>,
@@ -144,6 +146,10 @@ pub(crate) struct Surface {
     frame_callbacks: RefCell<Vec<FrameCallback>>,
     /// The display link, while it runs.
     link: RefCell<Option<Retained<CADisplayLink>>>,
+    /// When the last frame ran (`CACurrentMediaTime`), and whether the
+    /// fallback timer is scheduled ([`Surface::watch_link`]).
+    last_tick: Cell<f64>,
+    fallback: Cell<bool>,
     on_error: RefCell<Option<ErrorHandler>>,
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
@@ -169,6 +175,7 @@ impl Surface {
             anim: RefCell::new(UiAnimation::default()),
             nav: RefCell::default(),
             input: Default::default(),
+            selection: Default::default(),
             engine: RefCell::new(None),
             control: RefCell::new(None),
             rx: RefCell::new(None),
@@ -178,12 +185,20 @@ impl Surface {
             js_frame: Cell::new(false),
             frame_callbacks: RefCell::default(),
             link: RefCell::new(None),
+            last_tick: Cell::new(0.0),
+            fallback: Cell::new(false),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
             native: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
+        // CoreText's first use loads fonts and caches (tens of
+        // milliseconds): done off the main thread before the first text.
+        static PREWARM: std::sync::Once = std::sync::Once::new();
+        PREWARM.call_once(|| {
+            std::thread::spawn(crate::text::prewarm);
+        });
         root.set_surface(Rc::downgrade(&surface));
         surface
     }
@@ -374,6 +389,7 @@ impl Surface {
         if !self.wants_frames() {
             return;
         }
+        self.watch_link();
         if let Some(link) = &*self.link.borrow() {
             link.setPaused(false);
             return;
@@ -398,8 +414,38 @@ impl Surface {
         *self.link.borrow_mut() = Some(link);
     }
 
+    /// Keeps frames coming when the display link stops: it does not fire
+    /// while the window is occluded or minimized, or the screen is locked,
+    /// and animations must still end (a transition detaches its views when
+    /// it does, a modal reports its dismissal). While frames are wanted and
+    /// the link has not ticked for 100 ms, a 60 Hz main-queue timer ticks
+    /// instead.
+    fn watch_link(self: &Rc<Self>) {
+        if self.fallback.replace(true) {
+            return;
+        }
+        fn check(key: u64) {
+            let Some(surface) = find(key) else { return };
+            if !surface.wants_frames() {
+                surface.fallback.set(false);
+                return;
+            }
+            let now = objc2_quartz_core::CACurrentMediaTime();
+            let stalled = now - surface.last_tick.get() > 0.1;
+            if stalled {
+                surface.last_tick.set(now);
+                quiet(|| surface.tick(now));
+            }
+            let delay = if stalled { 16 } else { 100 };
+            after(delay, move || check(key));
+        }
+        let key = self.key;
+        after(100, move || check(key));
+    }
+
     fn ticked(self: &Rc<Self>, link: &CADisplayLink) {
         let now = link.timestamp();
+        self.last_tick.set(objc2_quartz_core::CACurrentMediaTime());
         quiet(|| self.tick(now));
         if !self.wants_frames() {
             link.setPaused(true);
@@ -434,6 +480,14 @@ impl Drop for Surface {
             link.invalidate();
         }
         let _ = SURFACES.try_with(|s| s.borrow_mut().remove(&key));
+    }
+}
+
+/// Runs `f` on the main queue after `ms` milliseconds.
+fn after(ms: u64, f: impl FnOnce() + Send + 'static) {
+    let when = dispatch2::DispatchTime::NOW.time((ms * 1_000_000) as i64);
+    if let Err(err) = DispatchQueue::main().after(when, f) {
+        log::error!("cannot schedule a frame: {err:?}");
     }
 }
 

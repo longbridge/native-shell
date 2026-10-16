@@ -193,7 +193,17 @@ impl ViewState {
     /// The opacity it is drawn with.
     pub(crate) fn opacity(&self) -> f32 {
         let live = self.live.as_ref().map_or(1.0, |l| l.opacity);
-        self.anim.opacity.unwrap_or(self.style.opacity) * self.fade * live
+        // `filter: opacity()` scales it like the property.
+        let filters = self.style.effects.as_ref().map_or(1.0, |e| {
+            e.filters
+                .iter()
+                .map(|f| match *f {
+                    nsh_core::Filter::Opacity(o) => o,
+                    _ => 1.0,
+                })
+                .product()
+        });
+        self.anim.opacity.unwrap_or(self.style.opacity) * self.fade * live * filters
     }
 
     /// Its shadow, with animated color, opacity and radius.
@@ -218,27 +228,6 @@ impl ViewState {
     /// Its background color, animated or not.
     pub(crate) fn background(&self) -> nsh_core::Color {
         self.anim.background.unwrap_or(self.style.background_color)
-    }
-
-    /// The corner radii (top left, top right, bottom right, bottom left),
-    /// clamped as CSS clamps them to the box.
-    pub(crate) fn radii(&self) -> [f32; 4] {
-        let s = &self.style;
-        let mut r: [f32; 4] =
-            std::array::from_fn(|i| s.corner_radius[i].unwrap_or(s.border_radius));
-        let (w, h) = (self.frame.width, self.frame.height);
-        let sums = [r[0] + r[1], r[1] + r[2], r[2] + r[3], r[3] + r[0]];
-        let lens = [w, h, w, h];
-        let f = sums
-            .iter()
-            .zip(lens)
-            .filter(|(s, _)| **s > 0.0)
-            .map(|(s, l)| l / s)
-            .fold(1.0f32, f32::min);
-        if f < 1.0 {
-            r.iter_mut().for_each(|v| *v *= f);
-        }
-        r
     }
 
     /// True if its children are clipped to its rounded bounds.
@@ -397,7 +386,7 @@ define_class!(
             // get theirs.
             let root = self.ivars().surface.borrow().strong_count() > 0;
             match hit {
-                Some(v) if root && is_ours(&v) => Some(Retained::from(&**self)),
+                Some(v) if root && is_ours(&v) => Some(self.root_hit(point)),
                 other => other,
             }
         }
@@ -409,7 +398,10 @@ define_class!(
 
         #[unsafe(method(acceptsFirstResponder))]
         fn accepts_first_responder(&self) -> bool {
-            self.ivars().surface.borrow().strong_count() > 0
+            // A click outside a field that edits leaves the focus in it, as
+            // desktop apps do (`blur()` and Escape still hand it over).
+            self.surface()
+                .is_some_and(|s| !(crate::text_input::editing(&s) && clicking(self.mtm())))
         }
 
         #[unsafe(method(mouseDown:))]
@@ -491,6 +483,22 @@ define_class!(
             self.pointer(event);
         }
 
+        /// The Edit menu's Copy (Cmd+C): the selected text.
+        #[unsafe(method(copy:))]
+        fn copy(&self, _sender: Option<&AnyObject>) {
+            if let Some(surface) = self.surface() {
+                crate::text::copy(&surface);
+            }
+        }
+
+        /// The Edit menu's Select All (Cmd+A): a selectable text's.
+        #[unsafe(method(selectAll:))]
+        fn select_all(&self, _sender: Option<&AnyObject>) {
+            if let Some(surface) = self.surface() {
+                crate::text::select_all(&surface);
+            }
+        }
+
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
             let handled = self
@@ -549,6 +557,27 @@ define_class!(
 impl ViewObj {
     fn surface(&self) -> Option<std::rc::Rc<Surface>> {
         self.ivars().surface.borrow().upgrade()
+    }
+
+    /// What the root's `hitTest:` returns over an app view: a hosted
+    /// AppKit view nsh's picking lands on (past overlays that let the
+    /// pointer through), else the root itself. `point` is in the root's
+    /// superview's coordinates.
+    fn root_hit(&self, point: NSPoint) -> Retained<NSView> {
+        let me = || Retained::from(&**self);
+        let Some(surface) = self.surface() else {
+            return me();
+        };
+        let outer = superview(self);
+        let p = self.convertPoint_fromView(point, outer.as_deref());
+        let Some(native) = crate::input::native_at(&surface, p.x as f32, p.y as f32) else {
+            return me();
+        };
+        let Some(holder) = superview(&native) else {
+            return me();
+        };
+        let q = holder.convertPoint_fromView(point, outer.as_deref());
+        native.hitTest(q).unwrap_or_else(me)
     }
 
     fn pointer(&self, event: &NSEvent) {
@@ -611,6 +640,21 @@ define_class!(
 /// a hosted AppKit view.
 pub(crate) fn is_ours(view: &NSView) -> bool {
     view.downcast_ref::<ViewObj>().is_some() || view.downcast_ref::<Container>().is_some()
+}
+
+/// Whether the event AppKit handles is a mouse press.
+fn clicking(mtm: MainThreadMarker) -> bool {
+    use objc2_app_kit::{NSApplication, NSEventType};
+    NSApplication::sharedApplication(mtm)
+        .currentEvent()
+        .is_some_and(|e| {
+            matches!(
+                e.r#type(),
+                NSEventType::LeftMouseDown
+                    | NSEventType::RightMouseDown
+                    | NSEventType::OtherMouseDown
+            )
+        })
 }
 
 /// `view`'s superview.
@@ -776,6 +820,10 @@ impl NshView {
     /// Something it draws changed: content (text, canvas) is drawn again
     /// and the decoration applied again.
     pub(crate) fn changed(&self) {
+        // Opacity is the layer's (an animated one changes without a move).
+        if let Some(layer) = self.ns().layer() {
+            layer.setOpacity(self.state().opacity().clamp(0.0, 1.0));
+        }
         crate::decor::apply(self);
         if self.state().draws() {
             self.ns().setNeedsDisplay(true);
@@ -810,13 +858,16 @@ impl NshView {
                 ns_rect(x, y, f.width, f.height),
                 s.transform(),
                 s.opacity(),
-                s.style.hidden || crate::decor::backface_away(&s),
+                // A hidden NSView (a screen under the top one) keeps its
+                // layer hidden too.
+                s.style.hidden || crate::decor::backface_away(&s) || self.ns().isHidden(),
                 s.id == ROOT_ID && self.ivars().surface.borrow().strong_count() > 0,
             )
         };
         if !root && self.ns().frame() != rect {
             self.ns().setFrame(rect);
             self.size_container();
+            crate::native::resized(self);
             self.place_natives();
         }
         if let Some(layer) = self.ns().layer() {
@@ -918,7 +969,12 @@ impl NshView {
     /// Whether the pointer may target it (`pointerEvents` and visibility).
     pub(crate) fn can_target(&self) -> bool {
         let s = self.state();
-        !s.style.hidden && !matches!(s.props.pointer_events, PointerEvents::None)
+        !s.style.hidden
+            && !matches!(s.props.pointer_events, PointerEvents::None)
+            // Animating out (`LayoutAnimation`): already gone for input.
+            && !s.live.as_ref().is_some_and(|l| l.dying())
+            // A screen under the top one, a modal leaving.
+            && !self.ns().isHidden()
     }
 
     /// An object for `msg_send!` calls AppKit's bindings lack.

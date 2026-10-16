@@ -8,18 +8,24 @@
 //! |---|---|
 //! | `wait <ms>` | Waits. |
 //! | `shot <file.png>` | Renders the window's content to a PNG (in process, whatever covers the window). |
-//! | `tap <x> <y>` | Presses and releases the left button at a point (points, from the content's top left). |
-//! | `drag <x0> <y0> <x1> <y1> [ms]` | Presses, moves in steps over `ms` (default 300), releases. |
-//! | `wheel <x> <y> <dx> <dy>` | A precise (trackpad) scroll by `(dx, dy)` points: positive moves the content up / left. |
+//! | `tap <x> <y> [count]` | Presses and releases the left button at a point (points, from the content's top left); `count` clicks in a row (2: a double click). |
+//! | `rtap <x> <y>` | Presses and releases the right button (a secondary click). |
+//! | `drag <x0> <y0> <x1> <y1> [ms]` | Moves the pointer to the start, presses, moves in steps a frame apart over `ms` (default 300), releases. |
+//! | `wheel <x> <y> <dx> <dy> [ms]` | A trackpad scroll gesture by `(dx, dy)` points over `ms` (default 100): phase began, changed events a frame apart, ended; no momentum. Positive moves the content up / left. |
+//! | `notch <x> <y> <dx> <dy>` | A mouse wheel: one event of `(dx, dy)` lines, without phases. Positive moves the content up / left. |
 //! | `hover <x> <y>` | Moves the pointer. |
 //! | `type <text>` | Types into the focused field. |
-//! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `space`, or one character. |
+//! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `space`, or one character; with modifiers before it, as in `cmd+a`, `shift+Tab` (`cmd`, `shift`, `alt`, `ctrl`). Keys with `cmd` go through the application (menus, key monitors). |
 //! | `dark` / `light` | Switches the app's window to that appearance (as the system's would). |
 //! | `resize <w> <h>` | Resizes the window's content. |
 //! | `quit` | Closes the window. |
 //!
-//! Events go through the window (`sendEvent:`), so they take the path
-//! real ones take: AppKit's hit testing, the root view, [`crate::input`].
+//! Mouse button and move events go through the application's event queue
+//! (`postEvent:atStart:`), wheels and keys through the window
+//! (`sendEvent:`), so they take the path real ones take: AppKit's hit
+//! testing, the root view, [`crate::input`]. `hover` makes the window
+//! accept mouse moves (sent moves reach the first responder only then;
+//! real ones come through the root's tracking area).
 
 use std::{rc::Rc, time::Duration};
 
@@ -39,14 +45,19 @@ use crate::surface::Surface;
 enum Step {
     Wait(u64),
     Shot(String),
-    Tap(f64, f64),
+    Tap(f64, f64, u32),
+    RightTap(f64, f64),
     Drag(f64, f64, f64, f64, u64),
-    Wheel(f64, f64, f64, f64),
+    Wheel(f64, f64, f64, f64, u64),
+    Notch(f64, f64, f64, f64),
     Hover(f64, f64),
     /// A drag's move (internal: [`Step::Drag`] queues them).
     DragTo(f64, f64),
     /// A drag's release (internal).
     Release(f64, f64),
+    /// One event of a wheel gesture (internal: [`Step::Wheel`] queues
+    /// them): a point delta and a `CGScrollPhase`.
+    WheelEvent(f64, f64, i32, i32, i64),
     Type(String),
     Key(String),
     Appearance(bool),
@@ -71,10 +82,14 @@ fn parse(script: &str) -> Vec<Step> {
         let step = match (name, nums.as_slice()) {
             ("wait", [ms]) => Some(Step::Wait(*ms as u64)),
             ("shot", _) if !rest.is_empty() => Some(Step::Shot(rest.to_owned())),
-            ("tap", [x, y]) => Some(Step::Tap(*x, *y)),
+            ("tap", [x, y]) => Some(Step::Tap(*x, *y, 1)),
+            ("tap", [x, y, n]) if *n >= 1.0 => Some(Step::Tap(*x, *y, *n as u32)),
+            ("rtap", [x, y]) => Some(Step::RightTap(*x, *y)),
             ("drag", [x0, y0, x1, y1]) => Some(Step::Drag(*x0, *y0, *x1, *y1, 300)),
             ("drag", [x0, y0, x1, y1, ms]) => Some(Step::Drag(*x0, *y0, *x1, *y1, *ms as u64)),
-            ("wheel", [x, y, dx, dy]) => Some(Step::Wheel(*x, *y, *dx, *dy)),
+            ("wheel", [x, y, dx, dy]) => Some(Step::Wheel(*x, *y, *dx, *dy, 100)),
+            ("wheel", [x, y, dx, dy, ms]) => Some(Step::Wheel(*x, *y, *dx, *dy, *ms as u64)),
+            ("notch", [x, y, dx, dy]) => Some(Step::Notch(*x, *y, *dx, *dy)),
             ("hover", [x, y]) => Some(Step::Hover(*x, *y)),
             ("type", _) => Some(Step::Type(rest.to_owned())),
             ("key", _) if !rest.is_empty() => Some(Step::Key(rest.to_owned())),
@@ -149,11 +164,19 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
     match step {
         Step::Wait(ms) => return Some(ms),
         Step::Shot(path) => shot(window, &path),
-        Step::Tap(x, y) => {
-            mouse(window, NSEventType::LeftMouseDown, x, y, 1);
-            mouse(window, NSEventType::LeftMouseUp, x, y, 1);
+        Step::Tap(x, y, count) => {
+            for clicks in 1..=count as isize {
+                mouse(window, NSEventType::LeftMouseDown, x, y, clicks);
+                mouse(window, NSEventType::LeftMouseUp, x, y, clicks);
+            }
+        }
+        Step::RightTap(x, y) => {
+            mouse(window, NSEventType::RightMouseDown, x, y, 1);
+            mouse(window, NSEventType::RightMouseUp, x, y, 1);
         }
         Step::Drag(x0, y0, x1, y1, ms) => {
+            // A real pointer arrives before it presses (hover state).
+            mouse(window, NSEventType::MouseMoved, x0, y0, 0);
             mouse(window, NSEventType::LeftMouseDown, x0, y0, 1);
             // The moves run as steps of their own, a frame apart.
             let frames = (ms / 16).max(1);
@@ -170,8 +193,35 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
         }
         Step::DragTo(x, y) => mouse(window, NSEventType::LeftMouseDragged, x, y, 1),
         Step::Release(x, y) => mouse(window, NSEventType::LeftMouseUp, x, y, 1),
-        Step::Hover(x, y) => mouse(window, NSEventType::MouseMoved, x, y, 0),
-        Step::Wheel(x, y, dx, dy) => wheel(window, x, y, dx, dy),
+        Step::Hover(x, y) => {
+            // Synthesized moves reach the first responder only so.
+            window.setAcceptsMouseMovedEvents(true);
+            mouse(window, NSEventType::MouseMoved, x, y, 0);
+        }
+        Step::Wheel(x, y, dx, dy, ms) => {
+            // CGScrollPhase: began, then changed events a frame apart
+            // carrying the distance, then ended (with no momentum after).
+            let frames = (ms / 16).max(1) as i64;
+            let mut queued = vec![Step::WheelEvent(x, y, 0, 0, 1)];
+            // Whole points (as the event carries them) that add up to the
+            // distance.
+            let (mut sent_x, mut sent_y) = (0i32, 0i32);
+            for i in 1..=frames {
+                let t = i as f64 / frames as f64;
+                let (to_x, to_y) = ((dx * t).round() as i32, (dy * t).round() as i32);
+                queued.push(Step::WheelEvent(x, y, to_x - sent_x, to_y - sent_y, 2));
+                (sent_x, sent_y) = (to_x, to_y);
+            }
+            queued.push(Step::WheelEvent(x, y, 0, 0, 4));
+            let mut steps = runner.steps.borrow_mut();
+            for s in queued.into_iter().rev() {
+                steps.push_front(s);
+            }
+        }
+        Step::WheelEvent(x, y, dx, dy, phase) => wheel(window, x, y, dx, dy, Some(phase)),
+        Step::Notch(x, y, dx, dy) => {
+            wheel(window, x, y, dx.round() as i32, dy.round() as i32, None)
+        }
         Step::Type(text) => type_text(window, &text),
         Step::Key(name) => key(window, &name),
         Step::Appearance(dark) => {
@@ -212,7 +262,11 @@ fn mouse(window: &NSWindow, kind: NSEventType, x: f64, y: f64, clicks: isize) {
         if clicks > 0 { 1.0 } else { 0.0 },
     );
     if let Some(event) = event {
-        window.sendEvent(&event);
+        // Through the event queue, as real clicks come: the event becomes
+        // `NSApp.currentEvent` while it is handled (responders look at it).
+        // The run loop handles it before the next step's timer.
+        objc2_app_kit::NSApplication::sharedApplication(MainThreadMarker::from(window))
+            .postEvent_atStart(&event, false);
     }
 }
 
@@ -221,31 +275,36 @@ fn timestamp() -> f64 {
     objc2_foundation::NSProcessInfo::processInfo().systemUptime()
 }
 
-fn wheel(window: &NSWindow, x: f64, y: f64, dx: f64, dy: f64) {
+/// A scroll of `(dx, dy)`: points of a trackpad gesture in `phase` (a
+/// `CGScrollPhase`), or lines of a mouse wheel (`None`).
+fn wheel(window: &NSWindow, x: f64, y: f64, dx: i32, dy: i32, phase: Option<i64>) {
     use objc2_core_graphics::{CGEvent, CGEventField, CGScrollEventUnit};
-    // A pixel (precise) scroll, as a trackpad sends: content follows the
-    // fingers, so a positive `dy` (content up) is a negative delta.
-    let Some(event) = CGEvent::new_scroll_wheel_event2(
-        None,
-        CGScrollEventUnit::Pixel,
-        2,
-        -dy.round() as i32,
-        -dx.round() as i32,
-        0,
-    ) else {
+    // Content follows the fingers (or the wheel), so a positive `dy`
+    // (content up) is a negative delta.
+    let unit = match phase {
+        Some(_) => CGScrollEventUnit::Pixel,
+        None => CGScrollEventUnit::Line,
+    };
+    let Some(event) = CGEvent::new_scroll_wheel_event2(None, unit, 2, -dy, -dx, 0) else {
         return;
     };
+    // A window-less event's `locationInWindow` is its screen point, which
+    // `sendEvent:` takes as a window point: place it so that they match.
     let p = to_window(window, x, y);
-    let screen = window.convertPointToScreen(p);
     let main_height = objc2_app_kit::NSScreen::screens(MainThreadMarker::from(window))
         .firstObject()
         .map_or(0.0, |s| s.frame().size.height);
     CGEvent::set_location(
         Some(&event),
-        objc2_core_foundation::CGPoint::new(screen.x, main_height - screen.y),
+        objc2_core_foundation::CGPoint::new(p.x, main_height - p.y),
     );
-    // Phase "changed" (a trackpad gesture, not a notched wheel).
-    CGEvent::set_integer_value_field(Some(&event), CGEventField::ScrollWheelEventScrollPhase, 2);
+    if let Some(phase) = phase {
+        CGEvent::set_integer_value_field(
+            Some(&event),
+            CGEventField::ScrollWheelEventScrollPhase,
+            phase,
+        );
+    }
     if let Some(ns) = NSEvent::eventWithCGEvent(&event) {
         window.sendEvent(&ns);
     }
@@ -254,11 +313,24 @@ fn wheel(window: &NSWindow, x: f64, y: f64, dx: f64, dy: f64) {
 fn type_text(window: &NSWindow, text: &str) {
     for c in text.chars() {
         let s = c.to_string();
-        key_event(window, &s, 0);
+        key_event(window, &s, 0, NSEventModifierFlags::empty());
     }
 }
 
 fn key(window: &NSWindow, name: &str) {
+    let mut flags = NSEventModifierFlags::empty();
+    let mut name = name;
+    // `cmd++` is Command and `+`.
+    while let Some((modifier, rest)) = name.split_once('+').filter(|(_, r)| !r.is_empty()) {
+        flags |= match modifier {
+            "cmd" => NSEventModifierFlags::Command,
+            "shift" => NSEventModifierFlags::Shift,
+            "alt" => NSEventModifierFlags::Option,
+            "ctrl" => NSEventModifierFlags::Control,
+            _ => break,
+        };
+        name = rest;
+    }
     // (characters, virtual key code)
     let (chars, code): (String, u16) = match name {
         "Return" => ("\r".into(), 36),
@@ -276,16 +348,16 @@ fn key(window: &NSWindow, name: &str) {
         "End" => ("\u{f72b}".into(), 119),
         other => (other.into(), 0),
     };
-    key_event(window, &chars, code);
+    key_event(window, &chars, code, flags);
 }
 
-fn key_event(window: &NSWindow, chars: &str, code: u16) {
+fn key_event(window: &NSWindow, chars: &str, code: u16, flags: NSEventModifierFlags) {
     let s = NSString::from_str(chars);
     for kind in [NSEventType::KeyDown, NSEventType::KeyUp] {
         let event = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
             kind,
             NSPoint::new(0.0, 0.0),
-            NSEventModifierFlags::empty(),
+            flags,
             timestamp(),
             window.windowNumber(),
             None,
@@ -294,7 +366,13 @@ fn key_event(window: &NSWindow, chars: &str, code: u16) {
             false,
             code,
         );
-        if let Some(event) = event {
+        let Some(event) = event else { continue };
+        if flags.contains(NSEventModifierFlags::Command) {
+            // Key equivalents (menus) and key monitors are the
+            // application's.
+            objc2_app_kit::NSApplication::sharedApplication(MainThreadMarker::from(window))
+                .sendEvent(&event);
+        } else {
             window.sendEvent(&event);
         }
     }
@@ -330,14 +408,21 @@ mod tests {
     #[test]
     fn parses_steps() {
         assert_eq!(
-            parse("wait 500; shot a.png\ntap 10 20; drag 1 2 3 4 100; key Return; quit; nope"),
+            parse(
+                "wait 500; shot a.png\ntap 10 20; drag 1 2 3 4 100; key Return; quit; nope; \
+                 tap 1 2 2; rtap 3 4; wheel 1 2 0 50; notch 1 2 0 -3"
+            ),
             vec![
                 Step::Wait(500),
                 Step::Shot("a.png".into()),
-                Step::Tap(10.0, 20.0),
+                Step::Tap(10.0, 20.0, 1),
                 Step::Drag(1.0, 2.0, 3.0, 4.0, 100),
                 Step::Key("Return".into()),
                 Step::Quit,
+                Step::Tap(1.0, 2.0, 2),
+                Step::RightTap(3.0, 4.0),
+                Step::Wheel(1.0, 2.0, 0.0, 50.0, 100),
+                Step::Notch(1.0, 2.0, 0.0, -3.0),
             ]
         );
     }

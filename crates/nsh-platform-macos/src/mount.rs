@@ -331,10 +331,10 @@ impl Mounter {
         if view.has_parent() {
             view.unparent();
         }
-        if let Some(parent) = parent {
-            if parent.kind() == ViewKind::Stack {
-                crate::navigation::stack_changed(surface, &parent, None);
-            }
+        if let Some(parent) = parent
+            && parent.kind() == ViewKind::Stack
+        {
+            crate::navigation::stack_changed(surface, &parent, None);
         }
     }
 

@@ -189,6 +189,7 @@ impl AppView {
         self.surface
             .native
             .set_asset_base(options.asset_base.clone());
+        self.surface.native.set_app(&config.app);
         self.surface.start(config);
     }
 

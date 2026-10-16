@@ -23,6 +23,7 @@
 mod access;
 mod animation;
 mod app;
+mod blur;
 mod canvas;
 mod decor;
 #[cfg(feature = "dev")]
@@ -41,6 +42,7 @@ mod text;
 mod text_input;
 mod transition;
 mod view;
+mod visual;
 
 pub use nsh_core::platform::Appearance;
 pub use nsh_engine::{App, Bundle, Root};

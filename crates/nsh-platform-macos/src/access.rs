@@ -1,33 +1,588 @@
 //! Accessibility: roles, labels, values and states of views for VoiceOver
-//! (`NSAccessibility`).
+//! (`NSAccessibility`), from the views' `ViewProps` and text.
+//!
+//! Every [`NshView`] is an `NSView`, which implements `NSAccessibility`
+//! with settable attributes; this module sets them. Each view gets:
+//!
+//! - a role ([`role_for`]): the `accessibilityRole`'s, static text for
+//!   text views, a button for views with press handlers, an image for
+//!   labelled images, a group for other labelled views, none otherwise (the
+//!   view is no element then, and VoiceOver goes through to its children);
+//! - its label (`accessibilityLabel`; a text view's text is its value, as
+//!   VoiceOver reads static text), its help (`accessibilityHint`), its
+//!   value (`accessibilityValue`: a range for range roles, the text
+//!   otherwise; the checked state of checkable roles) and its states
+//!   (`accessibilityState`);
+//! - `accessible={true}` makes it one element: its children are hidden
+//!   from VoiceOver (the core labels it with their text);
+//!   `accessibilityElementsHidden` hides it and its subtree;
+//! - its `testID` as its accessibility identifier (what UI tests find).
+//!
+//! Live regions are emulated by announcing a changed label or text
+//! (`NSAccessibilityAnnouncementRequestedNotification`);
+//! `accessibilityActions` are not exposed.
+//!
+//! Every update is diffed against what was last given to AppKit
+//! ([`Applied`]): `ViewProps` also carries touch properties, and `Text`
+//! items come again on every relayout.
 
 use std::sync::Arc;
 
-use nsh_core::MountBatch;
+use nsh_core::{
+    Accessibility, AccessibilityRole as Role, AttributedText, Checked, EventKind, EventMask,
+    LiveRegion, MountBatch, ViewKind,
+};
+use objc2::{MainThreadOnly, rc::Retained, runtime::AnyObject};
+use objc2_app_kit::{
+    NSAccessibility, NSAccessibilityAnnouncementKey,
+    NSAccessibilityAnnouncementRequestedNotification, NSAccessibilityLayoutChangedNotification,
+    NSAccessibilityPostNotificationWithUserInfo, NSAccessibilityPriorityKey,
+    NSAccessibilityPriorityLevel, NSAccessibilityUIElementsKey, NSView,
+};
+use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
 
 use crate::view::NshView;
 
-/// What accessibility last gave AppKit for a view.
-#[derive(Default)]
-pub(crate) struct Applied {}
+/// What was last given to AppKit for one view.
+#[derive(Debug, Default)]
+pub(crate) struct Applied {
+    /// The applied description; `None` until the first update.
+    spec: Option<Box<Spec>>,
+    /// The text a text view's label was taken from.
+    text: Option<Arc<AttributedText>>,
+    /// The `testID` set as the identifier.
+    test_id: Option<Arc<str>>,
+}
 
-/// A batch is about to be applied.
+/// The kinds of element nsh makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ax {
+    /// No element.
+    Generic,
+    Button,
+    Link,
+    Text,
+    Image,
+    Group,
+    Heading,
+    Slider,
+    CheckBox,
+    Switch,
+    Radio,
+    RadioGroup,
+    ComboBox,
+    Menu,
+    MenuBar,
+    MenuItem,
+    Progress,
+    ScrollBar,
+    SpinButton,
+    Tab,
+    TabList,
+    Toolbar,
+    List,
+    Grid,
+    Search,
+    Alert,
+    Status,
+    Timer,
+}
+
+/// A view's value.
+#[derive(Debug, Clone, PartialEq)]
+enum Value {
+    None,
+    /// Read as text.
+    Text(String),
+    /// A checked state (0, 1, 2: mixed).
+    Checked(i32),
+    /// A range.
+    Range {
+        min: Option<f32>,
+        max: Option<f32>,
+        now: Option<f32>,
+        text: Option<Arc<str>>,
+    },
+}
+
+/// Everything set on a view's accessibility attributes.
+#[derive(Debug, Clone, PartialEq)]
+struct Spec {
+    role: Ax,
+    label: Option<String>,
+    help: Option<String>,
+    value: Value,
+    disabled: bool,
+    selected: bool,
+    expanded: Option<bool>,
+    /// Hidden with its subtree.
+    hidden: bool,
+    /// One element: its children are not exposed.
+    grouped: bool,
+}
+
+/// A batch is about to be applied. (AppKit takes roles at any time, so
+/// views get theirs with their props.)
 pub(crate) fn prepare(_batch: &MountBatch) {}
 
-/// A view was created.
-pub(crate) fn created(_view: &NshView) {}
+/// A view was created: it is no element until its props say so.
+pub(crate) fn created(view: &NshView) {
+    view.ns().setAccessibilityElement(false);
+}
 
-/// A view's props changed.
-pub(crate) fn props_changed(_view: &NshView) {}
+/// The view's props changed.
+pub(crate) fn props_changed(view: &NshView) {
+    let test_id = {
+        let s = view.state();
+        let id = &s.props.test_id;
+        (*id != s.access.test_id).then(|| id.clone())
+    };
+    if let Some(id) = test_id {
+        let ns = id.as_deref().map(NSString::from_str);
+        view.ns().setAccessibilityIdentifier(ns.as_deref());
+        view.state_mut().access.test_id = id;
+    }
+    update(view);
+}
 
-/// A view's events changed.
-pub(crate) fn events_changed(_view: &NshView) {}
+/// The view's event listeners changed: views with press handlers are
+/// buttons.
+pub(crate) fn events_changed(view: &NshView) {
+    update(view);
+}
 
 /// A text view's text changed.
-pub(crate) fn text_changed(_view: &NshView) {}
+pub(crate) fn text_changed(view: &NshView) {
+    let first = {
+        let mut s = view.state_mut();
+        let s = &mut *s;
+        let Some(drawn) = &s.text else { return };
+        let old = s.access.text.replace(drawn.text.clone());
+        match old {
+            Some(old) if Arc::ptr_eq(&old, &drawn.text) || old.text == drawn.text.text => return,
+            old => old.is_none(),
+        }
+    };
+    if update(view) && !first {
+        announce_live(view);
+    }
+}
 
-/// A view's label (from its text descendants).
-pub(crate) fn label(_view: &NshView, _label: &Option<Arc<str>>) {}
+/// `MountItem::AccessibilityLabel`: the view's label changed, and nothing
+/// else. The label is kept in the view's props, so that the next
+/// `ViewProps` diffs against it; a label of a live region is announced.
+pub(crate) fn label(view: &NshView, label: &Option<Arc<str>>) {
+    {
+        let mut s = view.state_mut();
+        if s.props.accessibility.label == *label {
+            return;
+        }
+        s.props.accessibility.label = label.clone();
+    }
+    update(view);
+}
 
-/// Moves accessibility (and keyboard) focus to `view`.
-pub(crate) fn focus(_view: &NshView) {}
+/// Moves VoiceOver (and, for an input, the keyboard) focus to `view`.
+pub(crate) fn focus(view: &NshView) {
+    if view.kind() == ViewKind::Input {
+        crate::text_input::focus(view);
+    }
+    let elements = NSArray::from_slice(&[AsRef::<AnyObject>::as_ref(view.ns())]);
+    // SAFETY: immutable AppKit constants; the user info holds the elements
+    // VoiceOver moves to, as the notification documents.
+    unsafe {
+        let info = NSDictionary::from_slices(
+            &[NSAccessibilityUIElementsKey],
+            &[AsRef::<AnyObject>::as_ref(&*elements)],
+        );
+        NSAccessibilityPostNotificationWithUserInfo(
+            view.ns().as_ref(),
+            NSAccessibilityLayoutChangedNotification,
+            Some(&info),
+        );
+    }
+}
+
+/// Has VoiceOver read `text` (`announceForAccessibility`, toasts, live
+/// regions).
+pub(crate) fn announce(element: &NSView, text: &str, priority: NSAccessibilityPriorityLevel) {
+    let text = NSString::from_str(text);
+    let priority = NSNumber::new_isize(priority.0);
+    // SAFETY: immutable AppKit constants with values of their documented
+    // types (a string, a priority number).
+    unsafe {
+        let info = NSDictionary::from_slices(
+            &[NSAccessibilityAnnouncementKey, NSAccessibilityPriorityKey],
+            &[
+                AsRef::<AnyObject>::as_ref(&*text),
+                AsRef::<AnyObject>::as_ref(&*priority),
+            ],
+        );
+        // Announcements are the application's.
+        let app = objc2_app_kit::NSApplication::sharedApplication(element.mtm());
+        NSAccessibilityPostNotificationWithUserInfo(
+            app.as_ref(),
+            NSAccessibilityAnnouncementRequestedNotification,
+            Some(&info),
+        );
+    }
+}
+
+/// Brings what AppKit knows of the view up to date; true if its label
+/// changed.
+fn update(view: &NshView) -> bool {
+    let (spec, old, live) = {
+        let mut s = view.state_mut();
+        let s = &mut *s;
+        let a = &s.props.accessibility;
+        let pressable = is_pressable(s.events);
+        let text = s.text.as_ref().map(|t| t.text.text.as_str());
+        let spec = spec_for(a, s.kind, pressable, text);
+        if s.access.spec.as_deref() == Some(&spec) {
+            return false;
+        }
+        (spec, s.access.spec.take(), a.live_region)
+    };
+    apply(view.ns(), &spec);
+    let label_changed = old.is_some_and(|o| o.label != spec.label);
+    let is_text = view.state().text.is_some();
+    if label_changed
+        && live != LiveRegion::None
+        && !is_text
+        && let Some(label) = &spec.label
+    {
+        announce(view.ns(), label, priority(live));
+    }
+    view.state_mut().access.spec = Some(Box::new(spec));
+    label_changed
+}
+
+/// Views with press handlers are buttons.
+fn is_pressable(events: EventMask) -> bool {
+    events.contains(EventKind::Press) || events.contains(EventKind::LongPress)
+}
+
+/// Sets `spec` on `view`'s attributes.
+fn apply(view: &NSView, spec: &Spec) {
+    let element = spec.role != Ax::Generic && !spec.hidden;
+    view.setAccessibilityElement(element);
+    view.setAccessibilityHidden(spec.hidden);
+    let (role, subrole) = ax_role(spec.role);
+    view.setAccessibilityRole(role.as_deref());
+    view.setAccessibilitySubrole(subrole.as_deref());
+    let label = spec.label.as_deref().map(NSString::from_str);
+    let help = spec.help.as_deref().map(NSString::from_str);
+    view.setAccessibilityLabel(label.as_deref());
+    view.setAccessibilityHelp(help.as_deref());
+    let number = |v: Option<f32>| v.map(|v| NSNumber::new_f64(v as f64));
+    let (value, description): (Option<Retained<AnyObject>>, _) = match &spec.value {
+        Value::None => (None, None),
+        Value::Text(t) => (Some(NSString::from_str(t).into()), None),
+        Value::Checked(c) => (Some(NSNumber::new_i32(*c).into()), None),
+        Value::Range { now, text, .. } => (
+            number(*now).map(Into::into),
+            text.as_deref().map(NSString::from_str),
+        ),
+    };
+    let (min, max) = match &spec.value {
+        Value::Range { min, max, .. } => (number(*min), number(*max)),
+        _ => (None, None),
+    };
+    // SAFETY: the value attributes take numbers or strings.
+    unsafe {
+        view.setAccessibilityValue(value.as_deref());
+        view.setAccessibilityMinValue(min.as_deref().map(|n| n.as_ref()));
+        view.setAccessibilityMaxValue(max.as_deref().map(|n| n.as_ref()));
+    }
+    view.setAccessibilityValueDescription(description.as_deref());
+    view.setAccessibilityEnabled(!spec.disabled);
+    view.setAccessibilitySelected(spec.selected);
+    view.setAccessibilityExpanded(spec.expanded.unwrap_or(false));
+    // An empty list hides the subtree; `None` gives the subviews back.
+    let children = (spec.grouped || spec.hidden).then(NSArray::<AnyObject>::new);
+    // SAFETY: an array of accessibility elements (none).
+    unsafe { view.setAccessibilityChildren(children.as_deref()) };
+}
+
+/// The AppKit role and subrole of `role`.
+fn ax_role(role: Ax) -> (Option<Retained<NSString>>, Option<Retained<NSString>>) {
+    use objc2_app_kit::*;
+    let named = |s: &'static str| Some(NSString::from_str(s));
+    // SAFETY: immutable AppKit constants.
+    let constant = |s: &'static NSString| Some(Retained::from(s));
+    // SAFETY: immutable AppKit constants.
+    unsafe {
+        match role {
+            Ax::Generic => (None, None),
+            Ax::Button => (constant(NSAccessibilityButtonRole), None),
+            Ax::Link => (constant(NSAccessibilityLinkRole), None),
+            Ax::Text => (constant(NSAccessibilityStaticTextRole), None),
+            Ax::Image => (constant(NSAccessibilityImageRole), None),
+            Ax::Group => (constant(NSAccessibilityGroupRole), None),
+            // WebKit's role for headings, which VoiceOver's rotor lists.
+            Ax::Heading => (named("AXHeading"), None),
+            Ax::Slider => (constant(NSAccessibilitySliderRole), None),
+            Ax::CheckBox => (constant(NSAccessibilityCheckBoxRole), None),
+            Ax::Switch => (
+                constant(NSAccessibilityCheckBoxRole),
+                constant(NSAccessibilitySwitchSubrole),
+            ),
+            Ax::Radio => (constant(NSAccessibilityRadioButtonRole), None),
+            Ax::RadioGroup => (constant(NSAccessibilityRadioGroupRole), None),
+            Ax::ComboBox => (constant(NSAccessibilityComboBoxRole), None),
+            Ax::Menu => (constant(NSAccessibilityMenuRole), None),
+            Ax::MenuBar => (constant(NSAccessibilityMenuBarRole), None),
+            Ax::MenuItem => (constant(NSAccessibilityMenuItemRole), None),
+            Ax::Progress => (constant(NSAccessibilityProgressIndicatorRole), None),
+            Ax::ScrollBar => (constant(NSAccessibilityScrollBarRole), None),
+            Ax::SpinButton => (constant(NSAccessibilityIncrementorRole), None),
+            Ax::Tab => (
+                constant(NSAccessibilityRadioButtonRole),
+                constant(NSAccessibilityTabButtonSubrole),
+            ),
+            Ax::TabList => (constant(NSAccessibilityTabGroupRole), None),
+            Ax::Toolbar => (constant(NSAccessibilityToolbarRole), None),
+            Ax::List => (constant(NSAccessibilityListRole), None),
+            Ax::Grid => (constant(NSAccessibilityGridRole), None),
+            Ax::Search => (
+                constant(NSAccessibilityTextFieldRole),
+                constant(NSAccessibilitySearchFieldSubrole),
+            ),
+            // ARIA's landmark subroles, as WebKit maps them.
+            Ax::Alert => (
+                constant(NSAccessibilityGroupRole),
+                named("AXApplicationAlert"),
+            ),
+            Ax::Status => (
+                constant(NSAccessibilityGroupRole),
+                named("AXApplicationStatus"),
+            ),
+            Ax::Timer => (
+                constant(NSAccessibilityGroupRole),
+                named("AXApplicationTimer"),
+            ),
+        }
+    }
+}
+
+/// What to give AppKit for a view of `kind` with accessibility `a`.
+fn spec_for(a: &Accessibility, kind: ViewKind, pressable: bool, text: Option<&str>) -> Spec {
+    let role = role_for(a, kind, pressable);
+    let label = a.label.as_deref().or(text).map(str::to_owned);
+    let checkable = matches!(
+        role,
+        Ax::CheckBox | Ax::Switch | Ax::Radio | Ax::MenuItem | Ax::Button | Ax::Tab
+    );
+    let value_text = a.value.as_ref().and_then(|v| v.text.as_deref());
+    let (label, value) = match (role, &a.value, a.state.checked) {
+        (r, Some(v), _) if is_range(r) => (
+            label,
+            Value::Range {
+                min: v.min,
+                max: v.max,
+                now: v.now,
+                text: v.text.clone(),
+            },
+        ),
+        (_, _, Some(c)) if checkable => (
+            label,
+            Value::Checked(match c {
+                Checked::False => 0,
+                Checked::True => 1,
+                Checked::Mixed => 2,
+            }),
+        ),
+        // VoiceOver reads static text's value, not its label.
+        (Ax::Text | Ax::Heading, _, _) => (
+            None,
+            label.map_or(Value::None, |l| match value_text {
+                Some(v) => Value::Text(format!("{l}, {v}")),
+                None => Value::Text(l),
+            }),
+        ),
+        (_, _, _) => (
+            label,
+            value_text.map_or(Value::None, |v| Value::Text(v.to_owned())),
+        ),
+    };
+    Spec {
+        role,
+        label,
+        help: a.hint.as_deref().map(str::to_owned),
+        value,
+        disabled: a.state.disabled,
+        selected: a.state.selected,
+        expanded: a.state.expanded,
+        hidden: a.hidden,
+        grouped: a.accessible == Some(true) && kind != ViewKind::Text,
+    }
+}
+
+/// The element a view of `kind` is, with press handlers or not.
+fn role_for(a: &Accessibility, kind: ViewKind, pressable: bool) -> Ax {
+    match a.role {
+        Role::None => match kind {
+            ViewKind::Text => Ax::Text,
+            ViewKind::Image if a.label.is_some() => Ax::Image,
+            _ if a.accessible == Some(false) => Ax::Generic,
+            _ if pressable => Ax::Button,
+            _ if a.label.is_some() || a.accessible == Some(true) => Ax::Group,
+            _ => Ax::Generic,
+        },
+        Role::Button | Role::ImageButton | Role::KeyboardKey => Ax::Button,
+        Role::Link => Ax::Link,
+        Role::Search => Ax::Search,
+        Role::Image => Ax::Image,
+        Role::Text => Ax::Text,
+        Role::Adjustable => Ax::Slider,
+        Role::Header => Ax::Heading,
+        Role::Summary => Ax::Status,
+        Role::Alert => Ax::Alert,
+        Role::Checkbox => Ax::CheckBox,
+        Role::Combobox => Ax::ComboBox,
+        Role::Menu => Ax::Menu,
+        Role::Menubar => Ax::MenuBar,
+        Role::Menuitem => Ax::MenuItem,
+        Role::Progressbar => Ax::Progress,
+        Role::Radio => Ax::Radio,
+        Role::Radiogroup => Ax::RadioGroup,
+        Role::Scrollbar => Ax::ScrollBar,
+        Role::Spinbutton => Ax::SpinButton,
+        Role::Switch => Ax::Switch,
+        Role::Tab => Ax::Tab,
+        Role::Tablist => Ax::TabList,
+        Role::Timer => Ax::Timer,
+        Role::Toolbar => Ax::Toolbar,
+        Role::List => Ax::List,
+        Role::Grid => Ax::Grid,
+    }
+}
+
+/// Roles whose value is a range.
+fn is_range(role: Ax) -> bool {
+    matches!(
+        role,
+        Ax::Slider | Ax::Progress | Ax::SpinButton | Ax::ScrollBar
+    )
+}
+
+/// How urgently a live region's change is announced.
+fn priority(live: LiveRegion) -> NSAccessibilityPriorityLevel {
+    match live {
+        LiveRegion::Assertive => NSAccessibilityPriorityLevel::High,
+        _ => NSAccessibilityPriorityLevel::Medium,
+    }
+}
+
+/// A text view's text changed: announces it if it is in a live region.
+fn announce_live(view: &NshView) {
+    let mut at = Some(view.clone());
+    while let Some(v) = at {
+        let live = v.state().props.accessibility.live_region;
+        if live != LiveRegion::None {
+            let text = view.state().text.as_ref().map(|t| t.text.text.clone());
+            if let Some(text) = text {
+                announce(view.ns(), &text, priority(live));
+            }
+            return;
+        }
+        at = v.parent_view();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nsh_core::{AccessibilityState, AccessibilityValue};
+
+    use super::*;
+
+    fn with_role(role: Role) -> Accessibility {
+        Accessibility {
+            role,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn roles() {
+        let none = Accessibility::default();
+        assert_eq!(role_for(&none, ViewKind::View, false), Ax::Generic);
+        assert_eq!(role_for(&none, ViewKind::Text, false), Ax::Text);
+        assert_eq!(role_for(&none, ViewKind::View, true), Ax::Button);
+        assert_eq!(role_for(&none, ViewKind::Image, false), Ax::Generic);
+        let not_element = Accessibility {
+            accessible: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(role_for(&not_element, ViewKind::View, true), Ax::Generic);
+        let labelled = Accessibility {
+            label: Some("Logo".into()),
+            ..Default::default()
+        };
+        assert_eq!(role_for(&labelled, ViewKind::Image, false), Ax::Image);
+        assert_eq!(role_for(&labelled, ViewKind::View, false), Ax::Group);
+        assert_eq!(role_for(&labelled, ViewKind::View, true), Ax::Button);
+        assert_eq!(
+            role_for(&with_role(Role::Header), ViewKind::Text, false),
+            Ax::Heading
+        );
+        assert_eq!(
+            role_for(&with_role(Role::Switch), ViewKind::View, false),
+            Ax::Switch
+        );
+    }
+
+    #[test]
+    fn labels_and_values() {
+        // A text view reads its text as its value unless it has a label.
+        let s = spec_for(
+            &Accessibility::default(),
+            ViewKind::Text,
+            false,
+            Some("Title"),
+        );
+        assert_eq!(s.label, None);
+        assert_eq!(s.value, Value::Text("Title".into()));
+        let labelled = Accessibility {
+            label: Some("Label".into()),
+            hint: Some("Opens it".into()),
+            ..Default::default()
+        };
+        let s = spec_for(&labelled, ViewKind::View, true, None);
+        assert_eq!(s.role, Ax::Button);
+        assert_eq!(s.label.as_deref(), Some("Label"));
+        assert_eq!(s.help.as_deref(), Some("Opens it"));
+
+        let value = AccessibilityValue {
+            min: Some(0.0),
+            max: Some(10.0),
+            now: Some(3.0),
+            text: Some("3 of 10".into()),
+        };
+        let slider = Accessibility {
+            role: Role::Adjustable,
+            value: Some(value.clone()),
+            ..Default::default()
+        };
+        let s = spec_for(&slider, ViewKind::View, false, None);
+        assert!(matches!(s.value, Value::Range { now: Some(3.0), .. }));
+        let checkbox = Accessibility {
+            role: Role::Checkbox,
+            state: AccessibilityState {
+                checked: Some(Checked::True),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let s = spec_for(&checkbox, ViewKind::View, false, None);
+        assert_eq!(s.value, Value::Checked(1));
+        // Outside range roles the value is read as text.
+        let button = Accessibility {
+            role: Role::Button,
+            value: Some(value),
+            ..Default::default()
+        };
+        let s = spec_for(&button, ViewKind::View, false, None);
+        assert_eq!(s.value, Value::Text("3 of 10".into()));
+    }
+}

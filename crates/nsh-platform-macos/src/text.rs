@@ -32,7 +32,7 @@ use objc2_core_text::{
 use rustc_hash::FxHashMap;
 
 /// Attribute carrying the strikethrough color: CoreText draws underlines
-/// but not strikethroughs, so [`crate::text_view::TextView`] draws those.
+/// but not strikethroughs, so [`draw`] draws those.
 pub(crate) fn strikethrough_key() -> &'static CFString {
     static KEY: std::sync::OnceLock<CFStringKey> = std::sync::OnceLock::new();
     &KEY.get_or_init(|| CFStringKey(CFString::from_static_str("NshStrikethroughColor")))
@@ -40,7 +40,7 @@ pub(crate) fn strikethrough_key() -> &'static CFString {
 }
 
 /// Attribute carrying the color of an underline CoreText cannot draw
-/// (styled, thick or offset): [`crate::text_view::TextView`] draws it.
+/// (styled, thick or offset): [`draw`] draws it.
 pub(crate) fn underline_key() -> &'static CFString {
     static KEY: std::sync::OnceLock<CFStringKey> = std::sync::OnceLock::new();
     &KEY.get_or_init(|| CFStringKey(CFString::from_static_str("NshUnderlineColor")))
@@ -295,7 +295,7 @@ pub(crate) struct LaidLine {
     pub(crate) range: CFRange,
 }
 
-/// Finished lines, drawn by [`crate::text_view::TextView`].
+/// Finished lines, drawn by [`draw`] on the main thread.
 pub(crate) struct CoreTextLayout {
     pub(crate) lines: Vec<LaidLine>,
     /// The box's height (lines are placed y up from its bottom).
@@ -904,6 +904,9 @@ pub(crate) fn prewarm() {
 
 // ---- Drawing (main thread) ----
 
+/// iOS's system blue: the selection's tint without `selectionColor`.
+const SYSTEM_BLUE: Color = Color(0x007a_ffff);
+
 /// What a text view draws: the text, its final layout and content box.
 pub(crate) struct DrawnText {
     /// The text (spans, links, selection options).
@@ -912,6 +915,8 @@ pub(crate) struct DrawnText {
     pub(crate) layout: TextLayout,
     /// The content box in the view (inside padding and borders).
     pub(crate) content: nsh_core::Rect,
+    /// The selection of `selectable` text, kept across new content.
+    selection: Option<Selection>,
 }
 
 /// A text view got new text or a new layout.
@@ -921,12 +926,40 @@ pub(crate) fn set(
     layout: &TextLayout,
     content: nsh_core::Rect,
 ) {
+    let old = view.state_mut().text.take();
+    let was = old.as_ref().is_some_and(|o| o.text.selectable);
+    let selection = match old {
+        Some(DrawnText {
+            text: old,
+            selection: Some(s),
+            ..
+        }) if text.selectable => {
+            // Offsets into other text mean nothing.
+            if old.text != text.text {
+                s.range.set(None);
+            }
+            Some(s)
+        }
+        _ if text.selectable => Some(Selection::default()),
+        _ => None,
+    };
     view.state_mut().text = Some(DrawnText {
         text: text.clone(),
         layout: layout.clone(),
         content,
+        selection,
     });
+    if was != text.selectable {
+        // The I-beam.
+        crate::input::style_changed(view);
+    }
     view.changed();
+}
+
+/// The view draws `selectable` text: mouse drags over it select rather
+/// than scroll, and its pointer is the I-beam.
+pub(crate) fn selectable(state: &crate::view::ViewState) -> bool {
+    state.text.as_ref().is_some_and(|t| t.text.selectable)
 }
 
 /// Draws a text view's text (in `drawRect:`; the context is y down).
@@ -939,6 +972,16 @@ pub(crate) fn draw(ctx: &CGContext, state: &crate::view::ViewState) {
     let content = drawn.content;
     let c = Some(ctx);
     CGContext::save_g_state(c);
+    if let Some(range) = drawn.selection.as_ref().and_then(|s| s.range.get()) {
+        // iOS tints the selection with the view's tint at about 30%.
+        let tint = drawn.text.selection_color.unwrap_or(SYSTEM_BLUE);
+        let alpha = (tint.0 & 0xff) as f32 / 255.0 * 0.3;
+        let tint = Color((tint.0 & !0xff) | (alpha * 255.0).round() as u32);
+        CGContext::set_fill_color_with_color(c, Some(&cg_color(tint)));
+        for rect in selection_rects(text, content, range) {
+            CGContext::fill_rect(c, rect);
+        }
+    }
     // CoreText draws in a y-up space with the origin at the bottom of the
     // box.
     CGContext::set_text_matrix(
@@ -959,7 +1002,8 @@ pub(crate) fn draw(ctx: &CGContext, state: &crate::view::ViewState) {
     );
     CGContext::scale_ctm(c, 1.0, -1.0);
     if let Some(shadow) = drawn.text.shadow {
-        // The context is flipped: a positive offset must still go down.
+        // Shadow offsets are in the layer's base space, which is y up under
+        // AppKit's flipped context: a positive offset must still go down.
         CGContext::set_shadow_with_color(
             c,
             CGSize::new(shadow.offset_x as CGFloat, -shadow.offset_y as CGFloat),
@@ -992,6 +1036,518 @@ pub(crate) fn draw(ctx: &CGContext, state: &crate::view::ViewState) {
         CGContext::end_transparency_layer(c);
     }
     CGContext::restore_g_state(c);
+}
+
+/// A laid out line in view coordinates (y down).
+struct LineBox<'a> {
+    line: &'a CTLine,
+    /// Its characters.
+    start: CFIndex,
+    end: CFIndex,
+    /// The x of its origin.
+    x: CGFloat,
+    top: CGFloat,
+    bottom: CGFloat,
+    width: CGFloat,
+}
+
+impl LineBox<'_> {
+    /// The x of the caret before character `index`.
+    fn x_of(&self, index: CFIndex) -> CGFloat {
+        // SAFETY: a valid line; no secondary offset wanted.
+        self.x
+            + unsafe {
+                self.line
+                    .offset_for_string_index(index, std::ptr::null_mut())
+            }
+    }
+
+    /// The caret index nearest to `x`.
+    fn caret_at(&self, x: CGFloat) -> CFIndex {
+        // SAFETY: a valid line.
+        let index = unsafe {
+            self.line
+                .string_index_for_position(CGPoint::new(x - self.x, 0.0))
+        };
+        index.clamp(self.start, self.end)
+    }
+
+    /// How far `y` is above or below it (0 inside).
+    fn distance(&self, y: CGFloat) -> CGFloat {
+        if y < self.top {
+            self.top - y
+        } else if y > self.bottom {
+            y - self.bottom
+        } else {
+            0.0
+        }
+    }
+}
+
+/// The lines of `layout` in view coordinates, its box at `content`.
+fn line_boxes(layout: &CoreTextLayout, content: nsh_core::Rect) -> Vec<LineBox<'_>> {
+    let bottom = (content.y + content.height) as CGFloat;
+    layout
+        .lines
+        .iter()
+        .map(|l| {
+            let (mut ascent, mut descent) = (0.0, 0.0);
+            // SAFETY: valid out pointers.
+            let width = unsafe {
+                l.line
+                    .typographic_bounds(&mut ascent, &mut descent, std::ptr::null_mut())
+            };
+            let start = l.range.location.max(0);
+            LineBox {
+                line: &l.line,
+                start,
+                end: start + l.range.length.max(0),
+                x: content.x as CGFloat + l.origin.x,
+                top: bottom - (l.origin.y + ascent),
+                bottom: bottom - (l.origin.y - descent),
+                width,
+            }
+        })
+        .collect()
+}
+
+/// The UTF-16 offset of the character at `(x, y)` (view coordinates), with
+/// a little slack around the glyphs; `None` off the text.
+pub(crate) fn char_at(state: &crate::view::ViewState, x: f32, y: f32) -> Option<u32> {
+    let drawn = state.text.as_ref()?;
+    let layout = drawn.layout.downcast::<CoreTextLayout>()?;
+    let (x, y) = (x as CGFloat, y as CGFloat);
+    const SLACK: CGFloat = 4.0;
+    let line = line_boxes(layout, drawn.content)
+        .into_iter()
+        .filter(|l| x >= l.x - SLACK && x <= l.x + l.width + SLACK && l.distance(y) <= SLACK)
+        .min_by(|a, b| a.distance(y).total_cmp(&b.distance(y)))?;
+    let index = line.caret_at(x);
+    // The caret nearest the point: the character is the one before it when
+    // the point is left of the caret.
+    let index = if x < line.x_of(index) && index > line.start {
+        index - 1
+    } else {
+        index
+    };
+    (index < line.end.max(line.start + 1)).then_some(index as u32)
+}
+
+/// The pressable span (nested `<Text onPress>`) under `(x, y)` (view
+/// coordinates).
+pub(crate) fn link_at(
+    state: &crate::view::ViewState,
+    x: f32,
+    y: f32,
+) -> Option<nsh_core::TextLink> {
+    let text = &state.text.as_ref()?.text;
+    if text.links.is_empty() {
+        return None;
+    }
+    text.link_at(char_at(state, x, y)?).copied()
+}
+
+/// The caret offset nearest `(x, y)` (view coordinates): on the nearest
+/// line, at the caret position nearest x.
+fn caret_at(state: &crate::view::ViewState, x: f32, y: f32) -> u32 {
+    let Some(drawn) = state.text.as_ref() else {
+        return 0;
+    };
+    let Some(layout) = drawn.layout.downcast::<CoreTextLayout>() else {
+        return 0;
+    };
+    let (x, y) = (x as CGFloat, y as CGFloat);
+    line_boxes(layout, drawn.content)
+        .iter()
+        .min_by(|a, b| a.distance(y).total_cmp(&b.distance(y)))
+        .map_or(0, |l| l.caret_at(x).max(0) as u32)
+}
+
+/// The rectangles (view coordinates) the selected `range` covers, one per
+/// line.
+fn selection_rects(
+    layout: &CoreTextLayout,
+    content: nsh_core::Rect,
+    (a, b): (u32, u32),
+) -> Vec<CGRect> {
+    let (a, b) = (a as CFIndex, b as CFIndex);
+    line_boxes(layout, content)
+        .iter()
+        .filter(|l| l.end > a && l.start < b)
+        .map(|l| {
+            let x1 = l.x_of(a.max(l.start));
+            // Through the line's end when the range goes on past it.
+            let x2 = if b > l.end { l.x + l.width } else { l.x_of(b) };
+            CGRect::new(
+                CGPoint::new(x1.min(x2), l.top),
+                CGSize::new((x2 - x1).abs(), l.bottom - l.top),
+            )
+        })
+        .collect()
+}
+
+// ---- Selection ----
+
+/// How far (points) the mouse moves on selectable text before a drag
+/// selects: past input's press slop where the press would fire (a link, an
+/// `onPress`), so a click never does both.
+const SELECT_SLOP: f32 = 3.0;
+/// The same over a press target.
+const SELECT_SLOP_PRESS: f32 = 10.0;
+
+/// What a drag extends the selection by.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Unit {
+    #[default]
+    Char,
+    Word,
+    Paragraph,
+}
+
+/// The range selection of a `selectable` text view, desktop style: a mouse
+/// drag selects characters, a double click words and a triple click the
+/// paragraph (and drags on by them), Shift+click extends, Cmd+C copies,
+/// Cmd+A selects all, Escape or a press anywhere else clears. Offsets are
+/// UTF-16, as CoreText's string indices.
+///
+/// [`crate::input`] drives it ([`selection_down`], [`selection_drag`],
+/// [`selection_up`], [`selection_key`]); the surface remembers which view
+/// holds the selection ([`Selected`]).
+#[derive(Default)]
+pub(crate) struct Selection {
+    /// The selected range (`start < end`).
+    range: std::cell::Cell<Option<(u32, u32)>>,
+    /// The range a drag started from (a caret, the word or paragraph
+    /// pressed), which stays selected while it extends.
+    anchor: std::cell::Cell<(u32, u32)>,
+    unit: std::cell::Cell<Unit>,
+    /// The pressed button moved far enough to select.
+    dragging: std::cell::Cell<bool>,
+    /// The press began over a press target (links, `onPress`).
+    over_press: std::cell::Cell<bool>,
+}
+
+/// The text selection of a surface: the view whose text was last pressed
+/// to select (it takes Cmd+A, and Cmd+C and Escape while it has a
+/// selection). Only one view has a selection at a time, as a window has
+/// one focus.
+#[derive(Default)]
+pub(crate) struct Selected {
+    view: RefCell<Option<objc2::rc::Weak<crate::view::ViewObj>>>,
+}
+
+impl Selected {
+    fn get(&self) -> Option<crate::view::NshView> {
+        let view = self.view.borrow().as_ref()?.load()?;
+        crate::view::NshView::from_ns(&view)
+    }
+
+    fn set(&self, view: Option<&crate::view::NshView>) {
+        *self.view.borrow_mut() = view.map(|v| objc2::rc::Weak::from(&**v));
+    }
+
+    /// The selected view, if its text has a selection.
+    fn with_range(&self) -> Option<crate::view::NshView> {
+        self.get()
+            .filter(|v| with_selection(v, |s, _| s.range.get().is_some()) == Some(true))
+    }
+}
+
+/// Runs `f` with `view`'s selection, if its text is selectable.
+fn with_selection<R>(
+    view: &crate::view::NshView,
+    f: impl FnOnce(&Selection, &DrawnText) -> R,
+) -> Option<R> {
+    let state = view.state();
+    let drawn = state.text.as_ref()?;
+    Some(f(drawn.selection.as_ref()?, drawn))
+}
+
+/// Sets `view`'s selection (`None` or empty clears it).
+fn select(view: &crate::view::NshView, range: Option<(u32, u32)>) {
+    let range = range.filter(|(a, b)| a < b);
+    if with_selection(view, |s, _| s.range.replace(range) != range) == Some(true) {
+        crate::surface::quiet(|| view.ns().setNeedsDisplay(true));
+    }
+}
+
+/// Clears the surface's selection.
+pub(crate) fn clear(surface: &crate::surface::Surface) {
+    if let Some(view) = surface.selection.get() {
+        select(&view, None);
+    }
+    surface.selection.set(None);
+}
+
+/// The primary button went down: on `view`'s selectable text at `(x, y)`
+/// (view coordinates), or elsewhere (`None`), the `clicks`th click in a
+/// row; `over_press` if a press target (a link, `onPress`) is under it.
+/// Clears the selection of any other view; on the text, starts selecting
+/// (a double click a word, a triple click the paragraph, Shift extends).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn selection_down(
+    surface: &crate::surface::Surface,
+    view: Option<&crate::view::NshView>,
+    x: f32,
+    y: f32,
+    clicks: usize,
+    shift: bool,
+    over_press: bool,
+) {
+    let view = view.filter(|v| selectable(&v.state()));
+    if surface.selection.get().as_ref() != view {
+        clear(surface);
+    }
+    let Some(view) = view else { return };
+    surface.selection.set(Some(view));
+    let (caret, at, text) = {
+        let state = view.state();
+        let Some(drawn) = &state.text else { return };
+        let caret = caret_at(&state, x, y);
+        let at = char_at(&state, x, y).unwrap_or(caret);
+        (caret, at, drawn.text.clone())
+    };
+    let range = with_selection(view, |s, _| {
+        s.over_press.set(over_press);
+        match clicks {
+            0 | 1 if shift => {
+                // Extends from the end away from the press.
+                let anchor = match s.range.get() {
+                    Some((a, b)) if caret <= a => (b, b),
+                    Some((a, _)) => (a, a),
+                    None => (caret, caret),
+                };
+                s.anchor.set(anchor);
+                s.unit.set(Unit::Char);
+                s.dragging.set(true);
+                Some(extend(&text.text, anchor, caret, Unit::Char))
+            }
+            0 | 1 => {
+                s.anchor.set((caret, caret));
+                s.unit.set(Unit::Char);
+                s.dragging.set(false);
+                None
+            }
+            n => {
+                let unit = if n == 2 { Unit::Word } else { Unit::Paragraph };
+                let range = unit_at(&text.text, at, unit);
+                s.anchor.set(range);
+                s.unit.set(unit);
+                s.dragging.set(true);
+                Some(range)
+            }
+        }
+    });
+    if let Some(range) = range {
+        select(view, range);
+    }
+}
+
+/// The primary button, pressed on `view`'s selectable text, moved by
+/// `(dx, dy)` from where it went down, to `(x, y)` (view coordinates).
+/// True while the drag selects (past a slop): presses must not fire then.
+pub(crate) fn selection_drag(
+    view: &crate::view::NshView,
+    dx: f32,
+    dy: f32,
+    x: f32,
+    y: f32,
+) -> bool {
+    let started = with_selection(view, |s, _| {
+        if !s.dragging.get() {
+            let slop = if s.over_press.get() {
+                SELECT_SLOP_PRESS
+            } else {
+                SELECT_SLOP
+            };
+            if dx.hypot(dy) <= slop {
+                return false;
+            }
+            s.dragging.set(true);
+        }
+        true
+    });
+    if started != Some(true) {
+        return false;
+    }
+    let range = {
+        let state = view.state();
+        let caret = caret_at(&state, x, y);
+        with_selection(view, |s, drawn| {
+            extend(&drawn.text.text, s.anchor.get(), caret, s.unit.get())
+        })
+    };
+    if let Some(range) = range {
+        select(view, Some(range));
+    }
+    true
+}
+
+/// The primary button, pressed on `view`'s selectable text, went up. True
+/// if it ended a selecting drag.
+pub(crate) fn selection_up(view: &crate::view::NshView) -> bool {
+    with_selection(view, |s, _| s.dragging.replace(false)) == Some(true)
+}
+
+/// A key went down: Cmd+C copies the selection, Escape clears it, Cmd+A
+/// selects all of the last pressed selectable text. True if it was
+/// handled.
+pub(crate) fn selection_key(
+    surface: &crate::surface::Surface,
+    event: &objc2_app_kit::NSEvent,
+) -> bool {
+    use objc2_app_kit::NSEventModifierFlags;
+    let command = event
+        .modifierFlags()
+        .contains(NSEventModifierFlags::Command);
+    let key = event
+        .charactersIgnoringModifiers()
+        .map(|s| s.to_string().to_lowercase())
+        .unwrap_or_default();
+    match key.as_str() {
+        "c" if command => copy(surface),
+        "a" if command => select_all(surface),
+        // Escape.
+        _ if event.keyCode() == 53 && surface.selection.with_range().is_some() => {
+            clear(surface);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Copies the selection to the general pasteboard (the Edit menu's Copy).
+/// False if there is none.
+pub(crate) fn copy(surface: &crate::surface::Surface) -> bool {
+    let Some(text) = surface
+        .selection
+        .with_range()
+        .and_then(|v| selected_text(&v))
+    else {
+        return false;
+    };
+    let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+    board.clearContents();
+    // SAFETY: an immutable AppKit constant.
+    let kind = unsafe { objc2_app_kit::NSPasteboardTypeString };
+    board.setString_forType(&objc2_foundation::NSString::from_str(&text), kind);
+    true
+}
+
+/// Selects all of the last pressed selectable text (the Edit menu's
+/// Select All). False if there is none.
+pub(crate) fn select_all(surface: &crate::surface::Surface) -> bool {
+    let Some(view) = surface.selection.get() else {
+        return false;
+    };
+    let Some(len) = view.state().text.as_ref().map(|t| t.text.len_utf16()) else {
+        return false;
+    };
+    select(&view, Some((0, len)));
+    true
+}
+
+/// The selected text, without attachments' placeholders.
+fn selected_text(view: &crate::view::NshView) -> Option<String> {
+    let state = view.state();
+    let drawn = state.text.as_ref()?;
+    let (a, b) = drawn.selection.as_ref()?.range.get()?;
+    let units: Vec<u16> = drawn
+        .text
+        .text
+        .encode_utf16()
+        .skip(a as usize)
+        .take((b - a) as usize)
+        .collect();
+    Some(String::from_utf16_lossy(&units).replace(nsh_core::ATTACHMENT_CHAR, ""))
+}
+
+/// The selection from `anchor` (a range) to `caret`, by `unit`.
+fn extend(text: &str, anchor: (u32, u32), caret: u32, unit: Unit) -> (u32, u32) {
+    let (a, b) = match unit {
+        Unit::Char => (caret, caret),
+        // The unit after the caret going forward, before it going back.
+        _ if caret >= anchor.1 => unit_at(text, caret.saturating_sub(1).max(anchor.0), unit),
+        _ => unit_at(text, caret, unit),
+    };
+    (a.min(anchor.0), b.max(anchor.1))
+}
+
+/// A character's class for word selection.
+fn word_class(c: char) -> u8 {
+    let cjk = matches!(c as u32,
+        0x2E80..=0x2FDF | 0x3040..=0x30FF | 0x3100..=0x31FF | 0x3400..=0x4DBF
+        | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0x20000..=0x3FFFF);
+    if c.is_whitespace() {
+        0
+    } else if cjk {
+        2
+    } else if c.is_alphanumeric() || c == '_' {
+        1
+    } else {
+        3
+    }
+}
+
+/// The word or paragraph (`unit`) holding the character at `index`
+/// (UTF-16): a run of letters and digits (apostrophes inside them too),
+/// of CJK characters or of spaces, or one other character.
+fn unit_at(text: &str, index: u32, unit: Unit) -> (u32, u32) {
+    let chars: Vec<(u32, char)> = text
+        .chars()
+        .scan(0u32, |at, c| {
+            let i = *at;
+            *at += c.len_utf16() as u32;
+            Some((i, c))
+        })
+        .collect();
+    let len = chars.last().map_or(0, |&(i, c)| i + c.len_utf16() as u32);
+    let Some(k) = chars.iter().rposition(|&(i, _)| i <= index) else {
+        return (0, 0);
+    };
+    let end_of = |j: usize| chars.get(j).map_or(len, |&(i, _)| i);
+    match unit {
+        Unit::Char => (chars[k].0, end_of(k + 1)),
+        Unit::Paragraph => {
+            let sep = |c: char| matches!(c, '\n' | '\r' | '\u{2029}');
+            let start = chars[..k]
+                .iter()
+                .rposition(|&(_, c)| sep(c))
+                .map_or(0, |j| j + 1);
+            let end = chars[k..]
+                .iter()
+                .position(|&(_, c)| sep(c))
+                .map_or(chars.len(), |j| k + j);
+            (end_of(start), end_of(end))
+        }
+        Unit::Word => {
+            let class = |j: usize| {
+                let c = chars[j].1;
+                let word = |j: Option<usize>| {
+                    j.and_then(|j| chars.get(j))
+                        .is_some_and(|&(_, c)| word_class(c) == 1)
+                };
+                if matches!(c, '\'' | '\u{2019}') && word(j.checked_sub(1)) && word(Some(j + 1)) {
+                    1
+                } else {
+                    word_class(c)
+                }
+            };
+            let own = class(k);
+            if own == 3 {
+                return (chars[k].0, end_of(k + 1));
+            }
+            let mut start = k;
+            while start > 0 && class(start - 1) == own {
+                start -= 1;
+            }
+            let mut end = k + 1;
+            while end < chars.len() && class(end) == own {
+                end += 1;
+            }
+            (chars[start].0, end_of(end))
+        }
+    }
 }
 
 /// Draws the decoration lines CoreText does not: strikethroughs, and
