@@ -203,13 +203,15 @@ impl RustApp {
     }
 
     /// Whether `path` is part of the app's Rust code (its sources and
-    /// manifest).
+    /// manifest, and the files of its `assets/` directory: the crate reads
+    /// them when it builds).
     pub(crate) fn is_rust(&self, path: &Path) -> bool {
-        path.starts_with(&self.crate_dir)
-            && !path
-                .strip_prefix(&self.crate_dir)
-                .is_ok_and(|rest| rest.starts_with("target"))
-            && (path.extension().is_some_and(|e| e == "rs")
+        let Ok(rest) = path.strip_prefix(&self.crate_dir) else {
+            return false;
+        };
+        !rest.starts_with("target")
+            && (rest.starts_with("assets")
+                || path.extension().is_some_and(|e| e == "rs")
                 || path.file_name().is_some_and(|n| n == "Cargo.toml"))
     }
 
@@ -480,6 +482,28 @@ fn cargo() -> std::ffi::OsString {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_crates_assets_are_its_code() {
+        let app = super::RustApp {
+            workspace: "/app/.nsh/rust".into(),
+            source: "/nsh".into(),
+            package: "app-native".into(),
+            crate_dir: "/app/native".into(),
+        };
+        for (path, rust) in [
+            ("/app/native/src/lib.rs", true),
+            ("/app/native/Cargo.toml", true),
+            // `asset!` reads them when the crate builds.
+            ("/app/native/assets/logo@2x.png", true),
+            ("/app/native/assets/fonts/Script.ttf", true),
+            ("/app/native/target/debug/build.rs", false),
+            ("/app/native/README.md", false),
+            ("/app/App.tsx", false),
+        ] {
+            assert_eq!(app.is_rust(std::path::Path::new(path)), rust, "{path}");
+        }
+    }
+
     #[test]
     fn package_names_come_from_the_package_table() {
         let dir = std::env::temp_dir().join(format!("nsh-rust-app-{}", std::process::id()));

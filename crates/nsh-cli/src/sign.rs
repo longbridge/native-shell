@@ -126,18 +126,10 @@ pub(crate) fn publish(options: PublishOptions<'_>) -> anyhow::Result<()> {
 
     let built =
         crate::build::compile(&entry, true).map_err(|e| anyhow::anyhow!("{}", e.colored))?;
-    let root = entry.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut assets = Vec::with_capacity(built.assets.len());
     for asset in &built.assets {
-        let bytes =
-            fs::read(root.join(asset)).with_context(|| format!("read {}", asset.display()))?;
-        // `asset:/img/a.png`: always `/`-separated.
-        let path = asset
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        assets.push((path, bytes));
+        let bytes = fs::read(&asset.source).with_context(|| format!("read {}", asset.path))?;
+        assets.push((asset.path.clone(), bytes));
     }
     let contents = Contents {
         app: App {

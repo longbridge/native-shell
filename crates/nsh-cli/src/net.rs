@@ -16,7 +16,8 @@ use nsh_engine::{
 };
 use ureq::{Agent, ResponseExt, SendBody, http};
 
-/// `asset:/…` files relative to the app's source directory.
+/// `asset:/…` files: the UI sets' crates' files, else relative to the
+/// app's source directory.
 pub(crate) struct DirectoryAssets(pub(crate) std::path::PathBuf);
 
 impl Assets for DirectoryAssets {
@@ -24,7 +25,10 @@ impl Assets for DirectoryAssets {
         let path = uri
             .strip_prefix("asset:/")
             .ok_or_else(|| format!("not an asset URI: {uri}"))?;
-        std::fs::read(self.0.join(path)).map_err(|e| e.to_string())
+        let file = crate::build::crate_assets()
+            .find(|a| a.path == path)
+            .map_or_else(|| self.0.join(path), |a| a.source);
+        std::fs::read(file).map_err(|e| e.to_string())
     }
 }
 

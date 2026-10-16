@@ -77,8 +77,13 @@ them, so `nsh` builds the app its own (`crates/nsh-cli/src/rust_app.rs`):
   path, which falls back to `node_modules`), `nsh trace` renders it. The hosts `run` and `package` need are built
   for the app instead of taken from the runtime (iOS `--target` triples; Android: the prebuilt `classes.dex` with
   the app's `libnsh.so` for each ABI of the prebuilt runtime, cross-compiled with the NDK).
-- `nsh dev` / `nsh run` watch the crate too: a change to its `.rs` files or `Cargo.toml` ends the app's command line
-  with exit code 75, and `nsh` builds it and runs the command again (the app restarts; JS and TSX edits stay hot).
+- `nsh dev` / `nsh run` watch the crate too: a change to its `.rs` files, `Cargo.toml` or `assets/` ends the app's
+  command line with exit code 75, and `nsh` builds it and runs the command again (the app restarts; JS and TSX edits
+  stay hot).
+- The files the sets' crates ship (`Registry::assets(assets!())`: a crate's `assets/` directory, published as
+  `asset:/@<package>/<path>`) go with the app's imported assets: the dev server serves them
+  (`DevServer::serve_files`), `nsh build` / `package` / `publish` copy them (`build::Built::assets`: each file's path
+  and where it is), `nsh trace` reads them; the engine registers their fonts before the first render.
 
 ## Finding the runtimes
 

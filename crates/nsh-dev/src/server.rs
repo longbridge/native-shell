@@ -60,6 +60,9 @@ enum Event {
 struct Shared {
     /// Directory served at `/assets/` (the app's source directory).
     assets_root: Option<std::path::PathBuf>,
+    /// Files served at `/assets/<path>` from elsewhere (the files the UI
+    /// sets' crates ship), by path.
+    files: Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
     /// The state a newly connected client must see first.
     latest: Mutex<Option<Event>>,
     events: broadcast::Sender<Event>,
@@ -93,6 +96,7 @@ impl DevServer {
             .build()?;
         let shared = Arc::new(Shared {
             assets_root: assets_root.and_then(|p| p.canonicalize().ok()),
+            files: Mutex::default(),
             latest: Mutex::new(None),
             events: broadcast::channel(16).0,
             bytecode_version: bytecode_version.into(),
@@ -116,6 +120,13 @@ impl DevServer {
             next_version: Mutex::new(0),
             _runtime: runtime,
         })
+    }
+
+    /// Serves each `(path, file)` at `/assets/<path>` (`asset:/<path>` on
+    /// device), besides the assets root: files that live elsewhere, as the
+    /// crates of Rust components ship them.
+    pub fn serve_files(&self, files: impl IntoIterator<Item = (String, std::path::PathBuf)>) {
+        self.shared.files.lock().expect("files lock").extend(files);
     }
 
     /// The bound address (useful with port 0).
@@ -188,21 +199,29 @@ async fn bundle_source(State(shared): State<Arc<Shared>>) -> Response {
     }
 }
 
-/// Serves an app asset (`asset:/<path>` on device). Only files inside the
-/// assets root are reachable.
+/// Serves an app asset (`asset:/<path>` on device). Only the files
+/// [`DevServer::serve_files`] named and files inside the assets root are
+/// reachable.
 async fn asset(
     State(shared): State<Arc<Shared>>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> Response {
-    let Some(root) = &shared.assets_root else {
-        return StatusCode::NOT_FOUND.into_response();
+    let named = shared.files.lock().expect("files lock").get(&path).cloned();
+    let file = match named {
+        Some(file) => file,
+        None => {
+            let Some(root) = &shared.assets_root else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            let Ok(file) = root.join(&path).canonicalize() else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            if !file.starts_with(root) {
+                return StatusCode::FORBIDDEN.into_response();
+            }
+            file
+        }
     };
-    let Ok(file) = root.join(&path).canonicalize() else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if !file.starts_with(root) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
     let content_type = match file
         .extension()
         .and_then(|e| e.to_str())

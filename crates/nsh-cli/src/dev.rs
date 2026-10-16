@@ -38,6 +38,7 @@ impl DevSession {
             .context("entry has no directory")?
             .to_path_buf();
         let server = start_server(port, &src_dir)?;
+        server.serve_files(crate::build::crate_assets().map(|a| (a.path, a.source)));
         let session = DevSession {
             entry,
             src_dir,

@@ -1,4 +1,8 @@
-use std::{fs, path::Path, time::Instant};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use anyhow::Context as _;
 use nsh_bundler::{BundleError, BundleOptions};
@@ -36,10 +40,53 @@ pub(crate) struct Built {
     pub(crate) bytecode: Vec<u8>,
     /// Source map of `code`.
     pub(crate) source_map: Option<String>,
-    /// Imported asset files, relative to the entry directory.
-    pub(crate) assets: Vec<std::path::PathBuf>,
+    /// The files the app ships: those it imports and those its UI sets'
+    /// crates ship ([`crate_assets`]).
+    pub(crate) assets: Vec<Asset>,
     /// What the app declares it may reach (`nsh.json` `capabilities`).
     pub(crate) capabilities: Option<nsh_core::access::Capabilities>,
+}
+
+/// A file an app ships.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Asset {
+    /// Its path among the app's assets (`asset:/<path>`), `/`-separated.
+    pub(crate) path: String,
+    /// The file.
+    pub(crate) source: PathBuf,
+}
+
+/// The files the UI sets' crates ship (`Registry::assets`), published
+/// under `@<package>/`.
+pub(crate) fn crate_assets() -> impl Iterator<Item = Asset> {
+    crate::ui_sets()
+        .iter()
+        .flat_map(nsh_core::ui::Registry::asset_files)
+        .map(|file| Asset {
+            path: file.path().to_owned(),
+            source: PathBuf::from(file.source),
+        })
+}
+
+/// The app's assets: `imported` (relative to the entry's directory `root`)
+/// and the UI sets' ([`crate_assets`]).
+fn assets(root: Option<&Path>, imported: &[PathBuf]) -> Vec<Asset> {
+    let root = root.unwrap_or(Path::new("."));
+    let mut assets: Vec<Asset> = imported
+        .iter()
+        .map(|rel| Asset {
+            path: rel
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+            source: root.join(rel),
+        })
+        .chain(crate_assets())
+        .collect();
+    assets.sort_by(|a, b| a.path.cmp(&b.path));
+    assets.dedup_by(|a, b| a.path == b.path);
+    assets
 }
 
 impl Built {
@@ -57,12 +104,12 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         minify: release,
         ui_sets: crate::ui_sets().to_vec(),
     })?;
-    if let Some(dir) = entry
+    let dir = entry
         .canonicalize()
         .ok()
-        .and_then(|e| e.parent().map(Path::to_path_buf))
-    {
-        crate::init::write_types_with(&dir, &bundle.elements);
+        .and_then(|e| e.parent().map(Path::to_path_buf));
+    if let Some(dir) = &dir {
+        crate::init::write_types_with(dir, &bundle.elements);
     }
     let start = Instant::now();
     let bytecode = nsh_js::compile_bytecode_with(&bundle.code, release, crate::ui_sets())?;
@@ -78,7 +125,7 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         code: bundle.code,
         bytecode,
         source_map: bundle.source_map,
-        assets: bundle.assets,
+        assets: assets(dir.as_deref(), &bundle.assets),
         capabilities: bundle.capabilities,
     })
 }
@@ -87,12 +134,12 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
 /// app (source and bytecode) plus the modules, to compute later updates.
 pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle), BuildError> {
     let hot = nsh_bundler::bundle_hot(entry, crate::ui_sets())?;
-    if let Some(dir) = entry
+    let dir = entry
         .canonicalize()
         .ok()
-        .and_then(|e| e.parent().map(Path::to_path_buf))
-    {
-        crate::init::write_types_with(&dir, &hot.elements);
+        .and_then(|e| e.parent().map(Path::to_path_buf));
+    if let Some(dir) = &dir {
+        crate::init::write_types_with(dir, &hot.elements);
     }
     let (code, source_map) = hot.script();
     let start = Instant::now();
@@ -109,7 +156,7 @@ pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle
         code,
         bytecode,
         source_map,
-        assets: hot.assets.clone(),
+        assets: assets(dir.as_deref(), &hot.assets),
         capabilities: hot.capabilities.clone(),
     };
     Ok((built, hot))
@@ -138,19 +185,38 @@ pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<(
             let _ = fs::remove_file(&declared);
         }
     }
-    // Assets keep their relative paths: `asset:/img/a.png` -> `out/assets/img/a.png`.
-    let root = entry
-        .canonicalize()?
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default();
+    // Assets keep their paths: `asset:/img/a.png` -> `out/assets/img/a.png`.
     for asset in &built.assets {
-        let dest = out.join("assets").join(asset);
+        let dest = out.join("assets").join(&asset.path);
         if let Some(dir) = dest.parent() {
             fs::create_dir_all(dir)?;
         }
-        fs::copy(root.join(asset), &dest).with_context(|| format!("copy {}", asset.display()))?;
+        fs::copy(&asset.source, &dest).with_context(|| format!("copy {}", asset.path))?;
     }
     log::info!("wrote {} ({} assets)", out.display(), built.assets.len());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn imported_assets_keep_their_paths_under_the_entry() {
+        let assets = super::assets(
+            Some(Path::new("/app")),
+            &[PathBuf::from("img/a.png"), PathBuf::from("b.ttf")],
+        );
+        let paths: Vec<_> = assets
+            .iter()
+            .map(|a| (a.path.as_str(), a.source.clone()))
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                ("b.ttf", PathBuf::from("/app/b.ttf")),
+                ("img/a.png", PathBuf::from("/app/img/a.png")),
+            ]
+        );
+    }
 }

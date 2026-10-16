@@ -119,7 +119,7 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         PackageTarget::Ios => Platform::IphoneOs,
         PackageTarget::IosSimulator => Platform::IphoneSimulator,
         PackageTarget::Android => {
-            return package_android(&options, config, &name, &id, &entry, &built);
+            return package_android(&options, config, &name, &id, &built);
         }
     };
     let runner = runtime::file(platform, "nsh-ios-app")?;
@@ -137,13 +137,12 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
     if let Some(json) = built.capabilities_json() {
         fs::write(resources.join("capabilities.json"), json)?;
     }
-    let root = entry.parent().unwrap_or(Path::new("."));
     for asset in &built.assets {
-        let dest = resources.join("assets").join(asset);
+        let dest = resources.join("assets").join(&asset.path);
         if let Some(dir) = dest.parent() {
             fs::create_dir_all(dir)?;
         }
-        fs::copy(root.join(asset), &dest).with_context(|| format!("copy {}", asset.display()))?;
+        fs::copy(&asset.source, &dest).with_context(|| format!("copy {}", asset.path))?;
     }
 
     let sdk = match options.target {
@@ -202,21 +201,18 @@ fn package_android(
     config: &AppConfig,
     name: &str,
     id: &str,
-    entry: &Path,
     built: &crate::build::Built,
 ) -> anyhow::Result<()> {
     use crate::android::{self, Apk, Signing};
     let sdk = android::Sdk::find()?;
     let runtime = runtime::android(false)?;
-    let root = entry.parent().unwrap_or(Path::new("."));
     let mut assets = vec![("nsh/bundle.qbc".to_owned(), built.bytecode.clone())];
     if let Some(json) = built.capabilities_json() {
         assets.push(("nsh/capabilities.json".to_owned(), json.into_bytes()));
     }
     for asset in &built.assets {
-        let path = asset.to_string_lossy().replace('\\', "/");
-        let bytes = fs::read(root.join(asset)).with_context(|| format!("read {path}"))?;
-        assets.push((format!("nsh/assets/{path}"), bytes));
+        let bytes = fs::read(&asset.source).with_context(|| format!("read {}", asset.path))?;
+        assets.push((format!("nsh/assets/{}", asset.path), bytes));
     }
     let signing = match options.keystore {
         Some((path, alias, password)) => Signing::Keystore {
