@@ -3,10 +3,13 @@
 
 #![allow(dead_code, unreachable_pub)]
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use crossbeam_channel::Receiver;
-use nsh_core::{ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, Size, ui::Root};
+use nsh_core::{
+    ApproxTextEngine, AttributedText, EventKind, EventPayload, MountBatch, MountItem, Size,
+    ui::Root,
+};
 use nsh_engine::{App, Engine, EngineConfig, Environment, MountSink};
 
 pub struct Sink(crossbeam_channel::Sender<MountBatch>);
@@ -21,6 +24,8 @@ impl MountSink for Sink {
 #[derive(Default)]
 pub struct Screen {
     pub texts: Vec<(u32, String)>,
+    /// The text blocks as built: spans, links, attachments.
+    pub blocks: Vec<(u32, Arc<AttributedText>)>,
     pub titles: Vec<(u32, String)>,
     pub parents: std::collections::HashMap<u32, u32>,
 }
@@ -32,6 +37,8 @@ impl Screen {
                 MountItem::Text { id, text, .. } => {
                     self.texts.retain(|t| t.0 != *id);
                     self.texts.push((*id, text.text.clone()));
+                    self.blocks.retain(|t| t.0 != *id);
+                    self.blocks.push((*id, text.clone()));
                 }
                 MountItem::ScreenConfig { id, config } => {
                     self.titles.retain(|t| t.0 != *id);
@@ -44,6 +51,7 @@ impl Screen {
                 }
                 MountItem::Delete { id } => {
                     self.texts.retain(|t| t.0 != *id);
+                    self.blocks.retain(|t| t.0 != *id);
                     self.titles.retain(|t| t.0 != *id);
                 }
                 _ => {}
@@ -54,6 +62,22 @@ impl Screen {
     /// The pressable node around text `label` (the text or a parent).
     pub fn find(&self, label: &str) -> Option<u32> {
         self.texts.iter().find(|t| t.1 == label).map(|t| t.0)
+    }
+
+    /// The text block showing `text`.
+    pub fn block(&self, text: &str) -> Option<&AttributedText> {
+        self.blocks.iter().find(|b| b.1.text == text).map(|b| &*b.1)
+    }
+
+    /// The span node of the link `label` in a text block.
+    pub fn link(&self, label: &str) -> Option<u32> {
+        self.blocks.iter().find_map(|(_, block)| {
+            let units: Vec<u16> = block.text.encode_utf16().collect();
+            block.links.iter().find_map(|l| {
+                let range = units.get(l.start as usize..l.end as usize)?;
+                (String::from_utf16_lossy(range) == label).then_some(l.node)
+            })
+        })
     }
 }
 
@@ -142,5 +166,23 @@ pub fn press_text(engine: &Engine, rx: &Receiver<MountBatch>, screen: &mut Scree
     engine
         .control()
         .dispatch_event(text, EventKind::Press, EventPayload::None);
+    drain(rx, screen);
+}
+
+/// Sends `kind` to the link `label` inside a text block (its span), and
+/// waits for what it changes.
+pub fn press_link(
+    engine: &Engine,
+    rx: &Receiver<MountBatch>,
+    screen: &mut Screen,
+    label: &str,
+    kind: EventKind,
+) {
+    let link = screen
+        .link(label)
+        .unwrap_or_else(|| panic!("no link {label}: {:?}", screen.texts));
+    engine
+        .control()
+        .dispatch_event(link, kind, EventPayload::None);
     drain(rx, screen);
 }

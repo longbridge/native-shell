@@ -1,34 +1,11 @@
 //! The Typed styles demo: the Tailwind demo's cards in typed styles, its
-//! buttons' state and the canvases standing in for gradients.
+//! buttons' state, and the effects the typed styles send natively.
 
-use std::time::Duration;
+use std::collections::HashMap;
 
-use crossbeam_channel::Receiver;
-use nsh_core::{MountBatch, MountItem, ViewKind};
+use nsh_core::{EventKind, EventPayload, MountItem, ViewStyle};
 
 use crate::common::shows;
-
-/// The canvases `rx`'s batches create, applying them to `screen`.
-fn canvases(rx: &Receiver<MountBatch>, screen: &mut crate::common::Screen) -> usize {
-    let mut created = 0;
-    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
-        screen.apply(&batch);
-        created += batch
-            .items
-            .iter()
-            .filter(|i| {
-                matches!(
-                    i,
-                    MountItem::Create {
-                        kind: ViewKind::Canvas,
-                        ..
-                    }
-                )
-            })
-            .count();
-    }
-    created
-}
 
 #[test]
 fn typed_styles_shows_every_card() {
@@ -51,6 +28,7 @@ fn typed_styles_shows_every_card() {
         "emerald",
         "2xl",
         "Display",
+        "CAPS",
         "blur-sm",
         "bounce",
         "Archive",
@@ -75,17 +53,41 @@ fn typed_styles_buttons_keep_their_state() {
 }
 
 #[test]
-fn typed_styles_draws_gradients_on_canvases() {
+fn typed_styles_send_gradients_filters_and_animations_natively() {
     let (engine, rx) = crate::common::start();
     let mut screen = crate::common::Screen::default();
     crate::common::drain(&rx, &mut screen);
     let text = screen.find("Typed styles").expect("the demo in the index");
-    engine.control().dispatch_event(
-        screen.parents[&text],
-        nsh_core::EventKind::Press,
-        nsh_core::EventPayload::None,
+    engine
+        .control()
+        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    let mut styles: HashMap<u32, ViewStyle> = HashMap::new();
+    let mut tracked = 0;
+    while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {
+        for item in &batch.items {
+            match item {
+                MountItem::ViewStyle { id, style } => {
+                    styles.insert(*id, (**style).clone());
+                }
+                MountItem::TrackStates { .. } => tracked += 1,
+                _ => {}
+            }
+        }
+    }
+    let count = |f: &dyn Fn(&ViewStyle) -> bool| styles.values().filter(|s| f(s)).count();
+    let effects = |s: &ViewStyle| s.effects.clone().unwrap_or_default();
+    // The four gradients and the gradient card: no canvas, no layout.
+    assert_eq!(count(&|s| !effects(s).background_images.is_empty()), 5);
+    assert_eq!(count(&|s| !effects(s).backdrop_filters.is_empty()), 1);
+    assert_eq!(
+        count(&|s| s.animation.is_some()),
+        4,
+        "spin, ping, pulse, bounce"
     );
-    // The four gradients' canvases, and the gradient card's once its
-    // layout tells the card its size.
-    assert_eq!(canvases(&rx, &mut screen), 5);
+    assert_eq!(count(&|s| s.blend_mode == nsh_core::BlendMode::Multiply), 1);
+    assert!(count(&|s| s.transition.is_some()) >= 4);
+    // Rings and inset shadows are box shadows; outlines their own.
+    assert!(count(&|s| effects(s).box_shadows.iter().any(|b| b.inset)) >= 1);
+    assert_eq!(count(&|s| s.outline.width == 2.0), 1);
+    assert!(tracked > 0, "press states are reported natively");
 }

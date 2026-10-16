@@ -1,16 +1,7 @@
 //! Styles: corners (also continuous), borders, shadows, clipping, 3D
 //! transforms (as the TSX gallery's `demos/Styles.tsx`).
-//!
-//! Many of TS's style properties have no typed style method yet: one
-//! corner's radius, per-side border widths and colors, border styles and
-//! curves, shadows of any color, radius, opacity and offset (the cards take
-//! the nearest of Tailwind's shadows), static 3D and skew transforms (bound
-//! to native values of constant value here), `transformOrigin`,
-//! `backfaceVisibility` (the flip card fades each face out edge-on),
-//! `fontVariant`, `writingDirection`. The comments on each card say what
-//! it leaves out.
 
-use nsh_core::ui::{AnyElement, NativeValue, Text, TransformKind, View, prelude::*};
+use nsh_core::ui::{TransformKind, prelude::*};
 
 fn card() -> View {
     view()
@@ -37,7 +28,6 @@ fn label_below(content: &'static str) -> View {
 #[derive(Debug, Default)]
 struct FlipCard {
     angle: Option<NativeValue>,
-    perspective: Option<NativeValue>,
     flipped: bool,
 }
 
@@ -48,7 +38,6 @@ impl Component for FlipCard {
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
         self.angle = Some(cx.native_value(0.0));
-        self.perspective = Some(cx.native_value(600.0));
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
@@ -63,27 +52,23 @@ impl Component for FlipCard {
                         let _ = angle.timing(to, 500.0, Easing::EaseInOut);
                     }
                 }));
-        let (Some(angle), Some(perspective)) = (&self.angle, &self.perspective) else {
+        let Some(angle) = &self.angle else {
             return flip;
         };
+        // The bound rotation follows the static perspective.
         let face = |color: u32| {
             card()
                 .absolute()
                 .left(px(0.0))
                 .top(px(0.0))
                 .rounded(px(14.0))
+                .backface_hidden()
                 .bg(rgb(color))
-                .bind_transform(TransformKind::Perspective, perspective)
+                .perspective(600.0)
         };
-        // TS hides each face while it is turned away
-        // (`backfaceVisibility: "hidden"`), which the typed styles lack:
-        // each face fades out when the angle turns it edge-on.
-        let shown = angle.interpolate(&[89.0, 91.0], &[1.0, 0.0]);
-        let hidden = angle.interpolate(&[89.0, 91.0], &[0.0, 1.0]);
         flip.child(
             face(0xddf4ff)
                 .bind_transform(TransformKind::RotateY, angle)
-                .bind_opacity(&shown)
                 .child(label("Front (tap)")),
         )
         .child(
@@ -92,21 +77,9 @@ impl Component for FlipCard {
                     TransformKind::RotateY,
                     &angle.interpolate(&[0.0, 180.0], &[180.0, 360.0]),
                 )
-                .bind_opacity(&hidden)
                 .child(label("Back: backfaceVisibility")),
         )
     }
-}
-
-/// Constant transforms of the 3D cards (TS: `{ perspective: 400 }`,
-/// `{ rotateY: "35deg" }`, ...), bound as native values: the typed styles
-/// have `rotate`, `scale` and translations only.
-#[derive(Debug)]
-struct Tilts {
-    perspective: NativeValue,
-    rotate_y: NativeValue,
-    rotate_x: NativeValue,
-    skew_x: NativeValue,
 }
 
 /// The demo's page.
@@ -116,7 +89,6 @@ pub(crate) struct Styles {
     unclipped: bool,
     /// The square of the zIndex card on top.
     front: usize,
-    tilts: Option<Tilts>,
 }
 
 impl Styles {
@@ -127,8 +99,9 @@ impl Styles {
             .border_2()
             .border_color(rgb(0x9a6700))
             .when(!self.unclipped, |v| v.overflow_hidden())
-            // TS: shadowOpacity 0.3, shadowRadius 8, offset (0, 4).
-            .shadow_md()
+            .shadow_opacity(0.3)
+            .shadow_radius(8.0)
+            .shadow_offset(0.0, 4.0)
             .on_press(cx.listener(|this: &mut Self, _, cx| {
                 this.unclipped = !this.unclipped;
                 cx.notify();
@@ -164,8 +137,9 @@ impl Styles {
                     .rounded(px(10.0))
                     .bg(rgb(color))
                     .z_index(if self.front == i { 10 } else { 0 })
-                    // TS: shadowOpacity 0.2, shadowRadius 4, offset (0, 2).
-                    .shadow_sm()
+                    .shadow_opacity(0.2)
+                    .shadow_radius(4.0)
+                    .shadow_offset(0.0, 2.0)
             });
         card()
             .bg(Color::TRANSPARENT)
@@ -178,27 +152,18 @@ impl Styles {
             .into_element()
     }
 
-    fn tilted(&self) -> [AnyElement; 3] {
+    fn tilted() -> [AnyElement; 3] {
         let card = |color: u32, content: &'static str| card().bg(rgb(color)).child(label(content));
-        let Some(t) = &self.tilts else {
-            return [
-                card(0xddf4ff, "rotateY + perspective").into_element(),
-                card(0xfbefff, "rotateX").into_element(),
-                card(0xfff1e5, "skewX (iOS)").into_element(),
-            ];
-        };
         [
             card(0xddf4ff, "rotateY + perspective")
-                .bind_transform(TransformKind::Perspective, &t.perspective)
-                .bind_transform(TransformKind::RotateY, &t.rotate_y)
+                .perspective(400.0)
+                .rotate_y(35.0)
                 .into_element(),
             card(0xfbefff, "rotateX")
-                .bind_transform(TransformKind::Perspective, &t.perspective)
-                .bind_transform(TransformKind::RotateX, &t.rotate_x)
+                .perspective(400.0)
+                .rotate_x(40.0)
                 .into_element(),
-            card(0xfff1e5, "skewX (iOS)")
-                .bind_transform(TransformKind::SkewX, &t.skew_x)
-                .into_element(),
+            card(0xfff1e5, "skewX (iOS)").skew_x(-12.0).into_element(),
         ]
     }
 
@@ -208,11 +173,10 @@ impl Styles {
             .into_iter()
             .enumerate()
             .map(|(i, (color, n))| {
-                // TS also rounds its top-start corner (22): the typed
-                // styles have no start / end corners.
                 view()
                     .size(px(44.0))
                     .rounded(px(8.0))
+                    .rounded_ss(px(22.0))
                     .items_center()
                     .justify_center()
                     .bg(rgb(color))
@@ -286,9 +250,11 @@ impl Styles {
                     .text_left()
                     .text_color(muted),
             )
-            // TS sets `writingDirection: "rtl"`: the typed styles have no
-            // writing direction.
-            .child(text("مرحبا بالعالم — writingDirection rtl").text_color(muted))
+            .child(
+                text("مرحبا بالعالم — writingDirection rtl")
+                    .writing_direction(WritingDirection::Rtl)
+                    .text_color(muted),
+            )
             .into_element()
     }
 }
@@ -297,15 +263,6 @@ impl Component for Styles {
     const NAME: &'static str = "gallery.styles";
     type Props = ();
     type Event = NoEvent;
-
-    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        self.tilts = Some(Tilts {
-            perspective: cx.native_value(400.0),
-            rotate_y: cx.native_value(35.0),
-            rotate_x: cx.native_value(40.0),
-            skew_x: cx.native_value(-12.0),
-        });
-    }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let purple = rgb(0x8250df);
@@ -317,8 +274,14 @@ impl Component for Styles {
             .gap_6()
             .p_6()
             .justify_center()
-            // TS: shadowOpacity 0.18, shadowRadius 12, offset (0, 6).
-            .child(card().rounded(px(16.0)).shadow_lg().child(label("Shadow")))
+            .child(
+                card()
+                    .rounded(px(16.0))
+                    .shadow_opacity(0.18)
+                    .shadow_radius(12.0)
+                    .shadow_offset(0.0, 6.0)
+                    .child(label("Shadow")),
+            )
             .child(
                 card()
                     .rounded_t(px(28.0))
@@ -326,53 +289,70 @@ impl Component for Styles {
                     .border_color(purple)
                     .child(label("Top corners")),
             )
-            // TS rounds the corners 44 / 6 / 28 / 0 and casts a blue
-            // shadow (opacity 0.35, radius 10, offset (4, 8)).
             .child(
                 card()
                     .bg(rgb(0xddf4ff))
+                    .rounded_tl(px(44.0))
+                    .rounded_tr(px(6.0))
+                    .rounded_br(px(28.0))
                     .border(3.0)
                     .border_color(blue)
-                    .shadow_lg()
+                    .shadow_color(blue)
+                    .shadow_opacity(0.35)
+                    .shadow_radius(10.0)
+                    .shadow_offset(4.0, 8.0)
                     .child(label("Mixed radii")),
             )
             .child(self.clipping(cx))
-            // TS rounds its top left and bottom right corners (36), with a
-            // shadow of opacity 0.3, radius 10, offset (0, 6).
             .child(
                 image("https://picsum.photos/seed/nsh/300/220")
                     .w(px(150.0))
                     .h(px(110.0))
+                    .rounded_tl(px(36.0))
+                    .rounded_br(px(36.0))
                     .bg(rgb(0xe1e4e8))
-                    .shadow_lg(),
+                    .shadow_opacity(0.3)
+                    .shadow_radius(10.0)
+                    .shadow_offset(0.0, 6.0),
             )
-            // TS: shadowOpacity 0.5, shadowRadius 3, offset (2, 2) on a
-            // transparent view, shadowing its text.
+            // A transparent view's shadow follows its content: the text.
             .child(
-                card().bg(Color::TRANSPARENT).shadow_sm().child(
-                    text("Text shadow")
-                        .text_size(px(22.0))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(rgb(0x1f2328)),
-                ),
+                card()
+                    .bg(Color::TRANSPARENT)
+                    .shadow_opacity(0.5)
+                    .shadow_radius(3.0)
+                    .shadow_offset(2.0, 2.0)
+                    .child(
+                        text("Text shadow")
+                            .text_size(px(22.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgb(0x1f2328)),
+                    ),
             )
-            // TS rounds the text's top left and bottom right corners (14).
             .child(
                 view().w(px(150.0)).items_center().child(
                     text("Text corners")
                         .text_size(px(15.0))
                         .text_color(rgb(0xffffff))
                         .bg(green)
+                        .rounded_tl(px(14.0))
+                        .rounded_br(px(14.0))
                         .px_3()
                         .py(px(6.0)),
                 ),
             )
-            // TS's borders: top 6 red, right 2 green, bottom 4 blue, left 1
-            // purple; the typed styles have one border color, and per-side
-            // widths of 1 only.
-            .child(card().child(label("Per-side borders")))
-            // TS dashes the first border and dots the second
-            // (`borderStyle`).
+            .child(
+                card()
+                    .border_t(6.0)
+                    .border_t_color(rgb(0xcf222e))
+                    .border_r(2.0)
+                    .border_r_color(green)
+                    .border_b(4.0)
+                    .border_b_color(blue)
+                    .border_l(1.0)
+                    .border_l_color(purple)
+                    .child(label("Per-side borders")),
+            )
             .child(
                 card()
                     .gap_2()
@@ -382,7 +362,8 @@ impl Component for Styles {
                             .h(px(30.0))
                             .rounded(px(8.0))
                             .border_2()
-                            .border_color(blue),
+                            .border_color(blue)
+                            .border_dashed(),
                     )
                     .child(
                         view()
@@ -390,12 +371,11 @@ impl Component for Styles {
                             .h(px(30.0))
                             .rounded(px(8.0))
                             .border(3.0)
-                            .border_color(rgb(0xbf3989)),
+                            .border_color(rgb(0xbf3989))
+                            .border_dotted(),
                     )
                     .child(label("Dashed / dotted")),
             )
-            // TS curves the last three continuously (`borderCurve`) and
-            // gives the third a top left corner of 4.
             .child(
                 card()
                     .w(px(324.0))
@@ -405,20 +385,35 @@ impl Component for Styles {
                             .flex_row()
                             .gap_3()
                             .child(view().size(px(64.0)).rounded(px(20.0)).bg(purple))
-                            .child(view().size(px(64.0)).rounded(px(20.0)).bg(purple))
                             .child(
                                 view()
                                     .size(px(64.0))
                                     .rounded(px(20.0))
-                                    .border(3.0)
-                                    .border_color(blue),
+                                    .border_curve(BorderCurve::Continuous)
+                                    .bg(purple),
                             )
-                            .child(view().w(px(64.0)).h(px(30.0)).rounded(px(15.0)).bg(green)),
+                            .child(
+                                view()
+                                    .size(px(64.0))
+                                    .rounded(px(20.0))
+                                    .border_curve(BorderCurve::Continuous)
+                                    .border(3.0)
+                                    .border_color(blue)
+                                    .rounded_tl(px(4.0)),
+                            )
+                            .child(
+                                view()
+                                    .w(px(64.0))
+                                    .h(px(30.0))
+                                    .rounded(px(15.0))
+                                    .border_curve(BorderCurve::Continuous)
+                                    .bg(green),
+                            ),
                     )
                     .child(label("Circular / continuous corners")),
             )
             .child(self.stacking(cx))
-            .children(self.tilted())
+            .children(Self::tilted())
             .child(
                 card().bg(rgb(0x1f2328)).opacity(0.45).child(
                     text("opacity 0.45")
@@ -432,9 +427,6 @@ impl Component for Styles {
                     .elevation(10.0)
                     .child(label("elevation 10 (Android)")),
             )
-            // TS dashes the outline and rotates the square about its top
-            // left corner (`transformOrigin`); here it turns about its
-            // center.
             .child(
                 card()
                     .bg(Color::TRANSPARENT)
@@ -443,6 +435,7 @@ impl Component for Styles {
                             .size(px(60.0))
                             .border_1()
                             .border_color(rgb(0xd0d7de))
+                            .border_dashed()
                             .absolute()
                             .left(px(45.0))
                             .top(px(15.0)),
@@ -454,13 +447,12 @@ impl Component for Styles {
                             .left(px(45.0))
                             .top(px(15.0))
                             .bg(rgba(0x8250_df99))
+                            .origin_top_left()
                             .rotate(30.0),
                     )
                     .child(label_below("transformOrigin top left")),
             )
             .child(FlipCard::element(()))
-            // TS's last two lines use tabular digits, the next card small
-            // caps and old-style digits (`fontVariant`).
             .child(
                 card()
                     .items_start()
@@ -472,14 +464,23 @@ impl Component for Styles {
                             .text_color(rgb(0x6e7781)),
                     )
                     .children(
-                        ["1,111.11", "8,888.88", "1,111.11", "8,888.88"]
-                            .map(|n| text(n).text_size(px(18.0))),
+                        ["1,111.11", "8,888.88"]
+                            .map(|n| text(n).text_size(px(18.0)))
+                            .into_iter()
+                            .chain(
+                                ["1,111.11", "8,888.88"]
+                                    .map(|n| text(n).text_size(px(18.0)).tabular_nums()),
+                            ),
                     ),
             )
             .child(
                 card()
-                    .child(text("Small Caps").text_size(px(18.0)))
-                    .child(text("Oldstyle 1234567890").text_size(px(18.0))),
+                    .child(text("Small Caps").text_size(px(18.0)).small_caps())
+                    .child(
+                        text("Oldstyle 1234567890")
+                            .text_size(px(18.0))
+                            .oldstyle_nums(),
+                    ),
             )
             .child(Self::right_to_left(cx));
         view().flex_1().child(scroll().flex_1().child(figures))

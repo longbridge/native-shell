@@ -1,52 +1,68 @@
-//! The Text demo on a headless engine: its texts render, links and the
-//! button inside a sentence take presses.
+//! The Text demo on a headless engine: its sentences are one paragraph
+//! each (spans, links, inline views), links and the button inside a
+//! sentence take presses.
 
-use crossbeam_channel::Receiver;
-use nsh_core::{EventKind, EventPayload, MountBatch};
-use nsh_engine::Engine;
+use nsh_core::{EventKind, TextDecoration};
 
-use crate::common::shows;
+use crate::common::{press_link, shows};
 
-/// Sends `kind` to the text `label` itself (a link, not its sentence).
-fn on_text(
-    engine: &Engine,
-    rx: &Receiver<MountBatch>,
-    screen: &mut crate::common::Screen,
-    label: &str,
-    kind: EventKind,
-) {
-    let text = screen
-        .find(label)
-        .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
-    engine
-        .control()
-        .dispatch_event(text, kind, EventPayload::None);
-    crate::common::drain(rx, screen);
-}
+/// The sentence with links.
+const SENTENCE: &str = "By continuing you agree to the Terms of service and the Privacy policy, which mention nested links too.";
 
 #[test]
 fn text_renders_its_samples() {
     let (_engine, _rx, screen) = crate::common::open("Text");
     for text in [
-        "Terms of service",
+        SENTENCE,
         "Pressed: Tap a link in the sentence",
         "LIVE",
         "♥ 3",
         "Custom fonts",
-        "UPPERCASE ",
-        "Capitalized Words Here",
+        "Light Bold Italic Both Spaced",
+        "Underline Strikethrough Both",
+        "UPPERCASE Capitalized Words Here",
         "Text shadow",
         "System text size (fontScale 1.00)",
         "numberOfLines=1 head / middle / clip",
     ] {
         assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
+    // The image, the badge and the button wrap with the words.
+    let inline = screen
+        .block(
+            "Made with \u{fffc} nsh. Status \u{fffc} and a button inside the sentence \u{fffc} that takes presses of its own.",
+        )
+        .expect("one paragraph");
+    assert_eq!(inline.attachments.len(), 3);
+    let links = &screen.block(SENTENCE).expect("one paragraph").links;
+    assert_eq!(links.len(), 3, "{links:?}");
+    // "Both" is underlined and struck through; the strikethrough is red.
+    let decorations = screen.block("Underline Strikethrough Both").unwrap();
+    let both = decorations.spans.last().unwrap();
+    assert_eq!(
+        both.style.decoration,
+        TextDecoration {
+            underline: true,
+            line_through: true
+        }
+    );
+    let struck = &decorations.spans[2];
+    assert_eq!(
+        struck.style.decoration_color,
+        Some(nsh_core::Color(0xcf22_2eff))
+    );
+    let shadow = screen
+        .block("Text shadow")
+        .unwrap()
+        .shadow
+        .expect("a shadow");
+    assert_eq!((shadow.radius, shadow.offset_x), (4.0, 2.0));
 }
 
 #[test]
 fn links_and_the_inline_button_take_presses() {
     let (engine, rx, mut screen) = crate::common::open("Text");
-    on_text(
+    press_link(
         &engine,
         &rx,
         &mut screen,
@@ -58,13 +74,13 @@ fn links_and_the_inline_button_take_presses() {
         "{:?}",
         screen.texts
     );
-    on_text(&engine, &rx, &mut screen, "links", EventKind::Press);
+    press_link(&engine, &rx, &mut screen, "links", EventKind::Press);
     assert!(
         shows(&screen, "Pressed: a link inside bold text"),
         "{:?}",
         screen.texts
     );
-    on_text(
+    press_link(
         &engine,
         &rx,
         &mut screen,
@@ -77,7 +93,7 @@ fn links_and_the_inline_button_take_presses() {
         screen.texts
     );
     // The sentence around the links.
-    crate::common::press(&engine, &rx, &mut screen, "Privacy policy");
+    crate::common::press_text(&engine, &rx, &mut screen, SENTENCE);
     assert!(
         shows(&screen, "Pressed: the sentence (not a link)"),
         "{:?}",
