@@ -9,6 +9,8 @@ use std::{
 
 use anyhow::{Context as _, bail};
 
+use crate::term;
+
 /// ABIs built by default.
 pub(crate) const ABIS: [&str; 2] = ["arm64-v8a", "x86_64"];
 /// Minimum Android API level (Android 9): hardware-accelerated shadow
@@ -107,13 +109,15 @@ pub(crate) fn build(release: bool, dev: bool, abis: &[String]) -> anyhow::Result
     });
     for abi in abis {
         let triple = triple(abi)?;
-        let so = cargo_lib(&sdk, triple, release, dev)?;
+        let so = cargo_lib(&sdk, triple, abi, release, dev)?;
         let dest = out.join("lib").join(abi);
         fs::create_dir_all(&dest)?;
         fs::copy(&so, dest.join("libnsh.so"))?;
-        println!("{}", dest.join("libnsh.so").display());
     }
+    let step = term::Step::start("compiling the Java runtime");
     java(&sdk, &out)?;
+    step.done("compiled the Java runtime");
+    term::note(out.strip_prefix(root()).unwrap_or(&out).display());
     Ok(out)
 }
 
@@ -163,7 +167,13 @@ pub(crate) fn clippy() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cargo_lib(sdk: &Sdk, triple: &str, release: bool, dev: bool) -> anyhow::Result<PathBuf> {
+fn cargo_lib(
+    sdk: &Sdk,
+    triple: &str,
+    abi: &str,
+    release: bool,
+    dev: bool,
+) -> anyhow::Result<PathBuf> {
     let mut cmd = ndk_cargo(sdk, triple);
     cmd.args(["build", "-p", "nsh-platform-android", "--target", triple]);
     if release {
@@ -172,10 +182,7 @@ fn cargo_lib(sdk: &Sdk, triple: &str, release: bool, dev: bool) -> anyhow::Resul
     if dev {
         cmd.args(["--features", "dev"]);
     }
-    let status = cmd.status().context("run cargo")?;
-    if !status.success() {
-        bail!("building libnsh.so for {triple} failed");
-    }
+    term::cargo(&mut cmd, &format!("libnsh.so for {abi}"))?;
     let profile = if release { "release" } else { "debug" };
     Ok(root()
         .join("target")
@@ -195,53 +202,42 @@ fn java(sdk: &Sdk, out: &Path) -> anyhow::Result<()> {
     }
     fs::create_dir_all(&classes)?;
     // Java 17 bytecode: d8 desugars it for every supported API level.
-    let status = Command::new("javac")
-        .args([
-            "--release",
-            "17",
-            "-Xlint:-options",
-            "-encoding",
-            "UTF-8",
-            "-classpath",
-        ])
-        .arg(sdk.android_jar())
-        .arg("-d")
-        .arg(&classes)
-        .args(&sources)
-        .status()
-        .context("run javac (is a JDK installed?)")?;
-    if !status.success() {
-        bail!("javac failed");
-    }
+    term::run(
+        Command::new("javac")
+            .args([
+                "--release",
+                "17",
+                "-Xlint:-options",
+                "-encoding",
+                "UTF-8",
+                "-classpath",
+            ])
+            .arg(sdk.android_jar())
+            .arg("-d")
+            .arg(&classes)
+            .args(&sources),
+    )?;
     let mut class_files = Vec::new();
     collect_ext(&classes, "class", &mut class_files)?;
-    let status = Command::new(sdk.build_tools.join("d8"))
-        .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
-        .arg(sdk.android_jar())
-        .arg("--output")
-        .arg(out)
-        .args(&class_files)
-        .status()
-        .context("run d8")?;
-    if !status.success() {
-        bail!("d8 failed");
-    }
+    term::run(
+        Command::new(sdk.build_tools.join("d8"))
+            .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
+            .arg(sdk.android_jar())
+            .arg("--output")
+            .arg(out)
+            .args(&class_files),
+    )?;
     // `classes.jar` for the AAR (Gradle projects dex it themselves).
     let jar = out.join("classes.jar");
     let _ = fs::remove_file(&jar);
-    let status = Command::new("jar")
-        .arg("cf")
-        .arg(&jar)
-        .arg("-C")
-        .arg(&classes)
-        .arg(".")
-        .status()
-        .context("run jar")?;
-    if !status.success() {
-        bail!("jar failed");
-    }
-    println!("{}", out.join("classes.dex").display());
-    Ok(())
+    term::run(
+        Command::new("jar")
+            .arg("cf")
+            .arg(&jar)
+            .arg("-C")
+            .arg(&classes)
+            .arg("."),
+    )
 }
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {

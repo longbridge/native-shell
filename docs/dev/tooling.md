@@ -53,6 +53,10 @@ step, the details only when something fails. Every command prints through it:
 - Verbose (`-v` / `--verbose` on any command, or `NSH_VERBOSE=1`; the app's command line inherits both): no spinner,
   and everything as it comes: every log line with its level and target, cargo's and the hosts' output.
 
+`xtask` has the same style in `crates/xtask/src/term.rs` (it cannot depend on `nsh-cli`, which would build the bundler
+before every `cargo run`): `✓` lines for its builds, cargo's and the tools' output only when they fail, `-v` /
+`NSH_VERBOSE` to see it all (`cargo xtask clippy-android` streams clippy's output: it is what the task is for).
+
 ## Dev server (nsh dev / nsh run)
 
 - The CLI watches sources with notify and pushes every rebuild over WebSocket (`/ws`, default port 8790, the next free port if taken) to all
@@ -140,5 +144,7 @@ The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distributi
 Commands that build an app take its entry module or its directory (the current one by default), whose `App.tsx` is
 the entry (matched in any case: `crates/nsh-cli/src/entry.rs`). `cargo run` is `xtask run` (the workspace's default
 member): the gallery in the Mac Catalyst host through `nsh run`, in a process group of its own that is stopped and
-started again when a source under `crates/` changes (`crates/xtask/src/run.rs`).
+started again when a source under `crates/` changes (`crates/xtask/src/run.rs`). The first two lines (`Finished`,
+`Running`) are the outer `cargo run`'s own, which only a global `term.quiet` would hide (it would hide `cargo build`'s
+too); `cargo xtask [run] [<app>]` is the same task through the alias in `.cargo/config.toml` (`run -q`), without them.
 `.cargo/config.toml` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.

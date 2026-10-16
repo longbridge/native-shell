@@ -16,9 +16,9 @@ use std::{
     process::Command,
 };
 
-use anyhow::{Context as _, bail};
+use anyhow::Context as _;
 
-use crate::android;
+use crate::{android, term};
 
 const IOS: &str = "aarch64-apple-ios";
 const IOS_SIM: &str = "aarch64-apple-ios-sim";
@@ -33,33 +33,39 @@ pub(crate) fn dist() -> anyhow::Result<()> {
     let release = root.join("target");
 
     // The CLI for this machine.
-    cargo(&["build", "--release", "-p", "nsh-cli"])?;
+    cargo(&["build", "--release", "-p", "nsh-cli"], "nsh")?;
     copy(&release.join("release/nsh"), &out.join("bin/nsh"))?;
 
     // iOS runtimes: release runners, development hosts.
     for (triple, dir) in [(IOS, "iphoneos"), (IOS_SIM, "iphonesimulator")] {
-        cargo(&[
-            "build",
-            "--release",
-            "-p",
-            "nsh-ios-app",
-            "--target",
-            triple,
-        ])?;
+        cargo(
+            &[
+                "build",
+                "--release",
+                "-p",
+                "nsh-ios-app",
+                "--target",
+                triple,
+            ],
+            &format!("the release runner for {triple}"),
+        )?;
         copy(
             &release.join(triple).join("release/nsh-ios-app"),
             &out.join("runtime/ios").join(dir).join("nsh-ios-app"),
         )?;
     }
     for (triple, dir) in [(IOS_SIM, "iphonesimulator"), (CATALYST, "maccatalyst")] {
-        cargo(&[
-            "build",
-            "--release",
-            "-p",
-            "nsh-ios-host",
-            "--target",
-            triple,
-        ])?;
+        cargo(
+            &[
+                "build",
+                "--release",
+                "-p",
+                "nsh-ios-host",
+                "--target",
+                triple,
+            ],
+            &format!("the development host for {triple}"),
+        )?;
         copy(
             &release.join(triple).join("release/nsh-ios-host"),
             &out.join("runtime/ios").join(dir).join("nsh-ios-host"),
@@ -82,13 +88,17 @@ pub(crate) fn dist() -> anyhow::Result<()> {
             .join("embed/android")
             .join(if dev { "nsh-dev.aar" } else { "nsh.aar" });
         make_aar(&built, &abis, dev, &aar)?;
+        term::done(format!(
+            "packed {}",
+            aar.strip_prefix(&root).unwrap_or(&aar).display()
+        ));
     }
 
     // iOS embedding: a static framework per platform (Rust + the Swift
     // module) in an XCFramework.
     crate::ios::xcframeworks(&out.join("embed/ios"), &out.join("work"))?;
     fs::remove_dir_all(out.join("work"))?;
-    println!("{}", out.display());
+    term::note(out.strip_prefix(&root).unwrap_or(&out).display());
     Ok(())
 }
 
@@ -131,11 +141,13 @@ fn make_aar(built: &Path, abis: &[String], dev: bool, aar: &Path) -> anyhow::Res
         fs::create_dir_all(dir)?;
     }
     let _ = fs::remove_file(aar);
-    run(Command::new("zip")
-        .current_dir(&work)
-        .args(["-q", "-r"])
-        .arg(aar.canonicalize().unwrap_or_else(|_| abs(aar)))
-        .arg("."))?;
+    term::run(
+        Command::new("zip")
+            .current_dir(&work)
+            .args(["-q", "-r"])
+            .arg(aar.canonicalize().unwrap_or_else(|_| abs(aar)))
+            .arg("."),
+    )?;
     fs::remove_dir_all(&work)?;
     Ok(())
 }
@@ -148,9 +160,13 @@ fn abs(p: &Path) -> PathBuf {
     }
 }
 
-pub(crate) fn cargo(args: &[&str]) -> anyhow::Result<()> {
+/// `cargo <args>` in the workspace: the step "building <what>".
+pub(crate) fn cargo(args: &[&str], what: &str) -> anyhow::Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    run(Command::new(cargo).current_dir(android::root()).args(args))
+    term::cargo(
+        Command::new(cargo).current_dir(android::root()).args(args),
+        what,
+    )
 }
 
 pub(crate) fn copy(from: &Path, to: &Path) -> anyhow::Result<()> {
@@ -158,15 +174,5 @@ pub(crate) fn copy(from: &Path, to: &Path) -> anyhow::Result<()> {
         fs::create_dir_all(dir)?;
     }
     fs::copy(from, to).with_context(|| format!("copy {} -> {}", from.display(), to.display()))?;
-    Ok(())
-}
-
-pub(crate) fn run(cmd: &mut Command) -> anyhow::Result<()> {
-    let status = cmd
-        .status()
-        .with_context(|| format!("run {:?}", cmd.get_program()))?;
-    if !status.success() {
-        bail!("{:?} failed", cmd.get_program());
-    }
     Ok(())
 }

@@ -103,6 +103,7 @@ including the user-facing pages in `website/` (English and `zh-CN`).
 
 ```sh
 cargo run [-- <app>] [-- --target ios|android]                                     # the gallery in Mac Catalyst, hot reload; rebuilt and restarted on Rust changes
+cargo xtask [<app>] [--target ios|android] [-v]                                    # the same without cargo's own two lines; -v (any nsh / xtask command): all output
 cargo build -p nsh-cli                                                             # build the nsh CLI
 ./target/debug/nsh init my-app                                                     # new app: App.tsx, nsh.json, tsconfig.json, .nsh/types
 cargo build -p nsh-ios-host --target aarch64-apple-ios-macabi                          # the Catalyst development host (nsh run builds it in a checkout)
@@ -192,7 +193,7 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   - Items in private modules are `pub(crate)`, never `pub`.
 - Everything is written in English: code comments, docs, logs and this file. Comments explain why, not what the code says.
 - Library crates only log through the `log` facade (no `eprintln!`); performance logs use target `nsh::perf`, JS logs target `js`. Binaries install the logger.
-  The CLI prints through `nsh-cli`'s `ui.rs` (steps, captured tools, `error` reports).
+  The CLI prints through `nsh-cli`'s `ui.rs` (steps, captured tools, `error` reports), xtask through `term.rs`.
 - Dependencies are declared once in the root `Cargo.toml` `[workspace.dependencies]`; crates only write `.workspace = true`.
 - Every `unsafe` block has a `// SAFETY:` comment.
 - A crate's integration tests are one test binary (`tests/<name>/main.rs` with a module per area, as

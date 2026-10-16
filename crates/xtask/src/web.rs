@@ -16,7 +16,8 @@ use anyhow::Context as _;
 
 use crate::{
     android,
-    dist::{cargo, copy, run},
+    dist::{cargo, copy},
+    term::{self, run},
 };
 
 const WASM: &str = "wasm32-unknown-unknown";
@@ -25,29 +26,35 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
     let root = android::root();
     // Relative to the workspace, wherever `cargo xtask` runs from.
     let out = root.join(out);
-    cargo(&[
-        "build",
-        "--release",
-        "-p",
-        "nsh-platform-web",
-        "--target",
-        WASM,
-    ])?;
+    cargo(
+        &[
+            "build",
+            "--release",
+            "-p",
+            "nsh-platform-web",
+            "--target",
+            WASM,
+        ],
+        "nsh.wasm",
+    )?;
     // Its own target directory: switching the feature would rebuild the
     // other one every time.
-    cargo(&[
-        "build",
-        "--release",
-        "-p",
-        "nsh-platform-web",
-        "--features",
-        "compiler",
-        "--target",
-        WASM,
-        "--target-dir",
-        "target/web-playground",
-    ])?;
-    cargo(&["build", "--release", "-p", "nsh-cli"])?;
+    cargo(
+        &[
+            "build",
+            "--release",
+            "-p",
+            "nsh-platform-web",
+            "--features",
+            "compiler",
+            "--target",
+            WASM,
+            "--target-dir",
+            "target/web-playground",
+        ],
+        "nsh-playground.wasm",
+    )?;
+    cargo(&["build", "--release", "-p", "nsh-cli"], "nsh")?;
     fs::create_dir_all(out.join("demos"))?;
     copy(
         &root
@@ -71,7 +78,8 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
     let nsh = root.join("target/release/nsh");
     let demos = root.join("website/demos");
     let tmp = root.join("target/web-demos");
-    let mut names = Vec::new();
+    let step = term::Step::start("bundling the website's demos");
+    let mut demos_built = 0;
     for entry in fs::read_dir(&demos).context("website/demos")? {
         let path = entry?.path();
         if path.extension().is_none_or(|e| e != "tsx") {
@@ -92,7 +100,7 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
             &dir.join("bundle.js"),
             &out.join("demos").join(format!("{name}.js")),
         )?;
-        names.push(name);
+        demos_built += 1;
     }
     if demos.join("assets").is_dir() {
         for entry in fs::read_dir(demos.join("assets"))? {
@@ -105,7 +113,7 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
             }
         }
     }
-    names.sort();
-    println!("{} demos in {}", names.len(), out.display());
+    step.done(format!("bundled {demos_built} demos"));
+    term::note(out.strip_prefix(&root).unwrap_or(&out).display());
     Ok(())
 }

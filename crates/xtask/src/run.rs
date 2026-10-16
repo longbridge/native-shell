@@ -19,7 +19,7 @@ use anyhow::Context as _;
 use clap::Args;
 use notify::{EventKind, RecursiveMode, Watcher as _};
 
-use crate::android;
+use crate::{android, term};
 
 /// Options of `cargo run`, passed on to `nsh run`.
 #[derive(Args)]
@@ -70,8 +70,11 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
     loop {
         let mut app = match build_cli(&root) {
             Ok(()) => Some(launch(&root, &args)?),
+            // Ctrl-C stopped the build too.
+            Err(_) if STOP.load(Ordering::SeqCst) => return Ok(()),
             Err(err) => {
-                eprintln!("{err:#}\nwaiting for changes under crates/");
+                term::report(&err);
+                term::note("waiting for changes under crates/");
                 None
             }
         };
@@ -100,7 +103,7 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
         if let Some(app) = app.as_mut() {
             stop(app);
         }
-        eprintln!("crates/ changed: rebuilding and restarting");
+        term::note("crates/ changed: rebuilding and restarting");
     }
 }
 
@@ -114,13 +117,12 @@ fn is_source(path: &Path) -> bool {
 }
 
 fn build_cli(root: &Path) -> anyhow::Result<()> {
-    let status = Command::new("cargo")
-        .args(["build", "-p", "nsh-cli"])
-        .current_dir(root)
-        .status()
-        .context("run cargo")?;
-    anyhow::ensure!(status.success(), "building nsh-cli failed");
-    Ok(())
+    term::cargo(
+        Command::new("cargo")
+            .args(["build", "-p", "nsh-cli"])
+            .current_dir(root),
+        "nsh",
+    )
 }
 
 /// Starts `nsh run`, which builds the host it needs, in a process group of
@@ -141,6 +143,9 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
     }
     if args.trace {
         cmd.arg("--trace");
+    }
+    if term::verbose() {
+        cmd.arg("--verbose");
     }
     cmd.process_group(0)
         .spawn()

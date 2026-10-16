@@ -11,6 +11,6 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-clap.workspace = true
+clap = { workspace = true, features = ["env"] }
 libc.workspace = true
 notify.workspace = true

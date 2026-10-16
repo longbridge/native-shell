@@ -19,7 +19,8 @@ use anyhow::Context as _;
 
 use crate::{
     android,
-    dist::{cargo, copy, run},
+    dist::{cargo, copy},
+    term::{self, run},
 };
 
 /// The lowest iOS the frameworks support (as `.cargo/config.toml`).
@@ -64,28 +65,33 @@ pub(crate) fn xcframeworks(out: &Path, work: &Path) -> anyhow::Result<()> {
     let root = android::root();
     let crate_dir = root.join("crates/nsh-platform-ios");
     // The Swift module, once per slice (the same for both variants).
+    let step = term::Step::start("compiling the NativeShell Swift module");
     let mut swift = Vec::new();
     for slice in &SLICES {
         let dir = work.join("swift").join(slice.rust);
         compile_swift(slice, &crate_dir, &dir)?;
         swift.push(dir);
     }
+    step.done("compiled the NativeShell Swift module");
     for (dev, name) in [(false, "NativeShell"), (true, "NativeShellDev")] {
         let mut frameworks = Vec::new();
         for (slice, swift) in SLICES.iter().zip(&swift) {
             let features = if dev { "embed,dev" } else { "embed" };
-            cargo(&[
-                "rustc",
-                "--release",
-                "-p",
-                "nsh-platform-ios",
-                "--target",
-                slice.rust,
-                "--features",
-                features,
-                "--crate-type",
-                "staticlib",
-            ])?;
+            cargo(
+                &[
+                    "rustc",
+                    "--release",
+                    "-p",
+                    "nsh-platform-ios",
+                    "--target",
+                    slice.rust,
+                    "--features",
+                    features,
+                    "--crate-type",
+                    "staticlib",
+                ],
+                &format!("the runtime of {name} for {}", slice.rust),
+            )?;
             let rust_lib = root
                 .join("target")
                 .join(slice.rust)
@@ -108,6 +114,7 @@ pub(crate) fn xcframeworks(out: &Path, work: &Path) -> anyhow::Result<()> {
         }
         cmd.arg("-output").arg(&xcframework);
         run(&mut cmd)?;
+        term::done(format!("packed {name}.xcframework"));
     }
     Ok(())
 }
