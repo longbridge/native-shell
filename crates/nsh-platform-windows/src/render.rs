@@ -23,24 +23,27 @@
 use std::rc::Rc;
 
 use nsh_core::{Color, Rect};
-use windows::Win32::{
-    Foundation::{D2DERR_RECREATE_TARGET, RECT},
-    Graphics::{
-        Direct2D::{
-            Common::{
-                D2D_POINT_2U, D2D_RECT_F, D2D_RECT_U, D2D_SIZE_F, D2D_SIZE_U,
-                D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED,
-                D2D1_FIGURE_END_CLOSED, D2D1_PIXEL_FORMAT,
+use windows::{
+    Win32::{
+        Foundation::{D2DERR_RECREATE_TARGET, RECT},
+        Graphics::{
+            Direct2D::{
+                Common::{
+                    D2D_POINT_2U, D2D_RECT_F, D2D_RECT_U, D2D_SIZE_F, D2D_SIZE_U,
+                    D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_FIGURE_BEGIN_FILLED,
+                    D2D1_FIGURE_END_CLOSED, D2D1_PIXEL_FORMAT,
+                },
+                D2D1_ANTIALIAS_MODE_ALIASED, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_ARC_SEGMENT,
+                D2D1_ARC_SIZE_SMALL, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_CPU_READ,
+                D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1,
+                D2D1_INTERPOLATION_MODE_LINEAR, D2D1_LAYER_OPTIONS1_NONE, D2D1_LAYER_PARAMETERS1,
+                D2D1_MAP_OPTIONS_READ, D2D1_ROUNDED_RECT, D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                ID2D1Bitmap1, ID2D1DeviceContext, ID2D1Geometry, ID2D1Image, ID2D1SolidColorBrush,
             },
-            D2D1_ANTIALIAS_MODE_ALIASED, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_ARC_SEGMENT,
-            D2D1_ARC_SIZE_SMALL, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_CPU_READ,
-            D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, D2D1_INTERPOLATION_MODE_LINEAR,
-            D2D1_LAYER_OPTIONS1_NONE, D2D1_LAYER_PARAMETERS1, D2D1_MAP_OPTIONS_READ,
-            D2D1_ROUNDED_RECT, D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            ID2D1Bitmap1, ID2D1DeviceContext, ID2D1Geometry, ID2D1SolidColorBrush,
+            Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
         },
-        Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
     },
+    core::Interface,
 };
 use windows_numerics::Matrix3x2;
 
@@ -80,10 +83,21 @@ pub(crate) const INFINITE: D2D_RECT_F = D2D_RECT_F {
     bottom: 1.0e7,
 };
 
-/// What was pushed on the context, to pop it the same way.
+/// What was pushed on the context, to pop it the same way (and push it
+/// again: [`DrawCx::flatten`]).
 enum Pushed {
-    Layer,
-    Clip,
+    /// A layer: its opacity and mask, with the transform it was pushed
+    /// with.
+    Layer {
+        transform: Matrix3x2,
+        opacity: f32,
+        mask: Option<ID2D1Geometry>,
+    },
+    /// An axis-aligned clip, with the transform it was pushed with.
+    Clip {
+        transform: Matrix3x2,
+        rect: D2D_RECT_F,
+    },
 }
 
 /// The state of one drawing pass.
@@ -108,18 +122,38 @@ pub(crate) struct DrawCx<'a> {
     /// True when drawing offscreen (a snapshot): child windows are not
     /// moved.
     pub(crate) offscreen: bool,
+    /// True when the context's target holds what lies behind the view
+    /// being drawn (the window's pass, a snapshot), so blend modes and
+    /// backdrop filters can read it ([`crate::decor`]); false in passes
+    /// drawn offscreen for a filtered or 3D-transformed view.
+    pub(crate) backdrop: bool,
 }
 
 impl<'a> DrawCx<'a> {
     /// A pass with `dc` (its target set, between `BeginDraw` and
     /// `EndDraw`).
-    pub(crate) fn new(gfx: &'a Gfx, scale: f32, dark: bool, now: f64) -> windows::core::Result<Self> {
+    pub(crate) fn new(
+        gfx: &'a Gfx,
+        scale: f32,
+        dark: bool,
+        now: f64,
+    ) -> windows::core::Result<Self> {
+        Self::with_dc(gfx, &gfx.dc, scale, dark, now)
+    }
+
+    fn with_dc(
+        gfx: &'a Gfx,
+        dc: &'a ID2D1DeviceContext,
+        scale: f32,
+        dark: bool,
+        now: f64,
+    ) -> windows::core::Result<Self> {
         let black = color_f(Color::BLACK);
         // SAFETY: a COM call on the live context.
-        let brush = unsafe { gfx.dc.CreateSolidColorBrush(&black, None)? };
+        let brush = unsafe { dc.CreateSolidColorBrush(&black, None)? };
         Ok(DrawCx {
             gfx,
-            dc: &gfx.dc,
+            dc,
             transform: Mat4::new(),
             scale,
             dark,
@@ -128,7 +162,26 @@ impl<'a> DrawCx<'a> {
             pushed: Vec::new(),
             drawn: Vec::new(),
             offscreen: false,
+            backdrop: true,
         })
+    }
+
+    /// A pass like this one drawing with `dc` (another context of the same
+    /// device, its target set and drawing begun) at `scale` pixels per
+    /// point: offscreen drawing for filters and 3D transforms
+    /// ([`crate::decor`]).
+    pub(crate) fn nested<'b>(
+        &self,
+        dc: &'b ID2D1DeviceContext,
+        scale: f32,
+    ) -> windows::core::Result<DrawCx<'b>>
+    where
+        'a: 'b,
+    {
+        let mut cx = DrawCx::with_dc(self.gfx, dc, scale, self.dark, self.now)?;
+        cx.offscreen = self.offscreen;
+        cx.backdrop = false;
+        Ok(cx)
     }
 
     /// The pass's solid brush, set to `color`.
@@ -149,9 +202,28 @@ impl<'a> DrawCx<'a> {
 
     /// Draws what follows at `opacity`.
     pub(crate) fn push_opacity(&mut self, opacity: f32) {
-        let params = D2D1_LAYER_PARAMETERS1 {
+        self.push_layer(opacity, None);
+    }
+
+    /// Clips what follows to `geometry` (in the current coordinates).
+    pub(crate) fn push_clip_geometry(&mut self, geometry: &ID2D1Geometry) {
+        self.push_layer(1.0, Some(geometry.clone()));
+    }
+
+    /// Pushes a layer of `opacity` masked by `mask` (current coordinates).
+    fn push_layer(&mut self, opacity: f32, mask: Option<ID2D1Geometry>) {
+        self.push_layer_raw(opacity, mask.as_ref());
+        self.pushed.push(Pushed::Layer {
+            transform: self.dc_transform(),
+            opacity,
+            mask,
+        });
+    }
+
+    fn push_layer_raw(&self, opacity: f32, mask: Option<&ID2D1Geometry>) {
+        let mut params = D2D1_LAYER_PARAMETERS1 {
             contentBounds: INFINITE,
-            geometricMask: std::mem::ManuallyDrop::new(None),
+            geometricMask: std::mem::ManuallyDrop::new(mask.cloned()),
             maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
             maskTransform: Matrix3x2::identity(),
             opacity,
@@ -160,27 +232,60 @@ impl<'a> DrawCx<'a> {
         };
         // SAFETY: valid parameters; popped by `pop`.
         unsafe { self.dc.PushLayer(&params, None) };
-        self.pushed.push(Pushed::Layer);
-    }
-
-    /// Clips what follows to `geometry` (in the current coordinates).
-    pub(crate) fn push_clip_geometry(&mut self, geometry: &ID2D1Geometry) {
-        let params = D2D1_LAYER_PARAMETERS1 {
-            contentBounds: INFINITE,
-            geometricMask: std::mem::ManuallyDrop::new(Some(geometry.clone())),
-            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-            maskTransform: Matrix3x2::identity(),
-            opacity: 1.0,
-            opacityBrush: std::mem::ManuallyDrop::new(None),
-            layerOptions: D2D1_LAYER_OPTIONS1_NONE,
-        };
-        // SAFETY: valid parameters; popped by `pop`.
-        unsafe { self.dc.PushLayer(&params, None) };
         // The parameters own a reference to the mask: release it.
-        let mut params = params;
         // SAFETY: the field is not used afterwards.
         unsafe { std::mem::ManuallyDrop::drop(&mut params.geometricMask) };
-        self.pushed.push(Pushed::Layer);
+    }
+
+    /// The context's current transform.
+    fn dc_transform(&self) -> Matrix3x2 {
+        let mut t = Matrix3x2::identity();
+        // SAFETY: a COM call on the live context writing to a local.
+        unsafe { self.dc.GetTransform(&mut t) };
+        t
+    }
+
+    /// Pops every layer and clip pushed so far, runs `between` (what was
+    /// drawn into the layers is in the target then: to read what lies
+    /// behind a view, [`crate::decor`]) and pushes them again as they
+    /// were. Exact for clips; a translucent layer splits in two (what is
+    /// drawn before and after no longer composites as one group).
+    pub(crate) fn flatten<R>(&mut self, between: impl FnOnce(&ID2D1DeviceContext) -> R) -> R {
+        for p in self.pushed.iter().rev() {
+            match p {
+                // SAFETY: matches the push.
+                Pushed::Layer { .. } => unsafe { self.dc.PopLayer() },
+                // SAFETY: as above.
+                Pushed::Clip { .. } => unsafe { self.dc.PopAxisAlignedClip() },
+            }
+        }
+        let out = between(self.dc);
+        let current = self.dc_transform();
+        for p in &self.pushed {
+            match p {
+                Pushed::Layer {
+                    transform,
+                    opacity,
+                    mask,
+                } => {
+                    // SAFETY: a COM call on the live context.
+                    unsafe { self.dc.SetTransform(transform) };
+                    self.push_layer_raw(*opacity, mask.as_ref());
+                }
+                Pushed::Clip { transform, rect } => {
+                    // SAFETY: COM calls on the live context; popped by
+                    // `pop`.
+                    unsafe {
+                        self.dc.SetTransform(transform);
+                        self.dc
+                            .PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_ALIASED);
+                    }
+                }
+            }
+        }
+        // SAFETY: a COM call on the live context.
+        unsafe { self.dc.SetTransform(&current) };
+        out
     }
 
     /// Clips what follows to the rectangle (current coordinates). Exact
@@ -191,12 +296,16 @@ impl<'a> DrawCx<'a> {
         if t.M12 == 0.0 && t.M21 == 0.0 {
             // Snapped to pixels when the edges fall on them, as UIKit's
             // `masksToBounds` of a pixel-aligned layer.
+            let rect = rect_f(x, y, w, h);
             // SAFETY: popped by `pop`.
             unsafe {
                 self.dc
-                    .PushAxisAlignedClip(&rect_f(x, y, w, h), D2D1_ANTIALIAS_MODE_ALIASED)
+                    .PushAxisAlignedClip(&rect, D2D1_ANTIALIAS_MODE_ALIASED)
             };
-            self.pushed.push(Pushed::Clip);
+            self.pushed.push(Pushed::Clip {
+                transform: self.dc_transform(),
+                rect,
+            });
         } else if let Some(g) = self.rounded_geometry(crate::geom::rect(x, y, w, h), [0.0; 4]) {
             self.push_clip_geometry(&g);
         } else {
@@ -220,9 +329,9 @@ impl<'a> DrawCx<'a> {
     pub(crate) fn pop(&mut self) {
         match self.pushed.pop() {
             // SAFETY: matches the push.
-            Some(Pushed::Layer) => unsafe { self.dc.PopLayer() },
+            Some(Pushed::Layer { .. }) => unsafe { self.dc.PopLayer() },
             // SAFETY: as above.
-            Some(Pushed::Clip) => unsafe { self.dc.PopAxisAlignedClip() },
+            Some(Pushed::Clip { .. }) => unsafe { self.dc.PopAxisAlignedClip() },
             None => log::error!("render: pop without push"),
         }
     }
@@ -237,7 +346,6 @@ impl<'a> DrawCx<'a> {
 /// The rounded rectangle `rect` with corner radii clockwise from the top
 /// left (each clamped to half the box), as a geometry.
 pub(crate) fn rounded_geometry(gfx: &Gfx, rect: Rect, radii: [f32; 4]) -> Option<ID2D1Geometry> {
-    use windows::core::Interface;
     let Rect {
         x,
         y,
@@ -299,7 +407,7 @@ pub(crate) fn rounded_geometry(gfx: &Gfx, rect: Rect, radii: [f32; 4]) -> Option
 /// parent's coordinates and `origin` where the view goes in them.
 pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origin: (f32, f32)) {
     let state = view.state();
-    if state.style.hidden || state.concealed || crate::decor::backface_away(&state, &parent) {
+    if state.style.hidden || state.concealed {
         return;
     }
     let opacity = state.opacity();
@@ -311,15 +419,38 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
         local = Mat4::mul(&t, &local);
     }
     let world = Mat4::mul(&local, &parent);
+    if crate::decor::backface_away(&state, &world) {
+        return;
+    }
     if !world.is_affine() {
         drop(state);
         return draw_projected(cx, view, world, opacity);
     }
+    let layered = crate::decor::layered(&state);
+    drop(state);
     cx.set_transform(world);
     if opacity < 1.0 {
         cx.push_opacity(opacity);
     }
-    let filters = crate::decor::push_filters(cx, &state);
+    if layered {
+        // Filters, a shadow of the content or a blend mode: the view is
+        // drawn offscreen and composited as one image.
+        crate::decor::draw_layered(cx, view, world);
+    } else {
+        draw_content(cx, view, world);
+    }
+    if opacity < 1.0 {
+        cx.pop();
+    }
+}
+
+/// Draws what `view` draws and its subtree at `world` (set on the context):
+/// the backdrop filter, shadows and background, the content clipped to the
+/// bounds, the children, the hosted items, the scroll indicator, the
+/// border and outline.
+pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
+    let state = view.state();
+    crate::decor::draw_backdrop(cx, &state);
     crate::decor::draw_background(cx, &state);
     let clip = state.clips();
     let (w, h) = (state.frame.width, state.frame.height);
@@ -371,79 +502,99 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
         cx.pop();
     }
     crate::decor::draw_border(cx, &state);
-    for _ in 0..filters {
-        cx.pop();
-    }
-    if opacity < 1.0 {
-        cx.pop();
-    }
 }
+
+/// Most pixels along a side of a 3D-transformed view's bitmap.
+const MAX_PROJECTED: f32 = 8192.0;
 
 /// Draws `view` (with a projective `world` transform) into an offscreen
 /// bitmap, then maps the bitmap with Direct2D's perspective transform.
 fn draw_projected(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4, opacity: f32) {
-    let (w, h, overflow) = {
+    let (w, h, overflow, outset) = {
         let s = view.state();
-        (s.frame.width, s.frame.height, s.overflow)
+        (
+            s.frame.width,
+            s.frame.height,
+            s.overflow,
+            crate::decor::outset(&s),
+        )
     };
-    // What the subtree covers, in the view's coordinates.
+    // What the subtree covers, in the view's coordinates, with the view's
+    // shadows and outline.
     let area = overflow.unwrap_or(crate::geom::rect(0.0, 0.0, w, h));
-    let scale = cx.scale;
+    let area = crate::geom::rect(
+        area.x - outset,
+        area.y - outset,
+        area.width + 2.0 * outset,
+        area.height + 2.0 * outset,
+    );
+    if area.width <= 0.0 || area.height <= 0.0 {
+        return;
+    }
+    // Drawn at the window's scale, less for a huge subtree (the bitmap's
+    // DIPs stay the view's points).
+    let scale = cx
+        .scale
+        .min(MAX_PROJECTED / area.width)
+        .min(MAX_PROJECTED / area.height);
     let px = (
-        (area.width * scale).ceil().clamp(1.0, 8192.0) as u32,
-        (area.height * scale).ceil().clamp(1.0, 8192.0) as u32,
+        (area.width * scale).ceil().max(1.0) as u32,
+        (area.height * scale).ceil().max(1.0) as u32,
     );
     let props = gfx::target_properties(scale, true);
-    // SAFETY: COM calls on the live context; the previous target is
-    // restored before returning.
-    let result = unsafe {
-        (|| -> windows::core::Result<()> {
-            let bitmap = cx.dc.CreateBitmap(
-                D2D_SIZE_U {
-                    width: px.0,
-                    height: px.1,
-                },
-                None,
-                0,
-                &D2D1_BITMAP_PROPERTIES1 {
-                    bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET,
-                    ..props
-                },
-            )?;
-            let previous = cx.dc.GetTarget()?;
-            let saved = (cx.transform, std::mem::take(&mut cx.pushed));
-            cx.dc.SetTarget(&bitmap);
-            cx.dc.Clear(Some(&color_f(Color::TRANSPARENT)));
-            // The subtree as if untransformed, at the bitmap's origin.
-            let base = Mat4::new().translate(-area.x, -area.y);
-            {
-                let s = view.state();
-                let mut flat = view.clone();
-                drop(s);
-                draw_flat(cx, &mut flat, base);
-            }
-            cx.dc.SetTarget(&previous);
-            cx.transform = saved.0;
-            cx.pushed = saved.1;
-            cx.dc.SetTransform(&Matrix3x2::identity());
-            // The bitmap's DIPs map to the view's coordinates (offset by
-            // the area's origin), then through the view's world transform.
-            let m = Mat4::new().translate(area.x, area.y).then(&world);
-            let dest = rect_f(0.0, 0.0, area.width, area.height);
-            cx.dc.DrawBitmap(
-                &bitmap,
-                Some(&dest),
-                opacity,
-                D2D1_INTERPOLATION_MODE_LINEAR,
-                None,
-                Some(&m.to_d2d()),
-            );
-            Ok(())
-        })()
+    // SAFETY: a COM call on the live context with valid properties.
+    let bitmap = unsafe {
+        cx.dc.CreateBitmap(
+            D2D_SIZE_U {
+                width: px.0,
+                height: px.1,
+            },
+            None,
+            0,
+            &D2D1_BITMAP_PROPERTIES1 {
+                bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET,
+                ..props
+            },
+        )
     };
-    if let Err(err) = result {
-        log::debug!("render: projected view not drawn: {err}");
+    let bitmap = match bitmap {
+        Ok(b) => b,
+        Err(err) => {
+            log::debug!("render: projected view not drawn: {err}");
+            return;
+        }
+    };
+    let Ok(image) = bitmap.cast::<ID2D1Image>() else {
+        return;
+    };
+    // The subtree as if untransformed, at the bitmap's origin, drawn by
+    // another context: layers pushed on this one stay as they are.
+    let base = Mat4::new().translate(-area.x, -area.y);
+    let mut flat = view.clone();
+    let drawn = crate::decor::layer::draw_into(cx, &image, scale, true, |inner| {
+        draw_flat(inner, &mut flat, base);
+    });
+    if !drawn {
+        return;
     }
+    // The bitmap's DIPs map to the view's coordinates (offset by the
+    // area's origin), then through the view's world transform.
+    let m = Mat4::new().translate(area.x, area.y).then(&world);
+    let dest = rect_f(0.0, 0.0, area.width, area.height);
+    let saved = cx.transform;
+    // SAFETY: COM calls on the live context and bitmap.
+    unsafe {
+        cx.dc.SetTransform(&Matrix3x2::identity());
+        cx.dc.DrawBitmap(
+            &bitmap,
+            Some(&dest),
+            opacity,
+            D2D1_INTERPOLATION_MODE_LINEAR,
+            None,
+            Some(&m.to_d2d()),
+        );
+    }
+    cx.set_transform(saved);
 }
 
 /// Draws `view` with its transform replaced by `base` (the inside of
@@ -453,7 +604,11 @@ fn draw_flat(cx: &mut DrawCx<'_>, view: &mut NshView, base: Mat4) {
         let mut s = view.state_mut();
         let t = std::mem::take(&mut s.style.transform);
         let o = std::mem::replace(&mut s.style.opacity, 1.0);
-        let a = std::mem::take(&mut s.anim);
+        // Only the animated opacity and transform: animated colors and
+        // shadows still draw.
+        let a = s.anim;
+        s.anim.opacity = None;
+        s.anim.transform = Default::default();
         (t, o, a)
     };
     let saved_live = view.state_mut().live.take();
