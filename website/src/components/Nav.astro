@@ -2,7 +2,7 @@
 import DocSearch from './DocSearch.astro';
 import Logo from './Logo.astro';
 import ThemeSwitch from './ThemeSwitch.astro';
-import { BASE, REPO_URL, url, type Lang } from '../lib/site';
+import { BASE, GPUI_KIT_URL, REPO_URL, url, type Lang } from '../lib/site';
 import { SECTIONS, sectionHrefs } from '../lib/sections';
 
 export interface Props {
@@ -30,6 +30,22 @@ const activeSection = rest.replace(/^zh-CN(\/|$)/, '').split('/')[0];
       <Logo class="site-nav__logo" />
       <span>Native Shell</span>
     </a>
+
+    <details class="site-nav__projects">
+      <summary aria-label={isZh ? '切换项目' : 'Switch project'} title={isZh ? '切换项目' : 'Switch project'}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="site-nav__projects-menu">
+        <a href={home} class="is-current" aria-current="true">
+          <strong>Native Shell</strong>
+          <span>{isZh ? '由 AI 生成、原生渲染的 UI' : 'AI-generated UI, rendered natively'}</span>
+        </a>
+        <a href={GPUI_KIT_URL} target="_blank" rel="noopener noreferrer">
+          <strong>GPUI Kit</strong>
+          <span>{isZh ? 'GPUI 桌面应用的组件与工具集' : 'Components and tools for GPUI desktop apps'}</span>
+        </a>
+      </div>
+    </details>
 
     <nav class="site-nav__links" id="site-nav-links" aria-label={isZh ? '主导航' : 'Primary'}>
       {SECTIONS.map((section) => (
@@ -68,6 +84,10 @@ const activeSection = rest.replace(/^zh-CN(\/|$)/, '').split('/')[0];
 </header>
 
 <script>
+  const projects = document.querySelector<HTMLDetailsElement>('.site-nav__projects');
+  document.addEventListener('click', (event) => {
+    if (projects?.open && !projects.contains(event.target as Node)) projects.open = false;
+  });
   const burger = document.getElementById('nav-burger');
   const links = document.getElementById('site-nav-links');
   const setOpen = (open: boolean) => {

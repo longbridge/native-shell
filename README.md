@@ -14,6 +14,12 @@ The components of the mobile UI set (`import { Button, Card } from "nsh/ui/mobil
 the core, laid out with the rest of the app: one implementation, the same look on iOS and Android, and JS only
 describes the UI and handles the events.
 
+## Related project: GPUI Kit
+
+[GPUI Kit](https://gpui-kit.com) is our sibling project: components and tools for building desktop apps with GPUI.
+nsh's theme colors follow gpui-kit's fields, and the GPUI desktop backend of nsh builds on it. The documentation
+site's top-left menu switches between the two projects.
+
 ## Running the examples
 
 | Example | What it shows |

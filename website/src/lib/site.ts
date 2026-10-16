@@ -8,6 +8,8 @@ export const SITE_DESCRIPTION =
 
 export const REPO_URL = 'https://github.com/longbridge/native-shell';
 
+export const GPUI_KIT_URL = 'https://gpui-kit.com';
+
 /** Where "Edit this page" points: the file's path relative to the repository root follows. */
 export const EDIT_BASE = `${REPO_URL}/edit/main/`;
 

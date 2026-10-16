@@ -244,9 +244,10 @@ check them on Windows, with the MSVC Build Tools, the Windows SDK and LLVM (libc
 Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
 
 - Subjects and PR titles are `<area>: <What the change does>`: the area in lower case (a crate without `nsh-`:
-  `core`, `js`, `engine`, `bundler`, `cli`, ...; `ios`, `android`, `linux`, `windows`; `runtime`, `mobile`, a module; `tailwind`, `text`,
-  `docs`, `examples`, `gallery`), several separated by commas (`ios, android: …`); then an imperative sentence starting
-  with a capital letter, no trailing period, about 72 characters in all. Say what it does for nsh's users, not which
+  `core`, `js`, `engine`, `bundler`, `cli`, `ui-mobile`, ...; one platform: `ios`, `android`, `macos`, `windows`,
+  `linux`; `desktop` for macOS, Windows and Linux together, `mobile` for iOS and Android together; `runtime`, a module;
+  `tailwind`, `text`, `docs`, `examples`, `gallery`), several separated by commas (`core, desktop: …`); then an
+  imperative sentence starting with a capital letter, no trailing period, about 72 characters in all. Say what it does for nsh's users, not which
   files changed. Never conventional prefixes (`fix:`, `feat:`); check `git log` and match it.
 - The body explains why (wrapped at 72 columns); hot path changes include their before / after `nsh trace` numbers.
 - One commit / PR does one thing; no unrelated refactors, cleanup or formatting.
