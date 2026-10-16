@@ -504,9 +504,19 @@ mod tests {
             panic!("no data")
         };
         task.pause(true);
-        std::thread::sleep(Duration::from_millis(300));
-        // A read already under way may still deliver its chunk.
+        // Chunks read before the request thread saw the pause (it may run
+        // a few ahead of this one) still arrive: take them first.
+        std::thread::sleep(Duration::from_millis(200));
         let mut total = first.len();
+        while let Ok(e) = rx.try_recv() {
+            let FetchEvent::Data(d) = e else {
+                panic!("unexpected {e:?}")
+            };
+            total += d.len();
+        }
+        // Then nothing more is read while paused (a read already under
+        // way may still deliver its one chunk).
+        std::thread::sleep(Duration::from_millis(300));
         let mut during = 0;
         while let Ok(e) = rx.try_recv() {
             let FetchEvent::Data(d) = e else {
