@@ -41,9 +41,10 @@ stays native. JS only gets the events the component emits.
   clearing it).
 - **Native values** move styles without renders: `cx.native_value(0.0)`, `.bind_translate_y(&v)`, `.pan_values(..)`
   (drags move it natively), `v.spring(..)` (await its `AnimationEnd` in a task). `Sheet` is the example.
-- **The component's own rows**: `virtual_list(count, move |i, at| row)` with `.keys(ids)`; rows' handlers are the
-  component's (`listener.map(move |_: &()| i)` passes the index). `SelectList` is the example. Rows outlive the
-  render: move what they read into them (copies of theme colors, an `Rc` of the data).
+- **The component's own rows**: `virtual_list(count, move |i, at| row)` with `.keys(ids)` (and `.header(..)`,
+  `.footer(..)`, `.empty(..)`, `.separator(..)`, `.sticky_header_indices(..)`, the `Scrollable` behavior); rows'
+  handlers are the component's (`listener.map(move |_: &()| i)` passes the index). `SelectList` is the example.
+  Rows outlive the render: move what they read into them (copies of theme colors, an `Rc` of the data).
 - **Shared state**: `cx.global::<G>()` in the render subscribes, `update_global` renders the readers; `cx.provide(v)` /
   `cx.context::<T>()` pass values down the tree. `catch_error` makes a component an error boundary.
 - **Modules are functions without a component**: `#[module] impl Alert { pub async fn alert(title: String, ..,

@@ -36,6 +36,7 @@ pub(crate) mod host;
 mod module;
 pub mod palette;
 pub(crate) mod responder;
+mod scrollable;
 pub(crate) mod status_bar;
 mod style;
 pub(crate) mod task;
@@ -77,6 +78,7 @@ pub use self::{
         ModuleSpec,
     },
     responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
+    scrollable::Scrollable,
     status_bar::StatusBarEntry,
     style::{
         AdaptiveColor, BorderCurve, FontWeight, Length, StyleRefinement, Styled, WritingDirection,
@@ -85,7 +87,7 @@ pub use self::{
     task::{Answer, AsyncCx, DialogAnswer, ImageSize, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
     value::{JsValue, NodeRef, PropError, SharedString, TsType, TsTypes},
-    virtual_list::{ListLayout, VirtualList, virtual_list},
+    virtual_list::{ListLayout, ViewableItems, VirtualList, virtual_list},
 };
 pub(crate) use self::{
     back::BackListener,
@@ -99,7 +101,7 @@ pub use crate::{
     KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty,
     LayoutTransition, ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType,
     ScreenAnimation, SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent,
-    TransformKind, TransformOrigin,
+    TransformKind, TransformOrigin, Viewability,
     style::{Color, OriginLen},
 };
 
@@ -154,6 +156,9 @@ pub mod prelude {
         Items,
         JsObject,
         JsValue,
+        // Scrolling and lists.
+        KeyboardDismissMode,
+        KeyboardTaps,
         KeyboardType,
         Length,
         ListLayout,
@@ -185,9 +190,11 @@ pub mod prelude {
         Scroll,
         ScrollEvent,
         ScrollOffset,
+        Scrollable,
         Selection,
         SharedString,
         Slot,
+        SnapAlignment,
         Spring,
         Stack,
         Styled,
@@ -200,6 +207,8 @@ pub mod prelude {
         VideoInfo,
         VideoProgress,
         View,
+        Viewability,
+        ViewableItems,
         VirtualList,
         WeakComponent,
         WebNavigation,

@@ -9,16 +9,12 @@ use std::sync::Arc;
 use super::{
     Accessible, AnyElement, Interactive,
     element::{ElNode, Element, IntoElement, Listener, ParentElement},
-    events::{
-        self, NativeEvent, ScrollEvent, ScrollOffset, Selection, VideoInfo, VideoProgress,
-        WebNavigation,
-    },
+    events::{self, NativeEvent, Selection, VideoInfo, VideoProgress, WebNavigation},
 };
 use crate::{
-    AutoCapitalize, AutoFill, Color, EdgeInsets, EventKind, HeaderSlot, JsonValue,
-    KeyboardDismissMode, KeyboardTaps, KeyboardType, ModalAnimation, ModalPresentation, ModalProp,
-    NativeProp, Prop, ResizeMode, ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, Size,
-    SnapAlignment, Tag, WebSource,
+    AutoCapitalize, AutoFill, Color, EventKind, HeaderSlot, JsonValue, KeyboardType,
+    ModalAnimation, ModalPresentation, ModalProp, NativeProp, Prop, ResizeMode, ReturnKeyType,
+    ScreenAnimation, ScreenProp, ScrollProp, Size, Tag, WebSource,
     canvas::{
         CanvasFont, CanvasGradient, CanvasImage, CanvasOp, CanvasTextAlign, CanvasTextBaseline,
         Composite, Drawing, FillRule, LineCap, LineJoin, Num, Paint, Path, PathOp,
@@ -362,61 +358,6 @@ impl Scroll {
         self.set(Prop::ShowsIndicator(shows))
     }
 
-    /// Stops on multiples of its size.
-    pub fn paging(self, paging: bool) -> Self {
-        self.set(Prop::Scroll(ScrollProp::Paging(paging)))
-    }
-
-    /// Stops on multiples of `points`.
-    pub fn snap_interval(self, points: f32) -> Self {
-        self.set(Prop::Scroll(ScrollProp::SnapInterval(points)))
-    }
-
-    /// Stops at these offsets.
-    pub fn snap_offsets(self, offsets: Vec<f32>) -> Self {
-        self.set(Prop::Scroll(ScrollProp::SnapOffsets(offsets)))
-    }
-
-    /// Where a snapped item sits.
-    pub fn snap_alignment(self, alignment: SnapAlignment) -> Self {
-        self.set(Prop::Scroll(ScrollProp::SnapAlignment(alignment)))
-    }
-
-    /// How fast a fling slows down (0.99 fast, 0.998 normal).
-    pub fn deceleration(self, rate: f32) -> Self {
-        self.set(Prop::Scroll(ScrollProp::Deceleration(rate)))
-    }
-
-    /// Bounces at the ends (default yes).
-    pub fn bounces(self, bounces: bool) -> Self {
-        self.set(Prop::Scroll(ScrollProp::Bounces(bounces)))
-    }
-
-    /// Space around the content that scrolls with it.
-    pub fn content_inset(self, insets: EdgeInsets) -> Self {
-        self.set(Prop::Scroll(ScrollProp::ContentInset(insets)))
-    }
-
-    /// Where it starts.
-    pub fn content_offset(self, x: f32, y: f32) -> Self {
-        self.set(Prop::Scroll(ScrollProp::ContentOffset(x, y)))
-    }
-
-    /// Taps while the keyboard shows: dismiss it, or reach the content.
-    pub fn keyboard_taps(self, taps: KeyboardTaps) -> Self {
-        self.set(Prop::Scroll(ScrollProp::KeyboardTaps(taps)))
-    }
-
-    /// Dragging dismisses the keyboard.
-    pub fn keyboard_dismiss_mode(self, mode: KeyboardDismissMode) -> Self {
-        self.set(Prop::KeyboardDismissMode(mode))
-    }
-
-    /// At most one `on_scroll` per `ms` milliseconds (default: every frame).
-    pub fn event_throttle(self, ms: f32) -> Self {
-        self.set(Prop::Scroll(ScrollProp::EventThrottle(ms)))
-    }
-
     /// Pinch zoom between `min` and `max`.
     pub fn zoom_range(self, min: f32, max: f32) -> Self {
         self.set(Prop::Scroll(ScrollProp::MinZoom(min)))
@@ -428,60 +369,24 @@ impl Scroll {
         self.set(Prop::Scroll(ScrollProp::Zoom(scale)))
     }
 
+    /// Pinches may go past the zoom limits and spring back (default yes;
+    /// TS: `bouncesZoom`).
+    pub fn bounces_zoom(self, bounces: bool) -> Self {
+        self.set(Prop::Scroll(ScrollProp::BouncesZoom(bounces)))
+    }
+
+    /// The user can pinch to zoom (default yes; TS: `pinchGestureEnabled`).
+    pub fn pinch_gesture_enabled(self, enabled: bool) -> Self {
+        self.set(Prop::Scroll(ScrollProp::Pinch(enabled)))
+    }
+
     /// Content smaller than the view sits in its center (zoomed images).
     pub fn center_content(self, center: bool) -> Self {
         self.set(Prop::Scroll(ScrollProp::CenterContent(center)))
     }
-
-    /// Shows the pull-to-refresh spinner (start it from
-    /// [`Self::on_refresh`], clear it when done).
-    pub fn refreshing(self, refreshing: bool) -> Self {
-        self.set(Prop::Refreshing(refreshing))
-    }
-
-    /// Follows the scroll offset (along its axis) with a native value:
-    /// headers that shrink, parallax, with no render per frame.
-    pub fn scroll_value(mut self, value: &super::NativeValue) -> Self {
-        set(&mut self.0, Prop::ScrollValue(Some(value.node().id())));
-        self.0.attrs.bound.push(value.node().clone());
-        self
-    }
-
-    /// Pulled down to refresh (enables pull to refresh).
-    pub fn on_refresh(self, listener: Listener<()>) -> Self {
-        self.listen(EventKind::Refresh, listener, events::unit)
-    }
-
-    /// It moved (at most once per frame).
-    pub fn on_scroll(self, listener: Listener<ScrollEvent>) -> Self {
-        self.listen(EventKind::Scroll, listener, events::scroll)
-    }
-
-    /// The user started dragging it.
-    pub fn on_scroll_begin_drag(self, listener: Listener<ScrollOffset>) -> Self {
-        self.listen(EventKind::ScrollBeginDrag, listener, events::offset)
-    }
-
-    /// The user let go.
-    pub fn on_scroll_end_drag(self, listener: Listener<ScrollOffset>) -> Self {
-        self.listen(EventKind::ScrollEndDrag, listener, events::offset)
-    }
-
-    /// It started gliding after a fling.
-    pub fn on_momentum_scroll_begin(self, listener: Listener<ScrollOffset>) -> Self {
-        self.listen(EventKind::MomentumScrollBegin, listener, events::offset)
-    }
-
-    /// It stopped gliding.
-    pub fn on_momentum_scroll_end(self, listener: Listener<ScrollOffset>) -> Self {
-        self.listen(EventKind::MomentumScrollEnd, listener, events::offset)
-    }
-
-    /// It came to rest.
-    pub fn on_scroll_end(self, listener: Listener<ScrollOffset>) -> Self {
-        self.listen(EventKind::ScrollEnd, listener, events::offset)
-    }
 }
+
+impl super::Scrollable for Scroll {}
 
 impl Screen {
     fn header_item(mut self, slot: HeaderSlot, key: &'static str, item: impl IntoElement) -> Self {

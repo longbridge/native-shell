@@ -27,10 +27,10 @@ use crate::{
         ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall, Globals,
         ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position,
         PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
-        StyleRefinement, Theme, caught,
+        StyleRefinement, Task, Theme, caught,
         responder::ResponderEl,
         view,
-        virtual_list::{RowFn, VirtualListEl},
+        virtual_list::{self, RowFn, SeparatorFn, VirtualListEl},
     },
 };
 
@@ -71,8 +71,15 @@ struct VirtualListState {
     row: RowFn,
     count: u32,
     keys: Option<Rc<[u64]>>,
+    separator: Option<SeparatorFn>,
     /// The cells, by recycling slot.
     cells: Vec<NodeId>,
+    /// Viewable rows: how long they must stay, the range reported last and
+    /// the latest, and the report waiting for the time to pass.
+    min_view: Option<std::time::Duration>,
+    reported: Option<(u32, u32)>,
+    latest: Option<(u32, u32)>,
+    report: Option<Task<()>>,
 }
 
 /// Where a host's JS children are.
@@ -1140,6 +1147,11 @@ impl<M: TextEngine> Core<M> {
             Inner::VirtualRow { list, index } => {
                 let list = *list;
                 let index = *index;
+                let inverted = self
+                    .key(list)
+                    .ok()
+                    .and_then(|k| self.nodes[k as usize].list.as_ref())
+                    .is_some_and(|l| l.inverted);
                 match self.components.virtual_lists.get(&list) {
                     Some(state) => {
                         let at = Position {
@@ -1147,7 +1159,20 @@ impl<M: TextEngine> Core<M> {
                             count: state.count as usize,
                         };
                         let row = state.row.clone();
-                        match caught(|| view().child(row(index, at)).into_element().0) {
+                        // Between rows: after each but the last (before it,
+                        // inverted).
+                        let separator = state.separator.clone().filter(|_| !at.is_last());
+                        let build = || {
+                            let row = row(index, at);
+                            match &separator {
+                                Some(s) if inverted => view().child(s()).child(row),
+                                Some(s) => view().child(row).child(s()),
+                                None => view().child(row),
+                            }
+                            .into_element()
+                            .0
+                        };
+                        match caught(build) {
                             Ok(el) => el,
                             Err(message) => {
                                 failure = Some(message);
@@ -1512,6 +1537,23 @@ impl<M: TextEngine> Core<M> {
                 }
             })
         };
+        // A list positions its cells itself: their order does not matter
+        // (and the cells it binds are not the render's), new ones join it.
+        if self.is_list(parent) {
+            for e in &out {
+                let joined = self
+                    .key(e.id)
+                    .is_ok_and(|k| self.nodes[k as usize].parent != NO_KEY);
+                if !joined {
+                    let _ = self.apply_op(Op::Insert {
+                        parent,
+                        child: e.id,
+                        before: None,
+                    });
+                }
+            }
+            return out;
+        }
         let in_order = self.key(parent).is_ok_and(|k| {
             let have = &self.nodes[k as usize].children;
             have.len() == wanted().count()
@@ -1857,6 +1899,19 @@ impl<M: TextEngine> Core<M> {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
         self.components.props = props;
+        if old_count.is_none()
+            && let Some(index) = list.initial_index
+        {
+            let _ = self.apply_op(Op::Command {
+                id,
+                command: Command::ScrollToIndex {
+                    index,
+                    animated: false,
+                    view_position: 0.0,
+                    view_offset: 0.0,
+                },
+            });
+        }
         let state = self
             .components
             .virtual_lists
@@ -1866,11 +1921,18 @@ impl<M: TextEngine> Core<M> {
                 row: list.row.clone(),
                 count: 0,
                 keys: None,
+                separator: None,
                 cells: Vec::new(),
+                min_view: None,
+                reported: None,
+                latest: None,
+                report: None,
             });
         state.row = list.row;
         state.count = list.count;
         state.keys = list.keys;
+        state.separator = list.separator;
+        state.min_view = list.min_view_time;
         let cells = state.cells.clone();
         for cell in cells {
             self.components.mark(cell);
@@ -1909,6 +1971,7 @@ impl<M: TextEngine> Core<M> {
                 {
                     *current = index;
                 }
+                self.components.mark(cell);
                 cell
             }
             None => {
@@ -1946,14 +2009,52 @@ impl<M: TextEngine> Core<M> {
                     cells.resize(slot + 1, 0);
                 }
                 cells[slot] = cell;
+                self.components.mark(cell);
                 cell
             }
         };
-        self.components.mark(cell);
         let _ = self.apply_op(Op::SetProp {
             id: cell,
             prop: Prop::CellIndex(index as u32),
         });
+    }
+
+    /// A component's own list reported its viewable rows: they are the
+    /// owner's to handle now, or once they stayed so for the minimum view
+    /// time (a change meanwhile starts the wait again).
+    fn viewable_changed(&mut self, list: NodeId, payload: &EventPayload) {
+        let executor = self.components.executor.clone();
+        let Some(state) = self.components.virtual_lists.get_mut(&list) else {
+            return;
+        };
+        state.latest = virtual_list::viewable_range(payload, "first", "last");
+        match state.min_view {
+            Some(delay) => {
+                state.report = Some(crate::ui::task::act_after(
+                    &executor,
+                    state.owner,
+                    delay,
+                    Action::ReportViewable(list),
+                ));
+            }
+            None => self.report_viewable(list),
+        }
+    }
+
+    /// Hands list `list`'s owner the rows viewable now, unless they are the
+    /// ones reported last.
+    fn report_viewable(&mut self, list: NodeId) {
+        let Some(state) = self.components.virtual_lists.get_mut(&list) else {
+            return;
+        };
+        state.report = None;
+        if state.latest == state.reported {
+            return;
+        }
+        let payload = virtual_list::viewable_payload(state.latest, state.reported);
+        state.reported = state.latest;
+        let owner = state.owner;
+        self.handle(owner, list, EventKind::ViewableItemsChanged, &payload);
     }
 
     fn release_id(&mut self, id: NodeId) {
@@ -2050,6 +2151,13 @@ impl<M: TextEngine> Core<M> {
             return false;
         }
         if self.platform_event(id, kind, payload) {
+            return true;
+        }
+        // A component's own list reports its viewable rows as they settle.
+        if kind == EventKind::ViewableItemsChanged
+            && self.components.virtual_lists.contains_key(&id)
+        {
+            self.viewable_changed(id, payload);
             return true;
         }
         let Some(host) = self.host_of(id) else {
@@ -2218,6 +2326,7 @@ impl<M: TextEngine> Core<M> {
                 self.components.animations.insert(animation, end);
                 let _ = self.apply_op(Op::Anim(op));
             }
+            Action::ReportViewable(list) => self.report_viewable(list),
             Action::ImageInfo(uri, answer) => {
                 let id = self.components.next_image_info;
                 self.components.next_image_info += 1;

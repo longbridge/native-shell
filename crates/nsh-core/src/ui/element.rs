@@ -1523,6 +1523,8 @@ impl Image {
     }
 }
 
+impl super::Scrollable for ListElement {}
+
 impl super::ListLayout for ListElement {
     fn config(&mut self) -> &mut ListConfig {
         match &mut self.0.kind {

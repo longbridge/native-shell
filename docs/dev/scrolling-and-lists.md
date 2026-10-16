@@ -23,3 +23,5 @@
   `refreshing` / `onRefresh`, `scrollValue`. Positions, columns, sticky travel and viewability are all computed in the core; sticky cells
   are pinned natively on every scroll (`MountItem::StickyCells`: translate by `clamp(offset - start, 0, end - start)`).
 - **List internals** (the window, binding cells, recycling): `crates/nsh-core/src/core/list.rs`.
+- **Rust components**: the same props are `Scrollable`'s methods (`scroll()`, `virtual_list(..)`) and
+  `VirtualList`'s (header, footer, empty view, separators, sticky rows, viewability); `docs/dev/components.md`.

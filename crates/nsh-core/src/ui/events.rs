@@ -7,7 +7,7 @@ use super::element::Listener;
 use crate::{EventPayload, JsonValue, PayloadValue, Rect, Size, TouchEvent};
 
 /// A scroll view moved (`on_scroll`): the offset, and the sizes it moves in.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollEvent {
     /// Horizontal content offset.
     pub x: f32,
@@ -21,6 +21,23 @@ pub struct ScrollEvent {
     pub width: f32,
     /// The scroll view's height.
     pub height: f32,
+    /// How far a zooming scroll view is zoomed (1: not zoomed; the content
+    /// sizes are the zoomed ones).
+    pub zoom_scale: f32,
+}
+
+impl Default for ScrollEvent {
+    fn default() -> Self {
+        Self {
+            x: 0.0,
+            y: 0.0,
+            content_width: 0.0,
+            content_height: 0.0,
+            width: 0.0,
+            height: 0.0,
+            zoom_scale: 1.0,
+        }
+    }
 }
 
 /// A scroll view's offset (drags, momentum, rest).
@@ -234,6 +251,10 @@ pub(crate) fn scroll(p: &EventPayload) -> Option<Cow<'_, ScrollEvent>> {
             content_height: number(p, "contentHeight"),
             width: number(p, "width"),
             height: number(p, "height"),
+            zoom_scale: match field(p, "zoomScale") {
+                Some(PayloadValue::Number(n)) => *n as f32,
+                _ => 1.0,
+            },
         },
     }))
 }

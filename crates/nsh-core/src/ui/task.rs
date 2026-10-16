@@ -87,6 +87,9 @@ pub(crate) enum Action {
         animation: nsh_anim::AnimId,
         end: AnswerSlot<bool>,
     },
+    /// A component's own list reports the rows viewable now (they stayed
+    /// so for its minimum view time).
+    ReportViewable(NodeId),
 }
 
 /// An image's size in pixels (`Image.getSize`).
@@ -577,6 +580,31 @@ impl<R> Future for Updated<R> {
 /// Starts `future` as a task of `host`, to run to its end.
 pub(crate) fn spawn_raw(executor: &Rc<Executor>, host: NodeId, future: LocalFuture) -> u64 {
     executor.spawn(host, future)
+}
+
+/// Applies `action` after `delay`, as a task of `host` (dropping the task
+/// cancels it).
+pub(crate) fn act_after(
+    executor: &Rc<Executor>,
+    host: NodeId,
+    delay: Duration,
+    action: Action,
+) -> Task<()> {
+    let weak = Rc::downgrade(executor);
+    let cx = AsyncCx::new(weak.clone());
+    let id = executor.spawn(
+        host,
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            cx.act(action);
+        }),
+    );
+    Task {
+        executor: weak,
+        id,
+        output: Rc::new(RefCell::new(Output::default())),
+        detached: false,
+    }
 }
 
 /// Starts `f(this, cx)` as a task of component `host`.
