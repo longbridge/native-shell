@@ -387,7 +387,7 @@ fn accelerator(shortcut: &Shortcut) -> Option<String> {
         }
     }
     let key = match shortcut.key {
-        Key::Char(c) => gdk::Key::from_unicode(c).name()?.to_string(),
+        Key::Char(c) => keysym_name(c)?,
         Key::Enter => "Return".into(),
         Key::Escape => "Escape".into(),
         Key::Tab => "Tab".into(),
@@ -407,6 +407,32 @@ fn accelerator(shortcut: &Shortcut) -> Option<String> {
     };
     out.push_str(&key);
     Some(out)
+}
+
+/// The X keysym name of a character key (`n`, `1`, `comma`), as GTK
+/// accelerators write it.
+fn keysym_name(c: char) -> Option<String> {
+    if c.is_ascii_alphanumeric() {
+        return Some(c.to_string());
+    }
+    Some(
+        match c {
+            '+' => "plus",
+            '-' => "minus",
+            '=' => "equal",
+            ',' => "comma",
+            '.' => "period",
+            '/' => "slash",
+            '\\' => "backslash",
+            ';' => "semicolon",
+            '\'' => "apostrophe",
+            '`' => "grave",
+            '[' => "bracketleft",
+            ']' => "bracketright",
+            _ => return None,
+        }
+        .to_owned(),
+    )
 }
 
 /// A menu model of `items`, their actions added to `group` (named in
