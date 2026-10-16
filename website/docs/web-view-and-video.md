@@ -15,7 +15,9 @@ order: 21
 
 The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Import them from `nsh/webview` and `nsh/video`.
 
-On [macOS](./macos.md) the web view has no scroll view of its own, so `scrollEnabled` is ignored.
+On [macOS](./macos.md) the web view has no scroll view of its own: with `scrollEnabled={false}` the mouse wheel and the
+trackpad scroll the app's scroll views around it instead of the page, which still scrolls with its keyboard and its
+own scripts.
 
 On [Linux](./linux.md) a web view is a WebKitGTK page drawn inside its view: nsh content over it (a dialog, a sheet)
 covers it, and its parents clip it. The `webview` capability also applies to the navigations of frames there (an

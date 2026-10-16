@@ -15,7 +15,8 @@ order: 21
 
 它们背后的框架（WebKit、AVFoundation）在应用第一次用到时才加载，所以从不显示网页或视频的应用不会在启动时为它们付出代价。请从 `nsh/webview` 和 `nsh/video` 导入它们。
 
-在 [macOS](./macos.md) 上，Web 视图没有自己的滚动视图，因此 `scrollEnabled` 会被忽略。
+在 [macOS](./macos.md) 上，Web 视图没有自己的滚动视图：`scrollEnabled={false}` 时，鼠标滚轮和触控板滚动的是它外面的应用滚动视图，
+而不是页面；页面仍可用键盘和它自己的脚本滚动。
 
 在 [Linux](./linux.md) 上，Web 视图是绘制在它的视图之内的 WebKitGTK 页面：绘制在它上方的 nsh 内容（对话框、sheet）会遮住它，父视图会裁剪它。
 那里的 `webview` 权限同样作用于框架的导航（未获授权的主机的 `iframe` 保持空白），`scrollEnabled: false` 让页面本身不滚动（页面中的元素仍可滚动）。

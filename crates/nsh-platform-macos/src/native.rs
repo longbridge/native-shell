@@ -16,8 +16,11 @@
 //!   takes the mouse, wheel and keyboard itself. Pages talk to the app
 //!   through `window.ReactNativeWebView.postMessage` (a script message
 //!   handler); top-level navigations stay within the app's `webview`
-//!   capability. WebKit on macOS has no scroll view to turn off, so
-//!   `scrollEnabled` is ignored.
+//!   capability. WebKit on macOS has no scroll view to turn off: with
+//!   `scrollEnabled={false}` the root's `hitTest:` keeps wheel and
+//!   trackpad scrolls from the web view ([`passes_wheel`]), so they move
+//!   the app's scroll views around it, as on iOS (the page itself still
+//!   scrolls with its keys and its own scripts).
 //! - **Registered components**: [`AppView::register_component`] names a
 //!   factory; the core creates a [`ViewKind::Native`] container, names the
 //!   component ([`MountItem::Component`]) and sends its props as JSON as
@@ -359,6 +362,19 @@ pub(crate) fn command(surface: &Rc<Surface>, view: &NshView, command: &Command) 
             }
         }
     }
+}
+
+/// Whether `native` is a web view whose page does not scroll
+/// (`scrollEnabled={false}`): wheel and trackpad scrolls over it go to
+/// the root, which scrolls the app's scroll views around it.
+pub(crate) fn passes_wheel(surface: &Surface, native: &NSView) -> bool {
+    let Ok(hosts) = surface.native.hosts.try_borrow() else {
+        return false;
+    };
+    hosts.values().any(|host| match host {
+        Host::Web(web) => !web.scrolls && web.is(native),
+        _ => false,
+    })
 }
 
 fn take_component(surface: &Surface, id: NodeId) -> Option<Box<dyn NativeComponent>> {
@@ -1071,6 +1087,9 @@ struct WebHost {
     handler: Retained<WebHandler>,
     /// The props applied (`None` before the first).
     props: Option<WebProps>,
+    /// The page scrolls with the wheel and the trackpad
+    /// (`scrollEnabled`).
+    scrolls: bool,
 }
 
 impl WebHost {
@@ -1103,10 +1122,22 @@ impl WebHost {
             web: web.flatten(),
             handler,
             props: None,
+            scrolls: true,
         }
     }
 
+    /// Whether `view` is its `WKWebView`.
+    fn is(&self, view: &NSView) -> bool {
+        self.web.as_ref().is_some_and(|web| {
+            std::ptr::eq(
+                Retained::as_ptr(web).cast::<u8>(),
+                (view as *const NSView).cast::<u8>(),
+            )
+        })
+    }
+
     fn set(&mut self, p: &WebProps) {
+        self.scrolls = p.scroll_enabled;
         let Some(web) = &self.web else { return };
         let old = self.props.take();
         let first = old.is_none();

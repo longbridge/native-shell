@@ -613,6 +613,11 @@ impl ViewObj {
         let Some(native) = crate::input::native_at(&surface, p.x as f32, p.y as f32) else {
             return me();
         };
+        // A web view that does not scroll leaves wheels to the app's
+        // scroll views (an embedded page in a scrolling screen).
+        if scrolling(self.mtm()) && crate::native::passes_wheel(&surface, &native) {
+            return me();
+        }
         let Some(holder) = superview(&native) else {
             return me();
         };
@@ -710,6 +715,14 @@ fn clicking(mtm: MainThreadMarker) -> bool {
                     | NSEventType::OtherMouseDown
             )
         })
+}
+
+/// Whether the event AppKit handles is a mouse wheel or trackpad scroll.
+fn scrolling(mtm: MainThreadMarker) -> bool {
+    use objc2_app_kit::{NSApplication, NSEventType};
+    NSApplication::sharedApplication(mtm)
+        .currentEvent()
+        .is_some_and(|e| e.r#type() == NSEventType::ScrollWheel)
 }
 
 /// `view`'s superview.
