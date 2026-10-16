@@ -73,7 +73,6 @@ impl Live {
 
     /// True while the view animates out after its removal: it is drawn but
     /// takes no pointer (hit testing skips it, as GTK's `can-target`).
-    #[allow(dead_code, reason = "for the hit testing of `crate::input`")]
     pub(crate) fn dying(&self) -> bool {
         self.dying
     }
@@ -83,11 +82,6 @@ impl Live {
             && self.style.is_none()
             && self.presence.is_none()
             && self.keyframes.is_none()
-    }
-
-    /// True while the view animates out after its removal.
-    pub(crate) fn dying(&self) -> bool {
-        false
     }
 }
 
