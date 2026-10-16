@@ -9,8 +9,7 @@
 //! in and make them again.
 //!
 //! DirectWrite's shared factory is free-threaded and also used by the
-//! engine thread ([`dwrite`]); WIC's factory needs COM, which
-//! [`crate::app::run_app`] (or the embedding app) initializes.
+//! engine thread ([`dwrite`]).
 
 use std::cell::{Cell, RefCell};
 
@@ -38,9 +37,7 @@ use windows::{
                 DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIDevice, IDXGIDevice1, IDXGIFactory2,
                 IDXGISurface, IDXGISwapChain1,
             },
-            Imaging::{CLSID_WICImagingFactory, IWICImagingFactory},
         },
-        System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
     },
     core::{Interface, Result},
 };
@@ -55,8 +52,6 @@ pub(crate) struct Gfx {
     pub(crate) device: ID2D1Device,
     /// The one device context every surface draws with.
     pub(crate) dc: ID2D1DeviceContext,
-    /// WIC (image decoding and encoding).
-    pub(crate) wic: Option<IWICImagingFactory>,
 }
 
 thread_local! {
@@ -72,17 +67,6 @@ pub(crate) fn get() -> Result<std::rc::Rc<Gfx>> {
     let g = std::rc::Rc::new(Gfx::new()?);
     GFX.with(|cell| *cell.borrow_mut() = Some(g.clone()));
     Ok(g)
-}
-
-/// Runs `f` with the thread's devices (`None` when no device can be made).
-pub(crate) fn with<R>(f: impl FnOnce(&Gfx) -> R) -> Option<R> {
-    match get() {
-        Ok(g) => Some(f(&g)),
-        Err(err) => {
-            log::error!("cannot create the Direct2D device: {err}");
-            None
-        }
-    }
 }
 
 /// The device was lost: drops it (the next [`get`] makes a new one) and
@@ -116,17 +100,11 @@ impl Gfx {
         let device = unsafe { factory.CreateDevice(&dxgi)? };
         // SAFETY: as above.
         let dc = unsafe { device.CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE)? };
-        // SAFETY: CoCreateInstance with a valid CLSID; fails without COM.
-        let wic: Option<IWICImagingFactory> =
-            unsafe { CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER) }
-                .map_err(|err| log::warn!("no WIC factory (is COM initialized?): {err}"))
-                .ok();
         Ok(Gfx {
             d3d,
             factory,
             device,
             dc,
-            wic,
         })
     }
 }

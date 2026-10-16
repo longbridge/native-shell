@@ -461,11 +461,6 @@ impl NshView {
         f(&self.0.children.borrow())
     }
 
-    /// The number of children.
-    pub(crate) fn child_count(&self) -> usize {
-        self.0.children.borrow().len()
-    }
-
     /// Inserts this view into `parent`, below `before` (on top when `None`
     /// or not a child of `parent`). Detaches it from its old parent first.
     pub(crate) fn insert_before(&self, parent: &NshView, before: Option<&NshView>) {
@@ -540,12 +535,4 @@ impl NshView {
         root.0.invalidate.borrow().is_some()
     }
 
-    /// The root view of its tree.
-    pub(crate) fn root(&self) -> NshView {
-        let mut view = self.clone();
-        while let Some(parent) = view.parent_view() {
-            view = parent;
-        }
-        view
-    }
 }

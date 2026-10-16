@@ -150,23 +150,9 @@ impl Mat4 {
         self.m[0][3] == 0.0 && self.m[1][3] == 0.0 && self.m[3][3] == 1.0
     }
 
-    /// True when it only translates (in the plane).
-    pub(crate) fn is_translation(&self) -> bool {
-        self.is_affine()
-            && self.m[0][0] == 1.0
-            && self.m[0][1] == 0.0
-            && self.m[1][0] == 0.0
-            && self.m[1][1] == 1.0
-    }
-
-    /// The translation part (in the plane).
-    pub(crate) fn translation(&self) -> (f32, f32) {
-        (self.m[3][0], self.m[3][1])
-    }
-
     /// The plane's affine map as Direct2D's 3x2 matrix (exact when
     /// [`Mat4::is_affine`]; otherwise the perspective is dropped).
-    pub(crate) fn to_3x2(&self) -> Matrix3x2 {
+    pub(crate) fn to_3x2(self) -> Matrix3x2 {
         Matrix3x2 {
             M11: self.m[0][0],
             M12: self.m[0][1],
@@ -175,18 +161,6 @@ impl Mat4 {
             M31: self.m[3][0],
             M32: self.m[3][1],
         }
-    }
-
-    /// A 3x2 matrix as a 4x4 one.
-    pub(crate) fn from_3x2(t: &Matrix3x2) -> Mat4 {
-        let mut m = Mat4::IDENTITY;
-        m.m[0][0] = t.M11;
-        m.m[0][1] = t.M12;
-        m.m[1][0] = t.M21;
-        m.m[1][1] = t.M22;
-        m.m[3][0] = t.M31;
-        m.m[3][1] = t.M32;
-        m
     }
 
     /// The homography of the plane z = 0: rows x, y and w, columns x, y, w.
@@ -242,7 +216,7 @@ impl Mat4 {
     }
 
     /// As Direct2D's 4x4 matrix (`DrawBitmap`'s perspective transform).
-    pub(crate) fn to_d2d(&self) -> windows_numerics::Matrix4x4 {
+    pub(crate) fn to_d2d(self) -> windows_numerics::Matrix4x4 {
         let m = &self.m;
         windows_numerics::Matrix4x4 {
             M11: m[0][0],

@@ -84,6 +84,13 @@ impl MountSink for Sink {
     }
 }
 
+/// Called on every frame with the frame's time until it returns false
+/// ([`Surface::on_frame`]).
+pub(crate) type FrameClient = Box<dyn FnMut(&Rc<Surface>, f64) -> bool>;
+
+/// Called with the new size (points) when the surface is resized.
+pub(crate) type ResizeHandler = Box<dyn Fn(f32, f32)>;
+
 /// Called when the app reports a fatal error (development hosts show it).
 pub(crate) type ErrorHandler = Box<dyn Fn(&str)>;
 
@@ -130,7 +137,7 @@ pub(crate) struct Surface {
     ticker: RefCell<Option<crate::window::Ticker>>,
     /// Extra frame clients (transitions, glides, spinners): called on every
     /// frame until they return false ([`Surface::on_frame`]).
-    frame_clients: RefCell<Vec<Box<dyn FnMut(&Rc<Surface>, f64) -> bool>>>,
+    frame_clients: RefCell<Vec<FrameClient>>,
     /// The time of the current frame (seconds since the surface was made).
     now: Cell<f64>,
     epoch: std::time::Instant,
@@ -143,7 +150,7 @@ pub(crate) struct Surface {
     /// Hosted items drawn by the last frame ([`Hosted::placed`]).
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
     /// Called after the surface is resized (development overlays).
-    pub(crate) on_resized: RefCell<Vec<Box<dyn Fn(f32, f32)>>>,
+    pub(crate) on_resized: RefCell<Vec<ResizeHandler>>,
 }
 
 impl Surface {

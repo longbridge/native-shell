@@ -285,7 +285,7 @@ fn resize(surface: &Rc<Surface>, w: f32, h: f32) {
 fn shot(surface: &Rc<Surface>, path: &str) -> Result<(), String> {
     let pixels = crate::render::snapshot(surface, 1.0).map_err(|e| e.to_string())?;
     let mut rgba = pixels.data;
-    for px in rgba.chunks_exact_mut(4) {
+    for px in rgba.as_chunks_mut::<4>().0 {
         // Premultiplied BGRA to straight RGBA.
         let a = px[3];
         let un = |c: u8| {

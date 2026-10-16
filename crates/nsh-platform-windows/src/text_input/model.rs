@@ -74,6 +74,7 @@ impl Model {
     }
 
     /// The selection's fixed end.
+    #[cfg(test)]
     pub(crate) fn anchor(&self) -> usize {
         self.anchor
     }

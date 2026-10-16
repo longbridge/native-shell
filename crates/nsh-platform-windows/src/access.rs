@@ -933,14 +933,15 @@ mod tests {
 
     fn text(id: NodeId, s: &str) -> NshView {
         let v = view(id, ViewKind::Text, Accessibility::default());
-        v.state_mut().text = Some(crate::text::DrawnText {
-            text: Arc::new(AttributedText {
+        crate::text::set(
+            &v,
+            &Arc::new(AttributedText {
                 text: s.into(),
                 ..Default::default()
             }),
-            layout: nsh_core::TextLayout(Arc::new(())),
-            content: Default::default(),
-        });
+            &nsh_core::TextLayout(Arc::new(())),
+            Default::default(),
+        );
         v
     }
 
