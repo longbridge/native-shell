@@ -266,7 +266,8 @@ fn the_gallery_ships_its_assets() {
             (
                 f.path(),
                 f.kind,
-                f.source
+                // A file path of this system: `\` separators on Windows.
+                std::path::Path::new(f.source)
                     .ends_with(f.path().trim_start_matches("@gallery-native/")),
             )
         })

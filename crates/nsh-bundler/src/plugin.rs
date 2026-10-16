@@ -120,9 +120,17 @@ impl NshPlugin {
         anyhow!(message)
     }
 
+    /// `path` relative to the app's directory with `/` separators, as asset
+    /// URLs, module ids and messages name it on every system.
+    fn rel(&self, path: &Path) -> String {
+        path.strip_prefix(&self.root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
     fn fail(&self, path: &Path, detail: &str) -> anyhow::Error {
-        let rel = path.strip_prefix(&self.root).unwrap_or(path);
-        let message = format!("{}\n{detail}", rel.display());
+        let message = format!("{}\n{detail}", self.rel(path));
         self.error
             .lock()
             .expect("error lock")
@@ -158,10 +166,7 @@ impl Plugin for NshPlugin {
         }
         let from = args
             .importer
-            .map(|i| {
-                let p = Path::new(i);
-                format!("{}: ", p.strip_prefix(&self.root).unwrap_or(p).display())
-            })
+            .map(|i| format!("{}: ", self.rel(Path::new(i))))
             .unwrap_or_default();
         if spec == "solid-js" || spec.starts_with("solid-js/") {
             return Err(self.refuse(format!(
@@ -176,11 +181,7 @@ impl Plugin for NshPlugin {
 
     async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
         let path = Path::new(args.id);
-        let rel = path
-            .strip_prefix(&self.root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = self.rel(path);
         if has_extension(path, FONT_EXTENSIONS) {
             // A font import is its family name; the runtime registers the
             // font before the first frame.
@@ -242,12 +243,7 @@ impl Plugin for NshPlugin {
         if !(jsx_module || entry || self.hot && script) {
             return Ok(None);
         }
-        let hot_key = self.hot.then(|| {
-            path.strip_prefix(&self.root)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/")
-        });
+        let hot_key = self.hot.then(|| self.rel(path));
         // By module type, not file name: asset modules (`logo.png`) are JS.
         let source_type = match args.module_type {
             ModuleType::Tsx => SourceType::tsx(),
@@ -256,11 +252,7 @@ impl Plugin for NshPlugin {
             _ => SourceType::mjs(),
         };
         if jsx_module {
-            let rel = path
-                .strip_prefix(&self.root)
-                .unwrap_or(path)
-                .display()
-                .to_string();
+            let rel = self.rel(path);
             for u in crate::classes::check(args.code, source_type, &self.tailwind.theme) {
                 log::warn!(target: "nsh::build", "{rel}:{}:{}: unknown class `{}`", u.line, u.column, u.class);
             }

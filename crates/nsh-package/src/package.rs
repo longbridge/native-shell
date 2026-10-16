@@ -96,9 +96,12 @@ pub struct Contents {
 }
 
 fn check_path(path: &str) -> Result<(), Error> {
+    // Assets are written under a directory with `Path::join`: on Windows a
+    // `C:` segment would replace that directory and `name:stream` would
+    // write an NTFS alternate data stream, so `:` is refused with `\`.
     let ok = !path.is_empty()
         && !path.starts_with('/')
-        && !path.contains(['\\', '\0'])
+        && !path.contains(['\\', ':', '\0'])
         && path
             .split('/')
             .all(|p| !p.is_empty() && p != "." && p != "..");

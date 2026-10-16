@@ -220,6 +220,9 @@ native!(
         data::<Encoder>(ctx, this, "TextEncoder")?;
         let s = js::to_string(ctx, args.get(0))?;
         let dest = args.get(1);
+        // Bindgen types C enums as `u32`, but as `i32` with MSVC, where the
+        // cast does nothing.
+        #[allow(clippy::unnecessary_cast)]
         // SAFETY: a typed array's kind, read inline.
         if unsafe { rquickjs::qjs::JS_GetTypedArrayType(dest) }
             != rquickjs::qjs::JSTypedArrayEnum_JS_TYPED_ARRAY_UINT8 as i32

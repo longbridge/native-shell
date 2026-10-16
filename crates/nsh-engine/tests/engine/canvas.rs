@@ -280,8 +280,12 @@ import { Canvas } from "nsh/canvas";
 
 const n = signal(1);
 const v = createNativeValue(0);
-setTimeout(() => n.set(2), 30);
-setTimeout(() => n.set(3), 60);
+// Chained, not two timers 30 ms apart: a late wake-up (coarse timers on
+// Windows, a loaded machine) would run both in one turn, one commit.
+setTimeout(() => {
+  n.set(2);
+  setTimeout(() => n.set(3), 30);
+}, 30);
 
 mount(() => (
   <Canvas

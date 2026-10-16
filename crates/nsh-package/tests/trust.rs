@@ -232,6 +232,32 @@ fn state_persists() {
 }
 
 #[test]
+fn asset_paths_stay_inside_the_assets_directory() {
+    let k = keys(&["*"]);
+    // Each would escape the directory assets are written to on some system
+    // (`C:/x` and `a\b` on Windows) or write somewhere else (`a:b` is an
+    // NTFS alternate data stream).
+    for path in [
+        "/etc/x",
+        "../x",
+        "a/../../x",
+        "a//b",
+        "./a",
+        "a\\b",
+        "C:/x",
+        "C:x",
+        "a:b",
+    ] {
+        let mut c = contents("a.b", 1);
+        c.assets = vec![(path.into(), vec![1])];
+        assert!(
+            matches!(build(&c, &k.release, &k.cert), Err(Error::Format(_))),
+            "`{path}` accepted"
+        );
+    }
+}
+
+#[test]
 fn keys_round_trip_through_base64() {
     let key = SecretKey::generate().unwrap();
     let again = SecretKey::from_base64(&key.to_base64()).unwrap();
