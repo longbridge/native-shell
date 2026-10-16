@@ -94,6 +94,9 @@ pub(crate) struct Surface {
     pub(crate) root: NshView,
     /// Views by node id, and what mounting needs between items.
     pub(crate) mounter: RefCell<Mounter>,
+    /// The views by node id (the mounter's, readable while it applies a
+    /// batch).
+    views: Rc<crate::mount::Views>,
     /// The native animation graph.
     pub(crate) anim: RefCell<UiAnimation>,
     /// Stacks, screens and modals.
@@ -148,10 +151,12 @@ impl Surface {
     pub(crate) fn new(environment: Environment) -> Rc<Surface> {
         let key = NEXT_KEY.fetch_add(1, Ordering::Relaxed);
         let root = NshView::new(ROOT_ID, nsh_core::ViewKind::View);
+        let mounter = Mounter::new(root.clone());
         let surface = Rc::new(Surface {
             key,
             root: root.clone(),
-            mounter: RefCell::new(Mounter::new(root.clone())),
+            views: mounter.views.clone(),
+            mounter: RefCell::new(mounter),
             anim: RefCell::new(UiAnimation::default()),
             nav: RefCell::default(),
             input: Default::default(),
@@ -292,7 +297,7 @@ impl Surface {
 
     /// The view of node `id`.
     pub(crate) fn view(&self, id: NodeId) -> Option<NshView> {
-        self.mounter.borrow().views.get(&id).cloned()
+        self.views.get(id)
     }
 
     /// Shows fatal app errors with `f` (development hosts).

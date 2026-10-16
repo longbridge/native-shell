@@ -760,7 +760,7 @@ fn tick(surface: &Rc<Surface>, view: &NshView, now: f64) -> bool {
             .mounter
             .try_borrow()
             .ok()
-            .is_none_or(|m| m.views.get(&id) == Some(view));
+            .is_none_or(|m| m.views.get(id).as_ref() == Some(view));
         if !registered || view.parent_view().is_none() {
             if let Some(live) = view.state_mut().live.as_deref_mut() {
                 live.ticking = false;

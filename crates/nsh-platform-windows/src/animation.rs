@@ -157,7 +157,7 @@ impl UiAnimation {
     pub(crate) fn write(&mut self, mounter: &Mounter) {
         let canvas = &mut self.canvas_args;
         for (&id, bindings) in &self.bindings {
-            let Some(view) = mounter.views.get(&id) else {
+            let Some(view) = &mounter.views.get(id) else {
                 continue;
             };
             let mut values = AnimValues::default();

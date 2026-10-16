@@ -3,17 +3,45 @@
 //! [`crate::text_input`], [`crate::navigation`], ...); this file only
 //! keeps the view table and the tree.
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind};
 use rustc_hash::FxHashMap;
 
 use crate::{surface::Surface, view::NshView};
 
+/// Every live view of a surface by node id (the root included).
+///
+/// Shared by the mounter and the surface: looking a view up never needs
+/// the mounter, which a batch holds while it is applied, so modules may
+/// find views from any callback (an image that was already cached
+/// answers while the item that asked for it is applied).
+#[derive(Default)]
+pub(crate) struct Views(RefCell<FxHashMap<NodeId, NshView>>);
+
+impl Views {
+    /// The view of node `id`.
+    pub(crate) fn get(&self, id: NodeId) -> Option<NshView> {
+        self.0.borrow().get(&id).cloned()
+    }
+
+    fn insert(&self, id: NodeId, view: NshView) {
+        self.0.borrow_mut().insert(id, view);
+    }
+
+    fn remove(&self, id: NodeId) -> Option<NshView> {
+        self.0.borrow_mut().remove(&id)
+    }
+
+    fn take(&self) -> FxHashMap<NodeId, NshView> {
+        std::mem::take(&mut *self.0.borrow_mut())
+    }
+}
+
 /// The views of a surface.
 pub(crate) struct Mounter {
     /// Every live view by node id (the root included).
-    pub(crate) views: FxHashMap<NodeId, NshView>,
+    pub(crate) views: Rc<Views>,
     /// The root view.
     pub(crate) root: NshView,
     /// Animates the frame changes, insertions and removals of the rest of
@@ -25,7 +53,7 @@ pub(crate) struct Mounter {
 
 impl Mounter {
     pub(crate) fn new(root: NshView) -> Self {
-        let mut views = FxHashMap::default();
+        let views = Rc::new(Views::default());
         views.insert(ROOT_ID, root.clone());
         Mounter {
             views,
@@ -41,7 +69,7 @@ impl Mounter {
             child.unparent();
         }
         let root = self.root.clone();
-        for (_, view) in self.views.drain() {
+        for (_, view) in self.views.take() {
             if view != root {
                 view.unparent();
             }
@@ -57,8 +85,8 @@ impl Mounter {
         crate::system::end_batch(surface);
     }
 
-    fn get(&self, id: NodeId) -> Option<&NshView> {
-        let view = self.views.get(&id);
+    fn get(&self, id: NodeId) -> Option<NshView> {
+        let view = self.views.get(id);
         if view.is_none() {
             log::debug!("mount: no view {id}");
         }
@@ -82,7 +110,7 @@ impl Mounter {
                 self.views.insert(*id, view);
             }
             MountItem::TrackStates { id, states } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::input::track_states(surface, view, *states);
                 }
             }
@@ -91,7 +119,7 @@ impl Mounter {
                 child,
                 before,
             } => {
-                let (Some(parent), Some(child)) = (self.get(*parent), self.get(*child)) else {
+                let (Some(parent), Some(child)) = (&self.get(*parent), &self.get(*child)) else {
                     return;
                 };
                 match child.kind() {
@@ -105,9 +133,9 @@ impl Mounter {
                     _ => {}
                 }
                 let before = before
-                    .and_then(|b| self.views.get(&b))
+                    .and_then(|b| self.views.get(b))
                     .filter(|b| b.parent_view().as_ref() == Some(parent));
-                child.insert_before(parent, before);
+                child.insert_before(parent, before.as_ref());
                 crate::transition::inserted(surface, child, self.layout_animation.as_ref());
                 if parent.kind() == ViewKind::Stack {
                     crate::navigation::stack_changed(surface, parent, Some(child));
@@ -117,7 +145,7 @@ impl Mounter {
                 }
             }
             MountItem::Remove { id } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     // A removal animation detaches the view when it ends.
                     if !crate::transition::removing(surface, view, self.layout_animation.as_ref()) {
                         self.detach(surface, view);
@@ -125,7 +153,7 @@ impl Mounter {
                 }
             }
             MountItem::Delete { id } => {
-                if let Some(view) = self.views.remove(id) {
+                if let Some(view) = self.views.remove(*id) {
                     crate::native::deleted(surface, &view);
                     // A removal animation detaches the view when it ends.
                     if !crate::transition::removing(surface, &view, self.layout_animation.as_ref())
@@ -135,7 +163,7 @@ impl Mounter {
                 }
             }
             MountItem::Frame { id, frame } => {
-                let Some(view) = self.get(*id) else { return };
+                let Some(view) = &self.get(*id) else { return };
                 if *id == ROOT_ID {
                     return;
                 }
@@ -169,7 +197,7 @@ impl Mounter {
                 }
             }
             MountItem::ViewStyle { id, style } => {
-                let Some(view) = self.get(*id) else { return };
+                let Some(view) = &self.get(*id) else { return };
                 let old = std::mem::replace(&mut view.state_mut().style, style.clone());
                 crate::input::style_changed(view);
                 crate::transition::style_changed(surface, view, &old);
@@ -181,13 +209,13 @@ impl Mounter {
                 layout,
                 content,
             } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::text::set(view, text, layout, *content);
                     crate::access::text_changed(view);
                 }
             }
             MountItem::Events { id, events } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     view.state_mut().events = *events;
                     crate::input::events_changed(surface, view);
                     crate::access::events_changed(view);
@@ -199,7 +227,7 @@ impl Mounter {
                 resize_mode,
                 options,
             } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::image::set(surface, view, source.as_ref(), *resize_mode, options);
                 }
             }
@@ -210,23 +238,23 @@ impl Mounter {
                 mirrored,
                 ..
             } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::config(surface, view, *horizontal, *shows_indicator, *mirrored);
                 }
             }
             MountItem::ScrollContent { id, size } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::content(surface, view, *size);
                 }
             }
             MountItem::ScrollBy { id, dx, dy } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::scroll_by(surface, view, *dx, *dy);
                 }
             }
             MountItem::LayoutDirection { rtl } => self.rtl = *rtl,
             MountItem::Overflow { id, extent } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     view.state_mut().overflow = *extent;
                 }
             }
@@ -234,79 +262,79 @@ impl Mounter {
                 crate::system::set_appearance(surface, *appearance);
             }
             MountItem::AccessibilityLabel { id, label } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::access::label(view, label);
                 }
             }
             MountItem::StickyCells { id, cells } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::sticky(surface, view, cells.clone());
                 }
             }
             MountItem::ScrollBehavior { id, behavior } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::behavior(surface, view, behavior);
                 }
             }
             MountItem::Refreshing { id, refreshing } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::scroll::refreshing(surface, view, *refreshing);
                 }
             }
             MountItem::Canvas { id, drawing } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::canvas::set(surface, view, drawing.clone());
                 }
             }
             MountItem::Gestures { id, values } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::input::gestures(surface, view, *values);
                 }
             }
             MountItem::ViewProps { id, props } => {
-                let Some(view) = self.get(*id) else { return };
+                let Some(view) = &self.get(*id) else { return };
                 view.state_mut().props = props.clone();
                 crate::input::props_changed(surface, view);
                 crate::access::props_changed(view);
             }
             MountItem::LayoutAnimation(a) => self.layout_animation = Some(*a),
             MountItem::Input { id, config } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::text_input::config(surface, view, config);
                 }
             }
             MountItem::InputValue { id, text, count } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::text_input::value(view, text, *count);
                 }
             }
             MountItem::InputContent { id, content } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::text_input::content(view, *content);
                 }
             }
             MountItem::ScreenConfig { id, config } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::navigation::screen_config(surface, view, config);
                 }
             }
             MountItem::ModalConfig { id, config } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::navigation::modal_config(surface, view, config);
                 }
             }
             MountItem::NativeProps { id, props } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::native::props(surface, view, props);
                 }
             }
             MountItem::Component { id, name } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::native::component(surface, view, name);
                 }
             }
             MountItem::ComponentProps { id, props } => {
-                if let Some(view) = self.get(*id) {
+                if let Some(view) = &self.get(*id) {
                     crate::native::component_props(surface, view, props);
                 }
             }
@@ -333,7 +361,8 @@ impl Mounter {
     }
 
     fn command(&self, surface: &Rc<Surface>, id: NodeId, command: &Command) {
-        let view = self.views.get(&id);
+        let view = self.views.get(id);
+        let view = view.as_ref();
         match command {
             Command::Focus => view.map_or((), crate::text_input::focus),
             Command::Blur => match view {

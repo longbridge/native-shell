@@ -673,7 +673,7 @@ fn tick(surface: &Rc<Surface>, view: &NshView, now: f64) -> bool {
 /// Calls `f` with `view`'s child of node `id`.
 fn with_cell(surface: &Surface, view: &NshView, id: nsh_core::NodeId, f: impl FnOnce(&NshView)) {
     if let Ok(mounter) = surface.mounter.try_borrow() {
-        if let Some(cell) = mounter.views.get(&id) {
+        if let Some(cell) = &mounter.views.get(id) {
             f(cell);
         }
         return;

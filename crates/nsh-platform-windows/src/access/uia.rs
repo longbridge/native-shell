@@ -147,7 +147,7 @@ fn target(key: u64, id: NodeId) -> Result<Target> {
         .mounter
         .try_borrow()
         .ok()
-        .and_then(|m| m.views.get(&id).cloned())
+        .and_then(|m| m.views.get(id))
         .ok_or_else(not_available)?;
     match super::exposed(&view) {
         Ok(Some(e)) if e == view => Ok(Target { surface, view }),

@@ -760,7 +760,7 @@ pub(crate) fn focused(surface: &Surface) -> Option<NshView> {
         return Some(field);
     }
     let id = FOCUS.with_borrow(|f| f.get(&surface.key()).copied())?;
-    let view = surface.mounter.try_borrow().ok()?.views.get(&id).cloned()?;
+    let view = surface.view(id)?;
     match exposed(&view) {
         Ok(Some(e)) => Some(e),
         _ => None,
