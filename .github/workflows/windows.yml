@@ -1,0 +1,70 @@
+name: Windows
+
+# Builds, lints and tests the Windows backend (Win32, Direct2D, DirectWrite)
+# and the tooling that runs it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "rust-toolchain.toml"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    env:
+      # QuickJS is C: bindgen needs libclang, which the image's LLVM has.
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+      # rustc can overflow its default stack on the `windows` crate's
+      # bindings (STATUS_STACK_BUFFER_OVERRUN).
+      RUST_MIN_STACK: "268435456"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-windows-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-windows-cargo-
+
+      - name: Clippy
+        run: >
+          cargo clippy --all-targets
+          -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app
+          -p nsh-cli -p nsh-dev
+          -- -D warnings
+
+      # Tests need no display: they open no window.
+      - name: Test
+        run: cargo test -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app -p nsh-cli -p nsh-dev
