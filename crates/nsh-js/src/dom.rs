@@ -1887,16 +1887,10 @@ fn reconcile(
             b_end -= 1;
         }
         if a_end == a_start {
-            // Appends.
-            let node = if b_end < b_len {
-                if b_start > 0 {
-                    next_sibling(ctx, b[b_start - 1])
-                } else {
-                    Some(b[b_end - b_start])
-                }
-            } else {
-                after
-            };
+            // Appends, before the first node of the placed tail. (Solid
+            // takes the sibling after `b[b_start - 1]`, but a node kept
+            // in place below can sit there.)
+            let node = if b_end < b_len { Some(b[b_end]) } else { after };
             while b_start < b_end {
                 insert_before(ctx, parent, b[b_start], node)?;
                 b_start += 1;
@@ -3174,6 +3168,117 @@ mod tests {
             "{grown:?}"
         );
         assert!(!grown.iter().any(|l| l.starts_with("remove")), "{grown:?}");
+    }
+
+    /// Rows of repeated values (keyed by value, by index and by a key
+    /// function) end up in the array's order: equal keys match in order,
+    /// and the reconcile anchors appends on nodes in place.
+    #[test]
+    fn rows_with_duplicate_keys_follow_the_array() {
+        use std::collections::HashMap;
+
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { mount, signal } from "nsh";
+            import { element, insert, each } from "nsh:rt";
+            const values = signal([]);
+            globalThis.show = (v) => values.set(v);
+            const render = (item) => {
+                const t = element("text");
+                insert(t, () => String(item()));
+                return t;
+            };
+            mount(() => {
+                const v = element("view");
+                for (const key of [undefined, "index", (item) => item]) {
+                    const w = element("view");
+                    insert(w, each(() => values(), render, key));
+                    insert(v, w);
+                }
+                return v;
+            });
+            "#,
+        )
+        .unwrap();
+        // The tree the ops build: children per parent, the text of text
+        // nodes.
+        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+        let mut texts: HashMap<u32, String> = HashMap::new();
+        let apply = |children: &mut HashMap<u32, Vec<u32>>, texts: &mut HashMap<u32, String>| {
+            let mut out = Vec::new();
+            host.take_ops(&mut out);
+            for op in out {
+                match op {
+                    Op::CreateText { id, text } | Op::SetText { id, text } => {
+                        texts.insert(id, text);
+                    }
+                    Op::Insert {
+                        parent,
+                        child,
+                        before,
+                    } => {
+                        let list = children.entry(parent).or_default();
+                        list.retain(|&c| c != child);
+                        let at = before
+                            .and_then(|b| list.iter().position(|&c| c == b))
+                            .unwrap_or(list.len());
+                        list.insert(at, child);
+                    }
+                    Op::Remove { parent, child } => {
+                        children.entry(parent).or_default().retain(|&c| c != child);
+                    }
+                    _ => {}
+                }
+            }
+        };
+        apply(&mut children, &mut texts);
+        let root = children[&1][0];
+        let lists = children[&root].clone();
+        assert_eq!(lists.len(), 3);
+        let history: &[&[u32]] = &[
+            &[1],
+            &[2, 1],
+            &[3, 2, 1],
+            &[2, 3, 2, 1],
+            &[1, 2, 3, 2, 1],
+            &[2, 1, 2, 3, 2],
+            &[2, 2, 1, 2, 3],
+            &[3, 2, 2, 2, 1],
+            &[1, 3, 1, 3, 2],
+            &[],
+            &[4, 4, 4],
+            &[5, 4, 5, 4],
+        ];
+        // Then arrays of up to 8 values out of 4, pseudo-random.
+        let mut seed = 7u32;
+        let mut next = move |n: u32| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            (seed >> 16) % n
+        };
+        let random: Vec<Vec<u32>> = (0..300)
+            .map(|_| (0..next(9)).map(|_| next(4)).collect())
+            .collect();
+        for values in history
+            .iter()
+            .copied()
+            .chain(random.iter().map(Vec::as_slice))
+        {
+            let list = values.iter().map(u32::to_string).collect::<Vec<_>>();
+            host.eval_script("show.js", &format!("show([{}])", list.join(",")))
+                .unwrap();
+            apply(&mut children, &mut texts);
+            for &w in &lists {
+                let shown: Vec<_> = children
+                    .get(&w)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|row| texts[&children[row][0]].clone())
+                    .collect();
+                assert_eq!(shown, list, "rows of {w}");
+            }
+        }
     }
 
     /// A run of dynamic children (one insert): a change in one leaves the
