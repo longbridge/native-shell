@@ -98,7 +98,7 @@ Because JavaScript only describes the UI and handles events, the work done in th
 
 ## What you get
 
-- **Embedding.** `NshAppView` (Swift), `NshView` (Java/Kotlin) and Linux's GTK `AppView` put a module in a native app, as many as you like ([iOS](./embedding-ios.md), [Android](./embedding-android.md), [Linux](./linux.md#embedding-in-a-gtk-app)).
+- **Embedding.** `NshAppView` (Swift), `NshView` (Java/Kotlin) and the desktops' `AppView` (AppKit, GTK, Win32) put a module in a native app, as many as you like ([iOS](./embedding-ios.md), [Android](./embedding-android.md), [macOS](./macos.md#embedding-in-a-mac-app), [Linux](./linux.md#embedding-in-a-gtk-app), [Windows](./windows.md#embedding-in-a-win32-app)).
 - **Signed, revocable delivery.** Ed25519-signed packages, release keys certified by an offline root key, revocation lists ([Signed packages](./signed-packages.md)).
 - **A sandbox the host configures.** VM limits and capabilities granted per view ([Sandbox and capabilities](./sandbox-and-capabilities.md)).
 - **The host's own views in modules.** Register native components from Swift, Java or Rust ([Native components](./native-components.md)).
