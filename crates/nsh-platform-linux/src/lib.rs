@@ -1,0 +1,48 @@
+//! Linux backend for nsh: GTK 4 widgets for views, Pango for text.
+//!
+//! - Each node is an [`view::NshView`] (a `gtk::Widget` subclass) placed
+//!   at the frame the core laid out and drawn with GSK render nodes
+//!   (background, borders, shadows, text glyphs, images); text fields,
+//!   web views and videos are GTK widgets hosted in their node's view.
+//! - The engine runs on its own thread ([`nsh_engine::Engine`]); each
+//!   commit is one hop to the GTK main loop ([`surface`]).
+//! - Text is shaped and broken into lines by Pango on the engine thread;
+//!   the main thread only draws the glyph runs it produced ([`text`]).
+//! - Native animations run on the root's frame clock ([`animation`]).
+//!
+//! [`AppView`] is one surface as a widget (for embedding); [`run_app`]
+//! opens one in a window. Off Linux this crate is empty.
+
+#![cfg(target_os = "linux")]
+
+mod access;
+mod animation;
+mod app;
+mod canvas;
+mod decor;
+#[cfg(feature = "dev")]
+pub mod dev;
+mod image;
+mod input;
+mod mount;
+mod native;
+mod navigation;
+mod net;
+mod script;
+mod scroll;
+mod surface;
+mod system;
+mod text;
+mod text_input;
+mod transition;
+mod view;
+
+pub use gtk4;
+pub use nsh_core::platform::Appearance;
+pub use nsh_engine::{App, Bundle, Root};
+
+pub use crate::{
+    app::{AppOptions, AppSource, AppView, run_app, set_ui_sets},
+    image::AssetBase,
+    native::{ComponentContext, ComponentFactory, Components, NativeComponent},
+};

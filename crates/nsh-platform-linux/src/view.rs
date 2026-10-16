@@ -1,0 +1,588 @@
+//! `NshView`: the GTK widget of one node.
+//!
+//! The core lays everything out, so a view never measures itself: its
+//! parent places it at the frame the core gave it (`size_allocate`, with
+//! the frame's origin, the scroll offset, a sticky shift and the view's
+//! transform in one `gsk::Transform`). Sizes are kept as `f32` points in
+//! [`ViewState::frame`] and drawing uses them; the integer allocation only
+//! bounds picking.
+//!
+//! A view draws itself in `snapshot`: shadows and background
+//! ([`crate::decor`]), its content (text, image, canvas), its children
+//! (clipped to the rounded bounds when `overflow: hidden`), then its
+//! border, as UIKit draws layer borders over the content.
+//!
+//! Native GTK widgets a view hosts (a text field, a header) are
+//! [`ViewState::natives`]: placed at their own rectangles, after the app's
+//! children.
+
+use std::cell::{Ref, RefCell, RefMut};
+
+use gtk4::{self as gtk, glib, graphene, gsk, prelude::*, subclass::prelude::*};
+use nsh_core::{
+    EventMask, MAX_TRANSFORMS, NodeId, PointerEvents, Rect, TransformKind, ViewKind, ViewProps,
+    ViewStyle,
+};
+
+/// Values native animations set on a view; they win over the style's.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct AnimValues {
+    /// Animated opacity.
+    pub(crate) opacity: Option<f32>,
+    /// Animated background color.
+    pub(crate) background: Option<nsh_core::Color>,
+    /// Animated entries of the transform list (by position).
+    pub(crate) transform: [Option<f32>; MAX_TRANSFORMS],
+    /// Animated border color (every side).
+    pub(crate) border_color: Option<nsh_core::Color>,
+    /// Animated text color (a text view's runs, an input's text).
+    pub(crate) color: Option<nsh_core::Color>,
+    /// Animated shadow color.
+    pub(crate) shadow_color: Option<nsh_core::Color>,
+    /// Animated shadow opacity.
+    pub(crate) shadow_opacity: Option<f32>,
+    /// Animated shadow blur radius.
+    pub(crate) shadow_radius: Option<f32>,
+}
+
+/// Scroll position and extent of a [`ViewKind::Scroll`] view.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ScrollState {
+    /// Current offset (points; content coordinates of the viewport's top
+    /// left).
+    pub(crate) x: f32,
+    /// Vertical offset.
+    pub(crate) y: f32,
+    /// Size of the scrollable content.
+    pub(crate) content: (f32, f32),
+    /// Scrolls horizontally.
+    pub(crate) horizontal: bool,
+    /// Shows the scroll indicator.
+    pub(crate) indicator: bool,
+    /// How it scrolls (paging, snapping, insets...).
+    pub(crate) behavior: nsh_core::ScrollBehavior,
+    /// Scrolls the core asked for (`ScrollBy`, `scrollTo`) that were
+    /// applied: reported with each offset.
+    pub(crate) applied: u32,
+    /// The sticky cells: (cell, start, end).
+    pub(crate) sticky: Vec<nsh_core::StickyCell>,
+    /// A horizontal list laid out right to left: children are placed
+    /// mirrored (offsets stay left to right).
+    pub(crate) mirrored: bool,
+    /// Gestures, glides and the indicator ([`crate::scroll`]).
+    pub(crate) live: crate::scroll::Live,
+}
+
+impl ScrollState {
+    /// The largest offsets.
+    pub(crate) fn max(&self, viewport: (f32, f32)) -> (f32, f32) {
+        let inset = self.behavior.content_inset;
+        (
+            (self.content.0 + inset.left + inset.right - viewport.0).max(0.0),
+            (self.content.1 + inset.top + inset.bottom - viewport.1).max(0.0),
+        )
+    }
+}
+
+/// A native GTK widget a view hosts at `rect` (view coordinates).
+#[derive(Debug, Clone)]
+pub(crate) struct Native {
+    /// The widget (a child of the view).
+    pub(crate) widget: gtk::Widget,
+    /// Where it goes.
+    pub(crate) rect: Rect,
+}
+
+/// Everything the mounter set on one view.
+pub(crate) struct ViewState {
+    /// Node id.
+    pub(crate) id: NodeId,
+    /// What it is.
+    pub(crate) kind: ViewKind,
+    /// Frame in the parent (points).
+    pub(crate) frame: Rect,
+    /// Visual style.
+    pub(crate) style: Box<ViewStyle>,
+    /// Native animation values.
+    pub(crate) anim: AnimValues,
+    /// Events JS listens to.
+    pub(crate) events: EventMask,
+    /// Touch, accessibility and test properties.
+    pub(crate) props: Box<ViewProps>,
+    /// States to report (`TrackStates`), and the current ones.
+    pub(crate) tracked: u8,
+    /// Current interaction states (pressed, hovered, focused).
+    pub(crate) states: u8,
+    /// Extra translation (sticky list cells, screen transitions).
+    pub(crate) shift: (f32, f32),
+    /// Extra opacity (press feedback, screen and modal transitions).
+    pub(crate) fade: f32,
+    /// Scroll state (scroll views).
+    pub(crate) scroll: Option<ScrollState>,
+    /// Text content (text views).
+    pub(crate) text: Option<crate::text::DrawnText>,
+    /// Image content (image views).
+    pub(crate) image: Option<crate::image::ImageState>,
+    /// Canvas content.
+    pub(crate) canvas: Option<crate::canvas::CanvasState>,
+    /// Text field (input views).
+    pub(crate) input: Option<std::rc::Rc<crate::text_input::InputState>>,
+    /// Hosted GTK widgets.
+    pub(crate) natives: Vec<Native>,
+    /// The area descendants cover outside the bounds (`MountItem::Overflow`):
+    /// hit testing looks there too.
+    pub(crate) overflow: Option<Rect>,
+    /// Running layout / style transitions and keyframes.
+    pub(crate) live: Option<Box<crate::transition::Live>>,
+    /// What accessibility last gave GTK.
+    pub(crate) access: crate::access::Applied,
+}
+
+impl ViewState {
+    fn new(id: NodeId, kind: ViewKind) -> Self {
+        ViewState {
+            id,
+            kind,
+            frame: Rect::default(),
+            style: Box::default(),
+            anim: AnimValues::default(),
+            events: EventMask::default(),
+            props: Box::default(),
+            tracked: 0,
+            states: 0,
+            shift: (0.0, 0.0),
+            fade: 1.0,
+            scroll: matches!(kind, ViewKind::Scroll).then(ScrollState::default),
+            text: None,
+            image: None,
+            canvas: None,
+            input: None,
+            natives: Vec::new(),
+            overflow: None,
+            live: None,
+            access: Default::default(),
+        }
+    }
+
+    /// The opacity it is drawn with.
+    pub(crate) fn opacity(&self) -> f32 {
+        let live = self.live.as_ref().map_or(1.0, |l| l.opacity);
+        self.anim.opacity.unwrap_or(self.style.opacity) * self.fade * live
+    }
+
+    /// Its shadow, with animated color, opacity and radius.
+    pub(crate) fn shadow(&self) -> nsh_core::Shadow {
+        let mut s = self.style.shadow;
+        let a = &self.anim;
+        s.color = a.shadow_color.unwrap_or(s.color);
+        s.opacity = a.shadow_opacity.unwrap_or(s.opacity);
+        s.radius = a.shadow_radius.unwrap_or(s.radius);
+        s
+    }
+
+    /// Its borders, with an animated color.
+    pub(crate) fn borders(&self) -> nsh_core::Borders {
+        let mut b = self.style.borders;
+        if let Some(c) = self.anim.border_color {
+            b.colors = [c; 4];
+        }
+        b
+    }
+
+    /// Its background color, animated or not.
+    pub(crate) fn background(&self) -> nsh_core::Color {
+        self.anim.background.unwrap_or(self.style.background_color)
+    }
+
+    /// The corner radii (top left, top right, bottom right, bottom left),
+    /// clamped as CSS clamps them to the box.
+    pub(crate) fn radii(&self) -> [f32; 4] {
+        let s = &self.style;
+        let mut r: [f32; 4] =
+            std::array::from_fn(|i| s.corner_radius[i].unwrap_or(s.border_radius));
+        let (w, h) = (self.frame.width, self.frame.height);
+        let sums = [r[0] + r[1], r[1] + r[2], r[2] + r[3], r[3] + r[0]];
+        let lens = [w, h, w, h];
+        let f = sums
+            .iter()
+            .zip(lens)
+            .filter(|(s, _)| **s > 0.0)
+            .map(|(s, l)| l / s)
+            .fold(1.0f32, f32::min);
+        if f < 1.0 {
+            r.iter_mut().for_each(|v| *v *= f);
+        }
+        r
+    }
+
+    /// True if its children are clipped to its rounded bounds.
+    pub(crate) fn clips(&self) -> bool {
+        self.style.overflow_hidden
+            || matches!(
+                self.kind,
+                ViewKind::Scroll | ViewKind::Image | ViewKind::Stack | ViewKind::Input
+            )
+    }
+
+    /// The rounded rectangle of its bounds.
+    pub(crate) fn rounded_bounds(&self) -> gsk::RoundedRect {
+        rounded(
+            graphene::Rect::new(0.0, 0.0, self.frame.width, self.frame.height),
+            self.radii(),
+        )
+    }
+
+    /// Its transform (static entries, overridden by animated ones) around
+    /// its transform origin, or `None` when it has none.
+    pub(crate) fn transform(&self) -> Option<gsk::Transform> {
+        let t = &self.style.transform;
+        let animated = self.anim.transform.iter().any(Option::is_some);
+        let extra = self.live.as_ref().and_then(|l| l.extra());
+        if extra.is_none() && (t.ops().is_empty() || (!animated && t.is_identity())) {
+            return None;
+        }
+        let (w, h) = (self.frame.width, self.frame.height);
+        let o = self.style.transform_origin;
+        let (ox, oy) = (o.x.resolve(w), o.y.resolve(h));
+        let mut m = gsk::Transform::new().translate(&graphene::Point::new(ox, oy));
+        if o.z != 0.0 {
+            m = m.translate_3d(&graphene::Point3D::new(0.0, 0.0, o.z));
+        }
+        for (i, op) in t.ops().iter().enumerate() {
+            let v = self.anim.transform[i].unwrap_or(op.value);
+            m = match op.kind {
+                TransformKind::TranslateX => m.translate(&graphene::Point::new(v, 0.0)),
+                TransformKind::TranslateY => m.translate(&graphene::Point::new(0.0, v)),
+                TransformKind::TranslateXFraction => m.translate(&graphene::Point::new(v * w, 0.0)),
+                TransformKind::TranslateYFraction => m.translate(&graphene::Point::new(0.0, v * h)),
+                TransformKind::Scale => m.scale(v, v),
+                TransformKind::ScaleX => m.scale(v, 1.0),
+                TransformKind::ScaleY => m.scale(1.0, v),
+                TransformKind::Rotate => m.rotate(v),
+                TransformKind::RotateX => m.rotate_3d(v, &graphene::Vec3::x_axis()),
+                TransformKind::RotateY => m.rotate_3d(v, &graphene::Vec3::y_axis()),
+                TransformKind::SkewX => m.skew(v, 0.0),
+                TransformKind::SkewY => m.skew(0.0, v),
+                TransformKind::Perspective => {
+                    if v > 0.0 {
+                        m.perspective(v)
+                    } else {
+                        m
+                    }
+                }
+            };
+        }
+        if let Some(extra) = extra {
+            m = extra.apply(m, h);
+        }
+        if o.z != 0.0 {
+            m = m.translate_3d(&graphene::Point3D::new(0.0, 0.0, -o.z));
+        }
+        Some(m.translate(&graphene::Point::new(-ox, -oy)))
+    }
+}
+
+/// A rounded rectangle with radii clockwise from the top left.
+pub(crate) fn rounded(rect: graphene::Rect, r: [f32; 4]) -> gsk::RoundedRect {
+    let s = |v: f32| graphene::Size::new(v.max(0.0), v.max(0.0));
+    gsk::RoundedRect::new(rect, s(r[0]), s(r[1]), s(r[2]), s(r[3]))
+}
+
+/// A resize callback ([`NshView::on_resize`]).
+type Resized = Box<dyn Fn(f32, f32)>;
+
+mod imp {
+    use super::*;
+
+    pub(crate) struct NshView {
+        pub(crate) state: RefCell<ViewState>,
+        /// Called with the new size when GTK resizes the view (the root:
+        /// the window's content area).
+        pub(crate) resized: RefCell<Option<Resized>>,
+    }
+
+    impl Default for NshView {
+        fn default() -> Self {
+            NshView {
+                state: RefCell::new(ViewState::new(0, ViewKind::View)),
+                resized: RefCell::new(None),
+            }
+        }
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for NshView {
+        const NAME: &'static str = "NshView";
+        type Type = super::NshView;
+        type ParentType = gtk::Widget;
+        // Range roles (sliders, progress bars) expose their value to
+        // assistive technologies through it (`crate::access`).
+        type Interfaces = (gtk::AccessibleRange,);
+    }
+
+    impl AccessibleImpl for NshView {}
+
+    impl AccessibleRangeImpl for NshView {
+        fn set_current_value(&self, _value: f64) -> bool {
+            // Values change from the app, not from assistive technologies.
+            false
+        }
+    }
+
+    impl ObjectImpl for NshView {
+        fn dispose(&self) {
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
+        }
+    }
+
+    impl WidgetImpl for NshView {
+        fn measure(&self, _orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            // The core sizes every view; GTK's own sizing never applies.
+            (0, 0, -1, -1)
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, _baseline: i32) {
+            if let Some(resized) = &*self.resized.borrow() {
+                resized(width as f32, height as f32);
+            }
+            let state = self.state.borrow();
+            let (sx, sy) = match &state.scroll {
+                Some(s) => {
+                    let inset = s.behavior.content_inset;
+                    (s.x - inset.left, s.y - inset.top)
+                }
+                None => (0.0, 0.0),
+            };
+            // Mirrored lists place each child at the mirror image of its
+            // frame in the viewport, which also keeps cells unflipped.
+            let mirror = state
+                .scroll
+                .as_ref()
+                .is_some_and(|s| s.mirrored)
+                .then_some(state.frame.width);
+            let natives: Vec<Native> = state.natives.clone();
+            drop(state);
+            let mut child = self.obj().first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                if let Some(rect) = natives.iter().find(|n| n.widget == widget).map(|n| n.rect) {
+                    let t = gsk::Transform::new().translate(&graphene::Point::new(rect.x, rect.y));
+                    widget.allocate(
+                        rect.width.ceil().max(0.0) as i32,
+                        rect.height.ceil().max(0.0) as i32,
+                        -1,
+                        Some(t),
+                    );
+                    continue;
+                }
+                let Some(view) = widget.downcast_ref::<super::NshView>() else {
+                    continue;
+                };
+                let s = view.state();
+                let f = s.frame;
+                let mut x = f.x - sx + s.shift.0;
+                if let Some(w) = mirror {
+                    x = w - x - f.width;
+                }
+                let mut t =
+                    gsk::Transform::new().translate(&graphene::Point::new(x, f.y - sy + s.shift.1));
+                if let Some(own) = s.transform() {
+                    t = t.transform(Some(&own));
+                }
+                drop(s);
+                widget.allocate(
+                    f.width.ceil().max(0.0) as i32,
+                    f.height.ceil().max(0.0) as i32,
+                    -1,
+                    Some(t),
+                );
+            }
+        }
+
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            let obj = self.obj();
+            let state = self.state.borrow();
+            if state.style.hidden || crate::decor::backface_away(&state) {
+                return;
+            }
+            let opacity = state.opacity();
+            if opacity <= 0.0 {
+                return;
+            }
+            if opacity < 1.0 {
+                snapshot.push_opacity(opacity as f64);
+            }
+            let filters = crate::decor::push_filters(snapshot, &state);
+            let soft = crate::decor::soft_shadows(obj.upcast_ref(), &state);
+            crate::decor::draw_background(snapshot, &state, soft);
+            let clip = state.clips();
+            if clip {
+                snapshot.push_rounded_clip(&state.rounded_bounds());
+            }
+            // The view's own content stays inside it, as a UIKit view's
+            // drawing stays in its backing store: a cell the core has not
+            // placed yet (no frame) draws nothing.
+            if !clip {
+                snapshot.push_clip(&graphene::Rect::new(
+                    0.0,
+                    0.0,
+                    state.frame.width,
+                    state.frame.height,
+                ));
+            }
+            crate::text::draw(snapshot, &state);
+            crate::image::draw(snapshot, &state);
+            crate::canvas::draw(snapshot, &state);
+            if !clip {
+                snapshot.pop();
+            }
+            drop(state);
+            let mut child = obj.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                // A view inserted (or given a size) by a batch applied
+                // since the last layout has no allocation until the next
+                // frame's; snapshots taken in between (images of a screen
+                // the app removed) skip it, as GTK would after warning.
+                if let Some(view) = widget.downcast_ref::<super::NshView>()
+                    && widget.width() == 0
+                    && widget.height() == 0
+                    && view.state().frame.width >= 1.0
+                    && view.state().frame.height >= 1.0
+                {
+                    continue;
+                }
+                obj.snapshot_child(&widget, snapshot);
+            }
+            let state = self.state.borrow();
+            crate::scroll::draw_indicator(snapshot, &state);
+            if clip {
+                snapshot.pop();
+            }
+            crate::decor::draw_border(snapshot, &state);
+            for _ in 0..filters {
+                snapshot.pop();
+            }
+            if opacity < 1.0 {
+                snapshot.pop();
+            }
+        }
+
+        fn contains(&self, x: f64, y: f64) -> bool {
+            let s = self.state.borrow();
+            if s.style.hidden || matches!(s.props.pointer_events, PointerEvents::BoxNone) {
+                return false;
+            }
+            let h = s.props.hit_slop;
+            x >= -(h.left as f64)
+                && y >= -(h.top as f64)
+                && x < (s.frame.width + h.right) as f64
+                && y < (s.frame.height + h.bottom) as f64
+        }
+    }
+}
+
+glib::wrapper! {
+    /// The widget of one node.
+    pub(crate) struct NshView(ObjectSubclass<imp::NshView>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::AccessibleRange, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+impl NshView {
+    /// A new, detached view of node `id`.
+    pub(crate) fn new(id: NodeId, kind: ViewKind) -> Self {
+        let view: NshView = glib::Object::new();
+        *view.imp().state.borrow_mut() = ViewState::new(id, kind);
+        // Views never take keyboard focus themselves; hosted fields do.
+        view.set_focusable(false);
+        view
+    }
+
+    /// Its state.
+    pub(crate) fn state(&self) -> Ref<'_, ViewState> {
+        self.imp().state.borrow()
+    }
+
+    /// Its state, to change. Call [`NshView::changed`] or
+    /// [`NshView::moved`] afterwards.
+    pub(crate) fn state_mut(&self) -> RefMut<'_, ViewState> {
+        self.imp().state.borrow_mut()
+    }
+
+    /// Node id.
+    pub(crate) fn id(&self) -> NodeId {
+        self.state().id
+    }
+
+    /// Kind.
+    pub(crate) fn kind(&self) -> ViewKind {
+        self.state().kind
+    }
+
+    /// Something it draws changed.
+    pub(crate) fn changed(&self) {
+        self.queue_draw();
+    }
+
+    /// Its frame, transform or shift changed: the parent places it again.
+    pub(crate) fn moved(&self) {
+        if let Some(parent) = self.parent() {
+            parent.queue_allocate();
+        }
+        self.queue_draw();
+    }
+
+    /// The view's parent view, if it is attached to one.
+    pub(crate) fn parent_view(&self) -> Option<NshView> {
+        self.parent().and_then(|p| p.downcast::<NshView>().ok())
+    }
+
+    /// Its child views, bottom to top.
+    pub(crate) fn child_views(&self) -> Vec<NshView> {
+        let mut out = Vec::new();
+        let mut child = self.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if let Ok(view) = widget.downcast::<NshView>() {
+                out.push(view);
+            }
+        }
+        out
+    }
+
+    /// Hosts `widget` at `rect` (or moves it there).
+    pub(crate) fn set_native(&self, widget: &impl IsA<gtk::Widget>, rect: Rect) {
+        let widget = widget.as_ref();
+        {
+            let mut s = self.state_mut();
+            match s.natives.iter_mut().find(|n| &n.widget == widget) {
+                Some(n) => n.rect = rect,
+                None => s.natives.push(Native {
+                    widget: widget.clone(),
+                    rect,
+                }),
+            }
+        }
+        if widget.parent().as_ref() != Some(self.upcast_ref()) {
+            widget.set_parent(self);
+        }
+        self.queue_allocate();
+    }
+
+    /// Stops hosting `widget`.
+    pub(crate) fn remove_native(&self, widget: &impl IsA<gtk::Widget>) {
+        let widget = widget.as_ref();
+        self.state_mut().natives.retain(|n| &n.widget != widget);
+        if widget.parent().as_ref() == Some(self.upcast_ref()) {
+            widget.unparent();
+        }
+    }
+
+    /// Calls `f` with the size GTK gives the view on every allocation.
+    pub(crate) fn on_resize(&self, f: impl Fn(f32, f32) + 'static) {
+        *self.imp().resized.borrow_mut() = Some(Box::new(f));
+    }
+}

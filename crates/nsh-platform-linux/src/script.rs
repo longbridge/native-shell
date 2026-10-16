@@ -1,0 +1,202 @@
+//! Scripted runs of the standalone app (`AppOptions::script`): steps
+//! separated by `;` or new lines, run in order once the window shows.
+//!
+//! - `wait <ms>`: waits.
+//! - `shot <file.png>`: renders the window's content to a PNG (offscreen,
+//!   at scale 1), whatever covers the window on screen.
+//! - `tap <x> <y>`: presses and releases at a point (points, root
+//!   coordinates).
+//! - `drag <x0> <y0> <x1> <y1> [ms]`: presses, moves in steps over `ms`
+//!   (default 300), releases.
+//! - `wheel <x> <y> <dx> <dy>`: a wheel / touchpad scroll.
+//! - `hover <x> <y>`: moves the pointer.
+//! - `type <text>`: types into the focused field.
+//! - `selectall`: selects the focused field's text.
+//! - `key <name>`: presses a key (GDK names: `Return`, `BackSpace`, ...).
+//! - `dark` / `light`: switches the system's appearance (an app that
+//!   forces one keeps it).
+//! - `resize <w> <h>`: resizes the window.
+//! - `quit`: closes the window.
+
+use std::{rc::Rc, time::Duration};
+
+use gtk4::{self as gtk, gdk, glib, prelude::*};
+
+use crate::{input::Simulated, surface::Surface};
+
+/// Runs `script` against `window`'s surface.
+pub(crate) fn run(window: &gtk::ApplicationWindow, surface: Rc<Surface>, script: &str) {
+    let steps: Vec<String> = script
+        .split([';', '\n'])
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let window = window.clone();
+    // The first frame needs the first commit: start after a short delay.
+    glib::timeout_add_local_once(Duration::from_millis(50), move || {
+        next(window, surface, Rc::new(steps), 0)
+    });
+}
+
+fn next(window: gtk::ApplicationWindow, surface: Rc<Surface>, steps: Rc<Vec<String>>, i: usize) {
+    let Some(step) = steps.get(i) else { return };
+    let mut words = step.split_whitespace();
+    let cmd = words.next().unwrap_or_default();
+    let args: Vec<&str> = words.collect();
+    let num = |k: usize| {
+        args.get(k)
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.0)
+    };
+    let mut delay = 16u64;
+    match cmd {
+        "wait" => delay = num(0) as u64,
+        "shot" => shot(&window, args.first().copied().unwrap_or("shot.png")),
+        "tap" => {
+            crate::input::simulate(&surface, Simulated::Down(num(0), num(1)));
+            let surface = surface.clone();
+            let (x, y) = (num(0), num(1));
+            glib::timeout_add_local_once(Duration::from_millis(60), move || {
+                crate::input::simulate(&surface, Simulated::Up(x, y))
+            });
+            delay = 120;
+        }
+        "drag" => {
+            let (x0, y0, x1, y1) = (num(0), num(1), num(2), num(3));
+            let ms = if args.len() > 4 { num(4) } else { 300.0 };
+            let n = (ms / 16.0).max(1.0) as u32;
+            crate::input::simulate(&surface, Simulated::Down(x0, y0));
+            for k in 1..=n {
+                let t = k as f32 / n as f32;
+                let surface = surface.clone();
+                glib::timeout_add_local_once(Duration::from_millis(k as u64 * 16), move || {
+                    let p = Simulated::Move(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+                    crate::input::simulate(&surface, p);
+                    if k == n {
+                        crate::input::simulate(&surface, Simulated::Up(x1, y1));
+                    }
+                });
+            }
+            delay = n as u64 * 16 + 60;
+        }
+        "wheel" => {
+            crate::input::simulate(&surface, Simulated::Wheel(num(0), num(1), num(2), num(3)))
+        }
+        "hover" => crate::input::simulate(&surface, Simulated::Hover(num(0), num(1))),
+        "type" => {
+            let text = step.split_once(' ').map(|x| x.1).unwrap_or_default();
+            type_text(&window, text);
+        }
+        "selectall" => select_all(&window),
+        "key" => press_key(&window, &surface, args.first().copied().unwrap_or_default()),
+        "dark" | "light" => {
+            crate::system::simulate_system_scheme(cmd == "dark");
+            delay = 100;
+        }
+        "resize" => window.set_default_size(num(0) as i32, num(1) as i32),
+        "quit" => {
+            window.close();
+            return;
+        }
+        other => log::warn!("script: unknown step {other}"),
+    }
+    glib::timeout_add_local_once(Duration::from_millis(delay), move || {
+        next(window, surface, steps, i + 1)
+    });
+}
+
+/// Renders the window's content offscreen and saves it as a PNG.
+fn shot(window: &gtk::ApplicationWindow, path: &str) {
+    let Some(child) = window.child() else { return };
+    let (w, h) = (child.width(), child.height());
+    let paintable = gtk::WidgetPaintable::new(Some(&child));
+    let snapshot = gtk::Snapshot::new();
+    paintable.snapshot(&snapshot, w as f64, h as f64);
+    // An empty surface renders no node: save a blank image all the same.
+    let node = snapshot.to_node().unwrap_or_else(|| {
+        gtk::gsk::ColorNode::new(
+            &gdk::RGBA::TRANSPARENT,
+            &gtk::graphene::Rect::new(0.0, 0.0, w as f32, h as f32),
+        )
+        .upcast()
+    });
+    let Some(renderer) = window.renderer() else {
+        log::warn!("script: the window has no renderer");
+        return;
+    };
+    let bounds = gtk::graphene::Rect::new(0.0, 0.0, w as f32, h as f32);
+    let texture = renderer.render_texture(&node, Some(&bounds));
+    match texture.save_to_png(path) {
+        Ok(()) => log::info!("script: saved {path}"),
+        Err(err) => log::warn!("script: cannot save {path}: {err}"),
+    }
+}
+
+fn focused_text(window: &gtk::ApplicationWindow) -> Option<gtk::Widget> {
+    let mut focus = gtk::prelude::GtkWindowExt::focus(window)?;
+    loop {
+        if focus.is::<gtk::Text>() || focus.is::<gtk::TextView>() {
+            return Some(focus);
+        }
+        focus = focus.parent()?;
+    }
+}
+
+fn select_all(window: &gtk::ApplicationWindow) {
+    match focused_text(window) {
+        Some(w) => {
+            if let Some(t) = w.downcast_ref::<gtk::Text>() {
+                t.select_region(0, -1);
+            } else if let Some(v) = w.downcast_ref::<gtk::TextView>() {
+                let b = v.buffer();
+                b.select_range(&b.start_iter(), &b.end_iter());
+            }
+        }
+        None => log::warn!("script: no focused text field to select in"),
+    }
+}
+
+fn type_text(window: &gtk::ApplicationWindow, text: &str) {
+    match focused_text(window) {
+        Some(w) => {
+            if let Some(t) = w.downcast_ref::<gtk::Text>() {
+                let mut pos = t.position();
+                t.insert_text(text, &mut pos);
+                t.set_position(pos);
+            } else if let Some(v) = w.downcast_ref::<gtk::TextView>() {
+                v.buffer().insert_at_cursor(text);
+            }
+        }
+        None => log::warn!("script: no focused text field to type into"),
+    }
+}
+
+fn press_key(window: &gtk::ApplicationWindow, surface: &Rc<Surface>, name: &str) {
+    let Some(key) = gdk::Key::from_name(name) else {
+        log::warn!("script: unknown key {name}");
+        return;
+    };
+    match focused_text(window) {
+        Some(w) => {
+            if (key == gdk::Key::Return || key == gdk::Key::KP_Enter)
+                && let Some(t) = w.downcast_ref::<gtk::Text>()
+            {
+                t.emit_by_name::<()>("activate", &[]);
+                return;
+            }
+            if key == gdk::Key::BackSpace
+                && let Some(t) = w.downcast_ref::<gtk::Text>()
+            {
+                t.emit_by_name::<()>("backspace", &[]);
+                return;
+            }
+            w.activate_action("misc.insert-emoji", None).ok();
+            log::warn!("script: key {name} is not simulated");
+        }
+        None => {
+            if !crate::navigation::key_pressed(surface, key, gdk::ModifierType::empty()) {
+                log::warn!("script: no focused widget for key {name}");
+            }
+        }
+    }
+}

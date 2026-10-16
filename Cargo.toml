@@ -26,6 +26,7 @@ nsh-engine = { path = "crates/nsh-engine", default-features = false }
 nsh-bundler = { path = "crates/nsh-bundler", default-features = false }
 nsh-platform-ios = { path = "crates/nsh-platform-ios", default-features = false }
 nsh-platform-android = { path = "crates/nsh-platform-android", default-features = false }
+nsh-platform-linux = { path = "crates/nsh-platform-linux", default-features = false }
 nsh-dev = { path = "crates/nsh-dev" }
 
 anyhow = "1"
@@ -60,6 +61,10 @@ percent-encoding = "2.3"
 url = "2.5"
 ureq = "3.1"
 jni = "0.21"
+# The Linux backend (GTK 4.14+: Ubuntu 24.04, Debian 13, Fedora 40).
+gtk4 = { version = "0.11", features = ["v4_14"] }
+pango = "0.22"
+pangocairo = "0.22"
 taffy = { version = "0.15", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
 # Features per crate: the runtime's binaries get only what they use.
 tokio = { version = "1", default-features = false }
