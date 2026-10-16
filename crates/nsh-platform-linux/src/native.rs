@@ -12,6 +12,9 @@
 //!   GTK streams have no playback rate, so `rate` is ignored (warned once);
 //!   a looping stream starts over without ending, so `onEnd` only comes
 //!   for videos that do not loop.
+//!   A stream GStreamer cannot play (no plug-in for its container or
+//!   codec) reports `onError` (logged once, with a hint) and stops; it
+//!   never reports `onLoad`.
 //! - **Web views** would need WebKitGTK (the `webkit6` crate, WebKitGTK
 //!   6.0 for GTK 4): a system library many machines lack and nsh does not
 //!   depend on. Until it is an optional feature, a web view shows a
@@ -484,7 +487,7 @@ impl VideoHost {
             stream.set_volume(p.volume.clamp(0.0, 1.0) as f64);
             stream.set_loop(p.repeat);
             self.status.playing.set(!p.paused);
-            stream.set_playing(!p.paused);
+            stream.set_playing(!p.paused && !self.status.failed.get());
             let waiting = !p.paused && !self.status.loaded.get() && !self.status.failed.get();
             self.status.set_buffering(&self.emitter, waiting);
         }
@@ -541,14 +544,18 @@ impl VideoHost {
             }
         });
         let (emitter, status) = (self.emitter.clone(), self.status.clone());
+        let name = source.to_owned();
         stream.connect_error_notify(move |stream| {
             let Some(err) = stream.error() else { return };
             if status.failed.replace(true) {
                 return;
             }
-            log::warn!(target: "js", "video: {err}");
+            // Nothing plays: no progress, and the app hears it stopped.
+            stream.set_playing(false);
+            let message = media_error(err.message());
+            log::warn!(target: "js", "video {name}: {message}");
             status.set_buffering(&emitter, false);
-            emitter.emit(EventKind::Error, || error(err.to_string()));
+            emitter.emit(EventKind::Error, || error(message));
         });
         self.stream = Some(stream);
     }
@@ -640,7 +647,12 @@ impl Drop for VideoHost {
 
 /// Reports the load once the stream is prepared and its size is known.
 fn loaded(stream: &gtk::MediaFile, emitter: &Emitter, status: &Status) {
-    if status.loaded.get() || !stream.is_prepared() {
+    // A stream that failed (GStreamer prepares one with no streams when it
+    // has no plug-in for them) never loads.
+    if status.loaded.get() || status.failed.get() || !stream.is_prepared() {
+        return;
+    }
+    if !stream.has_video() && !stream.has_audio() {
         return;
     }
     let (width, height) = (stream.intrinsic_width(), stream.intrinsic_height());
@@ -665,6 +677,24 @@ fn loaded(stream: &gtk::MediaFile, emitter: &Emitter, status: &Status) {
 /// GTK's microseconds as seconds.
 fn seconds(us: i64) -> PayloadValue {
     PayloadValue::Number(us as f64 / 1e6)
+}
+
+/// What GStreamer's error says, for apps: its first line without the
+/// element path (GstPlay puts the debug details on further lines), and a
+/// hint when a plug-in is missing.
+fn media_error(message: &str) -> String {
+    let line = message.lines().next().unwrap_or(message).trim();
+    let line = match line.strip_prefix("Error from element ") {
+        Some(rest) => rest.split_once(": ").map_or(rest, |(_, m)| m),
+        None => line,
+    };
+    if message.contains("missing a plug-in") || message.contains("No suitable plugins") {
+        return format!(
+            "{line} No installed GStreamer plug-in can play this format \
+             (H.264 / AAC need gst-libav or gst-plugins-ugly / -bad)."
+        );
+    }
+    line.to_owned()
 }
 
 fn error(message: String) -> EventPayload {
@@ -697,6 +727,19 @@ mod tests {
             Some(Location::Path("/home/me/a.mp4".into()))
         );
         assert_eq!(locate("", None), None);
+    }
+
+    #[test]
+    fn words_media_errors() {
+        let gst = "Error from element /GstPlayBin3:playbin3/GstDecodebin3:decodebin3-0: \
+                   Your GStreamer installation is missing a plug-in.\n\
+                   Your GStreamer installation is missing a plug-in.\n\
+                   ../gstdecodebin3.c(3258): mq_slot_check_reconfiguration (): /GstPlayBin3\n\
+                   No suitable plugins found";
+        let message = media_error(gst);
+        assert!(message.starts_with("Your GStreamer installation is missing a plug-in. No"));
+        assert!(!message.contains('\n'));
+        assert_eq!(media_error("Resource not found."), "Resource not found.");
     }
 
     #[test]

@@ -3,14 +3,24 @@
 //!
 //! Loads run on a small pool of worker threads: read the file or download
 //! (ureq; `onProgress` at most every 100ms), decode (GDK's own PNG / JPEG /
-//! TIFF loaders, then the `image` crate for GIF and WebP, whose first frame
-//! is shown: animated images do not play) and hand the texture to the main
-//! thread with `MainContext::invoke`. Textures are kept in a main-thread
-//! cache keyed by the resolved location (so `asset:/` URIs of surfaces with
-//! different asset bases never mix), bounded by bytes and evicting the
-//! least recently used; concurrent requests for one location share one
-//! load. Images decode at their full size: GSK scales them when drawing
-//! (trilinear filtering when shrinking a lot).
+//! TIFF loaders; GIF and WebP with the `image` crate) and hand the texture
+//! to the main thread with `MainContext::invoke`. Textures are kept in a
+//! main-thread cache keyed by the resolved location (so `asset:/` URIs of
+//! surfaces with different asset bases never mix), bounded by bytes and
+//! evicting the least recently used; concurrent requests for one location
+//! share one load. Images decode at their full size: GSK scales them when
+//! drawing (trilinear filtering when shrinking a lot).
+//!
+//! Animated GIF and WebP images decode every frame (composited, at most
+//! [`MAX_FRAMES`] and [`MAX_ANIMATION_BYTES`]: larger ones show their first
+//! frame) with its delay, as browsers and iOS time them (under 20ms: 100ms),
+//! and play their loop count. A view advances its frames with a timer at
+//! each frame's delay, not on the frame clock (a 10 fps GIF need not keep
+//! the clock running at the display's rate), measured on the monotonic
+//! clock so delays do not drift; only while it is mapped (a hidden screen
+//! pauses it, and it resumes on the frame it was); and redraws only when
+//! a frame changes and its `display` is not `none`.
+//! `onLoad` comes once per load; canvases draw the first frame.
 //!
 //! `blurRadius` is a GSK blur at draw time, in points; the image is drawn
 //! enlarged under a clip to its own rectangle so the blur's edges stay
@@ -24,7 +34,7 @@ use std::{
     io::Read,
     path::PathBuf,
     rc::Rc,
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -197,26 +207,169 @@ fn read(location: &Location, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u
     }
 }
 
-/// Decodes an encoded image (any thread): GDK's loaders first, then the
-/// `image` crate (GIF, WebP: their first frame).
-fn decode(bytes: Vec<u8>) -> Result<gdk::Texture, String> {
-    let bytes = glib::Bytes::from_owned(bytes);
-    let gdk_error = match gdk::Texture::from_bytes(&bytes) {
-        Ok(texture) => return Ok(texture),
-        Err(e) => e,
-    };
-    let image = image::load_from_memory(&bytes).map_err(|e| format!("{gdk_error}; {e}"))?;
-    let rgba = image.into_rgba8();
+/// Frames of an animated image decoded at most (as iOS; longer ones stop
+/// at the last of them).
+const MAX_FRAMES: usize = 600;
+
+/// The most bytes one animation's frames take: larger animations show
+/// their first frame.
+const MAX_ANIMATION_BYTES: usize = 48 << 20;
+
+/// A decoded image.
+#[derive(Clone)]
+struct Picture {
+    /// The image, or an animation's first frame.
+    texture: gdk::Texture,
+    animation: Option<Arc<Animation>>,
+}
+
+impl Picture {
+    fn still(texture: gdk::Texture) -> Self {
+        Picture {
+            texture,
+            animation: None,
+        }
+    }
+
+    /// Bytes its pixels take (4 per pixel, every frame).
+    fn bytes(&self) -> usize {
+        let frame =
+            self.texture.width().max(0) as usize * self.texture.height().max(0) as usize * 4;
+        frame * self.animation.as_ref().map_or(1, |a| a.frames.len())
+    }
+}
+
+/// The frames of an animated image.
+struct Animation {
+    frames: Vec<gdk::Texture>,
+    /// Each frame's delay in ms.
+    delays: Vec<u32>,
+    /// Plays before it stops on its last frame; 0: forever.
+    plays: u32,
+}
+
+/// A frame's delay in ms: as browsers and iOS, delays under 20ms (often
+/// written as 0 by tools that meant "fast") show for 100ms.
+fn frame_delay(delay: image::Delay) -> u32 {
+    let (numer, denom) = delay.numer_denom_ms();
+    match numer / denom.max(1) {
+        ms if ms >= 20 => ms,
+        _ => 100,
+    }
+}
+
+/// An RGBA buffer as a texture.
+fn texture(rgba: image::RgbaImage) -> gdk::Texture {
     let (width, height) = rgba.dimensions();
     let pixels = glib::Bytes::from_owned(rgba.into_raw());
-    Ok(gdk::MemoryTexture::new(
+    gdk::MemoryTexture::new(
         width as i32,
         height as i32,
         gdk::MemoryFormat::R8g8b8a8,
         &pixels,
         width as usize * 4,
     )
-    .upcast())
+    .upcast()
+}
+
+/// The container `bytes` start with, if it may hold an animation.
+fn animated_format(bytes: &[u8]) -> Option<image::ImageFormat> {
+    if bytes.starts_with(b"GIF8") {
+        Some(image::ImageFormat::Gif)
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Some(image::ImageFormat::WebP)
+    } else {
+        None
+    }
+}
+
+/// Decodes the frames of a GIF or WebP; `None` when it is a still image
+/// (or too large to animate: then it decodes as one).
+fn animation(bytes: &[u8], format: image::ImageFormat) -> Result<Option<Picture>, String> {
+    use image::{AnimationDecoder, metadata::LoopCount};
+    let cursor = std::io::Cursor::new(bytes);
+    let error = |e: image::ImageError| e.to_string();
+    let (frames, loops) = match format {
+        image::ImageFormat::Gif => {
+            let decoder = image::codecs::gif::GifDecoder::new(cursor).map_err(error)?;
+            let loops = decoder.loop_count();
+            (decoder.into_frames(), loops)
+        }
+        _ => {
+            let decoder = image::codecs::webp::WebPDecoder::new(cursor).map_err(error)?;
+            if !decoder.has_animation() {
+                return Ok(None);
+            }
+            let loops = decoder.loop_count();
+            (decoder.into_frames(), loops)
+        }
+    };
+    let plays = match loops {
+        LoopCount::Infinite => 0,
+        // GIF counts repetitions after the first play (as browsers read
+        // it), WebP plays.
+        LoopCount::Finite(n) if format == image::ImageFormat::Gif => n.get().saturating_add(1),
+        LoopCount::Finite(n) => n.get(),
+    };
+    let (mut textures, mut delays, mut total) = (Vec::new(), Vec::new(), 0);
+    for frame in frames.take(MAX_FRAMES) {
+        let frame = match frame {
+            Ok(frame) => frame,
+            // A damaged frame ends the animation; what decoded plays.
+            Err(e) if !textures.is_empty() => {
+                log::debug!("image: animation cut short: {e}");
+                break;
+            }
+            Err(e) => return Err(error(e)),
+        };
+        let delay = frame_delay(frame.delay());
+        let buffer = frame.into_buffer();
+        total += buffer.as_raw().len();
+        if total > MAX_ANIMATION_BYTES {
+            log::debug!("image: animation over {MAX_ANIMATION_BYTES} bytes: its first frame shows");
+            textures.truncate(1);
+            delays.truncate(1);
+            if textures.is_empty() {
+                textures.push(texture(buffer));
+            }
+            break;
+        }
+        textures.push(texture(buffer));
+        delays.push(delay);
+    }
+    let Some(first) = textures.first().cloned() else {
+        return Err("no frames".into());
+    };
+    if textures.len() == 1 {
+        return Ok(Some(Picture::still(first)));
+    }
+    Ok(Some(Picture {
+        texture: first,
+        animation: Some(Arc::new(Animation {
+            frames: textures,
+            delays,
+            plays,
+        })),
+    }))
+}
+
+/// Decodes an encoded image (any thread): GIF and WebP with the `image`
+/// crate (every frame of animations), others with GDK's loaders first.
+fn decode(bytes: Vec<u8>) -> Result<Picture, String> {
+    if let Some(format) = animated_format(&bytes) {
+        match animation(&bytes, format) {
+            Ok(Some(picture)) => return Ok(picture),
+            Ok(None) => {}
+            Err(e) => log::debug!("image: not decoded as an animation: {e}"),
+        }
+    }
+    let bytes = glib::Bytes::from_owned(bytes);
+    let gdk_error = match gdk::Texture::from_bytes(&bytes) {
+        Ok(texture) => return Ok(Picture::still(texture)),
+        Err(e) => e,
+    };
+    let image = image::load_from_memory(&bytes).map_err(|e| format!("{gdk_error}; {e}"))?;
+    Ok(Picture::still(texture(image.into_rgba8())))
 }
 
 /// One load for the workers.
@@ -274,8 +427,8 @@ fn work(job: Job) {
     glib::MainContext::default().invoke(move || finish(key, result));
 }
 
-/// Called with a load's texture or error.
-type Done = Box<dyn FnOnce(Result<gdk::Texture, String>)>;
+/// Called with a load's picture or error.
+type Done = Box<dyn FnOnce(Result<Picture, String>)>;
 
 /// Called with a download's bytes so far and its size (0: unknown).
 type Progress = Box<dyn Fn(u64, u64)>;
@@ -286,9 +439,9 @@ struct Waiter {
     progress: Option<Progress>,
 }
 
-/// A cached texture.
+/// A cached picture.
 struct Entry {
-    texture: gdk::Texture,
+    picture: Picture,
     bytes: usize,
     used: u64,
 }
@@ -313,15 +466,15 @@ impl Loader {
         now
     }
 
-    fn cached(&self, key: &str) -> Option<gdk::Texture> {
+    fn cached(&self, key: &str) -> Option<Picture> {
         let mut cache = self.cache.borrow_mut();
         let entry = cache.get_mut(key)?;
         entry.used = self.tick();
-        Some(entry.texture.clone())
+        Some(entry.picture.clone())
     }
 
-    fn insert(&self, key: String, texture: gdk::Texture) {
-        let bytes = texture.width().max(0) as usize * texture.height().max(0) as usize * 4;
+    fn insert(&self, key: String, picture: Picture) {
+        let bytes = picture.bytes();
         if bytes > CACHE_BYTES / 2 {
             return;
         }
@@ -329,7 +482,7 @@ impl Loader {
         let mut cache = self.cache.borrow_mut();
         let mut total = self.bytes.get() + bytes;
         let entry = Entry {
-            texture,
+            picture,
             bytes,
             used,
         };
@@ -363,10 +516,10 @@ impl Loader {
 }
 
 /// A load finished (main thread): caches it and calls the waiters.
-fn finish(key: String, result: Result<gdk::Texture, String>) {
+fn finish(key: String, result: Result<Picture, String>) {
     let waiters = LOADER.with(|l| {
-        if let Ok(texture) = &result {
-            l.insert(key.clone(), texture.clone());
+        if let Ok(picture) = &result {
+            l.insert(key.clone(), picture.clone());
         }
         l.inflight.borrow_mut().remove(&key).unwrap_or_default()
     });
@@ -383,8 +536,8 @@ fn fetch(surface: &Surface, uri: &str, progress: Option<Progress>, done: Done) -
         return true;
     };
     let key = location.key();
-    if let Some(texture) = LOADER.with(|l| l.cached(&key)) {
-        done(Ok(texture));
+    if let Some(picture) = LOADER.with(|l| l.cached(&key)) {
+        done(Ok(picture));
         return true;
     }
     let listens = progress.is_some();
@@ -405,7 +558,8 @@ fn fetch(surface: &Surface, uri: &str, progress: Option<Progress>, done: Done) -
 }
 
 /// Loads `uri` (`https://…`, `asset:/…`, a file path, `data:`) off the
-/// main thread, through the texture cache; `done` runs on the main thread.
+/// main thread, through the texture cache; `done` runs on the main thread
+/// with the image (an animation's first frame).
 ///
 /// A cached texture is handed over before this returns: callers must not
 /// hold a borrow of view state that `done` takes.
@@ -414,14 +568,16 @@ pub(crate) fn load(
     uri: &str,
     done: impl FnOnce(Result<gdk::Texture, String>) + 'static,
 ) {
+    let done = move |result: Result<Picture, String>| done(result.map(|p| p.texture));
     fetch(surface, uri, None, Box::new(done));
 }
 
-/// The texture of `uri` if it is cached (to draw without waiting).
+/// The texture of `uri` (an animation's first frame) if it is cached (to
+/// draw without waiting).
 #[allow(dead_code)]
 pub(crate) fn cached(surface: &Surface, uri: &str) -> Option<gdk::Texture> {
     let key = resolve(uri, surface.asset_base.borrow().as_ref())?.key();
-    LOADER.with(|l| l.cached(&key))
+    LOADER.with(|l| l.cached(&key)).map(|p| p.texture)
 }
 
 /// `Command::ImageInfo` (`Image.getSize`, `Image.prefetch`): loads the
@@ -476,6 +632,162 @@ pub(crate) struct ImageState {
     /// The image's opacity while it fades in.
     alpha: f32,
     fade: Option<Fade>,
+    /// The source's animation, playing.
+    playback: Option<Playback>,
+    /// The view's map / unmap handlers (start and pause playback) are
+    /// connected.
+    hooked: bool,
+}
+
+/// Where an animation is in its timeline: pure bookkeeping, in monotonic
+/// time (µs).
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+struct Timeline {
+    /// The frame showing.
+    frame: usize,
+    /// When it ends; `None` until the first step after (re)starting, so a
+    /// paused animation resumes on the frame it was.
+    due: Option<i64>,
+    /// Plays completed.
+    played: u32,
+}
+
+impl Timeline {
+    /// Whether it played its count (`plays`, 0: forever) and stopped.
+    fn finished(&self, plays: u32) -> bool {
+        plays > 0 && self.played >= plays
+    }
+
+    /// Advances to time `now` through frames of `delays` (ms);
+    /// returns whether the frame changed and whether it plays on.
+    fn advance(&mut self, delays: &[u32], plays: u32, now: i64) -> (bool, bool) {
+        let len = delays.len();
+        if len < 2 || self.finished(plays) {
+            return (false, false);
+        }
+        let ms = |frame: usize| i64::from(delays[frame].max(1)) * 1000;
+        let mut due = *self.due.get_or_insert(now + ms(self.frame));
+        if now < due {
+            return (false, true);
+        }
+        // Far behind (a stalled main loop): carry on from now rather than
+        // racing through the frames missed.
+        if now - due > 1_000_000 {
+            due = now;
+        }
+        let mut changed = false;
+        while now >= due {
+            let mut next = self.frame + 1;
+            if next == len {
+                self.played += 1;
+                if self.finished(plays) {
+                    // Stays on its last frame, as browsers.
+                    self.due = None;
+                    return (changed, false);
+                }
+                next = 0;
+            }
+            self.frame = next;
+            changed = true;
+            due += ms(next);
+        }
+        self.due = Some(due);
+        (changed, true)
+    }
+}
+
+/// An animation playing in a view.
+struct Playback {
+    animation: Arc<Animation>,
+    timeline: Timeline,
+    /// The timer of the next frame, while it plays.
+    timer: Option<glib::SourceId>,
+    /// Bumped per timer: a timer that is not the latest is stale.
+    serial: u64,
+}
+
+impl Playback {
+    /// The frame to draw.
+    fn texture(&self) -> &gdk::Texture {
+        &self.animation.frames[self.timeline.frame]
+    }
+
+    /// Stops the timer; it resumes on the frame it was.
+    fn pause(&mut self) {
+        if let Some(timer) = self.timer.take() {
+            timer.remove();
+        }
+        self.timeline.due = None;
+    }
+
+    /// Advances to now; schedules the next frame (for `view`) while it
+    /// plays. Returns whether the frame changed.
+    fn advance(&mut self, view: &NshView) -> bool {
+        let now = glib::monotonic_time();
+        let a = &self.animation;
+        let (changed, running) = self.timeline.advance(&a.delays, a.plays, now);
+        if let Some(due) = self.timeline.due.filter(|_| running) {
+            let weak = view.downgrade();
+            // GLib's timeouts count whole milliseconds, rounded down: one
+            // that fires early would spin until the frame is due.
+            let wait = Duration::from_millis(((due - now).max(0) as u64).div_ceil(1000));
+            self.serial += 1;
+            let serial = self.serial;
+            self.timer = Some(glib::timeout_add_local_once(wait, move || {
+                if let Some(view) = weak.upgrade() {
+                    step(&view, serial);
+                }
+            }));
+        }
+        changed
+    }
+}
+
+/// Plays `view`'s animation from where it is, while the view is mapped.
+fn play(view: &NshView) {
+    if !view.is_mapped() {
+        return;
+    }
+    let mut s = view.state_mut();
+    if let Some(p) = s.image.as_mut().and_then(|i| i.playback.as_mut())
+        && p.timer.is_none()
+    {
+        p.advance(view);
+    }
+}
+
+/// Pauses `view`'s animation (the view was unmapped).
+fn pause(view: &NshView) {
+    if let Some(p) = view
+        .state_mut()
+        .image
+        .as_mut()
+        .and_then(|i| i.playback.as_mut())
+    {
+        p.pause();
+    }
+}
+
+/// Timer `serial` of `view`'s next frame fired.
+fn step(view: &NshView, serial: u64) {
+    let changed = {
+        let mut s = view.state_mut();
+        let hidden = s.style.hidden;
+        let Some(p) = s
+            .image
+            .as_mut()
+            .and_then(|i| i.playback.as_mut())
+            .filter(|p| p.serial == serial)
+        else {
+            return;
+        };
+        // It ran: removing it again would be an error.
+        p.timer = None;
+        p.advance(view) && !hidden
+    };
+    if changed {
+        view.changed();
+    }
 }
 
 /// Sets up an image view.
@@ -509,6 +821,9 @@ pub(crate) fn set(
             image.source = source.cloned();
             image.image = None;
             image.fade = None;
+            if let Some(mut p) = image.playback.take() {
+                p.pause();
+            }
         }
         if !same_placeholder {
             image.placeholder = None;
@@ -547,7 +862,7 @@ pub(crate) fn set(
             let surface = Rc::downgrade(surface);
             let weak = weak.clone();
             let waited = waited.clone();
-            move |result: Result<gdk::Texture, String>| {
+            move |result: Result<Picture, String>| {
                 if let (Some(view), Some(surface)) = (weak.upgrade(), surface.upgrade()) {
                     loaded(&surface, &view, generation, result, waited.get());
                 }
@@ -588,18 +903,29 @@ fn loaded(
     surface: &Surface,
     view: &NshView,
     generation: u64,
-    result: Result<gdk::Texture, String>,
+    result: Result<Picture, String>,
     waited: bool,
 ) {
-    let (events, id, fades) = {
+    let (events, id, fades, hook) = {
         let mut s = view.state_mut();
         let (events, id) = (s.events, s.id);
         let Some(image) = s.image.as_mut().filter(|i| i.generation == generation) else {
             return;
         };
+        let mut hook = false;
         match &result {
-            Ok(texture) => {
-                image.image = Some(texture.clone());
+            Ok(picture) => {
+                image.image = Some(picture.texture.clone());
+                if let Some(mut old) = image.playback.take() {
+                    old.pause();
+                }
+                image.playback = picture.animation.clone().map(|animation| Playback {
+                    animation,
+                    timeline: Timeline::default(),
+                    timer: None,
+                    serial: 0,
+                });
+                hook = image.playback.is_some() && !std::mem::replace(&mut image.hooked, true);
                 let ms = image.options.fade_ms.unwrap_or(0.0);
                 image.alpha = 1.0;
                 image.fade = None;
@@ -613,19 +939,24 @@ fn loaded(
             }
             Err(message) => log::warn!("image failed: {message}"),
         }
-        (events, id, image.fade.is_some())
+        (events, id, image.fade.is_some(), hook)
     };
     if fades {
         view.add_tick_callback(|view, clock| fade_tick(view, clock.frame_time()));
     }
+    if hook {
+        view.connect_map(play);
+        view.connect_unmap(pause);
+    }
+    play(view);
     view.changed();
     match &result {
-        Ok(texture) if events.contains(EventKind::Load) => surface.event(
+        Ok(picture) if events.contains(EventKind::Load) => surface.event(
             id,
             EventKind::Load,
             EventPayload::Image {
-                width: texture.width() as f32,
-                height: texture.height() as f32,
+                width: picture.texture.width() as f32,
+                height: picture.texture.height() as f32,
             },
         ),
         Err(message) if events.contains(EventKind::Error) => surface.event(
@@ -774,7 +1105,14 @@ pub(crate) fn draw(snapshot: &gtk::Snapshot, state: &ViewState) {
         let source = image.options.placeholder.as_ref();
         draw_one(snapshot, state, image, placeholder, source);
     }
-    let Some(texture) = &image.image else { return };
+    let Some(texture) = image
+        .playback
+        .as_ref()
+        .map(Playback::texture)
+        .or(image.image.as_ref())
+    else {
+        return;
+    };
     let alpha = if fading { image.alpha } else { 1.0 };
     if alpha <= 0.0 {
         return;
@@ -837,6 +1175,74 @@ mod tests {
         assert_eq!(density("asset:/a@3x.webp"), 3.0);
         assert_eq!(density("https://x.org/me@home/a.png"), 1.0);
         assert_eq!(density("a.png"), 1.0);
+    }
+
+    #[test]
+    fn plays_animations() {
+        let delays = [100, 50, 200];
+        let mut t = Timeline::default();
+        // The first step starts the clock.
+        assert_eq!(t.advance(&delays, 0, 1_000_000), (false, true));
+        assert_eq!(t.advance(&delays, 0, 1_099_000), (false, true));
+        assert_eq!(t.advance(&delays, 0, 1_100_000), (true, true));
+        assert_eq!(t.frame, 1);
+        // A late step skips the frames it missed.
+        assert_eq!(t.advance(&delays, 0, 1_400_000), (true, true));
+        assert_eq!((t.frame, t.played), (0, 1));
+        // Far behind: from now on.
+        assert_eq!(t.advance(&delays, 0, 9_000_000), (true, true));
+        assert_eq!((t.frame, t.due), (1, Some(9_050_000)));
+    }
+
+    #[test]
+    fn stops_after_its_plays() {
+        let delays = [100, 100];
+        let mut t = Timeline::default();
+        t.advance(&delays, 1, 0);
+        assert_eq!(t.advance(&delays, 1, 100_000), (true, true));
+        // The end of the only play: stays on the last frame.
+        assert_eq!(t.advance(&delays, 1, 200_000), (false, false));
+        assert_eq!(t.frame, 1);
+        assert!(t.finished(1));
+        assert_eq!(t.advance(&delays, 1, 900_000), (false, false));
+        // One frame never plays.
+        assert_eq!(Timeline::default().advance(&[100], 0, 0), (false, false));
+    }
+
+    #[test]
+    fn times_frames() {
+        assert_eq!(frame_delay(image::Delay::from_numer_denom_ms(70, 1)), 70);
+        assert_eq!(frame_delay(image::Delay::from_numer_denom_ms(0, 1)), 100);
+        assert_eq!(frame_delay(image::Delay::from_numer_denom_ms(10, 1)), 100);
+        assert_eq!(frame_delay(image::Delay::from_numer_denom_ms(41, 2)), 20);
+    }
+
+    #[test]
+    fn sniffs_animated_formats() {
+        assert_eq!(animated_format(b"GIF89a..."), Some(image::ImageFormat::Gif));
+        assert_eq!(
+            animated_format(b"RIFF\0\0\0\0WEBPVP8X"),
+            Some(image::ImageFormat::WebP)
+        );
+        assert_eq!(animated_format(b"\x89PNG\r\n"), None);
+        assert_eq!(animated_format(b"RIFF"), None);
+    }
+
+    #[test]
+    fn decodes_animations() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/gallery");
+        for (name, format) in [
+            ("bounce.gif", image::ImageFormat::Gif),
+            ("spinner.webp", image::ImageFormat::WebP),
+        ] {
+            let bytes = std::fs::read(dir.join(name)).unwrap();
+            assert_eq!(animated_format(&bytes), Some(format));
+            let picture = animation(&bytes, format).unwrap().unwrap();
+            let animation = picture.animation.expect(name);
+            assert!(animation.frames.len() > 1, "{name}");
+            assert_eq!(animation.frames.len(), animation.delays.len());
+            assert!(animation.delays.iter().all(|&d| d >= 20));
+        }
     }
 
     #[test]

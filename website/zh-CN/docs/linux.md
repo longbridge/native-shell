@@ -104,7 +104,6 @@ fn main() -> gtk::glib::ExitCode {
 
 - **`WebView`**：它需要 WebKitGTK；Web 视图只显示一个中性的占位视图。
 - **视频的 `rate`**：GTK 只能以正常速度播放。`onEnd` 只对不循环的视频触发。
-- **动画 GIF 和 WebP** 只显示第一帧。
 - **可缩放的滚动视图**（`zoomTo`、缩放相关属性）。
 - **`mixBlendMode` 和 `backdropFilter`**（背景色仍会绘制）；`borderCurve: "continuous"` 绘制为圆形圆角。
 - **可选择的文本**、**输入辅助视图**和**状态栏**（桌面上没有对应物）。

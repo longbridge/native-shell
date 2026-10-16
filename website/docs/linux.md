@@ -108,7 +108,6 @@ Not supported:
 
 - **`WebView`**: it would need WebKitGTK; a web view shows a neutral placeholder.
 - **Video `rate`**: GTK plays at normal speed only. `onEnd` only comes for videos that do not loop.
-- **Animated GIF and WebP** show their first frame.
 - **Zooming scroll views** (`zoomTo`, the zoom props).
 - **`mixBlendMode` and `backdropFilter`** (the background color still draws); `borderCurve: "continuous"` draws
   circular corners.

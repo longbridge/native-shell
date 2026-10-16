@@ -331,7 +331,7 @@ let list!: YNode;
 list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 ```
 
-`scrollToIndex` 由原生根据当时已知的尺寸计算：已测量的行用实测值，其余用 `estimatedItemSize`。在行高差异很大的列表中跳到很远的位置可能会略有偏差；估计值越准，偏差越小。要让列表一打开就停在某个条目，请用 `initialScrollIndex`，而不是在第一帧之后再滚动。
+`scrollToIndex`（以及 `scrollToEnd`）由原生根据当时已知的尺寸计算：已测量的行用实测值，其余用 `estimatedItemSize`。之后在目标附近的行被测量时，列表会持续跟随目标，因此能准确落位，直到用户自己滚动或数据变化为止。要让列表一打开就停在某个条目，请用 `initialScrollIndex`，而不是在第一帧之后再滚动。
 
 ## nsh/ui/mobile 中的 ListView
 

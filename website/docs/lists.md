@@ -342,7 +342,7 @@ let list!: YNode;
 list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 ```
 
-`scrollToIndex` is resolved natively with the sizes known at that moment: measured rows where they have been measured, `estimatedItemSize` elsewhere. Jumping far into a list of rows that vary a lot in height may land a little off; a good estimate keeps that small. To open a list at an item, use `initialScrollIndex` rather than scrolling after the first frame.
+`scrollToIndex` (and `scrollToEnd`) is resolved natively with the sizes known at that moment: measured rows where they have been measured, `estimatedItemSize` elsewhere. The list then follows its target while the rows around it are measured, so it lands exactly, until the user scrolls or the items change. To open a list at an item, use `initialScrollIndex` rather than scrolling after the first frame.
 
 ## ListView from nsh/ui/mobile
 

@@ -55,7 +55,7 @@ server client, log forwarding, the error overlay: `dev.rs`).
 |---|---|---|
 | Text | `text.rs` | Pango layouts on the engine thread, `gsk::TextNode` glyph runs; colors and decorations read per cluster from the spans (a layout is reused for texts that only differ in them); cap / x height from the font's OS/2 table (HarfBuzz); `selectable` text's range selection, desktop style (below) |
 | Decoration | `decor.rs` | GSK nodes: shadows (React Native's take the box's shape with a fill, the content's without, as iOS), colors, gradients, inset shadows, borders (over the children, as UIKit), outlines, filters |
-| Images | `image.rs` | Loaded and decoded on worker threads (GDK's PNG / JPEG / TIFF loaders, the `image` crate for GIF and WebP), textures in an LRU cache per resolved location; blur and tint at draw time |
+| Images | `image.rs` | Loaded and decoded on worker threads (GDK's PNG / JPEG / TIFF loaders, the `image` crate for GIF and WebP), textures in an LRU cache per resolved location; animated GIF / WebP play on timers of their frame delays (paused while unmapped); blur and tint at draw time |
 | Canvas | `canvas.rs` | The recorded drawing replayed with Cairo into a recording surface (`Snapshot::append_cairo`), sharp at any scale; shadows blurred into a mask; conic gradients as mesh patterns |
 | Scroll views | `scroll.rs` | Offsets of their own (`ScrollState`), reported as UIKit's `contentOffset`; wheel / touchpad / drag scrolling with UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags; the keyboard (arrows by 40 pt, Page Up / Page Down and Space / Shift+Space by a page, Home / End) scrolls the view around the focused widget or under the pointer while no field has focus; a widget that gets the focus (Tab, a click, `focus()`) is scrolled into view, animated |
 | Input | `input.rs` | Its own hit testing over the views (GTK's `pick` ignores `overflow: hidden`, `hidden` and `box-only`; hosted widgets are picked inside with GTK's; outside a view's bounds only in its `Overflow` area); touches for the responder system, with `panActivation` gates (the scroll views around wait for the pan to fail; `TouchEvent::activated`); native presses, long presses, hover and pressed states; pan / pinch / rotate native values (Ctrl + wheel pinches); wheel, touchpad, mouse drag and touch scrolling routed to scroll views: wheels go to views along their axis, and a scroll stays on its view until it ends (touchpad gesture; wheel notches within 200 ms) |
@@ -105,7 +105,6 @@ Without `--bundle` the host connects to the dev server on this machine (`--dev-s
   on: a `WebView` shows a neutral placeholder and ignores its commands.
 - **Video**: GTK streams have no playback rate, so `rate` is ignored (warned once); a looping video never ends, so
   `onEnd` only comes for videos that do not loop. Which formats play depends on the installed GStreamer plugins.
-- **Images**: animated GIF / WebP show their first frame.
 - **Zooming scroll views**: `zoomTo` and the zoom props are ignored.
 - **`mixBlendMode` and `backdropFilter`** are not drawn: they need what lies behind the view, which a widget's snapshot
   does not have (the background color still draws). `borderCurve: "continuous"` draws circular corners.

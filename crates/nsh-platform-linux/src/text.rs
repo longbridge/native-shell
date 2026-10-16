@@ -1203,8 +1203,33 @@ fn build(text: &AttributedText, layout: &LinuxLayout, content: Rect) -> Option<g
     snapshot.to_node()
 }
 
+/// One device pixel in points on the monitor with the fewest pixels per
+/// point: decorations at least this thick (and this far apart) stay
+/// legible wherever the text shows. Text nodes are built once and shared
+/// by every scale, so this cannot be the window's own.
+fn device_pixel() -> f32 {
+    let Some(display) = gtk::gdk::Display::default() else {
+        return 1.0;
+    };
+    let monitors = display.monitors();
+    let scale = (0..monitors.n_items())
+        .filter_map(|i| monitors.item(i).and_downcast::<gtk::gdk::Monitor>())
+        .map(|m| m.scale())
+        .filter(|s| *s > 0.0)
+        .fold(f64::INFINITY, f64::min);
+    if scale.is_finite() {
+        (1.0 / scale) as f32
+    } else {
+        1.0
+    }
+}
+
 /// Draws the underline / strikethrough of `width` points of text at
 /// `(x, baseline)`.
+///
+/// Thicknesses, gaps and offsets are whole device pixels (at least one):
+/// a font's sub-pixel underline would otherwise blur the two lines of
+/// `double` into one, and dots and waves into a smudge.
 fn decorate(
     snapshot: &gtk::Snapshot,
     style: &ResolvedTextStyle,
@@ -1217,16 +1242,22 @@ fn decorate(
     if !d.underline && !d.line_through || width <= 0.0 {
         return;
     }
+    let px = device_pixel();
+    let pixels = |v: f32| (v / px).round().max(1.0) * px;
     let color = crate::decor::rgba(style.decoration_color.unwrap_or(style.color));
     let line = |top: f32, thickness: f32| {
-        let thickness = style.decoration_thickness.unwrap_or(thickness).max(0.5);
+        let thickness = pixels(style.decoration_thickness.unwrap_or(thickness));
+        let top = (top / px).round() * px;
         let mid = top + thickness / 2.0;
         match style.decoration_style {
             DecorationStyle::Solid => {
                 snapshot.append_color(&color, &graphene::Rect::new(x, top, width, thickness));
             }
             DecorationStyle::Double => {
-                for y in [top, top + thickness * 2.0] {
+                // Two lines of the thickness, as far apart (as CSS),
+                // centered where the single line goes: below it, the
+                // second line of small text would fall out of its box.
+                for y in [top - thickness, top + thickness] {
                     snapshot.append_color(&color, &graphene::Rect::new(x, y, width, thickness));
                 }
             }
@@ -1235,24 +1266,29 @@ fn decorate(
                 path.move_to(x, mid);
                 let stroke = gsk::Stroke::new(thickness);
                 if style.decoration_style == DecorationStyle::Wavy {
-                    let amplitude = (thickness * 1.5).max(1.0);
+                    let amplitude = pixels((thickness * 1.5).max(2.0 * px));
                     let step = amplitude * 2.0;
-                    let mut px = x;
+                    let mut cx = x;
                     let mut up = true;
-                    while px < x + width {
-                        let nx = (px + step).min(x + width);
+                    while cx < x + width {
+                        let nx = (cx + step).min(x + width);
                         let peak = if up { mid - amplitude } else { mid + amplitude };
-                        path.quad_to((px + nx) / 2.0, peak, nx, mid);
-                        px = nx;
+                        path.quad_to((cx + nx) / 2.0, peak, nx, mid);
+                        cx = nx;
                         up = !up;
                     }
                 } else {
                     path.line_to(x + width, mid);
-                    let dash = if style.decoration_style == DecorationStyle::Dotted {
+                    let dash = if style.decoration_style == DecorationStyle::Dashed {
+                        [thickness * 3.0, thickness * 2.0]
+                    } else if thickness >= 3.0 * px {
+                        // Round dots, a dot apart.
                         stroke.set_line_cap(gsk::LineCap::Round);
                         [0.0, thickness * 2.0]
                     } else {
-                        [thickness * 3.0, thickness * 2.0]
+                        // Thin dots stay square: round ones would only
+                        // be antialiasing.
+                        [thickness, thickness]
                     };
                     stroke.set_dash(&dash);
                 }
