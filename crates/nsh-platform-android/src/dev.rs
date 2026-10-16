@@ -6,7 +6,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use nsh_dev::{DevClient, DevEvent, protocol::BundleFormat};
+use nsh_dev::{
+    DevClient, DevEvent, HostInfo,
+    protocol::{BundleFormat, HostPlatform},
+};
 use nsh_engine::{BYTECODE_VERSION, Bundle, Policy};
 
 use crate::host::Host;
@@ -50,21 +53,25 @@ impl DevSession {
         let weak = Arc::downgrade(&host);
         let state = Arc::new(Mutex::new(DevState::default()));
         let client_state = state.clone();
-        let started = DevClient::start(
-            url,
-            device_name(),
-            BYTECODE_VERSION.to_owned(),
-            move |event| {
-                match event {
-                    DevEvent::Connected => CONNECTED.store(true, Ordering::Relaxed),
-                    DevEvent::Disconnected => CONNECTED.store(false, Ordering::Relaxed),
-                    _ => {}
-                }
-                if let Some(host) = weak.upgrade() {
-                    handle(&host, &client_state, event);
-                }
-            },
-        );
+        let host_info = HostInfo {
+            device: device_name(),
+            platform: HostPlatform::Android,
+            bytecode_version: BYTECODE_VERSION.to_owned(),
+            ui_sets: crate::ui_sets()
+                .iter()
+                .filter_map(|set| set.specifier().map(str::to_owned))
+                .collect(),
+        };
+        let started = DevClient::start(url, host_info, move |event| {
+            match event {
+                DevEvent::Connected => CONNECTED.store(true, Ordering::Relaxed),
+                DevEvent::Disconnected => CONNECTED.store(false, Ordering::Relaxed),
+                _ => {}
+            }
+            if let Some(host) = weak.upgrade() {
+                handle(&host, &client_state, event);
+            }
+        });
         match started {
             Ok(client) => {
                 let client = Arc::new(client);
@@ -108,6 +115,10 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
         DevEvent::Disconnected => host.dev_status(Some("Dev server disconnected — reconnecting…")),
         DevEvent::Building => {}
         DevEvent::BuildFailed(message) => host.dev_error(Some(("Build failed", &message))),
+        DevEvent::CannotRun { message, .. } => {
+            host.dev_status(None);
+            host.dev_error(Some(("This host cannot run the app", &message)))
+        }
         DevEvent::Bundle {
             session,
             version,

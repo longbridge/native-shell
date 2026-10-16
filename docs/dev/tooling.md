@@ -49,7 +49,9 @@ step, the details only when something fails. Every command prints through it:
   crates (the app's Rust code) plainly (with the device's name when several are connected), `nsh::perf` as `perf …`;
   nsh's own info lines (a device's "loading build 3") are not shown: the CLI's steps say what happens. The dev server
   reports hosts connecting and leaving (`nsh_dev::ClientEvent`) rather than logging it, so the CLI prints
-  `• Mac Catalyst connected, build 1`.
+  `• Mac Catalyst connected, build 1`, and a host that cannot run the app as one `warn` line
+  (`warn Android Emulator: its host has no gallery/native (it was built for another app): nsh run examples/gallery-rs
+  --target android installs this app's host`; "Dev server" below).
 - Verbose (`-v` / `--verbose` on any command, or `NSH_VERBOSE=1`; the app's command line inherits both): no spinner,
   and everything as it comes: every log line with its level and target, cargo's and the hosts' output.
 
@@ -63,6 +65,18 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   connected hosts; new clients subscribe before receiving the current state, so no event is missed. Protocol: `crates/nsh-dev/src/protocol.rs`
   (JSON text frames + binary frames).
 - Bytecode version negotiation: the client reports `BYTECODE_VERSION` in its handshake; on a mismatch the server sends JS source instead.
+- Hosts that cannot run the app: several hosts on one session is intended (a phone joining), but a host serves only the
+  UI sets it was built with, and dev hosts keep reconnecting, so a host built for another app (an Android host left on
+  the emulator, whose `adb reverse` still reaches this port) can connect. The hello reports the host's platform and
+  the specifiers of the UI sets it serves (`HostPlatform`, `ui_sets`: iOS `set_ui_sets` or the mobile UI, Android
+  `ui_sets!` or the mobile UI); each bundle is published with the UI sets it imports (`Built::ui_sets`: the bundle's
+  native imports that are UI sets, `Bundle::natives` / `HotBundle::natives`). The server checks every host against
+  the latest bundle, on connect and on each new one: a host missing any gets neither the bundle nor its patch (nor
+  build errors, which would hide why) but `ServerMessage::CannotRun`, which it shows over the app ("This host cannot run
+  the app", what is missing and the command that installs the app's host, from `DevServer::install_commands`: one per
+  platform `nsh run` has a target for), and the CLI prints one `warn` line (`ClientEvent::CannotRun`), once per change
+  of what is missing. A later bundle that needs only what the host has reaches it again. Hosts that do not report
+  their UI sets (older ones) get every bundle.
 - The host's `log` output (including JS `console.*`, target `js`) is forwarded to the CLI terminal with the device name while connected, and goes
   to stderr when disconnected (see "Output" for what the CLI shows of it).
 - Build failures, bundle evaluation failures and uncaught exceptions show a red overlay on the host (tap to dismiss); it disappears on the next

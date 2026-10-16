@@ -17,6 +17,6 @@ mod client;
 mod server;
 
 #[cfg(feature = "client")]
-pub use crate::client::{DevClient, DevEvent};
+pub use crate::client::{DevClient, DevEvent, HostInfo};
 #[cfg(feature = "server")]
 pub use crate::server::{ClientEvent, ClientLog, DevServer};

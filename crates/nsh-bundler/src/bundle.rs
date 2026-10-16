@@ -79,6 +79,10 @@ pub struct Bundle {
     /// Asset files the app imports, relative to the entry directory
     /// (`asset:/<path>` URIs refer to them).
     pub assets: Vec<PathBuf>,
+    /// The native modules the app imports (`nsh`, `nsh/list`,
+    /// `nsh/ui/mobile`, an app's own UI set), sorted: what a host must
+    /// serve to run it.
+    pub natives: Vec<String>,
     /// What the app declares it may reach (`nsh.json` `capabilities`);
     /// `None` without a declaration.
     pub capabilities: Option<nsh_core::access::Capabilities>,
@@ -158,6 +162,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     let capabilities = capabilities(&cwd)?;
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
+    let natives = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let mut bundler = Bundler::with_plugins(
         BundlerOptions {
             input: Some(vec![InputItem {
@@ -185,7 +190,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             hot: false,
             tailwind,
             entry: entry.clone(),
-            natives: Arc::default(),
+            natives: natives.clone(),
             modules: Arc::new(compile::NativeModules::new(&options.ui_sets)),
         })],
     )
@@ -215,10 +220,12 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
         .collect();
     assets.sort();
     assets.dedup();
+    let natives = std::mem::take(&mut *natives.lock().expect("natives lock"));
     Ok(Bundle {
         code,
         source_map,
         assets,
+        natives: natives.into_iter().collect(),
         capabilities,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
     })
@@ -270,6 +277,11 @@ pub enum HotPatch {
 }
 
 impl HotBundle {
+    /// As in [`Bundle::natives`].
+    pub fn natives(&self) -> &[String] {
+        &self.natives
+    }
+
     /// The whole app as one script, an ES module: the native hot runtime
     /// and the app's native modules imported, every module defined, and the
     /// start of the entry.

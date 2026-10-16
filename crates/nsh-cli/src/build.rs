@@ -47,6 +47,8 @@ pub(crate) struct Built {
     pub(crate) assets: Vec<Asset>,
     /// What the app declares it may reach (`nsh.json` `capabilities`).
     pub(crate) capabilities: Option<nsh_core::access::Capabilities>,
+    /// The UI sets it imports, by specifier ([`imported_sets`]).
+    pub(crate) ui_sets: Vec<String>,
     /// How long bundling and compiling took.
     pub(crate) elapsed: Duration,
 }
@@ -70,6 +72,21 @@ pub(crate) fn crate_assets() -> impl Iterator<Item = Asset> {
             path: file.path().to_owned(),
             source: PathBuf::from(file.source),
         })
+}
+
+/// The native modules of `natives` that are UI sets (`nsh/ui/mobile`, an
+/// app's own): what a host must serve besides nsh's own modules, which
+/// every host has.
+fn imported_sets(natives: &[String]) -> Vec<String> {
+    natives
+        .iter()
+        .filter(|spec| {
+            crate::ui_sets()
+                .iter()
+                .any(|set| set.specifier() == Some(spec.as_str()))
+        })
+        .cloned()
+        .collect()
 }
 
 /// The app's assets: `imported` (relative to the entry's directory `root`)
@@ -137,6 +154,7 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         source_map: bundle.source_map,
         assets: assets(dir.as_deref(), &bundle.assets),
         capabilities: bundle.capabilities,
+        ui_sets: imported_sets(&bundle.natives),
         elapsed: start.elapsed(),
     })
 }
@@ -158,6 +176,7 @@ pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle
         source_map,
         assets: assets(dir.as_deref(), &hot.assets),
         capabilities: hot.capabilities.clone(),
+        ui_sets: imported_sets(hot.natives()),
         elapsed: start.elapsed(),
     };
     Ok((built, hot))
@@ -211,6 +230,12 @@ pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<(
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn hosts_must_serve_the_ui_sets_an_app_imports() {
+        let natives = ["nsh", "nsh/list", "nsh/ui/mobile"].map(String::from);
+        assert_eq!(super::imported_sets(&natives), ["nsh/ui/mobile"]);
+    }
 
     #[test]
     fn imported_assets_keep_their_paths_under_the_entry() {

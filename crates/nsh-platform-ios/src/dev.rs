@@ -13,7 +13,10 @@ use std::{
 };
 
 use dispatch2::{DispatchQueue, MainThreadBound};
-use nsh_dev::{DevClient, DevEvent, protocol::BundleFormat};
+use nsh_dev::{
+    DevClient, DevEvent, HostInfo,
+    protocol::{BundleFormat, HostPlatform},
+};
 use nsh_engine::{BYTECODE_VERSION, Bundle, Policy};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained, sel,
@@ -91,26 +94,36 @@ impl DevSession {
         show_status(&ui, &container, &format!("Connecting to {url}…"));
         let target = MainThreadBound::new((view, ui.clone()), mtm);
         let target = Arc::new(target);
-        let started = DevClient::start(
-            url,
-            device_name(mtm),
-            BYTECODE_VERSION.to_owned(),
-            move |event| {
-                match event {
-                    DevEvent::Connected => CONNECTED.store(true, Ordering::Relaxed),
-                    DevEvent::Disconnected => CONNECTED.store(false, Ordering::Relaxed),
-                    _ => {}
-                }
-                let target = target.clone();
-                DispatchQueue::main().exec_async(move || {
-                    let mtm = MainThreadMarker::new().expect("main queue");
-                    let (view, ui) = target.get(mtm);
-                    if let Some(view) = view.upgrade() {
-                        handle(&view, ui, event);
-                    }
-                });
+        let host = HostInfo {
+            device: device_name(mtm),
+            platform: if cfg!(target_abi = "macabi") {
+                HostPlatform::MacCatalyst
+            } else if cfg!(target_abi = "sim") {
+                HostPlatform::IosSimulator
+            } else {
+                HostPlatform::Ios
             },
-        );
+            bytecode_version: BYTECODE_VERSION.to_owned(),
+            ui_sets: crate::ui_sets()
+                .iter()
+                .filter_map(|set| set.specifier().map(str::to_owned))
+                .collect(),
+        };
+        let started = DevClient::start(url, host, move |event| {
+            match event {
+                DevEvent::Connected => CONNECTED.store(true, Ordering::Relaxed),
+                DevEvent::Disconnected => CONNECTED.store(false, Ordering::Relaxed),
+                _ => {}
+            }
+            let target = target.clone();
+            DispatchQueue::main().exec_async(move || {
+                let mtm = MainThreadMarker::new().expect("main queue");
+                let (view, ui) = target.get(mtm);
+                if let Some(view) = view.upgrade() {
+                    handle(&view, ui, event);
+                }
+            });
+        });
         match started {
             Ok(client) => {
                 let client = Arc::new(client);
@@ -201,6 +214,10 @@ fn handle(view: &Rc<Inner>, ui: &Rc<RefCell<DevUi>>, event: DevEvent) {
         }
         DevEvent::Building => {}
         DevEvent::BuildFailed(message) => show_error(ui, container, "Build failed", &message),
+        DevEvent::CannotRun { message, .. } => {
+            hide_status(ui);
+            show_error(ui, container, "This host cannot run the app", &message)
+        }
         DevEvent::Bundle {
             session,
             version,

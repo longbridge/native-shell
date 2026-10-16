@@ -12,7 +12,10 @@ use std::{
 
 use anyhow::Context as _;
 use notify::{RecursiveMode, Watcher};
-use nsh_dev::{ClientEvent, DevServer, protocol::WS_PATH};
+use nsh_dev::{
+    ClientEvent, DevServer,
+    protocol::{HostPlatform, WS_PATH},
+};
 
 use crate::{build, logger, ui};
 
@@ -48,6 +51,7 @@ impl DevSession {
         let devices = Arc::<Devices>::default();
         let server = start_server(port, &src_dir, devices.clone())?;
         server.serve_files(crate::build::crate_assets().map(|a| (a.path, a.source)));
+        server.install_commands(install_commands(&src_dir));
         let session = DevSession {
             entry,
             src_dir,
@@ -148,6 +152,7 @@ impl DevSession {
                         built.source_map,
                         capabilities,
                         None,
+                        built.ui_sets,
                     );
                     self.published(summary);
                 }
@@ -180,6 +185,7 @@ impl DevSession {
                     built.source_map,
                     capabilities,
                     patch,
+                    built.ui_sets,
                 );
                 *self.hot.borrow_mut() = Some(hot);
                 self.published(summary);
@@ -248,6 +254,19 @@ impl Devices {
                 ui::event(format!("{device} connected{build}"));
                 self.connected().push(device);
             }
+            ClientEvent::CannotRun {
+                device,
+                missing,
+                install,
+            } => {
+                let label = short_name(&self.connected(), &device);
+                let install =
+                    install.map_or(String::new(), |c| format!(": {c} installs this app's host"));
+                ui::warn(format!(
+                    "{label}: its host has no {} (it was built for another app){install}",
+                    missing.join(", ")
+                ));
+            }
             ClientEvent::Disconnected { device } => {
                 {
                     let mut connected = self.connected();
@@ -284,6 +303,27 @@ fn short_name(connected: &[String], device: &str) -> String {
         .iter()
         .any(|other| other != device && short(other) == name);
     if shared { device.to_owned() } else { name }
+}
+
+/// The commands that install the app in `dir`'s host, for the platforms
+/// `nsh run` has a target for.
+fn install_commands(dir: &Path) -> Vec<(HostPlatform, String)> {
+    let app = match ui::path(dir) {
+        dot if dot == "." => String::new(),
+        path if path.contains(' ') => format!(" '{path}'"),
+        path => format!(" {path}"),
+    };
+    vec![
+        (HostPlatform::MacCatalyst, format!("nsh run{app}")),
+        (
+            HostPlatform::IosSimulator,
+            format!("nsh run{app} --target ios"),
+        ),
+        (
+            HostPlatform::Android,
+            format!("nsh run{app} --target android"),
+        ),
+    ]
 }
 
 fn start_server(port: u16, assets_root: &Path, devices: Arc<Devices>) -> anyhow::Result<DevServer> {

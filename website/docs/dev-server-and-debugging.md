@@ -68,7 +68,9 @@ Connect hosts to the printed URL:
   `adb reverse tcp:8790 tcp:8790` and `ws://127.0.0.1:8790/ws`. See [Embedding in Android apps](./embedding-android.md#development).
 
 Any number of hosts can be connected at once; every build goes to all of them. A host that connects later receives the
-current build right away.
+current build right away. A host that cannot run the app, because it lacks a UI set the app imports (a development
+host built for another app), gets no build: it shows why, and the terminal prints a `warn` line with the command that
+installs the app's host.
 
 > [!NOTE]
 > A device on the LAN needs to reach your computer on the dev server's port: same network, no firewall in between.
