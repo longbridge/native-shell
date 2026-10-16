@@ -151,7 +151,7 @@ impl DevServer {
             .enable_all()
             .build()?;
         let shared = Arc::new(Shared {
-            assets_root: assets_root.and_then(|p| p.canonicalize().ok()),
+            assets_root: assets_root.and_then(|p| dunce::canonicalize(p).ok()),
             files: Mutex::default(),
             install: Mutex::default(),
             latest: Mutex::new(None),
@@ -290,7 +290,7 @@ async fn asset(
             let Some(root) = &shared.assets_root else {
                 return StatusCode::NOT_FOUND.into_response();
             };
-            let Ok(file) = root.join(&path).canonicalize() else {
+            let Ok(file) = dunce::canonicalize(root.join(&path)) else {
                 return StatusCode::NOT_FOUND.into_response();
             };
             if !file.starts_with(root) {

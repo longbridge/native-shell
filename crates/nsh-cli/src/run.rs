@@ -57,8 +57,7 @@ pub(crate) fn run(
     target: Target,
     device: Option<&str>,
 ) -> anyhow::Result<()> {
-    let work = entry
-        .canonicalize()?
+    let work = dunce::canonicalize(entry)?
         .parent()
         .context("entry has no directory")?
         .join(".nsh");

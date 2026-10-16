@@ -161,7 +161,7 @@ pub fn bundle(options: &BundleOptions) -> Result<Bundle, BundleError> {
 /// Bundles an app.
 pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError> {
     let start = Instant::now();
-    let entry = options.entry.canonicalize().map_err(|e| {
+    let entry = dunce::canonicalize(&options.entry).map_err(|e| {
         BundleError::other(format!("entry not found: {}: {e}", options.entry.display()))
     })?;
     let cwd = entry
@@ -406,8 +406,7 @@ pub async fn bundle_hot_async(
     ui_sets: &[nsh_core::ui::Registry],
 ) -> Result<HotBundle, BundleError> {
     let start = Instant::now();
-    let entry = entry
-        .canonicalize()
+    let entry = dunce::canonicalize(entry)
         .map_err(|e| BundleError::other(format!("entry not found: {}: {e}", entry.display())))?;
     let cwd = entry
         .parent()

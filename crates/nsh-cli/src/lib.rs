@@ -366,6 +366,7 @@ fn run(mut command: Command) -> anyhow::Result<()> {
     // An app with Rust components of its own runs in its own build of this.
     if let Some(status) = rust_app::reexec(command.entry_mut().map(|e| e.as_path()))? {
         // As it ended: with its exit code, or by the signal that ended it.
+        #[cfg(unix)]
         if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
             ui::exit_by_signal(signal);
         }

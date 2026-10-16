@@ -746,6 +746,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd8e701084c37e7ef62d3f9e453b618130cbc0ef3573847785952a3ac3f746bf"
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "ed25519"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2043,6 +2049,7 @@ name = "nsh-bundler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dunce",
  "imagesize",
  "log",
  "nsh-core",
@@ -2066,6 +2073,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "crossbeam-channel",
+ "dunce",
  "flate2",
  "image",
  "libc",
@@ -2084,6 +2092,7 @@ dependencies = [
  "sha2",
  "tar",
  "ureq",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -2106,6 +2115,7 @@ name = "nsh-dev"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dunce",
  "log",
  "nsh-dev",
  "serde",
@@ -2290,11 +2300,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsh-platform-windows"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "image",
+ "log",
+ "nsh-animation",
+ "nsh-core",
+ "nsh-dev",
+ "nsh-engine",
+ "nsh-ui-mobile",
+ "rustc-hash",
+ "serde_json",
+ "ttf-parser",
+ "ureq",
+ "windows",
+ "windows-core",
+ "windows-numerics",
+]
+
+[[package]]
 name = "nsh-ui-mobile"
 version = "0.1.0"
 dependencies = [
  "nsh-core",
  "serde_json",
+]
+
+[[package]]
+name = "nsh-windows-app"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nsh-platform-windows",
+ "serde_json",
+]
+
+[[package]]
+name = "nsh-windows-host"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nsh-dev",
+ "nsh-engine",
+ "nsh-platform-windows",
 ]
 
 [[package]]

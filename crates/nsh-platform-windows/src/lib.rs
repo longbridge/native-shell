@@ -1,0 +1,57 @@
+//! Windows backend for nsh: a Win32 window per surface, the views drawn
+//! with Direct2D, text laid out with DirectWrite.
+//!
+//! - Each node is an [`view::NshView`], a retained view the core placed at
+//!   its frame. A surface's window draws the whole tree with Direct2D into
+//!   a flip-model swap chain ([`render`]): shadows and background, the
+//!   content (text, image, canvas), the children, the border, then the
+//!   items the view hosts (text editors, headers). There are no child
+//!   windows, so nothing drawn by nsh is ever covered by another HWND.
+//! - The engine runs on its own thread ([`nsh_engine::Engine`]); each
+//!   commit is one message posted to the window ([`surface`]).
+//! - Text is shaped and broken into lines by DirectWrite on the engine
+//!   thread; the main thread draws the layout it produced ([`text`]).
+//! - Native animations and JS frame requests run on a frame ticker paced
+//!   by the compositor (`DwmFlush`, [`window`]).
+//!
+//! [`AppView`] is one surface as a window (top-level or a child of the
+//! embedding app's window); [`run_app`] opens one and runs the message
+//! loop. Off Windows this crate is empty.
+
+#![cfg(windows)]
+
+mod access;
+mod animation;
+mod app;
+mod canvas;
+mod decor;
+#[cfg(feature = "dev")]
+pub mod dev;
+mod geom;
+mod gfx;
+mod image;
+mod input;
+mod mount;
+mod native;
+mod navigation;
+mod net;
+mod render;
+mod script;
+mod scroll;
+mod surface;
+mod system;
+mod text;
+mod text_input;
+mod transition;
+mod view;
+mod window;
+
+pub use nsh_core::platform::Appearance;
+pub use nsh_engine::{App, Bundle, Root};
+pub use windows;
+
+pub use crate::{
+    app::{AppOptions, AppSource, AppView, debug_output, fatal_error, run_app, set_ui_sets},
+    image::AssetBase,
+    native::{ComponentContext, ComponentFactory, Components, NativeComponent},
+};

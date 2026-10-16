@@ -41,7 +41,7 @@ pub(crate) fn init(dir: &Path, name: Option<String>) -> anyhow::Result<()> {
     } else {
         format!("nsh run {}", dir.display())
     };
-    let dir = dir.canonicalize()?;
+    let dir = dunce::canonicalize(dir)?;
     let name = name.unwrap_or_else(|| {
         dir.file_name()
             .and_then(|n| n.to_str())
@@ -142,8 +142,7 @@ fn remove_stale(types: &Path, dir: &Path, definitions: &[(String, String)]) {
 
 /// [`write_types`] for the app whose entry is `entry`.
 pub(crate) fn write_types_for(entry: &Path) {
-    if let Some(dir) = entry
-        .canonicalize()
+    if let Some(dir) = dunce::canonicalize(entry)
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
     {

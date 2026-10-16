@@ -26,6 +26,7 @@ bundle = [
 ]
 
 [dependencies]
+dunce.workspace = true
 anyhow = { workspace = true, optional = true }
 oxc.workspace = true
 rolldown = { workspace = true, optional = true }

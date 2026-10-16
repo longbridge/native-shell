@@ -70,8 +70,7 @@ pub(crate) struct RustApp {
 
 /// The `"rust"` crate of the app whose entry is `entry`, if it has one.
 pub(crate) fn of(entry: &Path) -> anyhow::Result<Option<RustApp>> {
-    let entry = entry
-        .canonicalize()
+    let entry = dunce::canonicalize(entry)
         .with_context(|| format!("entry not found: {}", entry.display()))?;
     let dir = entry.parent().context("entry has no directory")?;
     let Ok(text) = fs::read_to_string(dir.join("nsh.json")) else {
@@ -84,9 +83,7 @@ pub(crate) fn of(entry: &Path) -> anyhow::Result<Option<RustApp>> {
     let rust = rust
         .as_str()
         .context("nsh.json: \"rust\" is the path of the app's crate")?;
-    let crate_dir = dir
-        .join(rust)
-        .canonicalize()
+    let crate_dir = dunce::canonicalize(dir.join(rust))
         .with_context(|| format!("nsh.json: \"rust\": no crate at {rust}"))?;
     let package = package_name(&crate_dir.join("Cargo.toml"))?;
     let app = RustApp {

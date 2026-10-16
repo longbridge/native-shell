@@ -1,0 +1,17 @@
+[package]
+name = "nsh-windows-app"
+description = "Release app runner on Windows: the executable of packaged nsh apps (no development features)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+log.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+nsh-platform-windows = { workspace = true, features = ["js"] }
+serde_json.workspace = true

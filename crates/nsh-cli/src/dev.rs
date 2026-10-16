@@ -41,8 +41,7 @@ pub(crate) struct DevSession {
 impl DevSession {
     /// Starts the server and publishes the first build (or its error).
     pub(crate) fn start(entry: &Path, port: u16, release: bool) -> anyhow::Result<DevSession> {
-        let entry = entry
-            .canonicalize()
+        let entry = dunce::canonicalize(entry)
             .with_context(|| format!("entry not found: {}", entry.display()))?;
         let src_dir = entry
             .parent()
@@ -365,6 +364,7 @@ fn is_source(event: &notify::Event) -> bool {
 /// Private IPv4 addresses of physical network interfaces (`en*`; on Linux
 /// also `eth*` and Wi-Fi's `wl*`), where devices on the same Wi-Fi or
 /// Ethernet can reach this machine. VPN and proxy tunnels are skipped.
+#[cfg(unix)]
 fn lan_ips() -> Vec<Ipv4Addr> {
     let mut ips = Vec::new();
     let mut list: *mut libc::ifaddrs = std::ptr::null_mut();
@@ -391,6 +391,78 @@ fn lan_ips() -> Vec<Ipv4Addr> {
             }
         }
         libc::freeifaddrs(list);
+    }
+    ips
+}
+
+/// Private IPv4 addresses of the Ethernet and Wi-Fi adapters that are up
+/// (by Windows' interface types: VPN, Hyper-V and WSL adapters are of
+/// other types).
+#[cfg(windows)]
+fn lan_ips() -> Vec<Ipv4Addr> {
+    use windows_sys::Win32::{
+        Foundation::ERROR_BUFFER_OVERFLOW,
+        NetworkManagement::{
+            IpHelper::{
+                GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST,
+                GetAdaptersAddresses, IF_TYPE_ETHERNET_CSMACD, IF_TYPE_IEEE80211,
+                IP_ADAPTER_ADDRESSES_LH,
+            },
+            Ndis::IfOperStatusUp,
+        },
+        Networking::WinSock::{AF_INET, SOCKADDR_IN},
+    };
+
+    let mut ips = Vec::new();
+    let flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+    // u64s keep the structures written into the buffer aligned.
+    let mut buffer: Vec<u64> = vec![0; 2048];
+    loop {
+        let mut size = (buffer.len() * 8) as u32;
+        // SAFETY: the buffer holds `size` writable bytes.
+        let result = unsafe {
+            GetAdaptersAddresses(
+                u32::from(AF_INET),
+                flags,
+                std::ptr::null(),
+                buffer.as_mut_ptr().cast(),
+                &mut size,
+            )
+        };
+        if result == ERROR_BUFFER_OVERFLOW {
+            buffer = vec![0; (size as usize).div_ceil(8)];
+            continue;
+        }
+        if result != 0 {
+            return ips;
+        }
+        break;
+    }
+    let mut adapter = buffer.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
+    // SAFETY: the call filled the buffer with a linked list of adapters and
+    // their addresses, all inside it, walked read-only while it lives.
+    unsafe {
+        while let Some(a) = adapter.as_ref() {
+            adapter = a.Next;
+            if a.OperStatus != IfOperStatusUp
+                || !matches!(a.IfType, IF_TYPE_ETHERNET_CSMACD | IF_TYPE_IEEE80211)
+            {
+                continue;
+            }
+            let mut unicast = a.FirstUnicastAddress;
+            while let Some(u) = unicast.as_ref() {
+                unicast = u.Next;
+                let addr = u.Address.lpSockaddr;
+                if addr.is_null() || (*addr).sa_family != AF_INET {
+                    continue;
+                }
+                let addr = &*(addr as *const SOCKADDR_IN);
+                let ip = Ipv4Addr::from(u32::from_be(addr.sin_addr.S_un.S_addr));
+                if ip.is_private() && !ips.contains(&ip) {
+                    ips.push(ip);
+                }
+            }
+        }
     }
     ips
 }

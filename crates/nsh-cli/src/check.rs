@@ -50,8 +50,7 @@ const BUILDS: &[(&str, &str, &str, &str)] = &[
 /// Type checks the app of `entry` (its directory's `tsconfig.json`, with
 /// the `.nsh/types` the command line wrote before) and fails on errors.
 pub(crate) fn check(entry: &Path, tsc: Option<&Path>, args: &[String]) -> anyhow::Result<()> {
-    let dir = entry
-        .canonicalize()?
+    let dir = dunce::canonicalize(entry)?
         .parent()
         .context("entry has no directory")?
         .to_path_buf();

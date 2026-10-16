@@ -143,8 +143,7 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         minify: release,
         ui_sets: crate::ui_sets().to_vec(),
     })?;
-    let dir = entry
-        .canonicalize()
+    let dir = dunce::canonicalize(entry)
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
     let bytecode = nsh_js::compile_bytecode_with(&bundle.code, release, crate::ui_sets())?;
@@ -164,8 +163,7 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
 pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle), BuildError> {
     let start = Instant::now();
     let hot = nsh_bundler::bundle_hot(entry, crate::ui_sets())?;
-    let dir = entry
-        .canonicalize()
+    let dir = dunce::canonicalize(entry)
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
     let (code, source_map) = hot.script();

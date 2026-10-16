@@ -115,7 +115,7 @@ pub(crate) fn name_and_id(entry: &Path, config: &AppConfig) -> (String, String) 
 }
 
 pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
-    let entry = options.entry.canonicalize()?;
+    let entry = dunce::canonicalize(options.entry)?;
     let config = &options.config;
     let (name, id) = name_and_id(&entry, config);
     let executable: String = name.chars().filter(|c| c.is_ascii_alphanumeric()).collect();

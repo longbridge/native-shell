@@ -110,7 +110,7 @@ pub(crate) struct PublishOptions<'a> {
 
 /// `nsh publish`: a release build of the app, signed into a `.nshpkg`.
 pub(crate) fn publish(options: PublishOptions<'_>) -> anyhow::Result<()> {
-    let entry = options.entry.canonicalize()?;
+    let entry = dunce::canonicalize(options.entry)?;
     let config = &options.config;
     let (name, id) = crate::package::name_and_id(&entry, config);
     let Some(build_number) = config.build else {

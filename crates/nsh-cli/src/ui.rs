@@ -60,6 +60,9 @@ impl Term {
 /// Sets up the output: verbose or not, and what stderr is.
 pub(crate) fn init(verbose: bool) {
     let _ = TERM.set(Term::detect(verbose));
+    #[cfg(windows)]
+    win::init();
+    #[cfg(unix)]
     // SAFETY: a zeroed `sigaction` is a valid value (no flags, an empty
     // mask) before the fields are set; the handler only uses
     // async-signal-safe calls (`write`, `signal`, `raise`, `getppid`) and
@@ -121,6 +124,7 @@ pub(crate) fn stop_requested() -> bool {
 /// which is [`Stoppable`] itself): it may not have had the signal, if it
 /// was sent to this process alone. Once it did, the one passed on is not
 /// taken as a second.
+#[cfg(unix)]
 pub(crate) fn pass_stop_on(child: &std::process::Child) {
     let signal = STOP_SIGNAL.load(Ordering::SeqCst);
     if signal != 0
@@ -130,6 +134,11 @@ pub(crate) fn pass_stop_on(child: &std::process::Child) {
         unsafe { libc::kill(pid, signal) };
     }
 }
+
+/// Windows delivers Ctrl-C to every process of the console, the child
+/// included: nothing to pass on.
+#[cfg(windows)]
+pub(crate) fn pass_stop_on(_child: &std::process::Child) {}
 
 /// After a requested stop: ends the process as the signal would have
 /// (the shell sees an interrupted command).
@@ -153,6 +162,7 @@ pub(crate) fn exit_by_signal(signal: libc::c_int) {
 /// second time) clears a spinner's line and ends the process as the signal
 /// would have. A stop the parent passes on ([`pass_stop_on`]) after this
 /// one had it is not a second.
+#[cfg(unix)]
 extern "C" fn on_signal(signal: libc::c_int, info: *mut libc::siginfo_t, _: *mut libc::c_void) {
     if STOPPABLE.load(Ordering::SeqCst) > 0 {
         if STOP_SIGNAL
@@ -181,12 +191,78 @@ extern "C" fn on_signal(signal: libc::c_int, info: *mut libc::siginfo_t, _: *mut
 }
 
 /// The process that sent a signal (0: the kernel, the terminal's Ctrl-C).
+#[cfg(unix)]
 fn sender(info: &libc::siginfo_t) -> libc::pid_t {
     #[cfg(target_os = "linux")]
     // SAFETY: SIGINT and SIGTERM carry the sender's pid.
     return unsafe { info.si_pid() };
     #[cfg(not(target_os = "linux"))]
     return info.si_pid;
+}
+
+/// The console's side of [`init`] and [`columns`] on Windows.
+#[cfg(windows)]
+mod win {
+    use std::sync::atomic::Ordering;
+
+    use windows_sys::Win32::{
+        Foundation::{FALSE, TRUE},
+        System::Console::{
+            CONSOLE_SCREEN_BUFFER_INFO, CTRL_BREAK_EVENT, CTRL_C_EVENT,
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, GetConsoleScreenBufferInfo,
+            GetStdHandle, STD_ERROR_HANDLE, SetConsoleCtrlHandler, SetConsoleMode,
+        },
+    };
+
+    use super::{SPINNER_DRAWN, STOP_SIGNAL, STOPPABLE};
+
+    /// Turns on escape sequences (colors, the spinner's line clearing) and
+    /// takes Ctrl-C as `on_signal` does on Unix.
+    pub(super) fn init() {
+        // SAFETY: plain console calls on this process's stderr handle;
+        // `mode` is a local the call fills.
+        unsafe {
+            let err = GetStdHandle(STD_ERROR_HANDLE);
+            let mut mode = 0;
+            if GetConsoleMode(err, &mut mode) != 0 {
+                SetConsoleMode(err, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+            SetConsoleCtrlHandler(Some(on_ctrl), TRUE);
+        }
+    }
+
+    /// Runs on a thread of its own: a [`super::Stoppable`] command is asked
+    /// to stop the first time; otherwise the spinner's line is cleared and
+    /// the default handler ends the process.
+    unsafe extern "system" fn on_ctrl(event: u32) -> i32 {
+        if event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT {
+            return FALSE;
+        }
+        if STOPPABLE.load(Ordering::SeqCst) > 0
+            && STOP_SIGNAL
+                .compare_exchange(0, libc::SIGINT, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        {
+            return TRUE;
+        }
+        if SPINNER_DRAWN.load(Ordering::SeqCst) {
+            use std::io::Write as _;
+            let _ = std::io::stderr().write_all(b"\r\x1b[2K");
+        }
+        FALSE
+    }
+
+    /// The console window's width in columns.
+    pub(super) fn columns() -> Option<usize> {
+        // SAFETY: a zeroed `CONSOLE_SCREEN_BUFFER_INFO` is valid plain data,
+        // filled by the call.
+        unsafe {
+            let err = GetStdHandle(STD_ERROR_HANDLE);
+            let mut info: CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
+            (GetConsoleScreenBufferInfo(err, &mut info) != 0)
+                .then(|| (info.srWindow.Right - info.srWindow.Left + 1).max(0) as usize)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,8 +325,8 @@ fn width(text: &str) -> usize {
 
 /// `path` relative to the current directory when it is inside it.
 pub(crate) fn path(path: &Path) -> String {
-    let full = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let cwd = std::env::current_dir().and_then(|d| d.canonicalize());
+    let full = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let cwd = std::env::current_dir().and_then(|d| dunce::canonicalize(d));
     match cwd.as_deref().map(|cwd| full.strip_prefix(cwd)) {
         Ok(Ok(rest)) if rest.as_os_str().is_empty() => ".".to_owned(),
         Ok(Ok(rest)) => rest.display().to_string(),
@@ -371,12 +447,16 @@ fn columns() -> Option<usize> {
     if !term().tty {
         return None;
     }
+    #[cfg(unix)]
     // SAFETY: TIOCGWINSZ fills the zeroed winsize it is given.
     let size = unsafe {
         let mut size: libc::winsize = std::mem::zeroed();
-        (libc::ioctl(libc::STDERR_FILENO, libc::TIOCGWINSZ, &mut size) == 0).then_some(size)
+        (libc::ioctl(libc::STDERR_FILENO, libc::TIOCGWINSZ, &mut size) == 0)
+            .then_some(usize::from(size.ws_col))
     };
-    size.map(|s| usize::from(s.ws_col)).filter(|&c| c > 20)
+    #[cfg(windows)]
+    let size = win::columns();
+    size.filter(|&c| c > 20)
 }
 
 /// `tag message`, the message wrapped to the terminal with a hanging
