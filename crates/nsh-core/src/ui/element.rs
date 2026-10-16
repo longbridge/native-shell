@@ -1682,6 +1682,21 @@ impl<C: Component> ComponentElement<C> {
         self
     }
 
+    /// Fills its `Items` prop with rows of this render (TS: `each` and the
+    /// row renderer, `keyExtractor`, `ListHeaderComponent`, ...): the rows,
+    /// their keys, header, footer, empty view, separators, sticky rows,
+    /// viewability, the refresh and the end reached are `list`'s, rendered
+    /// and handled by this component; the layout and the styles are the
+    /// placing component's ([`ParentElement::list`]), so `list`'s own are
+    /// left out.
+    pub fn items(mut self, list: super::VirtualList) -> Self {
+        match <C::Props as super::Props>::ITEMS {
+            Some(name) => self.node.children.push(list.into_items(name)),
+            None => log::error!(target: "js", "{} has no `Items` prop to fill", C::NAME),
+        }
+        self
+    }
+
     /// Handles its events (they then do not reach the app).
     pub fn on_event(mut self, listener: Listener<C::Event>) -> Self {
         let inner = listener.0;

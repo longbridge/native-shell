@@ -1,5 +1,6 @@
 //! Rust components' lists on the engine: a list's own header, footer,
-//! empty view and separators, viewable rows.
+//! empty view and separators, viewable rows, a `ListView` with rows of a
+//! Rust component (`ComponentElement::items`) or of the app.
 
 use std::{collections::HashMap, time::Duration};
 
@@ -9,6 +10,7 @@ use nsh_core::{
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
+use nsh_ui_mobile::{ListView, ListViewProps};
 
 use crate::ChannelSink;
 
@@ -92,6 +94,16 @@ impl Tree {
             }
             id = parent;
         }
+    }
+
+    /// The depth of `id` below `ancestor` (`None`: not below it).
+    fn depth(&self, mut id: u32, ancestor: u32) -> Option<usize> {
+        let mut depth = 0;
+        while id != ancestor {
+            id = *self.parents.get(&id)?;
+            depth += 1;
+        }
+        Some(depth)
     }
 }
 
@@ -242,4 +254,142 @@ fn rust_lists_have_headers_footers_separators_and_empty_views() {
         "{:?}",
         tree.texts
     );
+}
+
+/// A `ListView` with rows of this component and a header.
+#[derive(Default)]
+struct Stocks {
+    rows: std::rc::Rc<Vec<String>>,
+    pressed: String,
+    ended: u32,
+}
+
+impl Component for Stocks {
+    const NAME: &'static str = "app.stocks";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), _: &mut Context<'_, Self>) {
+        self.rows = std::rc::Rc::new((0..100).map(|i| format!("stock {i}")).collect());
+    }
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let rows = self.rows.clone();
+        let press = cx.listener(|this: &mut Self, index: &usize, cx| {
+            this.pressed = format!("pressed {index}");
+            cx.notify();
+        });
+        view().flex_1().child(
+            ListView::element(ListViewProps::default()).items(
+                virtual_list(rows.len(), move |i, _| {
+                    text(rows[i].clone()).on_press(press.clone().map(move |_: &()| i))
+                })
+                .keys(0..100)
+                .header(text(format!("{} ended {}", self.pressed, self.ended)))
+                .on_end_reached(cx.listener(|this: &mut Self, _, cx| {
+                    this.ended += 1;
+                    cx.notify();
+                })),
+            ),
+        )
+    }
+}
+
+#[test]
+fn rust_components_fill_a_list_views_rows() {
+    let (engine, rx) = start(Root::of::<Stocks>());
+    let mut tree = Tree::default();
+    tree.drain(&rx);
+    for label in ["stock 0", "stock 1", " ended 0"] {
+        assert!(tree.shows(label), "{label}: {:?}", tree.texts);
+    }
+    // The rows are in the list view's own wrappers (its padding), inside
+    // its list: cell > wrapper > the row's node > the text.
+    let row = tree.find("stock 1").unwrap();
+    let (list, cell) = tree.cell(row).expect("in a cell");
+    assert_eq!(tree.depth(row, cell), Some(3), "{:?}", tree.parents);
+    // The header is the list's too.
+    assert_eq!(
+        tree.cell(tree.find(" ended 0").unwrap()).map(|c| c.0),
+        Some(list)
+    );
+    // A row's press is the row component's (the list's owner).
+    engine
+        .control()
+        .dispatch_event(row, EventKind::Press, EventPayload::None);
+    tree.drain(&rx);
+    assert!(tree.shows("pressed 1 ended 0"), "{:?}", tree.texts);
+    // Its list's events are the component's too.
+    engine
+        .control()
+        .dispatch_event(list, EventKind::EndReached, EventPayload::None);
+    tree.drain(&rx);
+    assert!(tree.shows("pressed 1 ended 1"), "{:?}", tree.texts);
+}
+
+/// The app, compiled by nsh and loaded as bytecode.
+fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
+    let dir = std::env::temp_dir().join(format!("nsh-rust-lists-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let entry = dir.join("App.tsx");
+    std::fs::write(&entry, app).unwrap();
+    let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
+        entry,
+        minify: false,
+        ui_sets: vec![nsh_ui_mobile::registry()],
+    })
+    .unwrap();
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        // SAFETY: compiled just now by this runtime.
+        app: App::Js(unsafe { nsh_engine::Bundle::bytecode(bytecode) }),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: vec![nsh_ui_mobile::registry()],
+        runtime: None,
+    };
+    (
+        Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),
+        rx,
+    )
+}
+
+const APP_LIST_VIEW: &str = r#"import { mount, signal } from "nsh";
+import { ListView } from "nsh/ui/mobile";
+
+const ends = signal(0);
+const rows = Array.from({ length: 100 }, (_, i) => `row ${i}`);
+
+mount(() => (
+  <view style={{ flex: 1 }}>
+    <text>{`ends ${ends()}`}</text>
+    <ListView each={rows} onEndReached={() => ends.set(ends() + 1)}>
+      {(row) => <text>{row()}</text>}
+    </ListView>
+  </view>
+));
+"#;
+
+#[test]
+fn the_apps_handlers_on_a_list_views_rows_run() {
+    let (engine, rx) = start_js(APP_LIST_VIEW);
+    let mut tree = Tree::default();
+    tree.drain(&rx);
+    assert!(tree.shows("ends 0"), "{:?}", tree.texts);
+    let row = tree.find("row 1").expect("rows");
+    let (list, _) = tree.cell(row).expect("in a list");
+    // The list is a slot of the component (its node is JS's): the app's
+    // `onEndReached` gets the event.
+    engine
+        .control()
+        .dispatch_event(list, EventKind::EndReached, EventPayload::None);
+    tree.drain(&rx);
+    assert!(tree.shows("ends 1"), "{:?}", tree.texts);
 }

@@ -272,6 +272,17 @@ impl VirtualList {
         super::host::set(&mut self.0, Prop::EndReachedThreshold(viewports));
         self
     }
+
+    /// This list as the rows of a component's `Items` prop named `name`
+    /// ([`super::ComponentElement::items`]): the slot's node, laid out and
+    /// styled by the component that places it.
+    pub(crate) fn into_items(mut self, name: &'static str) -> ElNode {
+        self.list().config = ListConfig::default();
+        self.0.style = Default::default();
+        self.0.key = Some(format!("slot:{name}").into());
+        self.0.attrs.props.push(Prop::ComponentSlot(name.into()));
+        self.0
+    }
 }
 
 /// The rows a list shows ([`VirtualList::on_viewable_items_changed`]), by

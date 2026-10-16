@@ -210,6 +210,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     let mut slot_arms = Vec::new();
     let mut children = None;
     let mut items: Option<Ident> = None;
+    let mut items_js: Option<String> = None;
     for field in &fields.named {
         let ident = field.ident.as_ref().expect("named");
         let ty = &field.ty;
@@ -298,6 +299,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                     }
                 });
                 items = Some(ident.clone());
+                items_js = Some(js.clone());
             }
             Kind::Children => {
                 if children.is_some() || items.is_some() {
@@ -330,6 +332,10 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
             false
         }),
     };
+    let items_const = match &items_js {
+        Some(js) => quote!(::core::option::Option::Some(#js)),
+        None => quote!(::core::option::Option::None),
+    };
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         /// Every prop at its default (`..Default::default()` when Rust
@@ -341,6 +347,8 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
 
         impl #impl_generics #ui::Props for #name #ty_generics #where_clause {
+            const ITEMS: ::core::option::Option<&'static str> = #items_const;
+
             fn doc() -> &'static str {
                 #doc
             }

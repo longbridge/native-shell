@@ -203,6 +203,10 @@ pub struct EventSpec {
 
 /// A component's props. Derive it: `#[derive(Props)]`.
 pub trait Props: Clone + PartialEq + 'static {
+    /// The JS name of the [`super::Items`] prop, if it has one.
+    #[doc(hidden)]
+    const ITEMS: Option<&'static str> = None;
+
     /// The component's documentation (the struct's doc comment).
     fn doc() -> &'static str;
 

@@ -74,6 +74,15 @@ struct VirtualListState {
     separator: Option<SeparatorFn>,
     /// The cells, by recycling slot.
     cells: Vec<NodeId>,
+    /// The rows of another component's `Items` prop
+    /// ([`crate::ui::ComponentElement::items`]): each cell is that
+    /// component's wrapper (`place`, its row function: an [`Inner::Row`])
+    /// around a node rendering the row (an [`Inner::VirtualRow`], in
+    /// `contents` by slot), so each part's handlers run with its own
+    /// component.
+    items: bool,
+    place: Option<PlaceFn>,
+    contents: Vec<NodeId>,
     /// Viewable rows: how long they must stay, the range reported last and
     /// the latest, and the report waiting for the time to pass.
     min_view: Option<std::time::Duration>,
@@ -1411,7 +1420,7 @@ impl<M: TextEngine> Core<M> {
                             .is_some_and(|o| o.part == Part::Slot && o.id == node)
                     });
                     let prev = at.and_then(|j| old[j].take());
-                    out.push(self.reconcile_slot(prev, node, el, host, inst));
+                    out.push(self.reconcile_slot(prev, node, el, inst));
                 }
                 ElKind::Children => {
                     if placeholder.is_some() || inst.children_at != Placement::None {
@@ -1459,10 +1468,15 @@ impl<M: TextEngine> Core<M> {
                         let _ = self.apply_op(Op::SetProp { id: node, prop });
                     }
                     self.components.props = props;
-                    let mut e = self.reconcile_slot(prev, node, el, host, inst);
+                    let mut e = self.reconcile_slot(prev, node, el, inst);
                     e.list = list.config;
                     let rows = self.rows_of_list(node);
                     self.components.lists.insert(node, (list.row.clone(), rows));
+                    // Rows of the component that rendered this one: its
+                    // cells to come are wrapped too.
+                    if let Some(state) = self.components.virtual_lists.get_mut(&node) {
+                        state.place = Some(list.row.clone());
+                    }
                     let cells: Vec<NodeId> = match self.key(node) {
                         Ok(k) => self.nodes[k as usize]
                             .children
@@ -1656,7 +1670,6 @@ impl<M: TextEngine> Core<M> {
         prev: Option<Expanded>,
         node: NodeId,
         el: ElNode,
-        host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
         let (old_attrs, old_style, old_classes, old_events) = match prev {
@@ -1670,9 +1683,9 @@ impl<M: TextEngine> Core<M> {
         };
         self.apply_attrs(node, &el.attrs, &old_attrs);
         let classes = self.apply_styles(node, &el.style, &old_style, old_classes, None);
+        // Its events are the component's first (`component_event` finds it
+        // by its host); the node stays JS's or the rendering component's.
         let events = self.apply_handlers(node, &el, old_events, EventMask::default(), inst);
-        // Its events are the component's.
-        self.components.owners.insert(node, host);
         Expanded {
             id: node,
             tag: Tag::View,
@@ -1912,6 +1925,8 @@ impl<M: TextEngine> Core<M> {
                 },
             });
         }
+        // The rows of another component's `Items` prop (its slot's node).
+        let items = self.components.slot_names.contains_key(&id);
         let state = self
             .components
             .virtual_lists
@@ -1923,6 +1938,9 @@ impl<M: TextEngine> Core<M> {
                 keys: None,
                 separator: None,
                 cells: Vec::new(),
+                items,
+                place: None,
+                contents: Vec::new(),
                 min_view: None,
                 reported: None,
                 latest: None,
@@ -1933,8 +1951,14 @@ impl<M: TextEngine> Core<M> {
         state.keys = list.keys;
         state.separator = list.separator;
         state.min_view = list.min_view_time;
-        let cells = state.cells.clone();
-        for cell in cells {
+        let marked: Vec<NodeId> = state
+            .cells
+            .iter()
+            .chain(&state.contents)
+            .copied()
+            .filter(|&c| c != 0)
+            .collect();
+        for cell in marked {
             self.components.mark(cell);
         }
     }
@@ -1966,15 +1990,21 @@ impl<M: TextEngine> Core<M> {
         let owner = state.owner;
         let cell = match state.cells.get(slot).copied().filter(|&c| c != 0) {
             Some(cell) => {
-                if let Some(inst) = self.components.instances.get_mut(&cell)
-                    && let Inner::VirtualRow { index: current, .. } = &mut inst.inner
-                {
-                    *current = index;
+                let content = state.contents.get(slot).copied().filter(|&c| c != 0);
+                for part in [Some(cell), content].into_iter().flatten() {
+                    if let Some(inst) = self.components.instances.get_mut(&part) {
+                        match &mut inst.inner {
+                            Inner::VirtualRow { index: current, .. }
+                            | Inner::Row { index: current, .. } => *current = index,
+                            _ => {}
+                        }
+                    }
+                    self.components.mark(part);
                 }
-                self.components.mark(cell);
                 cell
             }
             None => {
+                let (items, place) = (state.items, state.place.clone());
                 let cell = self.components.alloc();
                 let _ = self.apply_op(Op::Create {
                     id: cell,
@@ -1990,25 +2020,50 @@ impl<M: TextEngine> Core<M> {
                     child: cell,
                     before: None,
                 });
-                self.components.instances.insert(
-                    cell,
-                    Box::new(Instance::new(
-                        Inner::VirtualRow { list, index },
-                        None,
-                        Vec::new(),
-                        None,
-                    )),
-                );
-                let cells = &mut self
-                    .components
-                    .virtual_lists
-                    .get_mut(&list)
-                    .expect("list")
-                    .cells;
-                if cells.len() <= slot {
-                    cells.resize(slot + 1, 0);
+                let row = Inner::VirtualRow { list, index };
+                let content = if items {
+                    // The placing component's wrapper in the cell, around
+                    // the row's own node (placed as a row's content is).
+                    let content = self.components.alloc();
+                    let _ = self.apply_op(Op::Create {
+                        id: content,
+                        tag: Tag::View,
+                    });
+                    self.components.owners.insert(content, owner);
+                    let _ = self.apply_op(Op::Insert {
+                        parent: cell,
+                        child: content,
+                        before: None,
+                    });
+                    self.components.instances.insert(
+                        content,
+                        Box::new(Instance::new(row, None, Vec::new(), None)),
+                    );
+                    self.components.mark(content);
+                    let place = place.unwrap_or_else(|| Rc::new(|row, _| row.into_element()));
+                    self.components.instances.insert(
+                        cell,
+                        Box::new(Instance::new(
+                            Inner::Row { place, index },
+                            None,
+                            vec![content],
+                            None,
+                        )),
+                    );
+                    content
+                } else {
+                    self.components
+                        .instances
+                        .insert(cell, Box::new(Instance::new(row, None, Vec::new(), None)));
+                    0
+                };
+                let state = self.components.virtual_lists.get_mut(&list).expect("list");
+                if state.cells.len() <= slot {
+                    state.cells.resize(slot + 1, 0);
+                    state.contents.resize(slot + 1, 0);
                 }
-                cells[slot] = cell;
+                state.cells[slot] = cell;
+                state.contents[slot] = content;
                 self.components.mark(cell);
                 cell
             }
@@ -2067,7 +2122,6 @@ impl<M: TextEngine> Core<M> {
     fn release_expanded(&mut self, e: Expanded) {
         match e.part {
             Part::Slot => {
-                self.components.owners.remove(&e.id);
                 self.detach_id(e.id);
                 return;
             }
@@ -2085,11 +2139,18 @@ impl<M: TextEngine> Core<M> {
             Part::Component(_) => self.release_instance(e.id),
             Part::VirtualList => {
                 if let Some(state) = self.components.virtual_lists.remove(&e.id) {
-                    for cell in state.cells.into_iter().filter(|&c| c != 0) {
-                        self.release_instance(cell);
-                        self.release_id(cell);
+                    let parts = state.contents.into_iter().chain(state.cells);
+                    for part in parts.filter(|&c| c != 0) {
+                        self.release_instance(part);
+                        self.release_id(part);
                     }
                 }
+                // The rows of another component's `Items` prop: no longer
+                // its slot.
+                if self.components.slot_names.remove(&e.id).is_some() {
+                    self.unslot(e.id);
+                }
+                self.components.lists.remove(&e.id);
             }
             Part::Node => {}
         }
@@ -2126,7 +2187,6 @@ impl<M: TextEngine> Core<M> {
         }
         for (_, node) in inst.slots {
             self.components.slot_hosts.remove(&node);
-            self.components.owners.remove(&node);
             self.detach_id(node);
         }
         if let Some(root) = inst.root {
@@ -2153,6 +2213,9 @@ impl<M: TextEngine> Core<M> {
         if self.platform_event(id, kind, payload) {
             return true;
         }
+        if self.is_host(id) {
+            return self.handle(id, id, kind, payload);
+        }
         // A component's own list reports its viewable rows as they settle.
         if kind == EventKind::ViewableItemsChanged
             && self.components.virtual_lists.contains_key(&id)
@@ -2160,10 +2223,22 @@ impl<M: TextEngine> Core<M> {
             self.viewable_changed(id, payload);
             return true;
         }
-        let Some(host) = self.host_of(id) else {
-            return false;
-        };
-        self.handle(host, id, kind, payload) || id != host
+        // A slot's node: the component it is a slot of handles its events,
+        // then whoever made it: the component that rendered it, or JS (the
+        // app's list of an `Items` prop has the app's handlers).
+        let slot_of = self.components.slot_hosts.get(&id).copied();
+        let owner = self.components.owners.get(&id).copied();
+        if let Some(host) = slot_of {
+            self.handle(host, id, kind, payload);
+        }
+        if let Some(host) = owner
+            && Some(host) != slot_of
+        {
+            self.handle(host, id, kind, payload);
+        }
+        // The core's nodes (odd ids) are the components': JS does not know
+        // them.
+        (slot_of.is_some() || owner.is_some()) && id % 2 == 1
     }
 
     /// The host of the component whose render node `id` is (itself for a

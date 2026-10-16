@@ -127,6 +127,7 @@ impl Component for Button {
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
   | `onStartShouldSetResponder`, `onMoveShouldSetResponder(Capture)`, `PanResponder.create` | `.claim_touches(TouchClaim::on_start())` (`::on_move()`, `.capture()`, `.ask(cx.listener(\|this, request: &ClaimRequest, cx\| request.claim()))` to decide with state and the gesture, `.block_native(false)`), `.keep_touches(true)` (`onResponderTerminationRequest` → false); `.on_responder_grant` / `_move` / `_release` / `_terminate` / `_start` / `_end` / `_reject` get a `ResponderEvent` (the finger's `location_x`, `page_x`, ... and `gesture: PanGesture`: `dx`, `dy`, `vx`, `vy`, the centroid; `PanGesture::begin` / `update` follow one from `on_touch`) |
   | `<List ListHeaderComponent ListFooterComponent ListEmptyComponent ItemSeparatorComponent stickyHeaderIndices viewabilityConfig onViewableItemsChanged onEndReachedThreshold initialScrollIndex>` | `virtual_list(n, row).header(..).footer(..).empty(..).separator(\|\| ..).sticky_header_indices(..).viewability(..).minimum_view_time(..).on_viewable_items_changed(..).end_reached_threshold(..).initial_scroll_index(..)`: the header, footer and empty view are part of the render (the component's state and handlers), never recycled |
+  | `<ListView each={rows} keyExtractor ListHeaderComponent={Header}>{row}</ListView>` | `ListView::element(props).items(virtual_list(n, row).keys(ids).header(..))` |
   | `<text>a <text style={link} onPress={f}>b</text> <view/></text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
   | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no render) |
   | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
@@ -292,6 +293,12 @@ never sees the expanded nodes; their events are the component's (below).
   state (also for the wrappers of the app's rows); a row passes its index with `listener.map(move |_: &()| index)`.
   The header, footer and empty view are cells of the render (their `CellSlot`s), outside the recycling; a
   separator goes into each row's cell, after the row (before it, inverted).
+- Another component's rows (`ComponentElement::items(virtual_list(..))`): the list is content of the nested
+  component, as `.child` is: a node of this render (its rows, header and handlers are this component's), the
+  slot of the nested component's `Items` prop, which places and lays it out as it places JS's list (its layout
+  and styles, so the list's own are left out). Each cell is then the placing component's row wrapper
+  (`Inner::Row`) around a node rendering the row (`Inner::VirtualRow`), so each part's handlers run with its own
+  component.
 - Named slots: the JS face creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
   JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never
   releases it (it is JS's). Filling or emptying a holder renders the component again.
@@ -300,6 +307,9 @@ never sees the expanded nodes; their events are the component's (below).
 
 - Handlers sit on the elements; the native event of an expanded node, or of the host, goes to the component first
   (`Core::component_event`, called by the engine before JS). Events of expanded nodes never reach JS.
+- A slot's node (JS's holder, the app's list of an `Items` prop, or another component's content) gets the
+  handlers of the component it is a slot of, then its maker's: JS's (the app's `onEndReached` on a `ListView`)
+  or the rendering component's.
 - A component's own list reports its viewable rows to it in the core, waiting for `minimum_view_time` when set
   (a task of the list's owner).
 - `cx.emit(event)` sends a `NativeEvent` on the host (`{ name, data }`, from the `Event` derive); the JS face calls
