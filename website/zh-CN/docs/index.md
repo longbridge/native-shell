@@ -1,12 +1,12 @@
 ---
 title: 简介
-description: native-shell 是什么：让原生 iOS、Android 应用在发布之后加载 UI 模块的 Shell，独立应用是次要用途。
+description: Native Shell 是什么：让原生 iOS、Android 应用在发布之后加载 UI 模块的 Shell，独立应用是次要用途。
 order: 1
 ---
 
 # 简介
 
-native-shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面**而设计的。模型用 TSX 写出一个小模块，已经发布的原生 iOS 或 Android 应用在运行时加载它，用平台自己的视图显示，并运行在应用掌控的沙箱里。同一套机制也让原生应用整体具备扩展能力——插件、功能、整个页面都可以在发布之后下发。手机客户端是首要目标；桌面客户端随后跟上，通过正在开发中的 GPUI 后端实现。
+Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面**而设计的。模型用 TSX 写出一个小模块，已经发布的原生 iOS 或 Android 应用在运行时加载它，用平台自己的视图显示，并运行在应用掌控的沙箱里。同一套机制也让原生应用整体具备扩展能力——插件、功能、整个页面都可以在发布之后下发。手机客户端是首要目标；桌面客户端随后跟上，通过正在开发中的 GPUI 后端实现。
 
 > [!IMPORTANT]
 > nsh 不是用 TypeScript 编写整个应用的框架。应用仍然是原生应用，照原来的方式构建和发布；nsh 是嵌在其中的一层，负责那些在发布之后才生成、修改或新增的界面。
@@ -32,7 +32,7 @@ native-shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 
 **再次：独立应用。** 同样的模块也可以组成一个完整的应用。`nsh package` 用预编译的运行时把它们打成可安装的 iOS 或 Android 应用，这也是试用 nsh 最快的方式：[快速上手](./getting-started.md)就是这样做的。这是受支持的用法，但不是 nsh 设计的出发点。
 
-## 为什么在 GPUI Shell 之外还要做 native-shell
+## 为什么在 GPUI Shell 之外还要做 Native Shell
 
 [长桥（Longbridge）](https://longbridge.com)把 nsh 作为手机客户端的插件层来建设，桌面客户端也需要同样的一层。[GPUI Shell](https://gpui-kit.com/shell) 让 [GPUI](https://gpui-kit.com) 桌面应用可以用 JavaScript 扩展，最初的想法也是把它用到手机上。但它并不适合，因为它的模块由 GPUI 自己在 GPU 上绘制，而不是使用平台的视图：
 
@@ -41,7 +41,7 @@ native-shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 
 因此 nsh 用 UIKit 和 Android 视图来渲染模块：模块和应用其余部分用的是同一套视图，表现自然一致：同一种模块格式、同一个运行时，现在运行在 UIKit 和 Android 视图上，GPUI 后端完成后也运行在桌面客户端上——一个模块写一次，就能在三端的客户端里运行。
 
-两者的定位不同：GPUI Shell 用于扩展 GPUI 桌面应用；native-shell 用于扩展原生手机应用，并通过 GPUI 后端覆盖桌面客户端。原生的 macOS、Windows 后端（AppKit、WinUI）目前不是目标。
+两者的定位不同：GPUI Shell 用于扩展 GPUI 桌面应用；Native Shell 用于扩展原生手机应用，并通过 GPUI 后端覆盖桌面客户端。原生的 macOS、Windows 后端（AppKit、WinUI）目前不是目标。
 
 ## 一个模块
 

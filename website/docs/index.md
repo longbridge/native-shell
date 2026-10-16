@@ -1,12 +1,12 @@
 ---
 title: Introduction
-description: "What native-shell is: a shell that lets native iOS and Android apps load UI modules after they ship, with standalone apps as a second use."
+description: "What Native Shell is: a shell that lets native iOS and Android apps load UI modules after they ship, with standalone apps as a second use."
 order: 1
 ---
 
 # Introduction
 
-native-shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS or Android app that has already shipped loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; desktop clients come next, through a GPUI backend that is in development.
+Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS or Android app that has already shipped loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; desktop clients come next, through a GPUI backend that is in development.
 
 > [!IMPORTANT]
 > nsh is not a framework for writing your whole app in TypeScript. The app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships.
@@ -32,7 +32,7 @@ native-shell (nsh for short) is designed for **AI-generated, dynamically deliver
 
 **Third: standalone apps.** The same modules can also be a whole app. `nsh package` turns them into an installable iOS or Android app with the prebuilt runtime, which is also the quickest way to try nsh: the [getting started](./getting-started.md) guide does exactly that. It is a supported use, but not the one nsh is designed around.
 
-## Why native-shell, next to GPUI Shell
+## Why Native Shell, next to GPUI Shell
 
 [Longbridge](https://longbridge.com) is building nsh as the plugin layer of its mobile client, and its desktop client needs the same layer. [GPUI Shell](https://gpui-kit.com/shell) makes [GPUI](https://gpui-kit.com) desktop apps extensible in JavaScript, and the first idea was to use it on phones too. It does not fit there, because its modules are drawn by GPUI itself, on the GPU, not with the platform's views:
 
@@ -41,7 +41,7 @@ native-shell (nsh for short) is designed for **AI-generated, dynamically deliver
 
 nsh therefore renders modules with UIKit and Android views, so a module behaves like the rest of the app because it is made of the same views: one module format and one runtime, on UIKit and Android views today, and on GPUI for desktop clients once its backend lands, so a module written once can run in all three clients.
 
-The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; native-shell is for extending native mobile apps, and through the GPUI backend, desktop clients as well. Native macOS and Windows backends (AppKit, WinUI) are not a goal for now.
+The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps, and through the GPUI backend, desktop clients as well. Native macOS and Windows backends (AppKit, WinUI) are not a goal for now.
 
 ## A module
 

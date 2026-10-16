@@ -1,160 +1,191 @@
 // The module the home page's host app shows: what an assistant could
-// generate for "How did AAPL and NVDA do?" — a card with a range picker,
-// a chart and an action. Sized for a region about 300 points wide.
-import { computed, mount, signal, Text, View } from "nsh";
+// generate for "How are my tech stocks doing today?" — a compact watchlist
+// in the gallery's look (examples/gallery, Stocks): the composite, then a
+// row per stock with today's sparkline, the price and its change, ticking
+// live. Fictional tickers; sized for a region about 300 points wide. It
+// follows the page's appearance.
+import { cleanup, computed, mount, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
+import { colorScheme } from "nsh/device";
 
-type Range = "1D" | "1W" | "1M";
-
-// Normalized closes (start = 100) per range, fixed so the demo needs no network.
-const SERIES: Record<Range, { a: number[]; b: number[] }> = {
-  "1D": {
-    a: [100, 100.4, 100.1, 100.9, 101.3, 101.0, 101.6, 101.9, 101.4, 102.1],
-    b: [100, 99.2, 99.8, 100.6, 101.9, 102.4, 101.7, 103.0, 103.8, 104.2],
+const PALETTES = {
+  dark: {
+    background: "#18191c",
+    text: "#eceef1",
+    muted: "#8d9198",
+    faint: "#5a5e65",
+    line: "#1f2124",
+    up: "#45d49a",
+    down: "#ff6170",
   },
-  "1W": {
-    a: [100, 101.2, 100.6, 102.0, 101.4, 102.8, 103.1, 102.6, 103.9, 104.4],
-    b: [100, 98.6, 101.1, 103.4, 102.2, 105.0, 106.3, 105.1, 107.8, 108.6],
-  },
-  "1M": {
-    a: [100, 97.8, 99.4, 101.9, 100.8, 103.6, 105.2, 104.1, 106.9, 108.3],
-    b: [100, 103.2, 101.0, 106.4, 109.8, 107.2, 112.5, 115.1, 113.0, 118.4],
+  light: {
+    background: "#ffffff",
+    text: "#16171a",
+    muted: "#5f636a",
+    faint: "#9a9ea4",
+    line: "#ececea",
+    up: "#16a06a",
+    down: "#e5484d",
   },
 };
+const palette = () => PALETTES[colorScheme() === "light" ? "light" : "dark"];
 
-// The site's graphite palette: the citrus accent for the lead series.
-const CITRUS = "#c8f26d";
-const SLATE = "#8d9198";
-
-function change(values: number[]): string {
-  const delta = values[values.length - 1] - values[0];
-  return `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`;
+interface Stock {
+  code: string;
+  name: string;
+  prevClose: number;
+  points: () => number[];
+  set: (points: number[]) => void;
 }
 
-function Chart(props: { range: () => Range }) {
+/** Points a sparkline draws. */
+const POINTS = 24;
+
+/** A seeded random walk, so the first frame is the same on every load. */
+function walk(seed: number, start: number, volatility: number, drift: number): number[] {
+  let x = seed;
+  const rand = () => ((x = (x * 16807) % 2147483647) / 2147483647) - 0.5;
+  const out = [start];
+  for (let i = 1; i < POINTS; i++) out.push(out[i - 1] * (1 + rand() * volatility + drift));
+  return out;
+}
+
+function stock(code: string, name: string, prevClose: number, seed: number, drift: number): Stock {
+  const points = signal(walk(seed, prevClose, 0.01, drift));
+  return { code, name, prevClose, points, set: (p) => points.set(p) };
+}
+
+const STOCKS = [
+  stock("QNTM", "Quantum Silicon", 182.4, 11, 0.0016),
+  stock("ORBT", "Orbital Cloud", 64.18, 23, -0.0006),
+  stock("NVLX", "Novalux Devices", 241.9, 37, 0.0012),
+  stock("HLXS", "Helix Systems", 38.72, 51, 0.0018),
+];
+
+const last = (s: Stock) => s.points()[POINTS - 1];
+const change = (s: Stock) => ((last(s) - s.prevClose) / s.prevClose) * 100;
+const signed = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+const tone = (v: number) => (v > 0 ? palette().up : v < 0 ? palette().down : palette().muted);
+
+/** Today's line through the points, a soft fill under it and a dot at the
+ * live price; the previous close dotted. */
+function Sparkline(props: { stock: Stock }) {
   return (
     <Canvas
-      style={{ height: 112, alignSelf: "stretch" }}
-      draw={(ctx, size) => {
-        const { a, b } = SERIES[props.range()];
-        const all = [...a, ...b];
-        const min = Math.min(...all) - 0.6;
-        const max = Math.max(...all) + 0.6;
-        const x = (i: number) => (i / (a.length - 1)) * size.width;
-        const y = (v: number) => size.height - ((v - min) / (max - min)) * (size.height - 8) - 4;
-        // Baseline at the start value.
-        ctx.strokeStyle = "#2c2e33";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
+      pointerEvents="none"
+      style={{ width: 64, height: 28 }}
+      draw={(ctx, { width, height }) => {
+        const ys = props.stock.points();
+        const color = tone(change(props.stock));
+        let lo = props.stock.prevClose;
+        let hi = lo;
+        for (const v of ys) {
+          lo = Math.min(lo, v);
+          hi = Math.max(hi, v);
+        }
+        const pad = 4;
+        const X = (k: number) => pad + (k / (POINTS - 1)) * (width - pad * 2);
+        const Y = (v: number) => pad + ((hi - v) / (hi - lo || 1)) * (height - pad * 2);
+        const curve = () => {
+          ctx.moveTo(X(0), Y(ys[0]));
+          for (let k = 1; k < POINTS - 1; k++) {
+            ctx.quadraticCurveTo(X(k), Y(ys[k]), (X(k) + X(k + 1)) / 2, (Y(ys[k]) + Y(ys[k + 1])) / 2);
+          }
+          ctx.lineTo(X(POINTS - 1), Y(ys[POINTS - 1]));
+        };
+        const fill = ctx.createLinearGradient(0, 0, 0, height);
+        fill.addColorStop(0, color === palette().up ? "rgba(69,212,154,0.22)" : "rgba(255,97,112,0.22)");
+        fill.addColorStop(1, "rgba(0,0,0,0)");
         ctx.beginPath();
-        ctx.moveTo(0, y(100));
-        ctx.lineTo(size.width, y(100));
+        curve();
+        ctx.lineTo(X(POINTS - 1), height);
+        ctx.lineTo(X(0), height);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+
+        ctx.strokeStyle = palette().faint;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([1, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad, Y(props.stock.prevClose));
+        ctx.lineTo(width - pad, Y(props.stock.prevClose));
         ctx.stroke();
         ctx.setLineDash([]);
-        const line = (values: number[], color: string, fill: boolean) => {
-          ctx.beginPath();
-          values.forEach((v, i) => (i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v))));
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.lineJoin = "round";
-          ctx.stroke();
-          if (fill) {
-            ctx.lineTo(size.width, size.height);
-            ctx.lineTo(0, size.height);
-            ctx.closePath();
-            const gradient = ctx.createLinearGradient(0, 0, 0, size.height);
-            gradient.addColorStop(0, "rgba(200, 242, 109, 0.18)");
-            gradient.addColorStop(1, "rgba(200, 242, 109, 0)");
-            ctx.fillStyle = gradient;
-            ctx.fill();
-          }
-          const last = values.length - 1;
-          ctx.beginPath();
-          ctx.arc(x(last) - 2, y(values[last]), 3, 0, Math.PI * 2);
-          ctx.fillStyle = color;
-          ctx.fill();
-        };
-        line(a, SLATE, false);
-        line(b, CITRUS, true);
+
+        ctx.beginPath();
+        curve();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(X(POINTS - 1), Y(ys[POINTS - 1]), 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(X(POINTS - 1), Y(ys[POINTS - 1]), 2.5, 0, Math.PI * 2);
+        ctx.fill();
       }}
     />
   );
 }
 
-function Legend(props: { color: string; symbol: string; value: () => string; strong?: boolean }) {
+function Row(props: { stock: Stock; first: boolean }) {
   return (
-    <View class="flex-1 gap-0.5">
-      <View class="flex-row items-center gap-1.5">
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: props.color }} />
-        <Text class="text-xs text-[#8d9198]">{props.symbol}</Text>
+    <View style={{ height: 54, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 }}>
+      <If when={!props.first}>
+        <View style={{ position: "absolute", top: 0, left: 14, right: 0, height: 1, backgroundColor: palette().line }} />
+      </If>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: "600", color: palette().text }}>
+          {props.stock.code}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: 11.5, color: palette().muted }}>
+          {props.stock.name}
+        </Text>
       </View>
-      <Text class={props.strong ? "text-lg font-semibold text-[#eceef1]" : "text-lg font-semibold text-[#8d9198]"}>
-        {props.value()}
-      </Text>
+      <Sparkline stock={props.stock} />
+      <View style={{ width: 70, alignItems: "flex-end", gap: 2 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: palette().text, fontVariant: ["tabular-nums"] }}>
+          {last(props.stock).toFixed(2)}
+        </Text>
+        <Text style={{ fontSize: 11.5, fontWeight: "500", color: tone(change(props.stock)), fontVariant: ["tabular-nums"] }}>
+          {signed(change(props.stock))}%
+        </Text>
+      </View>
     </View>
   );
 }
 
 function App() {
-  const range = signal<Range>("1W");
-  const alert = signal(false);
-  const data = computed(() => SERIES[range()]);
-  const ranges: Range[] = ["1D", "1W", "1M"];
+  // A tick: one stock moves; every few ticks the line advances a point.
+  let tick = 0;
+  const id = setInterval(() => {
+    tick++;
+    const s = STOCKS[tick % STOCKS.length];
+    const p = s.points();
+    const next = p[POINTS - 1] * (1 + (Math.random() - 0.47) * 0.006);
+    s.set(tick % 8 === 0 ? [...p.slice(1), next] : [...p.slice(0, POINTS - 1), next]);
+  }, 450);
+  cleanup(() => clearInterval(id));
+
+  const composite = computed(() => STOCKS.reduce((sum, s) => sum + change(s), 0) / STOCKS.length);
 
   return (
-    <View
-      class="flex-1 px-4 pt-4 pb-4 gap-3.5"
-      style={{ backgroundColor: "#18191c", backgroundImage: "linear-gradient(180deg, #1d1e22, #17181b)" }}
-    >
-      <View class="flex-row items-center justify-between">
-        <Text class="text-[15px] font-semibold text-[#eceef1]">NVDA vs AAPL</Text>
-        <View
-          class="flex-row rounded-[10px] border border-[#1f2124] bg-[#0c0d0f] p-0.5"
-          style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" }}
-        >
-          <Each of={ranges}>
-            {(r) => (
-              <View
-                onPress={() => range.set(r())}
-                class="rounded-[7px] px-2 py-1 transition-colors"
-                style={
-                  range() === r()
-                    ? { backgroundColor: "#24262a", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)" }
-                    : {}
-                }
-              >
-                <Text class={range() === r() ? "text-xs font-semibold text-[#eceef1]" : "text-xs text-[#8d9198]"}>{r()}</Text>
-              </View>
-            )}
-          </Each>
-        </View>
-      </View>
-
-      <View class="flex-row">
-        <Legend color={CITRUS} symbol="NVDA" value={() => change(data().b)} strong />
-        <Legend color={SLATE} symbol="AAPL" value={() => change(data().a)} />
-      </View>
-
-      <Chart range={range} />
-
-      <View
-        onPress={() => alert.update((v) => !v)}
-        activeOpacity={0.7}
-        class="h-10 flex-row items-center justify-center gap-1.5 rounded-[10px] transition-colors"
-        style={
-          alert()
-            ? { backgroundColor: "rgba(69,212,154,0.14)", backgroundImage: "none", boxShadow: "none" }
-            : {
-                backgroundColor: "#eceef1",
-                backgroundImage: "linear-gradient(180deg, #fbfbfc, #d4d6d9)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
-              }
-        }
-      >
-        <Text class={alert() ? "text-sm font-semibold text-[#45d49a]" : "text-sm font-semibold text-[#111214]"}>
-          {alert() ? "✓  Alert set at +10%" : "Alert me at +10%"}
+    <View style={{ flex: 1, backgroundColor: palette().background, paddingTop: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
+        <Text style={{ flex: 1, fontSize: 16, fontWeight: "700", color: palette().text }}>Watchlist</Text>
+        <Text style={{ fontSize: 12, color: palette().muted }}>Tech</Text>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: tone(composite()), fontVariant: ["tabular-nums"] }}>
+          {signed(composite())}%
         </Text>
       </View>
+      <Each of={STOCKS}>{(s, i) => <Row stock={s()} first={i() === 0} />}</Each>
     </View>
   );
 }

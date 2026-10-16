@@ -1,0 +1,286 @@
+---
+// The home hero's background: the site's dot grid drawn on a 2D canvas. A
+// slow wave runs through it; near the pointer the dots brighten, swell into
+// the citrus accent and drift a little (parallax), under a faint glow that
+// follows the pointer with easing. The canvas never takes input: the
+// listeners are on the hero, passive. It is faint and fades toward the copy,
+// so text keeps its contrast. Colors are the `--hero-*` tokens below, read
+// again when the theme changes.
+//
+// `?fieldperf` logs the mean draw time every 120 frames.
+---
+<canvas class="hero-field" aria-hidden="true"></canvas>
+
+<style is:global>
+  :root {
+    --hero-dot: rgba(255, 255, 255, 0.14);
+    --hero-dot-hot: var(--citrus, #c8f26d);
+    --hero-glow: rgba(200, 242, 109, 0.08);
+  }
+  html.light,
+  html:not(.dark) {
+    --hero-dot: rgba(22, 23, 26, 0.14);
+    --hero-dot-hot: #5a7a12;
+    --hero-glow: rgba(90, 122, 18, 0.08);
+  }
+  .hero-field {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+</style>
+
+<script>
+  const SPACING = 26; // CSS px between dots
+  const MAX_DOTS = 2500;
+  const REACH = 220; // the pointer's reach, CSS px
+  const GLOW = 260; // the glow's radius, CSS px
+  const BASE_LEVELS = 6;
+  const HOT_LEVELS = 6;
+  const STACKED = 1080; // under this width the hero stacks: copy above, device below
+
+  const smooth = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  function mount(canvas: HTMLCanvasElement) {
+    const hero = (canvas.closest('.hero') as HTMLElement | null) ?? canvas.parentElement!;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const root = document.documentElement;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const perf = location.search.includes('fieldperf');
+
+    let w = 0, h = 0, dpr = 1, n = 0;
+    let bx = new Float32Array(0), by = new Float32Array(0);
+    let depth = new Float32Array(0), side = new Float32Array(0), phase = new Float32Array(0);
+    let baseBuckets = new Uint16Array(0), hotBuckets = new Uint16Array(0);
+    let hotF = new Float32Array(0), dxs = new Float32Array(0), dys = new Float32Array(0);
+    const baseCount = new Uint32Array(BASE_LEVELS);
+    const hotCount = new Uint32Array(HOT_LEVELS);
+
+    let dot = '', hot = '';
+    const glow = document.createElement('canvas');
+    const glowCtx = glow.getContext('2d')!;
+
+    // Pointer: the target, the eased position and the eased strength (0 idle, 1 active).
+    let tx = 0, ty = 0, px = 0, py = 0, strength = 0, active = false;
+    let visible = true, running = false, frame = 0, last = 0, t = 0;
+    let perfSum = 0, perfFrames = 0;
+
+    function readColors() {
+      const style = getComputedStyle(root);
+      dot = style.getPropertyValue('--hero-dot').trim() || 'rgba(255,255,255,.10)';
+      hot = style.getPropertyValue('--hero-dot-hot').trim() || style.getPropertyValue('--citrus').trim() || '#c8f26d';
+      const glowColor = style.getPropertyValue('--hero-glow').trim() || 'rgba(200,242,109,.08)';
+      const size = Math.ceil(GLOW * 2 * dpr);
+      glow.width = glow.height = size;
+      const g = glowCtx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      g.addColorStop(0, glowColor);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      glowCtx.clearRect(0, 0, size, size);
+      glowCtx.fillStyle = g;
+      glowCtx.fillRect(0, 0, size, size);
+    }
+
+    function layout() {
+      const rect = hero.getBoundingClientRect();
+      w = Math.max(1, Math.round(rect.width));
+      h = Math.max(1, Math.round(rect.height));
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      let s = SPACING;
+      if ((w / s + 2) * (h / s + 2) > MAX_DOTS) s = Math.sqrt((w * h) / MAX_DOTS) + 1;
+      const cols = Math.ceil(w / s) + 2;
+      const rows = Math.ceil(h / s) + 2;
+      n = Math.min(MAX_DOTS, cols * rows);
+      bx = new Float32Array(n); by = new Float32Array(n);
+      depth = new Float32Array(n); side = new Float32Array(n); phase = new Float32Array(n);
+      hotF = new Float32Array(n); dxs = new Float32Array(n); dys = new Float32Array(n);
+      baseBuckets = new Uint16Array(BASE_LEVELS * n);
+      hotBuckets = new Uint16Array(HOT_LEVELS * n);
+      const stacked = w < STACKED;
+      const ox = (w - (cols - 1) * s) / 2, oy = (h - (rows - 1) * s) / 2;
+      let i = 0;
+      for (let r = 0; r < rows && i < n; r++) {
+        for (let c = 0; c < cols && i < n; c++, i++) {
+          const x = ox + c * s, y = oy + r * s;
+          bx[i] = x; by[i] = y;
+          // A fixed pseudo-random depth per dot: the parallax is uneven, like layers.
+          const hash = Math.sin(c * 12.9898 + r * 78.233) * 43758.5453;
+          depth[i] = 0.35 + 0.65 * (hash - Math.floor(hash));
+          // Faint over the copy (left, or top when stacked), full around the device.
+          side[i] = 0.18 + 0.82 * (stacked ? smooth(0.3, 0.75, y / h) : smooth(0.12, 0.62, x / w));
+          phase[i] = x * 0.011 + y * 0.007;
+        }
+      }
+      if (!active) { px = tx = w * 0.72; py = ty = h * 0.5; }
+      readColors();
+      if (!running) draw(0);
+    }
+
+    function draw(dt: number) {
+      const start = perf ? performance.now() : 0;
+      t += dt;
+      // Ease the pointer and its strength (frame-rate independent).
+      const k = 1 - Math.exp(-dt * 7);
+      px += (tx - px) * k;
+      py += (ty - py) * k;
+      strength += ((active ? 1 : 0) - strength) * (1 - Math.exp(-dt * (active ? 5 : 2.2)));
+
+      const c = ctx!;
+      c.clearRect(0, 0, w, h);
+
+      // The glow under the dots.
+      if (strength > 0.01) {
+        c.globalAlpha = strength;
+        c.drawImage(glow, px - GLOW, py - GLOW, GLOW * 2, GLOW * 2);
+      }
+
+      // Parallax: the whole field leans away from the pointer, deeper dots more.
+      const leanX = (px - w / 2) * -0.014 * strength;
+      const leanY = (py - h / 2) * -0.014 * strength;
+      const reach2 = REACH * REACH;
+      const wave = t * 0.55;
+      baseCount.fill(0);
+      hotCount.fill(0);
+      for (let i = 0; i < n; i++) {
+        const d = depth[i];
+        let x = bx[i] + leanX * d;
+        let y = by[i] + leanY * d + Math.sin(phase[i] - wave) * 1.4 * d;
+        const ex = x - px, ey = y - py;
+        const d2 = ex * ex + ey * ey;
+        let f = 0;
+        if (strength > 0.01 && d2 < reach2) {
+          const q = 1 - d2 / reach2;
+          f = q * q * strength;
+          // Swell outward a little.
+          const len = Math.sqrt(d2) || 1;
+          x += (ex / len) * f * 7;
+          y += (ey / len) * f * 7;
+        }
+        dxs[i] = x; dys[i] = y; hotF[i] = f;
+        const glowWave = 0.5 + 0.5 * Math.sin(phase[i] * 0.6 - wave * 0.8);
+        const a = side[i] * (0.4 + 0.6 * glowWave);
+        const level = Math.min(BASE_LEVELS - 1, (a * BASE_LEVELS) | 0);
+        baseBuckets[level * n + baseCount[level]++] = i;
+        if (f > 0.04) {
+          const hl = Math.min(HOT_LEVELS - 1, (f * HOT_LEVELS) | 0);
+          hotBuckets[hl * n + hotCount[hl]++] = i;
+        }
+      }
+
+      // Base dots: one path per alpha level.
+      c.fillStyle = dot;
+      for (let l = 0; l < BASE_LEVELS; l++) {
+        const count = baseCount[l];
+        if (!count) continue;
+        c.globalAlpha = (l + 1) / BASE_LEVELS;
+        c.beginPath();
+        const off = l * n;
+        for (let j = 0; j < count; j++) {
+          const i = baseBuckets[off + j];
+          c.rect(dxs[i] - 0.8, dys[i] - 0.8, 1.6, 1.6);
+        }
+        c.fill();
+      }
+
+      // Hot dots near the pointer: round, larger and citrus, one path per level.
+      c.fillStyle = hot;
+      for (let l = 0; l < HOT_LEVELS; l++) {
+        const count = hotCount[l];
+        if (!count) continue;
+        const level = (l + 1) / HOT_LEVELS;
+        const r = 1 + 2.1 * level;
+        c.beginPath();
+        const off = l * n;
+        for (let j = 0; j < count; j++) {
+          const i = hotBuckets[off + j];
+          const x = dxs[i], y = dys[i];
+          c.moveTo(x + r, y);
+          c.arc(x, y, r, 0, Math.PI * 2);
+        }
+        // Over the copy the accent stays calmer.
+        c.globalAlpha = Math.min(1, level * 1.1);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+
+      if (perf) {
+        perfSum += performance.now() - start;
+        if (++perfFrames === 120) {
+          console.info('[hero-field]', `mean draw ${(perfSum / perfFrames).toFixed(3)} ms over ${perfFrames} frames, ${n} dots`);
+          perfSum = 0;
+          perfFrames = 0;
+        }
+      }
+    }
+
+    function tick(now: number) {
+      if (!running) return;
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
+      last = now;
+      draw(dt);
+      frame = requestAnimationFrame(tick);
+    }
+
+    function update() {
+      const should = visible && !document.hidden && !reduced.matches;
+      if (should && !running) {
+        running = true;
+        last = 0;
+        frame = requestAnimationFrame(tick);
+      } else if (!should && running) {
+        running = false;
+        cancelAnimationFrame(frame);
+      }
+      if (reduced.matches) {
+        active = false;
+        strength = 0;
+        draw(0);
+      }
+    }
+
+    const aim = (clientX: number, clientY: number) => {
+      if (reduced.matches) return;
+      const rect = hero.getBoundingClientRect();
+      tx = clientX - rect.left;
+      ty = clientY - rect.top;
+      active = true;
+    };
+    const release = () => { active = false; };
+    hero.addEventListener('pointermove', (e) => aim(e.clientX, e.clientY), { passive: true });
+    hero.addEventListener('pointerdown', (e) => aim(e.clientX, e.clientY), { passive: true });
+    hero.addEventListener('pointerleave', release, { passive: true });
+    hero.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') release(); }, { passive: true });
+    hero.addEventListener('pointercancel', release, { passive: true });
+    // Scrolling cancels touch pointers; touch events keep following the finger.
+    hero.addEventListener('touchmove', (e) => { const p = e.touches[0]; if (p) aim(p.clientX, p.clientY); }, { passive: true });
+    hero.addEventListener('touchend', release, { passive: true });
+
+    new ResizeObserver(layout).observe(hero);
+    new IntersectionObserver((entries) => {
+      visible = entries[entries.length - 1].isIntersecting;
+      update();
+    }).observe(hero);
+    document.addEventListener('visibilitychange', update);
+    reduced.addEventListener('change', update);
+
+    const recolor = () => { readColors(); if (!running) draw(0); };
+    new MutationObserver(recolor).observe(root, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', recolor);
+
+    layout();
+    update();
+  }
+
+  for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas.hero-field')) mount(canvas);
+</script>

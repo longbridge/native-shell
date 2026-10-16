@@ -3,8 +3,10 @@
 
 /* ====================================================================
    Tokens. The gallery's graphite look (examples/gallery/ui.tsx): dark
-   surfaces lit from above, one citrus accent, tinted status colours. The
-   site is dark only. See DESIGN.md before adding one.
+   surfaces lit from above, one citrus accent, tinted status colours; and
+   its light variant (`html.light`, below), warm-neutral surfaces with the
+   same finishes. The pre-paint script in BaseLayout picks the class. See
+   DESIGN.md before adding one.
    ==================================================================== */
 
 :root {
@@ -30,7 +32,8 @@
   --sidebar: #141518;
   --sidebar-accent: #24262a;
 
-  /* The one accent, and the light primary button. */
+  /* The one accent (text, lines and small fills), and the light primary
+     button. The bright citrus fill is `--finish-accent-bg` in both themes. */
   --citrus: #c8f26d;
   --on-citrus: #13160c;
   --brand: #eceef1;
@@ -89,10 +92,14 @@
   --shadow-panel: 0 20px 50px -24px rgb(0 0 0 / 70%);
   --shadow-dialog: 0 25px 60px -12px rgb(0 0 0 / 70%);
 
-  /* The phone's bezel and screen; demos run in the dark appearance. */
-  --bezel: #1a1b1e;
-  --bezel-edge: #34363b;
+  /* The demo frame's screen; demos run in the dark appearance. */
   --screen: #101113;
+
+  --nav-shadow: 0 1px 0 rgb(0 0 0 / 35%);
+  --page-light: rgb(255 255 255 / 3.5%);
+  --highlight: rgb(255 255 255 / 6%);
+  --band-tinted: linear-gradient(180deg, #0d0e10, #0b0c0e);
+  --logo-dot: #eef0f2;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto,
     "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -104,6 +111,85 @@
   --layout-max-width: 1280px;
 
   color-scheme: dark;
+}
+
+/* The light variant: warm-neutral surfaces, the same finishes, the accent
+   darkened so it reads as text; demos keep running dark (`--screen`). */
+html.light {
+  --background: #f4f4f2;
+  --foreground: #16171a;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --inset: #f0f0ec;
+  --raised: #fbfbf9;
+  --secondary: #ebebe7;
+  --muted: #f0f0ec;
+  --muted-foreground: #5f636a;
+  --faint: #9a9ea4;
+  --border: #e4e4e0;
+  --line: #ececea;
+  --border-hover: #d3d3ce;
+  --ring: #5a7a12;
+  --sidebar: #efefec;
+  --sidebar-accent: #ebebe7;
+
+  --citrus: #5a7a12;
+  --on-citrus: #13160c;
+  --brand: #16171a;
+  --brand-hover: #000000;
+  --brand-contrast: #ffffff;
+  --brand-line: color-mix(in srgb, var(--foreground) 26%, transparent);
+
+  --data-1: #9bb6ee;
+  --data-2: #3b6fd8;
+  --data-3: #3b6fd8;
+  --doc-link: #4f6b0f;
+  --doc-link-hover: #2f4206;
+
+  --selection: #3b6fd8;
+  --success: #16a06a;
+  --warning: #b7791f;
+  --destructive: #e5484d;
+  --important: #7c5cd6;
+
+  --finish-card-bg: linear-gradient(180deg, #ffffff 0%, #fafaf8 100%);
+  --finish-card: inset 0 1px 0 #ffffff, 0 1px 2px rgb(24 24 16 / 5%), 0 8px 24px rgb(24 24 16 / 6%);
+  --finish-flat: inset 0 1px 0 #ffffff, 0 1px 2px rgb(24 24 16 / 5%);
+  --finish-inset: inset 0 1px 2px rgb(24 24 16 / 8%);
+  --finish-raised-bg: linear-gradient(180deg, #fbfbf9 0%, #f0f0ec 100%);
+  --finish-raised: inset 0 1px 0 #ffffff, 0 1px 2px rgb(24 24 16 / 9%);
+  --finish-primary-bg: linear-gradient(180deg, #2c2e33 0%, #16171a 100%);
+  --finish-primary-hover-bg: linear-gradient(180deg, #34363c 0%, #1c1d21 100%);
+  --finish-primary: inset 0 1px 0 rgb(255 255 255 / 14%), 0 2px 8px rgb(24 24 16 / 22%);
+  --finish-accent: inset 0 1px 0 rgb(255 255 255 / 55%), 0 2px 8px rgb(110 140 30 / 22%);
+
+  --code-bg: #f7f7f4;
+  --code-fg: #24262a;
+  --code-keyword: #2f5bd3;
+  --code-string: #4c7a0e;
+  --code-comment: #9a9ea4;
+  --code-fn: #9a5a0a;
+  --code-type: #7444c9;
+  --code-constant: #c2410c;
+  --code-property: #0f7490;
+
+  --grid-line: rgb(22 23 26 / 5%);
+  --scrollbar-thumb: rgb(22 23 26 / 14%);
+  --scrollbar-thumb-hover: rgb(22 23 26 / 32%);
+
+  --shadow-hairline: 0 0 0 0.5px rgb(0 0 0 / 14%);
+  --shadow-raise: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow-window: 0 1px 1px rgb(24 24 16 / 4%), 0 10px 24px -8px rgb(24 24 16 / 12%), 0 40px 72px -28px rgb(24 24 16 / 18%);
+  --shadow-panel: 0 20px 50px -24px rgb(24 24 16 / 22%);
+  --shadow-dialog: 0 25px 60px -12px rgb(24 24 16 / 28%);
+
+  --nav-shadow: none;
+  --page-light: rgb(255 255 255 / 60%);
+  --highlight: rgb(255 255 255 / 90%);
+  --band-tinted: linear-gradient(180deg, #efefec, #ececE8);
+  --logo-dot: #16171a;
+
+  color-scheme: light;
 }
 
 /* ====================================================================
@@ -121,7 +207,7 @@ html {
 body {
   background: var(--background);
   /* A faint light from above, as on the gallery's page. */
-  background-image: radial-gradient(120% 60rem at 50% -20rem, rgb(255 255 255 / 3.5%), transparent 70%);
+  background-image: radial-gradient(120% 60rem at 50% -20rem, var(--page-light), transparent 70%);
   background-repeat: no-repeat;
   color: var(--foreground);
   font-size: 15px;
@@ -191,7 +277,7 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   height: var(--nav-height);
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--background) 80%, transparent);
-  box-shadow: 0 1px 0 rgb(0 0 0 / 35%);
+  box-shadow: var(--nav-shadow);
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
 }
@@ -689,7 +775,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   th, td { padding: 0.45rem 0.75rem; line-height: 1.55; text-align: left; vertical-align: top; }
   thead th { border-bottom: 1px solid var(--line); }
   tbody tr + tr td { border-top: 1px solid var(--line); }
-  tbody tr:hover td { background: rgb(255 255 255 / 1.5%); }
+  tbody tr:hover td { background: color-mix(in srgb, var(--foreground) 2%, transparent); }
   td:first-child code { white-space: nowrap; overflow-wrap: normal; }
 
   blockquote { padding: 0.1rem 0 0.1rem 1.1rem; border-left: 2px solid var(--citrus); color: var(--muted-foreground); }
@@ -714,7 +800,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
     border: 1px solid color-mix(in srgb, var(--callout) 26%, var(--border));
     border-radius: var(--radius-card);
     background: linear-gradient(180deg, color-mix(in srgb, var(--callout) 9%, var(--card)), color-mix(in srgb, var(--callout) 5%, var(--card)));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 1px 2px rgb(0 0 0 / 30%);
+    box-shadow: var(--finish-flat);
     color: var(--foreground);
   }
   .callout > * { margin-block: 0.45rem; }
@@ -796,24 +882,68 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
    device, iframe included, so the app keeps its own layout width. */
 .phone {
   --phone-scale: 0.74;
-  --phone-pad: 10px;
+  --phone-pad: 7px;
   position: relative;
   flex-shrink: 0;
   width: calc(var(--phone-w) * 1px * var(--phone-scale) + var(--phone-pad) * 2);
-  padding: var(--phone-pad);
-  border-radius: calc(54px * var(--phone-scale) + var(--phone-pad));
-  background: var(--bezel);
-  background-image: linear-gradient(160deg, #2a2c30, #121315);
-  box-shadow: inset 0 0 0 1px var(--bezel-edge), inset 0 1px 0 rgb(255 255 255 / 10%), 0 0 0 1px rgb(0 0 0 / 50%), var(--shadow-window);
+  padding: 0 var(--phone-pad) var(--phone-pad);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card) var(--finish-card-bg);
+  box-shadow: var(--finish-card);
 }
+
+/* The frame's bar: an icon tile, the demo's file, a live badge. */
+.phone__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 34px;
+  padding: 0 0.2rem;
+  font-size: 0.72rem;
+}
+.phone__tile {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--finish-accent-bg);
+  box-shadow: var(--finish-accent);
+  color: var(--on-citrus);
+}
+.phone__title { overflow: hidden; color: var(--muted-foreground); font: 0.7rem/1 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.phone__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+.phone__badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 
 .phone__screen {
   position: relative;
   width: calc(var(--phone-w) * 1px * var(--phone-scale));
   height: calc(var(--phone-h) * 1px * var(--phone-scale));
   overflow: hidden;
-  border-radius: calc(54px * var(--phone-scale));
+  border-radius: 12px;
   background: var(--screen);
+  box-shadow: 0 0 0 1px var(--line);
+}
+/* The inset's inner shadow, over the running app too. */
+.phone__screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 45%);
+  pointer-events: none;
 }
 
 .phone__screen iframe {
@@ -924,7 +1054,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   justify-content: center;
   padding: 2.25rem 1rem;
   background-color: var(--inset);
-  box-shadow: inset 0 1px 3px rgb(0 0 0 / 45%);
+  box-shadow: var(--finish-inset);
   background-image:
     linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);

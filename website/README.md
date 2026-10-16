@@ -1,4 +1,4 @@
-# native-shell website
+# Native Shell website
 
 The documentation site for nsh, published at <https://native-shell.com>
 (`src/lib/site.ts`). Astro (static output), Tailwind 4, Pagefind search,
@@ -92,7 +92,7 @@ base64url).
 
 `demos/<name>.tsx` are small runnable nsh apps (try one with
 `nsh run website/demos/<name>.tsx`). A page with `demo: <name>` shows the demo
-after its first paragraph: a phone frame (390×844 points, scaled down) with
+after its first paragraph: a frame at phone width (390×844 points, scaled down) with
 the app running in an iframe of `play/index.html#<name>`, beside its source
 (wide pages) or behind a Preview / Source switch (narrow ones), plus an
 "Open in new tab" link. The home page runs `demos/counter.tsx` the same way
@@ -113,7 +113,7 @@ dark appearance (`?theme=dark`) and are drawn in the site's graphite look;
 without that theme. The
 player is built separately from the site. Whether it exists is decided
 at build time: without `public/play/index.html`, pages show the demo's source
-only and the home page's phone shows a placeholder. Adding or removing the
+only and the home page's host app shows a placeholder. Adding or removing the
 player, or editing a demo, invalidates Astro's content cache automatically
 (`demoState()` in `src/lib/demo.js`).
 
@@ -124,7 +124,7 @@ player, or editing a demo, invalidates Astro's content cache automatically
 | `src/content.config.ts` | The eight collections (four sections × two locales) and the schema |
 | `src/lib/sections.ts` | Section labels, page lists in sidebar order, routes |
 | `src/lib/remark-*.js`, `rehype-heading-anchors.js` | Title removal, callouts, `.md` links, demo insertion, heading anchors |
-| `src/lib/demo.js` | Demo sources, the phone frame and the demo panel markup |
+| `src/lib/demo.js` | Demo sources, the demo frame and the demo panel markup |
 | `src/lib/markdown-endpoint.ts`, `llms.ts` | `<page>.md`, `llms.txt`, `llms-full.txt` |
 | `src/pages/[section]/[...slug].astro` | Content pages (and `zh-CN/`); `[section].md.ts` / `[...slug].md.ts` the Markdown |
 | `src/components/Home.astro` | The home page in both languages |

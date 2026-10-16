@@ -13,12 +13,14 @@ the look of the UI nsh draws.
    standalone apps third), never presented as a way to write whole apps, and
    never compared with other frameworks outside the comparison page. Architecture comes further down.
 2. **Show the real thing, in its real place.** The hero is a native host app
-   (drawn as such: status bar, navigation bar, chat, input) whose assistant
-   answers with a module; only the dashed, tagged region is nsh, and it runs
-   the real `demos/home-module.tsx` through the web player. The legend says
-   which part is the host and that the module is a web preview. Documentation
-   pages run their demos in a phone frame; the code shown is always the
-   source of what runs.
+   (a chat and its composer) whose assistant answers with a module; only the
+   dashed, tagged region is nsh, and it runs the real `demos/home-module.tsx`
+   (a live watchlist in the gallery's Stocks look, fictional tickers)
+   through the web player. The legend says which part is the host and that
+   the module is a web preview. Documentation pages run their demos in a
+   frame at phone width; the code shown is always the source of what runs.
+   The product is written "Native Shell" where it is a name; `nsh` and
+   `native-shell` stay as they are in code, commands and URLs.
 3. **Specifics over adjectives.** Every capability card names something a
    reader can check in the repository: a crate, an element, a module, a
    command (`Taffy`, `<List>`, `nsh/animated`, `nsh publish`). Claims track
@@ -29,8 +31,20 @@ the look of the UI nsh draws.
 
 ## Colour
 
-Tokens live in `:root` in `src/styles/global.css`. The site is dark only
-(`<html class="dark">`, no theme switch).
+Tokens live in `src/styles/global.css`: `:root` holds the dark theme,
+`html.light` its light variant. A pre-paint script in `BaseLayout.astro`
+sets `dark` or `light` on `<html>` from `localStorage.theme` ("light",
+"dark", or absent for the system's), so nothing flashes; the nav's
+System / Light / Dark segmented control (`ThemeSwitch.astro`) sets it.
+
+The light variant keeps the design and changes the surfaces: page
+`#f4f4f2`, card `#ffffff` (a `#ffffff → #fafaf8` gradient, a `#e4e4e0`
+border, soft shadow), inset `#f0f0ec` recessed, raised `#fbfbf9 → #f0f0ec`
+with a top highlight; text `#16171a`, muted `#5f636a`, faint `#9a9ea4`. The
+accent token (`--citrus`) becomes `#5a7a12` so it reads as text and lines;
+the bright citrus stays as the fill of accent badges and buttons
+(`--finish-accent-bg`, dark text). Primary buttons are dark on light.
+The values below are the dark theme's.
 
 - **Surfaces**, as in the gallery: page `#101113`, card `#18191c`, inset
   `#0c0d0f`, raised `#24262a`; border `#2c2e33`, hairline `#1f2124`; text
@@ -52,11 +66,12 @@ Tokens live in `:root` in `src/styles/global.css`. The site is dark only
   light theme's hex values (`src/light.theme.json`) and `global.css` maps
   them onto the tokens, so fenced blocks, demo sources and the home page's
   code share one palette. Never hand-colour a snippet.
-- Diagrams in `public/diagrams` keep a light and a dark file; the site shows
-  the dark one, whose `:root` tokens use the same palette.
+- Diagrams in `public/diagrams` come as a light and a dark file, each with
+  `:root` tokens in its theme's palette; the page shows the one of its theme.
 - Radii: cards 16px, insets 12px, controls 10px.
 - The logo is the app icon's mark (`public/logo.svg`, inline in
-  `Logo.astro`): a citrus arch holding a light dot. The favicon
+  `Logo.astro`): a citrus arch holding a light dot (a dark one on the light
+  theme, `--logo-dot`). The favicon
   (`favicon.svg`), `apple-touch-icon.png` and `icon-512.png` (og:image) are
   the full icon on graphite.
 
@@ -89,28 +104,40 @@ Chinese); `ui-monospace` / SF Mono for code. No webfonts. Base 15px.
 ## The hero story
 
 The hero plays once on load (Replay restarts it): the question rises, the
-assistant types, a pending card ticks Compiled → Signature verified →
-Sandboxed, then the live module fades in once both the story (≥3.2s) and the
-frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
-with reduced motion the final state shows at once. The host app is drawn in
-the same graphite look as the page: dark surfaces, the user's bubble and the
-assistant's avatar in citrus, the module on a card with the card finish, its
-dashed region and tag citrus, the composer a recessed field with a light
-round send button.
+assistant types, the module's card shows one "Generating module…" row with
+a spinner and a thin filling line, then the live module fades in once both
+the story (≥3.2s) and the frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
+with reduced motion the final state shows at once. The host app sits in a
+card frame of the site's design (a slim bar with the app's name and a "Host
+app" badge, the app on an inset surface; no device chrome) and follows the
+page's theme, the module too (the player's `?theme=`, then a message on
+every change): the user's bubble and the assistant's avatar citrus, the
+module on a card with the card finish, its dashed region and tag citrus, the
+composer a recessed field with a round primary send button.
 
-## Devices and demos
+Behind the hero, `HeroField.astro` draws the dot grid on a 2D canvas: a slow
+wave runs through it, and near the pointer (or the last touch) dots swell
+into the accent under an eased glow, faint over the copy. It pauses off
+screen and in hidden tabs, draws one static frame with reduced motion,
+never takes pointer events, and costs about 0.2 ms a frame (`?fieldperf`
+logs it).
 
-- Demos (`demos/*.tsx`) and the playground run in the dark appearance and
+## Demo frames
+
+- Demos (`demos/*.tsx`) and the playground run in the dark appearance in
+  both themes (the hero's module follows the theme) and
   are drawn with the gallery's palette and finishes too (inline hex values
   or arbitrary Tailwind values, never custom class names: the playground
   compiles without `demos/nsh.json`, which themes `nsh/ui/mobile`).
-- A demo is shown on a **phone** (`.phone`): the app renders at its real
-  390×844 points and the whole device is scaled with `--phone-scale`, so the
-  app's own layout never reflows to fit the page.
+- A demo is shown in a **frame** (`.phone`, `frameBar()` in
+  `src/lib/demo.js`): a card with the card finish, a slim bar (an icon tile,
+  the file name, a "Live" badge) and the app on an inset surface, no device
+  chrome. The app renders at its real 390×844 points and the frame is
+  scaled with `--phone-scale`, so the app's own layout never reflows.
 - The demo panel's bar carries the file name and "Open in new tab"; the stage
-  is a faint 24px blueprint grid. Wide panels show the phone and source side
+  is a faint 24px blueprint grid. Wide panels show the frame and source side
   by side (a container query on `.demo`); narrow ones switch with a segmented
-  control. View switching lives in the bar, never inside the device.
+  control. View switching lives in the panel's bar, never inside the frame.
 - Code shown as "a file you wrote" uses the macOS window frame
   (`.code-window`): traffic lights, centred title.
 

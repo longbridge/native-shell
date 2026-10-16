@@ -49,6 +49,98 @@ async function decodeCode(text: string): Promise<string> {
   return new TextDecoder().decode(await pipe(fromBase64Url(text), new DecompressionStream('deflate-raw')));
 }
 
+/**
+ * The example picker: a trigger button and a listbox popover (WAI-ARIA
+ * select-only combobox pattern, simplified). Focus moves to the list while
+ * it is open; `aria-activedescendant` names the option the keys point at.
+ */
+function mountPicker(el: HTMLElement, onPick: (value: string) => void) {
+  const trigger = el.querySelector<HTMLButtonElement>('[data-trigger]')!;
+  const menu = el.querySelector<HTMLElement>('[data-menu]')!;
+  const current = el.querySelector<HTMLElement>('[data-current]')!;
+  const options = [...menu.querySelectorAll<HTMLElement>('[role="option"]')];
+  let active = 0;
+
+  const index = () => Math.max(0, options.findIndex((o) => o.dataset.value === el.dataset.value));
+  const setActive = (i: number) => {
+    active = Math.max(0, Math.min(options.length - 1, i));
+    options.forEach((o, k) => o.toggleAttribute('data-active', k === active));
+    menu.setAttribute('aria-activedescendant', options[active].id);
+    options[active].scrollIntoView({ block: 'nearest' });
+  };
+  const isOpen = () => !menu.hidden;
+  const open = () => {
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    setActive(index());
+    menu.focus();
+  };
+  const close = (refocus = true) => {
+    if (!isOpen()) return;
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (refocus) trigger.focus();
+  };
+  const set = (value: string) => {
+    el.dataset.value = value;
+    for (const o of options) o.setAttribute('aria-selected', String(o.dataset.value === value));
+    current.textContent = `${value}.tsx`;
+  };
+  const choose = (i: number) => {
+    const value = options[i].dataset.value!;
+    close();
+    if (value === el.dataset.value) return;
+    set(value);
+    onPick(value);
+  };
+
+  trigger.addEventListener('click', () => (isOpen() ? close() : open()));
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      open();
+    }
+  });
+  menu.addEventListener('keydown', (e) => {
+    switch (e.key) {
+      case 'ArrowDown': setActive(active + 1); break;
+      case 'ArrowUp': setActive(active - 1); break;
+      case 'Home': setActive(0); break;
+      case 'End': setActive(options.length - 1); break;
+      case 'PageDown': setActive(active + 8); break;
+      case 'PageUp': setActive(active - 8); break;
+      case 'Enter':
+      case ' ': choose(active); break;
+      case 'Escape': close(); break;
+      // Tab leaves the menu closed, focus back on the trigger it belongs to.
+      case 'Tab': close(); break;
+      default: return;
+    }
+    e.preventDefault();
+  });
+  menu.addEventListener('click', (e) => {
+    const option = (e.target as HTMLElement).closest<HTMLElement>('[role="option"]');
+    if (option) choose(options.indexOf(option));
+  });
+  menu.addEventListener('pointermove', (e) => {
+    const option = (e.target as HTMLElement).closest<HTMLElement>('[role="option"]');
+    if (option && options.indexOf(option) !== active) setActive(options.indexOf(option));
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (isOpen() && !el.contains(e.target as Node)) close(false);
+  });
+  menu.addEventListener('focusout', (e) => {
+    if (isOpen() && !el.contains(e.relatedTarget as Node | null)) close(false);
+  });
+
+  return {
+    get value() {
+      return el.dataset.value ?? '';
+    },
+    set,
+  };
+}
+
 function storage(): Storage | null {
   try {
     return window.localStorage;
@@ -59,7 +151,7 @@ function storage(): Storage | null {
 
 export async function mountPlayground(root: HTMLElement) {
   const t: Copy = JSON.parse(root.dataset.copy ?? '{}');
-  const select = root.querySelector<HTMLSelectElement>('[data-example]')!;
+  const select = mountPicker(root.querySelector<HTMLElement>('[data-example]')!, (value) => pick(value));
   const status = root.querySelector<HTMLElement>('[data-status]')!;
   const log = root.querySelector<HTMLElement>('[data-log]')!;
   const frame = root.querySelector<HTMLIFrameElement>('[data-frame]');
@@ -101,7 +193,7 @@ export async function mountPlayground(root: HTMLElement) {
   }
   const named = hash.get('demo');
   if (!initial && named && (await demoSource(named)) !== null) {
-    select.value = named;
+    select.set(named);
     initial = await demoSource(named);
   }
   if (!initial) initial = storage()?.getItem(STORAGE_KEY) ?? null;
@@ -144,11 +236,11 @@ export async function mountPlayground(root: HTMLElement) {
     run();
   };
 
-  select.addEventListener('change', async () => {
-    const code = await demoSource(select.value);
+  async function pick(value: string) {
+    const code = await demoSource(value);
     if (code !== null) replace(code);
-    history.replaceState(null, '', `#demo=${encodeURIComponent(select.value)}`);
-  });
+    history.replaceState(null, '', `#demo=${encodeURIComponent(value)}`);
+  }
   root.querySelector('[data-reset]')?.addEventListener('click', async () => {
     const code = await demoSource(select.value);
     if (code !== null) replace(code);

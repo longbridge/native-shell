@@ -19,15 +19,37 @@ const abs = (route: string) => new URL(`${BASE.replace(/\/$/, '')}${route}`, SIT
 ---
 
 <!doctype html>
-<html lang={lang} class="dark">
+<html lang={lang} class="dark" data-theme-pref="system">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     {robots && <meta name="robots" content={robots} />}
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#101113" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#101113" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)" />
+    <!-- Before first paint: `theme` in localStorage is "light" or "dark";
+         absent follows the system. <html> gets `dark` or `light`. -->
+    <script is:inline>
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('theme'); } catch (e) {}
+        var pref = stored === 'light' || stored === 'dark' ? stored : 'system';
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        var root = document.documentElement;
+        var apply = function () {
+          var p = root.dataset.themePref;
+          var dark = p === 'dark' || (p === 'system' && media.matches);
+          root.classList.toggle('dark', dark);
+          root.classList.toggle('light', !dark);
+        };
+        root.dataset.themePref = pref;
+        apply();
+        media.addEventListener('change', apply);
+        window.__applyTheme = apply;
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href={`${BASE}favicon.svg`} />
     <link rel="apple-touch-icon" href={`${BASE}apple-touch-icon.png`} />
     <link rel="canonical" href={canonical} />
