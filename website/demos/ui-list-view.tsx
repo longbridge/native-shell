@@ -11,7 +11,7 @@ const people = Array.from({ length: 1000 }, (_, i) => ({
 function Header(props: { inset: () => boolean; dividers: () => boolean; toggleInset: () => void; toggleDividers: () => void }) {
   return (
     <View style={{ padding: 16, paddingTop: 24, gap: 8 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>ListView</Text>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>ListView</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Button class="flex-1" variant="secondary" title={props.inset() ? "Plain" : "Inset"} onPress={props.toggleInset} />
         <Button
@@ -45,8 +45,8 @@ function App() {
     >
       {(person) => (
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Text style={{ flex: 1, fontWeight: "600" }}>{person().name}</Text>
-          <Text style={{ color: "#737373" }}>{person().role}</Text>
+          <Text style={{ flex: 1, fontWeight: "600", color: "#eceef1" }}>{person().name}</Text>
+          <Text style={{ color: "#8d9198" }}>{person().role}</Text>
         </View>
       )}
     </ListView>

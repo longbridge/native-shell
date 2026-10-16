@@ -92,12 +92,18 @@ The hero plays once on load (Replay restarts it): the question rises, the
 assistant types, a pending card ticks Compiled → Signature verified →
 Sandboxed, then the live module fades in once both the story (≥3.2s) and the
 frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
-with reduced motion the final state shows at once. The host app is always
-light, like the module, on the dark page; the module's dashed region and
-tag are citrus.
+with reduced motion the final state shows at once. The host app is drawn in
+the same graphite look as the page: dark surfaces, the user's bubble and the
+assistant's avatar in citrus, the module on a card with the card finish, its
+dashed region and tag citrus, the composer a recessed field with a light
+round send button.
 
 ## Devices and demos
 
+- Demos (`demos/*.tsx`) and the playground run in the dark appearance and
+  are drawn with the gallery's palette and finishes too (inline hex values
+  or arbitrary Tailwind values, never custom class names: the playground
+  compiles without `demos/nsh.json`, which themes `nsh/ui/mobile`).
 - A demo is shown on a **phone** (`.phone`): the app renders at its real
   390×844 points and the whole device is scaled with `--phone-scale`, so the
   app's own layout never reflows to fit the page.

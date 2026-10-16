@@ -89,10 +89,10 @@
   --shadow-panel: 0 20px 50px -24px rgb(0 0 0 / 70%);
   --shadow-dialog: 0 25px 60px -12px rgb(0 0 0 / 70%);
 
-  /* The phone's bezel; demos render light, as their apps ask. */
+  /* The phone's bezel and screen; demos run in the dark appearance. */
   --bezel: #1a1b1e;
   --bezel-edge: #34363b;
-  --screen: #f4f5f7;
+  --screen: #101113;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto,
     "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;

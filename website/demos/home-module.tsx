@@ -22,8 +22,9 @@ const SERIES: Record<Range, { a: number[]; b: number[] }> = {
   },
 };
 
-const BLUE = "#2563eb";
-const SLATE = "#94a3b8";
+// The site's graphite palette: the citrus accent for the lead series.
+const CITRUS = "#c8f26d";
+const SLATE = "#8d9198";
 
 function change(values: number[]): string {
   const delta = values[values.length - 1] - values[0];
@@ -42,7 +43,7 @@ function Chart(props: { range: () => Range }) {
         const x = (i: number) => (i / (a.length - 1)) * size.width;
         const y = (v: number) => size.height - ((v - min) / (max - min)) * (size.height - 8) - 4;
         // Baseline at the start value.
-        ctx.strokeStyle = "#e4e4e7";
+        ctx.strokeStyle = "#2c2e33";
         ctx.lineWidth = 1;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
@@ -62,8 +63,8 @@ function Chart(props: { range: () => Range }) {
             ctx.lineTo(0, size.height);
             ctx.closePath();
             const gradient = ctx.createLinearGradient(0, 0, 0, size.height);
-            gradient.addColorStop(0, "rgba(37, 99, 235, 0.16)");
-            gradient.addColorStop(1, "rgba(37, 99, 235, 0)");
+            gradient.addColorStop(0, "rgba(200, 242, 109, 0.18)");
+            gradient.addColorStop(1, "rgba(200, 242, 109, 0)");
             ctx.fillStyle = gradient;
             ctx.fill();
           }
@@ -74,7 +75,7 @@ function Chart(props: { range: () => Range }) {
           ctx.fill();
         };
         line(a, SLATE, false);
-        line(b, BLUE, true);
+        line(b, CITRUS, true);
       }}
     />
   );
@@ -85,9 +86,9 @@ function Legend(props: { color: string; symbol: string; value: () => string; str
     <View class="flex-1 gap-0.5">
       <View class="flex-row items-center gap-1.5">
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: props.color }} />
-        <Text class="text-xs text-zinc-500">{props.symbol}</Text>
+        <Text class="text-xs text-[#8d9198]">{props.symbol}</Text>
       </View>
-      <Text class={props.strong ? "text-lg font-semibold text-zinc-900" : "text-lg font-semibold text-zinc-500"}>
+      <Text class={props.strong ? "text-lg font-semibold text-[#eceef1]" : "text-lg font-semibold text-[#8d9198]"}>
         {props.value()}
       </Text>
     </View>
@@ -101,18 +102,28 @@ function App() {
   const ranges: Range[] = ["1D", "1W", "1M"];
 
   return (
-    <View class="flex-1 bg-white px-4 pt-4 pb-4 gap-3.5">
+    <View
+      class="flex-1 px-4 pt-4 pb-4 gap-3.5"
+      style={{ backgroundColor: "#18191c", backgroundImage: "linear-gradient(180deg, #1d1e22, #17181b)" }}
+    >
       <View class="flex-row items-center justify-between">
-        <Text class="text-[15px] font-semibold text-zinc-900">NVDA vs AAPL</Text>
-        <View class="flex-row rounded-lg bg-zinc-100 p-0.5">
+        <Text class="text-[15px] font-semibold text-[#eceef1]">NVDA vs AAPL</Text>
+        <View
+          class="flex-row rounded-[10px] border border-[#1f2124] bg-[#0c0d0f] p-0.5"
+          style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" }}
+        >
           <Each of={ranges}>
             {(r) => (
               <View
                 onPress={() => range.set(r())}
-                class="rounded-md px-2 py-1 transition-colors"
-                classList={{ "bg-white shadow-sm": range() === r() }}
+                class="rounded-[7px] px-2 py-1 transition-colors"
+                style={
+                  range() === r()
+                    ? { backgroundColor: "#24262a", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)" }
+                    : {}
+                }
               >
-                <Text class={range() === r() ? "text-xs font-semibold text-zinc-900" : "text-xs text-zinc-500"}>{r()}</Text>
+                <Text class={range() === r() ? "text-xs font-semibold text-[#eceef1]" : "text-xs text-[#8d9198]"}>{r()}</Text>
               </View>
             )}
           </Each>
@@ -120,7 +131,7 @@ function App() {
       </View>
 
       <View class="flex-row">
-        <Legend color={BLUE} symbol="NVDA" value={() => change(data().b)} strong />
+        <Legend color={CITRUS} symbol="NVDA" value={() => change(data().b)} strong />
         <Legend color={SLATE} symbol="AAPL" value={() => change(data().a)} />
       </View>
 
@@ -129,10 +140,18 @@ function App() {
       <View
         onPress={() => alert.update((v) => !v)}
         activeOpacity={0.7}
-        class="h-10 flex-row items-center justify-center gap-1.5 rounded-xl transition-colors"
-        classList={{ "bg-zinc-900": !alert(), "bg-emerald-50": alert() }}
+        class="h-10 flex-row items-center justify-center gap-1.5 rounded-[10px] transition-colors"
+        style={
+          alert()
+            ? { backgroundColor: "rgba(69,212,154,0.14)", backgroundImage: "none", boxShadow: "none" }
+            : {
+                backgroundColor: "#eceef1",
+                backgroundImage: "linear-gradient(180deg, #fbfbfc, #d4d6d9)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
+              }
+        }
       >
-        <Text class={alert() ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-white"}>
+        <Text class={alert() ? "text-sm font-semibold text-[#45d49a]" : "text-sm font-semibold text-[#111214]"}>
           {alert() ? "✓  Alert set at +10%" : "Alert me at +10%"}
         </Text>
       </View>

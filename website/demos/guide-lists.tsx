@@ -1,8 +1,10 @@
 import { effect, mount, signal, Text, View, type YNode } from "nsh";
 import { List } from "nsh/list";
 
-const tints = ["#fde2e4", "#e2ece9", "#dfe7fd", "#fff1e6", "#e8e8e4", "#cddafd"];
-const muted = "#57606a";
+// Graphite rows, tinted at about 14% with the status and info colours.
+const tints = ["#2a2025", "#1c2a25", "#1f2536", "#2c261c", "#24262a", "#232a33"];
+const muted = "#8d9198";
+const text = "#eceef1";
 
 type Post = { id: number; title: string };
 
@@ -48,18 +50,18 @@ function Feed() {
           <Text style={{ flex: 1, color: muted }}>
             {posts().length} posts, visible {visible()}
           </Text>
-          <Text onPress={() => list.scrollToIndex({ index: 30, viewPosition: 0.5 })} style={{ color: "#0969da" }}>
+          <Text onPress={() => list.scrollToIndex({ index: 30, viewPosition: 0.5 })} style={{ color: "#c8f26d" }}>
             #30
           </Text>
-          <Text onPress={() => list.scrollToOffset({ offset: 0 })} style={{ color: "#0969da" }}>
+          <Text onPress={() => list.scrollToOffset({ offset: 0 })} style={{ color: "#c8f26d" }}>
             Top
           </Text>
         </View>
       }
     >
       {(post) => (
-        <View style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
-          <Text style={{ fontSize: 16 }}>{post().title}</Text>
+        <View style={{ padding: 16, borderRadius: 12, backgroundColor: "#18191c", backgroundImage: "linear-gradient(180deg, #1d1e22, #17181b)", borderWidth: 1, borderColor: "#2c2e33", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)" }}>
+          <Text style={{ fontSize: 16, color: text }}>{post().title}</Text>
         </View>
       )}
     </List>
@@ -73,7 +75,7 @@ function Grid() {
     <List each={items} numColumns={3} estimatedItemSize={80} style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
       {(item) => (
         <View style={{ height: item().height, borderRadius: 10, backgroundColor: tints[item().id % tints.length], alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ fontWeight: "600" }}>{item().id}</Text>
+          <Text style={{ fontWeight: "600", color: text }}>{item().id}</Text>
         </View>
       )}
     </List>
@@ -92,17 +94,17 @@ function Contacts() {
     for (const name of names.filter((n) => n[0] === letter)) rows.push({ name });
   }
   return (
-    <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1, backgroundColor: "#ffffff" }}>
+    <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1, backgroundColor: "#18191c" }}>
       {(row) => (
         <If
           when={"header" in row()}
           else={
-            <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
-              <Text style={{ fontSize: 16 }}>{(row() as { name: string }).name}</Text>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#1f2124" }}>
+              <Text style={{ fontSize: 16, color: text }}>{(row() as { name: string }).name}</Text>
             </View>
           }
         >
-          <View style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
+          <View style={{ backgroundColor: "#0c0d0f", paddingHorizontal: 16, paddingVertical: 6 }}>
             <Text style={{ fontWeight: "700", color: muted }}>{(row() as { header: string }).header}</Text>
           </View>
         </If>
@@ -125,15 +127,18 @@ function App() {
         borderRadius: 8,
         overflow: "hidden",
         fontWeight: "600",
-        backgroundColor: tab() === id ? "#ffffff" : "transparent",
+        color: tab() === id ? text : muted,
+        backgroundColor: tab() === id ? "#24262a" : "transparent",
+        backgroundImage: tab() === id ? "linear-gradient(180deg, #2d2f34, #222428)" : "none",
+        boxShadow: tab() === id ? "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)" : "none",
       }}
     >
       {label}
     </Text>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: "#f6f8fa", paddingTop: 24 }}>
-      <View style={{ flexDirection: "row", marginHorizontal: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
+    <View style={{ flex: 1, backgroundColor: "#101113", paddingTop: 24 }}>
+      <View style={{ flexDirection: "row", marginHorizontal: 12, padding: 3, borderRadius: 10, backgroundColor: "#0c0d0f", borderWidth: 1, borderColor: "#1f2124", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" }}>
         {button("feed", "Feed")}
         {button("grid", "Grid")}
         {button("contacts", "Sticky")}

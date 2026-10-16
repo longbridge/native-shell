@@ -2,15 +2,16 @@ import { Input, mount, Scroll, signal, Text, View, type YNode } from "nsh";
 
 const field = {
   fontSize: 16,
-  color: "#1f2328",
-  backgroundColor: "#ffffff",
+  color: "#eceef1",
+  backgroundColor: "#0c0d0f",
   borderWidth: 1,
-  borderColor: "#d0d7de",
-  borderRadius: 10,
+  borderColor: "#1f2124",
+  borderRadius: 12,
+  boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)",
   paddingHorizontal: 12,
   paddingVertical: 10,
 } as const;
-const label = { fontSize: 13, color: "#57606a" } as const;
+const label = { fontSize: 13, color: "#8d9198" } as const;
 
 function App() {
   const name = signal("");
@@ -28,9 +29,9 @@ function App() {
   const submit = () => sent.set(`#${++tries}: signed up ${name() || "nobody"} <${email() || "no e-mail"}>`);
 
   return (
-    <Scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+    <Scroll style={{ flex: 1, backgroundColor: "#101113" }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
       <View style={{ padding: 16, paddingTop: 24, gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "700" }}>Sign up</Text>
+        <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Sign up</Text>
         <Text style={label}>Focused: {focused()}</Text>
 
         <Text style={label}>Name (controlled, return goes to the next field)</Text>
@@ -106,11 +107,17 @@ function App() {
         <View
           onPress={submit}
           activeOpacity={0.6}
-          style={{ padding: 14, borderRadius: 10, backgroundColor: "#0969da", alignItems: "center" }}
+          style={{
+            padding: 14,
+            borderRadius: 10,
+            backgroundImage: "linear-gradient(180deg, #fbfbfc, #d4d6d9)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
+            alignItems: "center",
+          }}
         >
-          <Text style={{ color: "#ffffff", fontWeight: "600" }}>Sign up</Text>
+          <Text style={{ color: "#111214", fontWeight: "600" }}>Sign up</Text>
         </View>
-        <Text style={{ color: "#1a7f37" }}>{sent()}</Text>
+        <Text style={{ color: "#45d49a" }}>{sent()}</Text>
       </View>
     </Scroll>
   );

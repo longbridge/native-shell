@@ -7,9 +7,9 @@ function App() {
   const enabled = signal(true);
   const press = () => presses.set(presses() + 1);
   return (
-    <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>Button</Text>
-      <Text style={{ color: "#737373" }}>{`Pressed ${presses()} times`}</Text>
+    <View style={{ flex: 1, backgroundColor: "#101113", padding: 16, paddingTop: 24, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Button</Text>
+      <Text style={{ color: "#8d9198" }}>{`Pressed ${presses()} times`}</Text>
       <Button title="Primary" onPress={press} />
       <Button title="Secondary" variant="secondary" onPress={press} />
       <Button title="Danger" variant="danger" onPress={press} />

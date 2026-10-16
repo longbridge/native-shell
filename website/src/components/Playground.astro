@@ -17,7 +17,7 @@ const demos = readdirSync(join(process.cwd(), 'demos'))
   .filter((f) => f.endsWith('.tsx'))
   .map((f) => f.slice(0, -4))
   .sort((a, b) => (a === 'counter' ? -1 : b === 'counter' ? 1 : a.localeCompare(b)));
-const player = `${BASE}play/index.html?playground&theme=light`;
+const player = `${BASE}play/index.html?playground&theme=dark`;
 const t = zh
   ? {
       title: '在线试用',
@@ -73,7 +73,7 @@ const t = zh
     <span class="playground__status" data-status aria-live="polite"></span>
     <div class="playground__actions">
       <label class="playground__toggle">
-        <input type="checkbox" data-dark />
+        <input type="checkbox" data-dark checked />
         <span>{t.dark}</span>
       </label>
       <button type="button" class="pg-btn" data-reset>{t.reset}</button>

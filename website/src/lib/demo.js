@@ -91,7 +91,7 @@ const COPY = {
 };
 
 export function playerHref(name, base = '/') {
-  return `${base}play/index.html?theme=light#${encodeURIComponent(name)}`;
+  return `${base}play/index.html?theme=dark#${encodeURIComponent(name)}`;
 }
 
 /**

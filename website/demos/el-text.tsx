@@ -6,16 +6,16 @@ const LONG =
 function App() {
   const tapped = signal("nothing yet");
   const lines = signal(2);
-  const link = { color: "#0969da", textDecorationLine: "underline" } as const;
+  const link = { color: "#c8f26d", textDecorationLine: "underline" } as const;
   return (
-    <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 20, paddingTop: 24, gap: 14 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700", color: "#1f2328" }}>text</Text>
+    <View style={{ flex: 1, backgroundColor: "#101113", padding: 20, paddingTop: 24, gap: 14 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>text</Text>
 
-      <Text style={{ fontSize: 16, lineHeight: 24, color: "#1f2328" }}>
+      <Text style={{ fontSize: 16, lineHeight: 24, color: "#eceef1" }}>
         {"Nested text elements are spans: "}
         <Text style={{ fontWeight: "700" }}>bold</Text>
         {", "}
-        <Text style={{ fontStyle: "italic", color: "#8250df" }}>italic</Text>
+        <Text style={{ fontStyle: "italic", color: "#b79cff" }}>italic</Text>
         {", and "}
         <Text style={link} onPress={() => tapped.set("the first link")}>
           links
@@ -26,29 +26,38 @@ function App() {
         </Text>
         .
       </Text>
-      <Text style={{ fontSize: 13, color: "#6e7781" }}>Pressed: {tapped()}</Text>
+      <Text style={{ fontSize: 13, color: "#8d9198" }}>Pressed: {tapped()}</Text>
 
-      <View style={{ height: 1, backgroundColor: "#d0d7de" }} />
+      <View style={{ height: 1, backgroundColor: "#1f2124" }} />
 
-      <Text numberOfLines={lines()} style={{ fontSize: 15, color: "#1f2328" }}>
+      <Text numberOfLines={lines()} style={{ fontSize: 15, color: "#eceef1" }}>
         {LONG}
       </Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View
           onPress={() => lines.set(lines() === 2 ? 0 : 2)}
           activeOpacity={0.6}
-          style={{ backgroundColor: "#ddf4ff", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
+          style={{
+            backgroundColor: "#24262a",
+            backgroundImage: "linear-gradient(180deg, #2d2f34, #222428)",
+            borderWidth: 1,
+            borderColor: "#2c2e33",
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)",
+          }}
         >
-          <Text style={{ color: "#0969da" }}>{lines() === 2 ? "Show all" : "numberOfLines 2"}</Text>
+          <Text style={{ color: "#eceef1" }}>{lines() === 2 ? "Show all" : "numberOfLines 2"}</Text>
         </View>
       </View>
 
-      <Text numberOfLines={1} ellipsizeMode="middle" style={{ fontSize: 15, color: "#57606a" }}>
+      <Text numberOfLines={1} ellipsizeMode="middle" style={{ fontSize: 15, color: "#8d9198" }}>
         {LONG}
       </Text>
 
-      <Text style={{ fontSize: 17, color: "#1f2328" }}>
-        <Text style={{ textDecorationLine: "line-through", textDecorationColor: "#cf222e" }}>struck</Text>{" "}
+      <Text style={{ fontSize: 17, color: "#eceef1" }}>
+        <Text style={{ textDecorationLine: "line-through", textDecorationColor: "#ff6170" }}>struck</Text>{" "}
         <Text style={{ textTransform: "uppercase", letterSpacing: 2 }}>spaced</Text>{" "}
         <Text style={{ fontVariant: ["tabular-nums"] }}>0123456789</Text>
       </Text>
@@ -57,11 +66,11 @@ function App() {
         style={{
           fontSize: 28,
           fontWeight: "800",
-          color: "#ffffff",
-          backgroundColor: "#54aeff",
+          color: "#13160c",
+          backgroundColor: "#c8f26d",
           paddingHorizontal: 10,
           borderRadius: 8,
-          textShadowColor: "rgba(0,0,0,0.5)",
+          textShadowColor: "rgba(255,255,255,0.55)",
           textShadowOffset: { width: 2, height: 2 },
           textShadowRadius: 4,
         }}

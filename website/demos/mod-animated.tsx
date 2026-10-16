@@ -19,10 +19,14 @@ function Button(props: { label: string; onPress: () => void }) {
       style={{
         paddingHorizontal: 14,
         paddingVertical: 8,
-        borderRadius: 16,
+        borderRadius: 10,
         overflow: "hidden",
-        backgroundColor: "#e0e7ff",
-        color: "#4338ca",
+        borderWidth: 1,
+        borderColor: "#2c2e33",
+        backgroundColor: "#24262a",
+        backgroundImage: "linear-gradient(180deg, #2d2f34, #222428)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)",
+        color: "#eceef1",
         fontWeight: "600",
       }}
     >
@@ -53,20 +57,20 @@ function App() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, paddingTop: 24, gap: 16 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>Native animation</Text>
+    <View style={{ flex: 1, backgroundColor: "#101113", padding: 20, paddingTop: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Native animation</Text>
       <View style={{ gap: 8 }}>
         <Each of={curves}>
           {(c, i) => (
             <View style={{ gap: 2 }}>
-              <Text style={{ fontSize: 12, color: "#64748b" }}>{c()[0]}</Text>
-              <View style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: "#e2e8f0" }}>
+              <Text style={{ fontSize: 12, color: "#8d9198" }}>{c()[0]}</Text>
+              <View style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: "#0c0d0f", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" }}>
                 <View
                   style={{
                     width: 16,
                     height: 16,
                     borderRadius: 8,
-                    backgroundColor: "#6366f1",
+                    backgroundColor: "#c8f26d",
                     transform: [{ translateX: dots[i()] }],
                   }}
                 />
@@ -81,11 +85,11 @@ function App() {
             width: 64,
             height: 64,
             borderRadius: 14,
-            backgroundColor: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["#22c55e", "#eab308", "#22c55e"] }),
+            backgroundColor: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["#45d49a", "#ffb547", "#45d49a"] }),
             transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }],
           }}
         />
-        <Text style={{ flex: 1, color: "#475569", fontSize: 13 }}>
+        <Text style={{ flex: 1, color: "#8d9198", fontSize: 13 }}>
           Rotation and color are interpolated from one native value.
         </Text>
       </View>
@@ -93,7 +97,7 @@ function App() {
         <Button label="Race" onPress={race} />
         <Button label="Spin" onPress={turn} />
       </View>
-      <Text style={{ color: "#64748b" }}>{status()}</Text>
+      <Text style={{ color: "#8d9198" }}>{status()}</Text>
     </View>
   );
 }

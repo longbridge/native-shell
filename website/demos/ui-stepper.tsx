@@ -5,7 +5,7 @@ import { Button, Group, Stepper, type StepperRef } from "nsh/ui/mobile";
 function Row(props: { label: string; children: any }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <Text>{props.label}</Text>
+      <Text style={{ color: "#eceef1" }}>{props.label}</Text>
       {props.children}
     </View>
   );
@@ -16,9 +16,9 @@ function App() {
   const asked = signal("");
   let own!: StepperRef;
   return (
-    <View style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 24, gap: 20 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>Stepper</Text>
-      <Group footer={<Text>Hold − or + to keep stepping.</Text>}>
+    <View style={{ flex: 1, backgroundColor: "#101113", padding: 16, paddingTop: 24, gap: 20 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Stepper</Text>
+      <Group footer={<Text style={{ color: "#8d9198" }}>Hold − or + to keep stepping.</Text>}>
         <Row label="Own value (0–10)">
           <Stepper ref={own} defaultValue={3} min={0} max={10} />
         </Row>
@@ -38,7 +38,7 @@ function App() {
           asked.set(`It was ${was}`);
         }}
       />
-      <Text style={{ color: "#737373" }}>{asked()}</Text>
+      <Text style={{ color: "#8d9198" }}>{asked()}</Text>
     </View>
   );
 }
