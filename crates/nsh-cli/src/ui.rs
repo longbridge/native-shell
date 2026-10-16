@@ -24,7 +24,7 @@ use std::{
     process::{Command, ExitStatus, Stdio},
     sync::{
         Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -60,14 +60,17 @@ impl Term {
 /// Sets up the output: verbose or not, and what stderr is.
 pub(crate) fn init(verbose: bool) {
     let _ = TERM.set(Term::detect(verbose));
-    let term = term();
-    if term.tty && !term.verbose {
-        // SAFETY: the handler only uses async-signal-safe calls (`write`,
-        // `signal`, `raise`) and an atomic.
-        unsafe {
-            libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
-            libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
-        }
+    // SAFETY: a zeroed `sigaction` is a valid value (no flags, an empty
+    // mask) before the fields are set; the handler only uses
+    // async-signal-safe calls (`write`, `signal`, `raise`, `getppid`) and
+    // atomics.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_signal as *const () as libc::sighandler_t;
+        action.sa_flags = libc::SA_SIGINFO;
+        libc::sigemptyset(&mut action.sa_mask);
+        libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
+        libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut());
     }
 }
 
@@ -84,9 +87,87 @@ pub(crate) fn color() -> bool {
 /// Mirrors [`Out::drawn`] for the signal handler, which cannot lock.
 static SPINNER_DRAWN: AtomicBool = AtomicBool::new(false);
 
-/// Ctrl-C (or a stop) while a spinner is drawn: clears its line, then
-/// ends the process as the signal would have.
-extern "C" fn on_signal(signal: libc::c_int) {
+/// Live [`Stoppable`]s.
+static STOPPABLE: AtomicUsize = AtomicUsize::new(0);
+/// The signal that asked a [`Stoppable`] command to stop (0: none).
+static STOP_SIGNAL: AtomicI32 = AtomicI32::new(0);
+
+/// Until dropped, Ctrl-C (SIGINT) and SIGTERM ask the command to stop
+/// ([`stop_requested`]) instead of ending the process, so that it undoes
+/// what it set up outside it on its way out (`nsh run`'s `adb reverse`);
+/// a second one ends the process. [`crate::main_with`] then ends it as the
+/// signal would have.
+pub(crate) struct Stoppable(());
+
+impl Stoppable {
+    pub(crate) fn new() -> Stoppable {
+        STOPPABLE.fetch_add(1, Ordering::SeqCst);
+        Stoppable(())
+    }
+}
+
+impl Drop for Stoppable {
+    fn drop(&mut self) {
+        STOPPABLE.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Whether a signal asked the command to stop ([`Stoppable`]).
+pub(crate) fn stop_requested() -> bool {
+    STOP_SIGNAL.load(Ordering::SeqCst) != 0
+}
+
+/// Passes a requested stop on to `child` (a command line this one runs,
+/// which is [`Stoppable`] itself): it may not have had the signal, if it
+/// was sent to this process alone. Once it did, the one passed on is not
+/// taken as a second.
+pub(crate) fn pass_stop_on(child: &std::process::Child) {
+    let signal = STOP_SIGNAL.load(Ordering::SeqCst);
+    if signal != 0
+        && let Ok(pid) = libc::pid_t::try_from(child.id())
+    {
+        // SAFETY: a plain syscall on a child that has not been waited for.
+        unsafe { libc::kill(pid, signal) };
+    }
+}
+
+/// After a requested stop: ends the process as the signal would have
+/// (the shell sees an interrupted command).
+pub(crate) fn exit_if_stopped() {
+    let signal = STOP_SIGNAL.load(Ordering::SeqCst);
+    if signal != 0 {
+        exit_by_signal(signal);
+    }
+}
+
+/// Ends the process with `signal`'s default action.
+pub(crate) fn exit_by_signal(signal: libc::c_int) {
+    // SAFETY: back to the default action, then raise it.
+    unsafe {
+        libc::signal(signal, libc::SIG_DFL);
+        libc::raise(signal);
+    }
+}
+
+/// Ctrl-C (or a stop): asks a [`Stoppable`] command to stop, else (or the
+/// second time) clears a spinner's line and ends the process as the signal
+/// would have. A stop the parent passes on ([`pass_stop_on`]) after this
+/// one had it is not a second.
+extern "C" fn on_signal(signal: libc::c_int, info: *mut libc::siginfo_t, _: *mut libc::c_void) {
+    if STOPPABLE.load(Ordering::SeqCst) > 0 {
+        if STOP_SIGNAL
+            .compare_exchange(0, signal, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            return;
+        }
+        // SAFETY: the kernel passes a valid `siginfo_t` with SA_SIGINFO.
+        let sender = unsafe { info.as_ref() }.map_or(0, sender);
+        // SAFETY: `getppid` is async-signal-safe and cannot fail.
+        if sender != 0 && sender == unsafe { libc::getppid() } {
+            return;
+        }
+    }
     if SPINNER_DRAWN.load(Ordering::SeqCst) {
         let clear = b"\r\x1b[2K";
         // SAFETY: async-signal-safe calls with a valid buffer.
@@ -97,6 +178,15 @@ extern "C" fn on_signal(signal: libc::c_int) {
         libc::signal(signal, libc::SIG_DFL);
         libc::raise(signal);
     }
+}
+
+/// The process that sent a signal (0: the kernel, the terminal's Ctrl-C).
+fn sender(info: &libc::siginfo_t) -> libc::pid_t {
+    #[cfg(target_os = "linux")]
+    // SAFETY: SIGINT and SIGTERM carry the sender's pid.
+    return unsafe { info.si_pid() };
+    #[cfg(not(target_os = "linux"))]
+    return info.si_pid;
 }
 
 // ---------------------------------------------------------------------------

@@ -163,13 +163,9 @@ fn run_android(
         ));
         fs::write(&stamp, &version)?;
     }
-    // The device reaches the dev server on its own 127.0.0.1.
-    let port = session.port().to_string();
-    android::adb(
-        &sdk,
-        &serial,
-        &["reverse", &format!("tcp:{port}"), &format!("tcp:{port}")],
-    )?;
+    // The device reaches the dev server on its own 127.0.0.1, until the
+    // run ends.
+    let _reverse = android::Reverse::add(&sdk, &serial, session.port())?;
     let url = session.local_url();
     let mut start = vec![
         "shell",

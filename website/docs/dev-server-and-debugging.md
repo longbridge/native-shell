@@ -39,7 +39,8 @@ What each target does:
   The simulator shares the Mac's network, so the host reaches the server on `127.0.0.1`. Requires Xcode.
 - **`android`** installs the development host APK (again only when the runtime changed), runs
   `adb reverse tcp:<port> tcp:<port>` so the device's own `127.0.0.1` reaches the server, and starts it. Works with an
-  emulator or a USB device. Requires the Android SDK (`ANDROID_HOME`).
+  emulator or a USB device. Requires the Android SDK (`ANDROID_HOME`). When `nsh run` ends (Ctrl-C too), it stops the
+  host and removes that port forwarding, so the host does not join the next session.
 
 The hosts are generic: they run any nsh app the server sends, so there is nothing to build per app.
 

@@ -142,10 +142,26 @@ pub(crate) fn reexec(entry: Option<&Path>) -> anyhow::Result<Option<std::process
         if restarted {
             command.env(RESTARTED_ENV, "1");
         }
-        let status = command
-            .status()
-            .with_context(|| format!("run {}", cli.display()))?;
-        if status.code() != Some(i32::from(RESTART)) {
+        let status = {
+            // Ctrl-C reaches both: this one waits while that one undoes
+            // what it set up (a stop sent to this one alone is passed on).
+            let _stoppable = ui::Stoppable::new();
+            let mut child = command
+                .spawn()
+                .with_context(|| format!("run {}", cli.display()))?;
+            let mut passed_on = false;
+            loop {
+                if let Some(status) = child.try_wait()? {
+                    break status;
+                }
+                if !passed_on && ui::stop_requested() {
+                    ui::pass_stop_on(&child);
+                    passed_on = true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        };
+        if status.code() != Some(i32::from(RESTART)) || ui::stop_requested() {
             return Ok(Some(status));
         }
         restarted = true;

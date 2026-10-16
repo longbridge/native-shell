@@ -35,6 +35,7 @@ nsh dev App.tsx                     # server only
   `127.0.0.1` 即可访问服务器。需要 Xcode。
 - **`android`** 安装开发宿主 APK（同样只在运行时有变化时才安装），执行 `adb reverse tcp:<port> tcp:<port>`，使设备
   自己的 `127.0.0.1` 能访问到服务器，然后启动它。支持模拟器或 USB 连接的设备。需要 Android SDK（`ANDROID_HOME`）。
+  `nsh run` 结束时（包括 Ctrl-C）会停止宿主并移除这条端口转发，因此该宿主不会接入下一次会话。
 
 这些宿主是通用的：服务器发来的任何 nsh 应用都能运行，因此不需要为每个应用单独构建宿主。
 

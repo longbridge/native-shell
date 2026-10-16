@@ -304,7 +304,12 @@ pub fn main_with(ui_sets: Vec<Registry>) -> ExitCode {
     let cli = Cli::parse();
     ui::init(cli.verbose);
     logger::init();
-    match run(cli.command) {
+    let result = run(cli.command);
+    // A signal stopped the command (`ui::Stoppable`): it ends as the signal
+    // would have, and what failed as it stopped (a tool it interrupted) is
+    // no news.
+    ui::exit_if_stopped();
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.downcast_ref::<rust_app::Restart>().is_some() => {
             ExitCode::from(rust_app::RESTART)
@@ -323,6 +328,10 @@ fn run(mut command: Command) -> anyhow::Result<()> {
     }
     // An app with Rust components of its own runs in its own build of this.
     if let Some(status) = rust_app::reexec(command.entry_mut().map(|e| e.as_path()))? {
+        // As it ended: with its exit code, or by the signal that ended it.
+        if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
+            ui::exit_by_signal(signal);
+        }
         std::process::exit(status.code().unwrap_or(1));
     }
     if types && let Some(entry) = command.entry_mut() {

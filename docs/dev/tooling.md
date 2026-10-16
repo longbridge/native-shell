@@ -65,6 +65,17 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   connected hosts; new clients subscribe before receiving the current state, so no event is missed. Protocol: `crates/nsh-dev/src/protocol.rs`
   (JSON text frames + binary frames).
 - Bytecode version negotiation: the client reports `BYTECODE_VERSION` in its handshake; on a mismatch the server sends JS source instead.
+- `nsh run --target android` forwards the dev server's port to the device (`adb reverse tcp:<port> tcp:<port>`,
+  `android::Reverse`) and removes that rule, and only that one (`adb reverse --remove tcp:<port>`), however the run
+  ends: normally, by an error, by Ctrl-C or SIGTERM, or for a restart of an app with a Rust crate (exit code 75; the
+  next run sets it again). Otherwise a host left on the device keeps reaching whatever dev server listens on that port
+  next, of any app. Ctrl-C reaches the run through `ui::Stoppable`: while one is held, the signal handler records
+  SIGINT / SIGTERM instead of ending the process, the dev session's watch loop returns, the command undoes what it set
+  up, and `main_with` then ends the process by the same signal; a second signal ends it at once. The prebuilt `nsh`
+  that runs an app's own command line holds one too while it waits, so the shell (and `cargo run`'s restart, which
+  stops the process group) waits for the clean-up, and passes a stop sent to it alone on to the app's command line,
+  which does not take that one as a second (the sender is its parent: `SA_SIGINFO`). `nsh dev` sets nothing up on
+  devices.
 - Hosts that cannot run the app: several hosts on one session is intended (a phone joining), but a host serves only the
   UI sets it was built with, and dev hosts keep reconnecting, so a host built for another app (an Android host left on
   the emulator, whose `adb reverse` still reaches this port) can connect. The hello reports the host's platform and

@@ -373,6 +373,44 @@ pub(crate) fn device(sdk: &Sdk) -> anyhow::Result<String> {
         .context("no Android device or emulator connected (see `adb devices`)")
 }
 
+/// A port of the device forwarded to this machine (`adb reverse`), removed
+/// when dropped, however the command ends (Ctrl-C too: it is
+/// [`ui::Stoppable`] meanwhile): a dev host left on the device would
+/// otherwise reach the next dev server on that port, of whatever app.
+pub(crate) struct Reverse {
+    adb: PathBuf,
+    serial: String,
+    port: String,
+    _stoppable: crate::ui::Stoppable,
+}
+
+impl Reverse {
+    pub(crate) fn add(sdk: &Sdk, serial: &str, port: u16) -> anyhow::Result<Reverse> {
+        let port = format!("tcp:{port}");
+        adb(sdk, serial, &["reverse", &port, &port])?;
+        Ok(Reverse {
+            adb: sdk.adb(),
+            serial: serial.to_owned(),
+            port,
+            _stoppable: crate::ui::Stoppable::new(),
+        })
+    }
+}
+
+impl Drop for Reverse {
+    fn drop(&mut self) {
+        let removed = Command::new(&self.adb)
+            .args(["-s", &self.serial, "reverse", "--remove", &self.port])
+            .output();
+        if !removed.is_ok_and(|o| o.status.success()) {
+            crate::ui::debug(format!(
+                "could not remove the adb reverse of {} on {}",
+                self.port, self.serial
+            ));
+        }
+    }
+}
+
 pub(crate) fn adb(sdk: &Sdk, serial: &str, args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new(sdk.adb())
         .args(["-s", serial])

@@ -116,7 +116,7 @@ impl DevSession {
             watcher.watch(app.crate_dir(), RecursiveMode::Recursive)?;
         }
         loop {
-            if stop()? {
+            if ui::stop_requested() || stop()? {
                 return Ok(());
             }
             let Ok(event) = rx.recv_timeout(Duration::from_millis(200)) else {
