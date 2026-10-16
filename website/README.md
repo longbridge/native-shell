@@ -37,6 +37,10 @@ Content is Markdown in four sections, each in English and Chinese:
 `index.md` is the section's own page (`/docs`). The file name is the URL;
 the Chinese page has the same file name as the English one.
 
+When changing a documentation page, update its English and Chinese
+counterparts together. Keep their `order` and `demo` frontmatter in sync, and
+link to pages in the same language.
+
 Frontmatter (checked by `src/content.config.ts`):
 
 ```yaml

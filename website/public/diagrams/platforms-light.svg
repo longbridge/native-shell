@@ -2,7 +2,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      viewBox="0 0 880 480" width="100%" role="img" aria-labelledby="t d">
   <title id="t">One module, many hosts</title>
-  <desc id="d">One module, App.tsx, is built once into bundle.qbc. The same Rust runtime runs it everywhere: QuickJS, the reactive graph, the renderer, Taffy layout, text and the components. Four backends draw it. iOS draws UIKit views and is supported from iOS 15.0, embedded as NshAppView. Android draws Android views and is supported from API 28, Android 9, embedded as NshView. Desktop, through a GPUI backend, is in development, drawn dashed. Web, WebAssembly rendering to the DOM, runs the live demos of these docs only and is not a target to ship to.</desc>
+  <desc id="d">One module, App.tsx, is built once into bundle.qbc. The same Rust runtime runs it everywhere: QuickJS, the reactive graph, the renderer, Taffy layout, text and the components. iOS draws UIKit views and is supported from iOS 15.0, embedded as NshAppView. Android draws Android views and is supported from API 28, Android 9, embedded as NshView. Linux draws GTK 4 widgets and is supported. macOS draws AppKit views and is supported from macOS 14. Windows draws Win32 windows with Direct2D and is supported from Windows 10 1809. Web, WebAssembly rendering to the DOM, runs the live demos of these docs only and is not a target to ship to.</desc>
 
   <defs>
     <style>
@@ -112,7 +112,7 @@
   <path class="flow" d="M252,274 V310" marker-end="url(#arrow)"/>
   <path class="flow" d="M420,268 V310" marker-end="url(#arrow)"/>
   <path class="flow" d="M756,274 V310" marker-end="url(#arrow)"/>
-  <path class="flow-dim" d="M588,268 V310" marker-end="url(#arrow-dim)"/>
+  <path class="flow" d="M588,268 V310" marker-end="url(#arrow)"/>
 
   <!-- tokens: one bundle, handed to each backend -->
   <g class="token">
@@ -146,12 +146,13 @@
   <text class="note mono" x="360" y="391">NshView</text>
   <text class="status" x="360" y="412">SUPPORTED</text>
 
-  <rect class="card-dim" x="512" y="312" width="152" height="112" rx="9"/>
-  <g class="dim">
-    <text class="name" x="528" y="337">Desktop</text>
-    <text class="fact" x="528" y="357">GPUI</text>
-    <text class="note" x="528" y="374">for desktop clients</text>
-    <text class="status-muted" x="528" y="412">IN DEVELOPMENT</text>
+  <rect class="card stage" x="512" y="312" width="152" height="112" rx="9" style="animation-delay:-2.6s"/>
+  <g>
+    <text class="name" x="528" y="337">Linux</text>
+    <text class="fact" x="528" y="357">GTK 4 widgets</text>
+    <text class="note" x="528" y="374">macOS · AppKit · supported</text>
+    <text class="note" x="528" y="391" font-size="9">Windows · Win32 / Direct2D · supported</text>
+    <text class="status" x="528" y="412">SUPPORTED</text>
   </g>
 
   <rect class="card-demo" x="680" y="312" width="152" height="112" rx="9"/>
@@ -161,5 +162,5 @@
   <text class="note" x="696" y="391">not a ship target</text>
   <text class="status-muted" x="696" y="412">DEMOS ONLY</text>
 
-  <text class="claim" x="24" y="466">You ship to iOS and Android today. The web build exists so these docs can run real demos.</text>
+  <text class="claim" x="24" y="466">iOS, Android, Linux, macOS and Windows are supported. Web runs these demos only.</text>
 </svg>
