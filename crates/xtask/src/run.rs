@@ -28,8 +28,9 @@ pub(crate) struct RunArgs {
     /// module.
     #[arg(default_value = "examples/gallery")]
     entry: String,
-    /// Where to run: `catalyst`, `ios` (a simulator), `android` or `linux`;
-    /// default: `catalyst` on macOS, `linux` on Linux, else `android`.
+    /// Where to run: `catalyst`, `macos` (the AppKit host), `ios` (a
+    /// simulator), `android` or `linux`; default: `catalyst` on macOS,
+    /// `linux` on Linux, else `android`.
     #[arg(long)]
     target: Option<String>,
     /// iOS simulator to use (name or UDID).
@@ -160,7 +161,8 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
         .context("launch target/debug/nsh")
 }
 
-/// Stops `nsh run` and everything it started (the Catalyst or Linux host).
+/// Stops `nsh run` and everything it started (the Catalyst, macOS or Linux
+/// host).
 fn stop(app: &mut Child) {
     let Ok(pgid) = libc::pid_t::try_from(app.id()) else {
         let _ = app.kill();

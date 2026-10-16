@@ -23,6 +23,8 @@ pub(crate) enum Target {
     Android,
     /// The Linux (GTK) development host, in a window on this machine.
     Linux,
+    /// The macOS (AppKit) development host, in a window on this machine.
+    Macos,
 }
 
 impl Target {
@@ -42,6 +44,7 @@ impl Target {
         match self {
             Target::Catalyst => crate::runtime::Platform::MacCatalyst,
             Target::Linux => crate::runtime::Platform::Linux,
+            Target::Macos => crate::runtime::Platform::MacOs,
             Target::Ios | Target::Android => crate::runtime::Platform::IphoneSimulator,
         }
     }
@@ -73,7 +76,7 @@ pub(crate) fn run(
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
             Some(udid)
         }
-        Target::Catalyst | Target::Android | Target::Linux => None,
+        Target::Catalyst | Target::Android | Target::Linux | Target::Macos => None,
     };
     let session = DevSession::start(entry, port, release)?;
     session.print_urls();
@@ -101,6 +104,15 @@ pub(crate) fn run(
             let mut command = Command::new(&host);
             command.args(&args);
             run_local(&session, &mut command, "the Linux host")
+        }
+        // In place too: the AppKit host makes itself a regular app (menu
+        // bar, Dock icon) without an app bundle around it.
+        Target::Macos => {
+            let mut command = Command::new(&host);
+            command
+                .args(&args)
+                .args(["-ApplePersistenceIgnoreState", "YES"]);
+            run_local(&session, &mut command, "the macOS host")
         }
         Target::Ios => {
             let app = package_ios(&work, &host)?;
@@ -411,7 +423,7 @@ fn info_plist(target: Target) -> String {
              <key>LSMinimumSystemVersion</key><string>11.0</string>"
         }
         // A launch screen entry opts into the full screen (no letterboxing).
-        Target::Ios | Target::Android | Target::Linux => {
+        Target::Ios | Target::Android | Target::Linux | Target::Macos => {
             "<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>\n    \
              <key>MinimumOSVersion</key><string>15.0</string>\n    \
              <key>CFBundleSupportedPlatforms</key><array><string>iPhoneSimulator</string></array>\n    \
