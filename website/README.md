@@ -106,11 +106,11 @@ The player in `public/play/` is the WebAssembly build of the nsh runtime
 bun run play       # = cargo xtask web: nsh.wasm, nsh.js, index.html, demos/*.js (dev and build run it)
 ```
 
-Run it again after changing a demo or the runtime. Embedded demos run in the
-dark appearance (`?theme=dark`) and are drawn in the site's graphite look;
-`demos/nsh.json` gives `nsh/ui/mobile` components the matching theme
-(`demos/graphite-theme.json`). The playground compiles in the browser,
-without that theme. The
+Run it again after changing a demo or the runtime. Embedded demos follow
+the page's theme (`?theme=`, then a message on each change) and take their
+colours from `demos/palette.ts`; `demos/nsh.json` gives `nsh/ui/mobile`
+components the matching light and dark theme (`demos/graphite-theme.json`).
+The playground compiles in the browser, without that theme. The
 player is built separately from the site. Whether it exists is decided
 at build time: without `public/play/index.html`, pages show the demo's source
 only and the home page's host app shows a placeholder. Adding or removing the

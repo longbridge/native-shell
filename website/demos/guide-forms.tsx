@@ -1,17 +1,8 @@
 import { Input, mount, Scroll, signal, Text, View, type YNode } from "nsh";
+import { ui } from "./palette";
 
-const field = {
-  fontSize: 16,
-  color: "#eceef1",
-  backgroundColor: "#0c0d0f",
-  borderWidth: 1,
-  borderColor: "#1f2124",
-  borderRadius: 12,
-  boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)",
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-} as const;
-const label = { fontSize: 13, color: "#8d9198" } as const;
+const field = () => ({ ...ui().inset, fontSize: 16, color: ui().text, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 });
+const label = () => ({ fontSize: 13, color: ui().muted });
 
 function App() {
   const name = signal("");
@@ -29,16 +20,17 @@ function App() {
   const submit = () => sent.set(`#${++tries}: signed up ${name() || "nobody"} <${email() || "no e-mail"}>`);
 
   return (
-    <Scroll style={{ flex: 1, backgroundColor: "#101113" }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+    <Scroll style={{ flex: 1, backgroundColor: ui().page }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
       <View style={{ padding: 16, paddingTop: 24, gap: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Sign up</Text>
-        <Text style={label}>Focused: {focused()}</Text>
+        <Text style={{ fontSize: 22, fontWeight: "700", color: ui().text }}>Sign up</Text>
+        <Text style={label()}>Focused: {focused()}</Text>
 
-        <Text style={label}>Name (controlled, return goes to the next field)</Text>
+        <Text style={label()}>Name (controlled, return goes to the next field)</Text>
         <Input
-          style={field}
+          style={field()}
           value={name()}
           onChangeText={(t) => name.set(t)}
+          placeholderTextColor={ui().faint}
           placeholder="Ada Lovelace"
           autoCapitalize="words"
           autoComplete="name"
@@ -48,12 +40,13 @@ function App() {
           onFocus={() => focused.set("name")}
         />
 
-        <Text style={label}>E-mail</Text>
+        <Text style={label()}>E-mail</Text>
         <Input
           ref={emailInput}
-          style={field}
+          style={field()}
           value={email()}
           onChangeText={(t) => email.set(t.trim().toLowerCase())}
+          placeholderTextColor={ui().faint}
           placeholder="ada@example.com"
           keyboardType="email-address"
           autoCapitalize="none"
@@ -65,12 +58,13 @@ function App() {
           onFocus={() => focused.set("e-mail")}
         />
 
-        <Text style={label}>Password (uncontrolled)</Text>
+        <Text style={label()}>Password (uncontrolled)</Text>
         <Input
           ref={passwordInput}
-          style={field}
+          style={field()}
           secureTextEntry
           autoComplete="new-password"
+          placeholderTextColor={ui().faint}
           placeholder="At least 8 characters"
           returnKeyType="next"
           blurOnSubmit={false}
@@ -78,9 +72,9 @@ function App() {
           onFocus={() => focused.set("password")}
         />
 
-        <Text style={label}>Code (number pad, 6 digits)</Text>
+        <Text style={label()}>Code (number pad, 6 digits)</Text>
         <Input
-          style={{ ...field, letterSpacing: 8, textAlign: "center", fontSize: 22 }}
+          style={{ ...field(), letterSpacing: 8, textAlign: "center", fontSize: 22 }}
           value={code()}
           onChangeText={(t) => code.set(t.replace(/[^0-9]/g, ""))}
           keyboardType="number-pad"
@@ -89,7 +83,7 @@ function App() {
           onFocus={() => focused.set("code")}
         />
 
-        <Text style={label}>About you (grows with its text, 200 max)</Text>
+        <Text style={label()}>About you (grows with its text, 200 max)</Text>
         <Input
           ref={notesInput}
           multiline
@@ -97,12 +91,13 @@ function App() {
           value={notes()}
           onChangeText={(t) => notes.set(t)}
           onContentSizeChange={(e) => notesHeight.set(Math.min(e.height, 120))}
+          placeholderTextColor={ui().faint}
           placeholder="Return adds a line"
-          style={{ ...field, height: Math.max(notesHeight(), 22) + 20 }}
+          style={{ ...field(), height: Math.max(notesHeight(), 22) + 20 }}
           onFocus={() => focused.set("notes")}
           onBlur={() => focused.set("nothing")}
         />
-        <Text style={{ ...label, textAlign: "right" }}>{`${notes().length}/200`}</Text>
+        <Text style={{ ...label(), textAlign: "right" }}>{`${notes().length}/200`}</Text>
 
         <View
           onPress={submit}
@@ -110,14 +105,13 @@ function App() {
           style={{
             padding: 14,
             borderRadius: 10,
-            backgroundImage: "linear-gradient(180deg, #fbfbfc, #d4d6d9)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
+            ...ui().primary,
             alignItems: "center",
           }}
         >
-          <Text style={{ color: "#111214", fontWeight: "600" }}>Sign up</Text>
+          <Text style={{ color: ui().onPrimary, fontWeight: "600" }}>Sign up</Text>
         </View>
-        <Text style={{ color: "#45d49a" }}>{sent()}</Text>
+        <Text style={{ color: ui().up }}>{sent()}</Text>
       </View>
     </Scroll>
   );

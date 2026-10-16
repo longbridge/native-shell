@@ -8,12 +8,26 @@ import { keymap } from '@codemirror/view';
 import { javascript } from '@codemirror/lang-javascript';
 import { syntaxHighlighting } from '@codemirror/language';
 import { classHighlighter } from '@lezer/highlight';
+import { onThemeChange, siteTheme } from './demo-client';
 
 // Each demo's source, loaded when picked.
 const DEMOS = import.meta.glob('/demos/*.tsx', { query: '?raw', import: 'default' }) as Record<
   string,
   () => Promise<string>
 >;
+
+// The demos' shared palette (demos/palette.ts). The player compiles one
+// file, so a demo that imports it gets it inlined in place of the import.
+import paletteSource from '/demos/palette.ts?raw';
+
+const PALETTE_IMPORT = /^import\s*\{[^}]*\}\s*from\s*["']\.\/palette["'];?[ \t]*$/m;
+
+function withPalette(source: string): string {
+  const match = PALETTE_IMPORT.exec(source);
+  if (!match) return source;
+  const palette = paletteSource.replace(/^export /gm, '');
+  return source.slice(0, match.index) + palette + source.slice(match.index + match[0].length);
+}
 
 const STORAGE_KEY = 'nsh-playground-code';
 const RUN_DELAY = 450;
@@ -155,7 +169,13 @@ export async function mountPlayground(root: HTMLElement) {
   const status = root.querySelector<HTMLElement>('[data-status]')!;
   const log = root.querySelector<HTMLElement>('[data-log]')!;
   const frame = root.querySelector<HTMLIFrameElement>('[data-frame]');
+  // The app's appearance follows the page's theme until changed here.
   const dark = root.querySelector<HTMLInputElement>('[data-dark]')!;
+  dark.checked = siteTheme() === 'dark';
+  onThemeChange((theme) => {
+    dark.checked = theme === 'dark';
+    frame?.contentWindow?.postMessage({ theme }, '*');
+  });
 
   const setStatus = (text: string, kind?: 'ok' | 'error') => {
     // Errors start with a blank line before their code frame.
@@ -211,7 +231,7 @@ export async function mountPlayground(root: HTMLElement) {
       return;
     }
     clearLog();
-    frame.contentWindow?.postMessage({ type: 'run', source: view.state.doc.toString() }, '*');
+    frame.contentWindow?.postMessage({ type: 'run', source: withPalette(view.state.doc.toString()) }, '*');
   };
 
   const view = new EditorView({
@@ -268,7 +288,7 @@ export async function mountPlayground(root: HTMLElement) {
     if (data.type === 'ready') {
       ready = true;
       setStatus('');
-      if (dark.checked) frame.contentWindow?.postMessage({ theme: 'dark' }, '*');
+      frame.contentWindow?.postMessage({ theme: dark.checked ? 'dark' : 'light' }, '*');
       if (pending || initial) run();
     } else if (data.type === 'compiled') {
       if (data.error) {

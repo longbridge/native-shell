@@ -36,13 +36,16 @@ sets `dark` or `light` on `<html>` from `localStorage.theme` ("light",
 "dark", or absent for the system's), so nothing flashes; the nav's
 System / Light / Dark segmented control (`ThemeSwitch.astro`) sets it.
 
-The light variant keeps the design and changes the surfaces: page
-`#f4f4f2`, card `#ffffff` (a `#ffffff → #fafaf8` gradient, a `#e4e4e0`
-border, soft shadow), inset `#f0f0ec` recessed, raised `#fbfbf9 → #f0f0ec`
-with a top highlight; text `#16171a`, muted `#5f636a`, faint `#9a9ea4`. The
-accent token (`--citrus`) becomes `#5a7a12` so it reads as text and lines;
-the bright citrus stays as the fill of accent badges and buttons
-(`--finish-accent-bg`, dark text). Primary buttons are dark on light.
+The light variant keeps the design and its material: a warm off-white page
+`#f3f3ef` with a faint grain (`--grain`, both themes), cards `#ffffff →
+#fafaf7` with a 1px border, a crisp top highlight, a faint bottom edge and
+layered warm shadows; insets `#ecece7` with an inner shadow; raised
+controls `#ffffff → #f4f4f0` with a top highlight; text `#15161a`, muted
+`#565a61`, faint `#8c9097`. The accent token (`--citrus`) becomes `#4a6a0a`
+so it reads as text and lines; the bright citrus stays the fill of accent
+badges and buttons (`--finish-accent-bg`, a `#a7cf3f` border, text
+`#1b2207`). Primary buttons are dark (`#2a2b30 → #16171a`). Status colours
+for white: up `#0f8a55`, danger `#d43345`, info `#3d63d1`, warn `#b26a00`.
 The values below are the dark theme's.
 
 - **Surfaces**, as in the gallery: page `#101113`, card `#18191c`, inset
@@ -51,16 +54,20 @@ The values below are the dark theme's.
 - **Finishes** (`--finish-*`, the gallery's `finish`): cards take a
   `#1d1e22 → #17181b` gradient, an inner top highlight and a soft shadow;
   insets (code, the demo stage, the search field, segmented tracks) are
-  recessed with an inner shadow; raised controls (secondary buttons, the
-  current nav and sidebar item, kbd, segmented thumbs) have a top highlight.
+  recessed with an inner shadow; raised controls (secondary buttons, kbd,
+  segmented thumbs) have a top highlight. Navigation stays quiet: the
+  current nav and sidebar item is a soft tint (`--nav-active`), the sidebar's
+  with a 2px accent bar; scroll areas use thin overlay scrollbars.
   Primary buttons are light (`#fbfbfc → #d4d6d9`, dark text).
 - **One accent, citrus `#c8f26d`** (text on it `#13160c`): the logo, links,
   kickers, the current TOC entry, the nsh module's tag in the hero, the
   accent of the diagrams. Never a large fill.
 - Status colours: up / success `#45d49a`, danger `#ff6170`, info `#7ea8ff`,
-  warn `#ffb547`, as small tinted badges or dots. Callouts take one tint
-  each (note info, tip green, important violet, warning amber, caution red)
-  over the card colour; nothing else on a page is tinted.
+  warn `#ffb547`, as small tinted badges or dots. Callouts take one
+  palette colour each (note info, tip up green, important citrus, warning
+  amber, caution danger): a soft tint over the page (`--callout-tint`, 11%
+  dark, 7% light), a 25% border, the icon and label in the colour, the body
+  in the text colour. No purple anywhere.
 - **Code colours are tokens** (`--code-*`): Shiki emits the macos-classic
   light theme's hex values (`src/light.theme.json`) and `global.css` maps
   them onto the tokens, so fenced blocks, demo sources and the home page's
@@ -124,11 +131,15 @@ logs it).
 
 ## Demo frames
 
-- Demos (`demos/*.tsx`) and the playground run in the dark appearance in
-  both themes (the hero's module follows the theme) and
-  are drawn with the gallery's palette and finishes too (inline hex values
-  or arbitrary Tailwind values, never custom class names: the playground
-  compiles without `demos/nsh.json`, which themes `nsh/ui/mobile`).
+- Demos (`demos/*.tsx`), the hero's chat and the playground follow the
+  page's theme: the player starts with `?theme=` and gets a message on every
+  change (`themeDemos` in `src/lib/demo-client.ts`), and demos read their
+  colours from `demos/palette.ts` (`ui()`, over `colorScheme()`) inside JSX,
+  so they switch live. The playground inlines that file into a demo that
+  imports it; its Dark switch follows the page until changed.
+  `demos/nsh.json` gives `nsh/ui/mobile` both appearances
+  (`demos/graphite-theme.json`). Never custom Tailwind colour names: the
+  playground compiles without `nsh.json`.
 - A demo is shown in a **frame** (`.phone`, `frameBar()` in
   `src/lib/demo.js`): a card with the card finish, a slim bar (an icon tile,
   the file name, a "Live" badge) and the app on an inset surface, no device

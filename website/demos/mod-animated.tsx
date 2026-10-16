@@ -1,5 +1,6 @@
 import { mount, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing } from "nsh/animated";
+import { ui } from "./palette";
 
 const TRACK = 240;
 const curves: [string, Easing][] = [
@@ -21,12 +22,8 @@ function Button(props: { label: string; onPress: () => void }) {
         paddingVertical: 8,
         borderRadius: 10,
         overflow: "hidden",
-        borderWidth: 1,
-        borderColor: "#2c2e33",
-        backgroundColor: "#24262a",
-        backgroundImage: "linear-gradient(180deg, #2d2f34, #222428)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)",
-        color: "#eceef1",
+        ...ui().raised,
+        color: ui().text,
         fontWeight: "600",
       }}
     >
@@ -57,20 +54,21 @@ function App() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#101113", padding: 20, paddingTop: 24, gap: 16 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700", color: "#eceef1" }}>Native animation</Text>
+    <View style={{ flex: 1, backgroundColor: ui().page, padding: 20, paddingTop: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", color: ui().text }}>Native animation</Text>
       <View style={{ gap: 8 }}>
         <Each of={curves}>
           {(c, i) => (
             <View style={{ gap: 2 }}>
-              <Text style={{ fontSize: 12, color: "#8d9198" }}>{c()[0]}</Text>
-              <View style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: "#0c0d0f", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" }}>
+              <Text style={{ fontSize: 12, color: ui().muted }}>{c()[0]}</Text>
+              <View style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: ui().inset.backgroundColor, boxShadow: ui().inset.boxShadow }}>
                 <View
                   style={{
                     width: 16,
                     height: 16,
                     borderRadius: 8,
-                    backgroundColor: "#c8f26d",
+                    ...ui().accentFill,
+                    borderWidth: 0,
                     transform: [{ translateX: dots[i()] }],
                   }}
                 />
@@ -85,11 +83,11 @@ function App() {
             width: 64,
             height: 64,
             borderRadius: 14,
-            backgroundColor: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["#45d49a", "#ffb547", "#45d49a"] }),
+            backgroundColor: spin.interpolate({ inputRange: [0, 0.5, 1], outputRange: [ui().up, ui().warn, ui().up] }),
             transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }],
           }}
         />
-        <Text style={{ flex: 1, color: "#8d9198", fontSize: 13 }}>
+        <Text style={{ flex: 1, color: ui().muted, fontSize: 13 }}>
           Rotation and color are interpolated from one native value.
         </Text>
       </View>
@@ -97,7 +95,7 @@ function App() {
         <Button label="Race" onPress={race} />
         <Button label="Spin" onPress={turn} />
       </View>
-      <Text style={{ color: "#8d9198" }}>{status()}</Text>
+      <Text style={{ color: ui().muted }}>{status()}</Text>
     </View>
   );
 }
