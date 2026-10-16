@@ -572,8 +572,7 @@ export function Chat() {
                 paddingHorizontal: 14,
                 borderRadius: radius.inset,
                 borderCurve: "continuous",
-                backgroundColor: colors.surface,
-                ...finish.card,
+                ...finish.menu,
                 borderWidth: 1,
                 borderColor: alpha(bannerKind() === "offline" ? colors.warn : colors.up, 0.35),
               }}
@@ -623,10 +622,8 @@ export function Chat() {
               style={{
                 borderRadius: radius.card,
                 borderCurve: "continuous",
-                backgroundColor: colors.surface,
-                ...finish.card,
+                ...finish.menu,
                 borderWidth: 1,
-                borderColor: colors.border,
                 paddingVertical: 6,
                 maxHeight: 460,
                 overflow: "hidden",
@@ -642,7 +639,7 @@ export function Chat() {
                         if (row().id === "attach") attachment.set({ image: photo, file: { name: "trip-notes.pdf", size: "2.4 MB" } });
                         else play(row().id);
                       }}
-                      underlayColor={colors.raised}
+                      underlayColor={alpha(colors.text, 0.06)}
                       accessibilityRole="button"
                       accessibilityLabel={row().label}
                       style={{ flexDirection: "row", alignItems: "center", gap: 12, height: 48, paddingHorizontal: 16 }}
@@ -670,10 +667,8 @@ export function Chat() {
                         paddingHorizontal: 14,
                         borderRadius: 18,
                         justifyContent: "center",
-                        backgroundColor: colors.raised,
-                        ...finish.raised,
+                        ...finish.pill,
                         borderWidth: 1,
-                        borderColor: colors.border,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text }}>{chip().label}</Text>
@@ -701,10 +696,10 @@ export function Chat() {
             style={{
               borderRadius: 24,
               borderCurve: "continuous",
-              backgroundColor: colors.surface,
-              ...finish.card,
+              // Glass like the menu above it, without the blur: nothing scrolls under it.
+              ...finish.menu,
+              backdropFilter: undefined,
               borderWidth: 1,
-              borderColor: colors.border,
               padding: 6,
               gap: 4,
             }}

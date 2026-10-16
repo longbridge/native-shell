@@ -118,7 +118,7 @@ function MarketStrip(props: { market: Market }) {
         </View>
         <Text style={{ fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>{time(props.market.clock())}</Text>
         <Press onPress={() => (running() ? props.market.stop() : props.market.start())} hitSlop={6} accessibilityLabel={running() ? "Pause the market" : "Resume the market"}>
-          <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, running() ? finish.raised : finish.accent]}>
+          <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, running() ? { ...finish.pill, borderWidth: 1 } : finish.accent]}>
             <Icon name={running() ? "pause" : "play"} size={13} tint={running() ? colors.muted : colors.onAccent} />
           </View>
         </Press>

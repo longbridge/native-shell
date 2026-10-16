@@ -145,15 +145,18 @@ export const tints = themed(
 
 /** A surface's finish: a gradient over its color and its shadows. */
 export interface Finish {
+  backgroundColor?: string;
   backgroundImage?: string;
   boxShadow: string;
+  borderColor?: string;
+  backdropFilter?: string;
 }
 
 /**
  * Light and depth: gentle top-to-bottom gradients, a highlight along top
  * edges and soft shadows, so cards, controls and buttons read as surfaces.
  */
-export const finish = themed<Record<"card" | "inset" | "raised" | "light" | "accent" | "track" | "knob", Finish>>(
+export const finish = themed<Record<"card" | "inset" | "raised" | "light" | "accent" | "track" | "knob" | "pill" | "chip" | "glass" | "menu", Finish>>(
   {
     card: {
       backgroundImage: "linear-gradient(180deg, #1d1e22 0%, #17181b 100%)",
@@ -175,6 +178,34 @@ export const finish = themed<Record<"card" | "inset" | "raised" | "light" | "acc
     track: { boxShadow: "inset 0 1px 3px rgba(0,0,0,0.6)" },
     /** A knob or handle over a track. */
     knob: { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.45)" },
+    /**
+     * Lit glass: a pill that floats over a track (the selected segment, a
+     * small round button), a specular top, a faint inner edge, a lower rim.
+     */
+    pill: {
+      backgroundColor: "#2a2c31",
+      backgroundImage: "linear-gradient(180deg, #383a40 0%, #2a2c31 52%, #24262a 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 0 1px rgba(255,255,255,0.03), inset 0 -1px 0 rgba(0,0,0,0.28), 0 2px 6px rgba(0,0,0,0.35)",
+      borderColor: "rgba(255,255,255,0.07)",
+    },
+    /** A tinted capsule's rim and highlight (badges). */
+    chip: { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.18)" },
+    /** A bar floating over content: translucent, blurred, rimmed. */
+    glass: {
+      backgroundColor: "rgba(22,23,26,0.62)",
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 60%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.09), 0 -8px 24px rgba(0,0,0,0.28)",
+      borderColor: "rgba(255,255,255,0.07)",
+      backdropFilter: "blur(20px)",
+    },
+    /** A floating panel (menus, the composer): glass, denser for reading. */
+    menu: {
+      backgroundColor: "rgba(30,32,36,0.82)",
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.015) 40%, rgba(255,255,255,0) 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.11), inset 0 -1px 0 rgba(0,0,0,0.25), 0 12px 32px rgba(0,0,0,0.42)",
+      borderColor: "rgba(255,255,255,0.08)",
+      backdropFilter: "blur(24px)",
+    },
   },
   {
     card: {
@@ -196,6 +227,27 @@ export const finish = themed<Record<"card" | "inset" | "raised" | "light" | "acc
     },
     track: { boxShadow: "inset 0 1px 2px rgba(20,20,10,0.10)" },
     knob: { boxShadow: "inset 0 1px 0 #ffffff, 0 1px 4px rgba(20,20,10,0.28)" },
+    pill: {
+      backgroundColor: "#ffffff",
+      backgroundImage: "linear-gradient(180deg, #ffffff 0%, #fcfcfa 52%, #f3f3ef 100%)",
+      boxShadow: "inset 0 1px 0 #ffffff, inset 0 0 0 1px rgba(255,255,255,0.7), inset 0 -1px 0 rgba(20,20,10,0.06), 0 1px 3px rgba(20,20,10,0.12), 0 4px 10px rgba(20,20,10,0.05)",
+      borderColor: "rgba(20,20,10,0.08)",
+    },
+    chip: { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.65), inset 0 -1px 0 rgba(20,20,10,0.04)" },
+    glass: {
+      backgroundColor: "rgba(250,250,248,0.66)",
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 60%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 -6px 20px rgba(20,20,10,0.06)",
+      borderColor: "rgba(20,20,10,0.07)",
+      backdropFilter: "blur(20px)",
+    },
+    menu: {
+      backgroundColor: "rgba(255,255,255,0.84)",
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 40%, rgba(255,255,255,0) 100%)",
+      boxShadow: "inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(20,20,10,0.05), 0 12px 32px rgba(20,20,10,0.12)",
+      borderColor: "rgba(20,20,10,0.08)",
+      backdropFilter: "blur(24px)",
+    },
   },
 );
 
@@ -414,8 +466,9 @@ export function Badge(props: { label: string; tone?: Tone; outline?: boolean }) 
         borderRadius: 13,
         justifyContent: "center",
         backgroundColor: props.outline ? "transparent" : toneTint(tone()),
-        borderWidth: props.outline ? 1 : 0,
-        borderColor: toneColor(tone()),
+        boxShadow: props.outline ? undefined : finish.chip.boxShadow,
+        borderWidth: 1,
+        borderColor: props.outline ? toneColor(tone()) : alpha(tone() === "neutral" ? colors.text : toneColor(tone()), 0.1),
       }}
     >
       <Text style={{ fontSize: 12, fontWeight: "500", color: tone() === "neutral" ? colors.text : toneColor(tone()) }}>{props.label}</Text>
@@ -544,9 +597,9 @@ export function RoundButton(props: {
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: primary() ? colors.light : colors.raised,
-          ...(primary() ? finish.light : finish.raised),
+          ...(primary() ? finish.light : finish.pill),
           borderWidth: primary() ? 0 : 1,
-          borderColor: colors.border,
+          borderColor: primary() ? colors.border : finish.pill.borderColor,
         }}
       >
         <Icon name={props.icon} size={size * 0.42} tint={primary() ? colors.onLight : colors.text} />
@@ -615,7 +668,9 @@ export function Toggle(props: { value: boolean; onChange: (value: boolean) => vo
           height: 22,
           borderRadius: 11,
           backgroundColor: props.value ? colors.onAccent : colors.knob,
-          boxShadow: props.value || isDark() ? undefined : finish.knob.boxShadow,
+          // A drop of glass: a specular top over the knob's color.
+          backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 60%)",
+          boxShadow: isDark() ? "inset 0 1px 0 rgba(255,255,255,0.2), 0 1px 3px rgba(0,0,0,0.4)" : finish.knob.boxShadow,
           transform: [{ translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }],
         }}
       />
@@ -657,7 +712,8 @@ export function Segmented<T extends string>(props: {
         padding: 3,
         borderRadius: height / 2,
         backgroundColor: colors.inset,
-        ...finish.track,
+        // The track's glass: the sunk shadow plus a lit lower rim.
+        boxShadow: `${finish.track.boxShadow}, inset 0 -1px 0 ${isDark() ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.85)"}`,
         borderWidth: 1,
         borderColor: colors.border,
       }}
@@ -671,10 +727,8 @@ export function Segmented<T extends string>(props: {
           bottom: 3,
           width: segment(),
           borderRadius: (height - 6) / 2,
-          backgroundColor: colors.raised,
-          ...finish.raised,
+          ...finish.pill,
           borderWidth: 1,
-          borderColor: colors.border,
           transform: [{ translateX: x }],
         }}
       />

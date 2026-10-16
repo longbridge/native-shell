@@ -1,7 +1,7 @@
 import { effect, signal, Text, untracked, View } from "nsh";
 import { Animated, createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
 import { Icon } from "../../icons";
-import { Button, colors, isDark, Press, radius, Segmented, tints } from "../../ui";
+import { Button, colors, finish, isDark, Press, radius, Segmented, tints } from "../../ui";
 import { grouped, type Stock, price } from "./market";
 
 export type Side = "buy" | "sell";
@@ -75,7 +75,7 @@ export function createBanner() {
 function Step(props: { icon: "plus" | "minus"; label: string; onPress: () => void }) {
   return (
     <Press onPress={props.onPress} accessibilityLabel={props.label}>
-      <View style={{ width: 44, height: 44, borderRadius: radius.control, alignItems: "center", justifyContent: "center", backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.border }}>
+      <View style={{ width: 44, height: 44, borderRadius: radius.control, alignItems: "center", justifyContent: "center", ...finish.pill, borderWidth: 1 }}>
         <If when={props.icon === "plus"} else={<View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: colors.text }} />}>
           <Icon name="plus" size={18} tint={colors.text} />
         </If>

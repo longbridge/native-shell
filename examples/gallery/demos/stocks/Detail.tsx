@@ -244,7 +244,7 @@ export function Detail(props: { market: Market; stock: Stock }) {
           hitSlop={6}
           accessibilityLabel={props.market.running() ? "Pause the market" : "Resume the market"}
         >
-          <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, props.market.running() ? finish.raised : finish.accent]}>
+          <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, props.market.running() ? { ...finish.pill, borderWidth: 1 } : finish.accent]}>
             <Icon name={props.market.running() ? "pause" : "play"} size={13} tint={props.market.running() ? colors.muted : colors.onAccent} />
           </View>
         </Press>
@@ -278,9 +278,10 @@ export function Detail(props: { market: Market; stock: Stock }) {
             paddingHorizontal: 16,
             paddingTop: 10,
             paddingBottom: 10 + insets().bottom,
-            backgroundColor: colors.background,
+            // Glass: the page shows through, blurred, as it scrolls under.
+            ...finish.glass,
             borderTopWidth: 1,
-            borderTopColor: colors.line,
+            borderTopColor: finish.glass.borderColor,
           }}
         >
           <View style={{ width: 92, gap: 1 }}>
