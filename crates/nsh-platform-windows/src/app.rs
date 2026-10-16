@@ -225,7 +225,44 @@ fn initial_environment() -> Environment {
 }
 
 /// Runs `source` in a window until it is closed.
+///
+/// The window and its message loop run on a thread of their own, which this
+/// one joins: when it ends, its thread-locals (the graphics devices, font
+/// faces, bitmaps and the other device resources cached per thread) are
+/// released at a plain thread exit. Released by the main thread's
+/// thread-local destructors instead, they would run inside `ExitProcess`,
+/// after the graphics DLLs and their driver threads are gone, and the
+/// process would end with a stray exit code.
 pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode {
+    /// The app, moved to the UI thread.
+    struct Job(AppSource, AppOptions);
+    // SAFETY: the options hold `Rc`s (the native components), so they are
+    // not `Send`. They move to the UI thread whole while this thread waits
+    // in `join` and never touches them; clones the caller kept are only
+    // used again after `join` returns, once the UI thread has ended, so
+    // the reference counts are never changed from two threads at once.
+    unsafe impl Send for Job {}
+    let job = Job(source, options);
+    let ui = std::thread::Builder::new()
+        .name("nsh-ui".into())
+        // Deep view trees recurse in drawing and hit testing.
+        .stack_size(8 << 20)
+        .spawn(move || {
+            let job = job;
+            run_on_this_thread(job.0, job.1)
+        });
+    match ui.map(std::thread::JoinHandle::join) {
+        Ok(Ok(code)) => code,
+        Ok(Err(_)) => std::process::ExitCode::FAILURE,
+        Err(err) => {
+            fatal_error(&format!("Cannot start the UI thread: {err}"));
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// [`run_app`] on the calling thread.
+fn run_on_this_thread(source: AppSource, options: AppOptions) -> std::process::ExitCode {
     // SAFETY: process setup before any window exists: per-monitor DPI
     // (points stay sharp on every monitor) and an OLE apartment for the
     // clipboard, drag and drop and WIC.
@@ -255,6 +292,9 @@ pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode
     let code = crate::window::run_loop();
     view.stop();
     drop(view);
+    // SAFETY: pairs the `OleInitialize` above; nothing on this thread uses
+    // OLE afterwards.
+    unsafe { windows::Win32::System::Ole::OleUninitialize() };
     if code == 0 {
         std::process::ExitCode::SUCCESS
     } else {
