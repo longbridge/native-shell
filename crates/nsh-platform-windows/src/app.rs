@@ -287,6 +287,7 @@ fn run_on_this_thread(source: AppSource, options: AppOptions) -> std::process::E
         AppSource::DevServer(url) => crate::dev::start(&view, url),
     }
     crate::system::environment_applied(view.surface());
+    install_shortcuts(&view);
     view.show();
     if let Some(script) = &options.script {
         crate::script::run(view.surface().clone(), script);
@@ -302,6 +303,27 @@ fn run_on_this_thread(source: AppSource, options: AppOptions) -> std::process::E
     } else {
         std::process::ExitCode::FAILURE
     }
+}
+
+/// The standalone app's window shortcuts: F11 toggles full screen, as in
+/// Windows' own apps (Alt+F4, which closes the window, is the system's).
+fn install_shortcuts(view: &AppView) {
+    const VK_F11: u16 = 0x7A;
+    let hwnd = view.hwnd();
+    view.surface()
+        .shortcuts
+        .borrow_mut()
+        .push(Box::new(move |event| {
+            let m = event.modifiers;
+            if event.vk != VK_F11 || m.ctrl || m.alt || m.shift || m.meta {
+                return false;
+            }
+            // A key held down toggles once.
+            if !event.repeat {
+                crate::window::toggle_full_screen(hwnd);
+            }
+            true
+        }));
 }
 
 /// Writes `text` to the debugger's output (`OutputDebugString`): where a

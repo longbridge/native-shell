@@ -185,6 +185,7 @@ pub(crate) fn start(view: &Rc<AppView>, url: String) {
     }));
     SESSIONS.with(|s| s.borrow_mut().insert(key, ui.clone()));
     show_status(&ui, Status::Connecting(&url));
+    install_reload_key(&surface, key);
 
     surface.set_error_handler(Box::new(move |message| {
         if let Some(ui) = session(key) {
@@ -247,6 +248,45 @@ pub(crate) fn start(view: &Rc<AppView>, url: String) {
 
 fn session(key: u64) -> Option<Rc<RefCell<DevUi>>> {
     SESSIONS.with(|s| s.borrow().get(&key).cloned())
+}
+
+/// Ctrl+R (as on Linux, Cmd+R on macOS) and F5 (Windows' own) load the
+/// latest build again, wherever the window's focus is.
+fn install_reload_key(surface: &crate::surface::Surface, key: u64) {
+    const VK_R: u16 = 0x52;
+    const VK_F5: u16 = 0x74;
+    surface.shortcuts.borrow_mut().push(Box::new(move |event| {
+        let m = event.modifiers;
+        let reload = match event.vk {
+            VK_R => m.ctrl && !m.alt && !m.shift && !m.meta,
+            VK_F5 => !m.ctrl && !m.alt && !m.shift && !m.meta,
+            _ => false,
+        };
+        let Some(ui) = session(key).filter(|_| reload) else {
+            return false;
+        };
+        if !event.repeat {
+            reload_latest(&ui);
+        }
+        true
+    }));
+}
+
+/// Loads the latest build from scratch (Ctrl+R, F5).
+fn reload_latest(ui: &Rc<RefCell<DevUi>>) {
+    let (view, bundle) = {
+        let mut ui = ui.borrow_mut();
+        let Some((session, version, bundle)) = ui.latest.clone() else {
+            return;
+        };
+        ui.running = Some((session, version));
+        (ui.view.upgrade(), bundle)
+    };
+    if let Some(view) = view {
+        log::info!("reloading");
+        hide_error(ui);
+        view.load(App::Js(bundle));
+    }
 }
 
 /// `ws://host:port/ws` → `http://host:port/assets/`, where the dev server
@@ -660,7 +700,7 @@ impl ErrorOverlay {
             .and_then(|f| layout(&self.title, &f, width, size.1));
         let title_height = title.as_ref().map_or(0.0, |l| measure(l).1);
         let hint = text_format("Segoe UI", 11.0, DWRITE_FONT_WEIGHT_NORMAL)
-            .and_then(|f| layout("Click to dismiss", &f, width, size.1));
+            .and_then(|f| layout("Click to dismiss · Ctrl+R to reload", &f, width, size.1));
         let hint_height = hint.as_ref().map_or(0.0, |l| measure(l).1);
         let room = (size.1
             - ERROR_TOP

@@ -91,6 +91,9 @@ pub(crate) type FrameClient = Box<dyn FnMut(&Rc<Surface>, f64) -> bool>;
 /// Called with the new size (points) when the surface is resized.
 pub(crate) type ResizeHandler = Box<dyn Fn(f32, f32)>;
 
+/// A window shortcut: true if it took the key (down).
+pub(crate) type ShortcutHandler = Box<dyn Fn(&crate::input::KeyEvent) -> bool>;
+
 /// Called when the app reports a fatal error (development hosts show it).
 pub(crate) type ErrorHandler = Box<dyn Fn(&str)>;
 
@@ -151,6 +154,9 @@ pub(crate) struct Surface {
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
     /// Called after the surface is resized (development overlays).
     pub(crate) on_resized: RefCell<Vec<ResizeHandler>>,
+    /// Keys the window takes before anything focused sees them (the
+    /// standalone app's full screen, the dev host's reload).
+    pub(crate) shortcuts: RefCell<Vec<ShortcutHandler>>,
 }
 
 impl Surface {
@@ -190,6 +196,7 @@ impl Surface {
             native: Default::default(),
             placed: RefCell::default(),
             on_resized: RefCell::default(),
+            shortcuts: RefCell::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         let weak = Rc::downgrade(&surface);

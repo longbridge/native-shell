@@ -832,7 +832,11 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
         // it saw no other key: swallow the release once Alt + key was ours.
         return event.vk == VK_MENU && input.alt_combo.replace(false);
     }
-    let handled = crate::system::key(surface, &event)
+    // The window's shortcuts (full screen, the dev host's reload) work
+    // wherever the focus is.
+    let shortcut = surface.shortcuts.borrow().iter().any(|f| f(&event));
+    let handled = shortcut
+        || crate::system::key(surface, &event)
         || crate::text_input::key(surface, &event)
         || crate::text::key(surface, &event)
         || crate::navigation::key_pressed(surface, &event)
