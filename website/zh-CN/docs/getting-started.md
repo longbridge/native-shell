@@ -100,6 +100,15 @@ nsh run my-app/App.tsx --target android
 
 先启动模拟器或连接设备（`adb devices` 会列出它们；nsh 使用第一个）。`nsh` 会安装一个开发宿主 APK（只在运行时变化时重新构建），并通过 `adb reverse` 把开发服务器的端口转发到设备上，因此通过 USB 即可工作，无需共享网络。
 
+#### macOS（AppKit）
+
+```sh
+nsh run my-app/App.tsx --target macos
+```
+
+应用会作为桌面 Mac 应用打开（AppKit，窗口可调整大小），使用鼠标、触控板和键盘输入而不是触摸。需要 macOS 14 及以上；见
+[macOS](./macos.md)。
+
 #### Linux（Linux 上默认）
 
 ```sh
@@ -206,6 +215,7 @@ Android 上用 `NshTrust` 和 `NshPackage`，流程相同。承载、下发和�
 ```sh
 nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
+nsh package my-app --target macos
 nsh package my-app --target linux
 ```
 

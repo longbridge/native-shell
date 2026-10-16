@@ -43,7 +43,7 @@ Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 
 因此 nsh 用 UIKit 和 Android 视图来渲染模块：模块和应用其余部分用的是同一套视图，表现自然一致：同一种模块格式、同一个运行时，现在运行在 UIKit 和 Android 视图上，GPUI 后端完成后也运行在桌面客户端上——一个模块写一次，就能在三端的客户端里运行。
 
-两者的定位不同：GPUI Shell 用于扩展 GPUI 桌面应用；Native Shell 用于扩展原生手机应用，并通过 GPUI 后端覆盖桌面客户端。原生的 macOS、Windows 后端（AppKit、WinUI）目前不是目标。
+两者的定位不同：GPUI Shell 用于扩展 GPUI 桌面应用；Native Shell 用于扩展原生手机应用，并通过 GPUI 后端覆盖桌面客户端。原生的 Windows 后端（WinUI）目前不是目标。
 
 ## 一个模块
 

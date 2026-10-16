@@ -8,11 +8,12 @@ order: 32
 
 开发期间，nsh 会在每次保存时构建应用，并推送给所有已连接的宿主，宿主就地更新。有两条命令可以做到这一点：
 
-- `nsh run` 启动开发服务器，**并且** 启动一个开发宿主：Mac Catalyst 窗口、Linux 上的 GTK 窗口、iOS 模拟器，或者 Android 真机或模拟器。
+- `nsh run` 启动开发服务器，**并且** 启动一个开发宿主：Mac Catalyst 或 AppKit 窗口、Linux 上的 GTK 窗口、iOS 模拟器，或者 Android 真机或模拟器。
 - `nsh dev` 只启动开发服务器，宿主由你自己启动：集成了开发版 SDK 的自有应用、网络中的某台设备，或同时连接多个宿主。
 
 ```sh
 nsh run App.tsx                     # Mac Catalyst window, 390×844 (macOS); GTK window (Linux)
+nsh run App.tsx --target macos      # AppKit window (macOS)
 nsh run App.tsx --target ios        # iOS simulator
 nsh run App.tsx --target android    # Android device or emulator
 nsh dev App.tsx                     # server only
@@ -22,7 +23,7 @@ nsh dev App.tsx                     # server only
 
 | 参数 | 说明 |
 |---|---|
-| `--target <catalyst \| ios \| android \| linux>` | 在哪里运行。macOS 上默认 `catalyst`（一个 iPhone 尺寸、390×844 的 Mac 窗口），Linux 上默认 `linux`。 |
+| `--target <catalyst \| ios \| android \| macos \| linux>` | 在哪里运行。macOS 上默认 `catalyst`（一个 iPhone 尺寸、390×844 的 Mac 窗口），Linux 上默认 `linux`。 |
 | `--device <name or UDID>` | 要使用的 iOS 模拟器。默认：已启动的那个，否则使用最新的 iPhone（会自动为你启动）。 |
 | `--port <port>` | 开发服务器端口。默认 8790；如被占用，则使用下一个空闲端口。 |
 | `--release` | 提供 release 构建（压缩、无调试信息、无热更新）。 |
@@ -31,6 +32,8 @@ nsh dev App.tsx                     # server only
 各个目标的行为：
 
 - **`catalyst`**（macOS）以 Mac 应用的形式运行开发宿主。停止 `nsh run`（Ctrl-C）会关闭它，关闭窗口也会结束 `nsh run`。
+- **`macos`**（macOS）在一个 390×844 的窗口中以桌面应用的形式运行 AppKit 开发宿主，行为相同；Cmd+R 重新加载最新构建。
+  需要 macOS 14 及以上（[macOS](./macos.md)）。
 - **`linux`**（Linux）在一个 390×844 的窗口中运行 GTK 开发宿主，行为相同：Ctrl-C 会关闭它，关闭窗口也会结束 `nsh run`。
   需要 GTK 4.14 及以上（[Linux](./linux.md)）。
 - **`ios`** 将开发宿主安装到模拟器中，启动它并指向开发服务器，然后持续监听。模拟器与 Mac 共享网络，因此宿主通过

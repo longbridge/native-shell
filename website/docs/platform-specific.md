@@ -132,7 +132,7 @@ In an app embedded in a native one, the host app's view controller decides the s
 
 ## Platform.OS and Platform.select
 
-`Platform` from `nsh/device` tells you where the app runs: `Platform.OS` is `"ios"`, `"android"`, `"macos"`, `"windows"` or `"linux"` (Mac Catalyst is `"ios"`, with `Platform.isMacCatalyst`; the [Linux backend](./linux.md) is `"linux"`, and its elements apply their `desktop` props). See [Device and environment](./device-and-environment.md#the-platform) for `Version`, `isPad` and the rest.
+`Platform` from `nsh/device` tells you where the app runs: `Platform.OS` is `"ios"`, `"android"`, `"macos"`, `"windows"` or `"linux"` (Mac Catalyst is `"ios"`, with `Platform.isMacCatalyst`; the [macOS backend](./macos.md) is `"macos"` and the [Linux backend](./linux.md) `"linux"`, and their elements apply their `desktop` props). See [Device and environment](./device-and-environment.md#the-platform) for `Version`, `isPad` and the rest.
 
 ```tsx
 import { Platform } from "nsh/device";

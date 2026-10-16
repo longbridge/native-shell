@@ -7,7 +7,7 @@ order: 3.3
 # Native Components
 
 A native component is a view the **embedding app** registers by name: a map, a camera preview, a chart library, any
-`UIView` on iOS, `android.view.View` on Android or `gtk::Widget` on Linux. The nsh app declares it with `nativeComponent()` from
+`UIView` on iOS, `android.view.View` on Android, `NSView` on macOS or `gtk::Widget` on Linux. The nsh app declares it with `nativeComponent()` from
 [`nsh/native`](../modules/nsh-native.md) and uses it like any other component. nsh lays it out with the rest of the
 app, sends it props, delivers its events to handlers and forwards commands from a `ref`.
 
@@ -16,7 +16,7 @@ there is no layering problem, it clips, scrolls and receives touches like a `<Vi
 
 > [!NOTE]
 > Native components exist only where an app embeds nsh ([iOS](./embedding-ios.md), [Android](./embedding-android.md),
-> [Linux](./linux.md#embedding-in-a-gtk-app)).
+> [macOS](./macos.md#embedding-in-a-mac-app), [Linux](./linux.md#embedding-in-a-gtk-app)).
 > A packaged standalone app (`nsh package`) or a development host registers none, so the element renders an empty
 > view there (the name is logged once as unknown).
 
@@ -337,6 +337,58 @@ fn register(app: &AppView, make_view: impl Fn() -> objc2::rc::Retained<UIView> +
 
 `ComponentContext::emit(name, data)` sends an event (`data` is a `serde_json::Value`) and `set_size(width, height)`
 reports the size; both work from any thread.
+
+## Registering on macOS (Rust)
+
+On macOS the component is an `NSView`, registered on the [`AppView`](./macos.md#embedding-in-a-mac-app) of
+`nsh-platform-macos`:
+
+```rust
+use std::rc::Rc;
+use nsh_core::JsonValue;
+use nsh_platform_macos::{
+    objc2::{rc::Retained, MainThreadMarker},
+    objc2_app_kit::{NSTextField, NSView},
+    objc2_foundation::NSString,
+    AppView, ComponentContext, NativeComponent,
+};
+
+struct Badge {
+    label: Retained<NSTextField>,
+    context: ComponentContext,
+}
+
+impl NativeComponent for Badge {
+    fn view(&self) -> Retained<NSView> {
+        Retained::into_super(Retained::into_super(self.label.clone()))
+    }
+
+    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>) {
+        if name == "text" {
+            let text = value.and_then(|v| v.as_str()).unwrap_or("");
+            self.label.setStringValue(&NSString::from_str(text));
+            self.context.set_size(120.0, 40.0);
+        }
+    }
+
+    fn command(&mut self, name: &str, args: &JsonValue) {
+        // optional
+    }
+}
+
+fn register(app: &AppView, mtm: MainThreadMarker) {
+    app.register_component(
+        "embed.badge",
+        Rc::new(move |context: ComponentContext| -> Box<dyn NativeComponent> {
+            Box::new(Badge { label: NSTextField::labelWithString(&NSString::new(), mtm), context })
+        }),
+    );
+}
+```
+
+The view fills the container nsh lays out; `ComponentContext::emit` and `set_size` (points) work from any thread, as
+on iOS. Register before `AppView::load`; a registry belongs to one `AppView` (and the views made from the same
+`AppOptions`).
 
 ## Registering on Linux (Rust)
 

@@ -66,14 +66,14 @@ Creates an app in `DIR` (default: the current directory, created if missing): `A
 ## nsh run
 
 ```sh
-nsh run [ENTRY] [--target catalyst|ios|android|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
+nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
 ```
 
-Starts the dev server (as `nsh dev`), launches a development host that loads the app from it, and rebuilds on every save. Hot module replacement patches the running app in place; logs and errors from the app are printed in the terminal. Stop it with Ctrl-C (or by closing the Catalyst or Linux window). However it ends (Ctrl-C, `kill` / `pkill`, an error), it stops the host it started: the Catalyst app, the Linux host, the development host in the simulator, or on the Android device.
+Starts the dev server (as `nsh dev`), launches a development host that loads the app from it, and rebuilds on every save. Hot module replacement patches the running app in place; logs and errors from the app are printed in the terminal. Stop it with Ctrl-C (or by closing the Catalyst, macOS or Linux window). However it ends (Ctrl-C, `kill` / `pkill`, an error), it stops the host it started: the Catalyst app, the macOS or Linux host, the development host in the simulator, or on the Android device.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--target <TARGET>` | `catalyst` on macOS, `linux` on Linux | `catalyst`: the Mac Catalyst host, an iPhone-sized window (390×844). `ios`: the host in an iOS simulator. `android`: the host on an Android device or emulator. `linux`: the GTK host, a 390×844 window ([Linux](./linux.md)). |
+| `--target <TARGET>` | `catalyst` on macOS, `linux` on Linux | `catalyst`: the Mac Catalyst host, an iPhone-sized window (390×844). `ios`: the host in an iOS simulator. `android`: the host on an Android device or emulator. `macos`: the AppKit host, a 390×844 window ([macOS](./macos.md)). `linux`: the GTK host, a 390×844 window ([Linux](./linux.md)). |
 | `--device <DEVICE>` | | iOS simulator to use, by name (`"iPhone 16 Pro"`) or UDID. Default: a booted one, else the newest iPhone, which is booted. |
 | `--port <PORT>` | `8790` | Dev server port. If it is taken, the next free one is used. |
 | `--release` | | Minify and strip debug info. Release bundles have no hot module replacement: every save reloads the app. |
@@ -169,14 +169,14 @@ It writes:
 ## nsh package
 
 ```sh
-nsh package [ENTRY] --target ios|ios-simulator|android|linux [-o <OUT>] [flags]
+nsh package [ENTRY] --target ios|ios-simulator|android|macos|linux [-o <OUT>] [flags]
 ```
 
-Builds an installable app from the prebuilt runtime, in release mode. No Rust and no Xcode project or Gradle build are involved: nsh assembles the app bundle itself and uses Xcode's `actool` and `codesign` (iOS) or the SDK's `aapt2`, `zipalign` and `apksigner` (Android); for Linux it copies the runner and writes a `.tar.gz` with `tar`. Metadata comes from `nsh.json`, overridden by the flags.
+Builds an installable app from the prebuilt runtime, in release mode. No Rust and no Xcode project or Gradle build are involved: nsh assembles the app bundle itself and uses Xcode's `actool` and `codesign` (iOS) or the SDK's `aapt2`, `zipalign` and `apksigner` (Android); for macOS it assembles an ad hoc signed `.app` with `codesign` (and `sips` for the icon); for Linux it copies the runner and writes a `.tar.gz` with `tar`. Metadata comes from `nsh.json`, overridden by the flags.
 
 | Flag | Description |
 |---|---|
-| `--target <TARGET>` | Required. `ios`: iOS devices, a signed `.ipa` (or an unsigned `.app` without `--sign`). `ios-simulator`: an ad hoc signed `.app`. `android`: a signed `.apk`. `linux`: a directory `<Name>/` (the executable, `nsh/`, a `.desktop` file) and `<Name>.tar.gz` ([Linux](./linux.md#packaging)). |
+| `--target <TARGET>` | Required. `ios`: iOS devices, a signed `.ipa` (or an unsigned `.app` without `--sign`). `ios-simulator`: an ad hoc signed `.app`. `android`: a signed `.apk`. `macos`: an ad hoc signed `.app` ([macOS](./macos.md#packaging)). `linux`: a directory `<Name>/` (the executable, `nsh/`, a `.desktop` file) and `<Name>.tar.gz` ([Linux](./linux.md#packaging)). |
 | `-o, --out <OUT>` | Output directory (default `out`). |
 | `--name <NAME>` | Display name. |
 | `--id <ID>` | Bundle identifier, e.g. `com.example.app`. |
@@ -188,12 +188,13 @@ Builds an installable app from the prebuilt runtime, in release mode. No Rust an
 | `--keystore <FILE>` | Android: release keystore. Default: the debug key in `~/.android/debug.keystore` (created if missing). |
 | `--key-alias <ALIAS>` | Android: key alias in the keystore. |
 | `--keystore-password <PASSWORD>` | Android: keystore password. Also read from `NSH_KEYSTORE_PASSWORD`. |
-| `--run` | Install and launch the app afterwards: in the simulator (`ios-simulator`) or on the connected Android device; `linux` launches it. |
+| `--run` | Install and launch the app afterwards: in the simulator (`ios-simulator`) or on the connected Android device; `macos` and `linux` launch it. |
 
 ```sh
 nsh package App.tsx --target ios-simulator --run
 nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345)" --profile dev.mobileprovision
 nsh package App.tsx --target android --keystore release.jks --key-alias upload
+nsh package App.tsx --target macos
 nsh package App.tsx --target linux
 ```
 
