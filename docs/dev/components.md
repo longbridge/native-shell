@@ -77,7 +77,9 @@ impl Component for Button {
     generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
     view().px_4().when(at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
     row; only rows near the viewport exist and cells are recycled as with `List`.
-- **Elements** are `view()`, `text(..)`, `image(..)`, the other host elements (`input()`, `scroll()`, `stack()` of
+- **Elements** are `view()`, `text(..)` (its `.child(..)`ren are spans, as nested `<text>`s: texts with styles and
+  presses of their own, strings, inline views and images; the core merges them into one paragraph), `image(..)`, the
+  other host elements (`input()`, `scroll()`, `stack()` of
   `screen()`s, `modal()`,
   `canvas(drawing)`, `web_view(url)`, `video(url)`, `native(name)` for the embedder's components; `ui/host.rs`),
   strings (as texts) and other components (`Button::element(props)`, whose `.on_event(cx.listener(..))` handles their
@@ -117,6 +119,7 @@ impl Component for Button {
   | an error boundary (TS has none) | `fn catch_error(&mut self, error, cx) -> bool`: the nearest component above one whose code panicked (render, listener, method, task) handles it, typically keeping `error`, rendering a fallback and clearing it to try again; the failed one renders nothing until it renders again; unhandled errors are logged (`js` target) |
   | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
+  | `<text>a <text style={link} onPress={f}>b</text> <view/></text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
   | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no render) |
   | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
 

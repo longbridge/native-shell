@@ -17,5 +17,9 @@
   resizes them and builds the block again (`check_attachments`). They take presses of their own; copying leaves the
   placeholders out.
 
+- **Rust components** nest texts the same way: `text("a ").child(text("b").underline().on_press(..)).child(view())` is
+  one block; a plain string child is a raw text node (as JS's strings), a text's own content its first piece
+  (`core/components.rs`, `Part::Raw`).
+
 See also the text pitfalls in [pitfalls.md](pitfalls.md) and the engines in `crates/nsh-platform-ios/src/text.rs` /
 `crates/nsh-platform-android/src/text.rs`.

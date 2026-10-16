@@ -4402,4 +4402,66 @@ mod components {
             ["oops: test.faulty (exploded)"]
         );
     }
+
+    /// A sentence with a link, a bold span and a badge inside it.
+    #[derive(Default)]
+    struct Sentence {
+        taps: u32,
+        long: bool,
+    }
+
+    impl Component for Sentence {
+        const NAME: &'static str = "test.sentence";
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(
+                text(format!("Tapped {} ", self.taps))
+                    .text_size(px(16.0))
+                    .child(text("the link").underline().on_press(cx.listener(
+                        |this: &mut Self, _, cx| {
+                            this.taps += 1;
+                            this.long = true;
+                            cx.notify();
+                        },
+                    )))
+                    .child(", ")
+                    .child(text("bold").font_weight(FontWeight::BOLD))
+                    .when(self.long, |t| t.child(" and more"))
+                    .child(view().size(px(10.0)).bg(rgb(0xff0000))),
+            )
+        }
+    }
+
+    #[test]
+    fn rust_texts_nest_spans_links_and_inline_views() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Sentence>(|| ()));
+        let batch = c.commit().unwrap();
+        let text = |batch: &MountBatch| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+        };
+        let t = text(&batch).expect("one paragraph");
+        assert_eq!(t.text, "Tapped 0 the link, bold\u{fffc}");
+        assert_eq!(t.attachments.len(), 1, "the view sits in the text");
+        assert!(t.spans.iter().any(|s| s.style.font_weight == 700));
+        let link = t.links[0];
+        assert_eq!((link.start, link.end), (9, 17));
+        // Only the block and the inline view have native views.
+        let views = batch
+            .items
+            .iter()
+            .filter(|i| matches!(i, MountItem::Create { .. }))
+            .count();
+        assert_eq!(views, 3, "the root's host, the text and the view");
+        // The link takes the press; the content changes in place.
+        assert!(c.component_event(link.node, EventKind::Press, &EventPayload::None));
+        let t = text(&c.commit().unwrap()).expect("built again");
+        // A piece added between a span and the view goes in its place.
+        assert_eq!(t.text, "Tapped 1 the link, bold and more\u{fffc}");
+    }
 }

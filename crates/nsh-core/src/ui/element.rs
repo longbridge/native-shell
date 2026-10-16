@@ -718,6 +718,9 @@ pub(crate) enum ElKind {
     List(Box<ListEl>),
     /// A list of the component's own rows ([`super::virtual_list`]).
     VirtualList(Box<super::virtual_list::VirtualListEl>),
+    /// A piece of a text's content among its spans (a raw text node, as
+    /// JS's strings in a `<text>`).
+    Raw,
     Component(ComponentEl),
 }
 
@@ -1279,6 +1282,40 @@ impl Interactive for SlotElement {}
 impl Interactive for Text {}
 impl Interactive for Image {}
 
+/// A text's children are its spans, as nested `<text>`s in JS: texts with
+/// styles and presses of their own (a link inside a sentence), strings,
+/// and views and images placed inline, wrapping with the words. The core
+/// merges them into one paragraph.
+impl ParentElement for Text {
+    fn child(mut self, child: impl IntoElement) -> Self {
+        self.0.children.push(span(child.into_element().0));
+        self
+    }
+
+    fn children(mut self, children: impl IntoIterator<Item = impl IntoElement>) -> Self {
+        self.0
+            .children
+            .extend(children.into_iter().map(|c| span(c.into_element().0)));
+        self
+    }
+}
+
+/// A child of a text: a bare string (a text with nothing of its own) is a
+/// piece of its content, anything else a span or an inline element.
+fn span(mut el: ElNode) -> ElNode {
+    if el.tag == Tag::Text
+        && matches!(el.kind, ElKind::Plain)
+        && el.key.is_none()
+        && el.children.is_empty()
+        && el.handlers.is_empty()
+        && el.style.is_empty()
+        && el.attrs == Attrs::default()
+    {
+        el.kind = ElKind::Raw;
+    }
+    el
+}
+
 impl Text {
     /// At most `lines` lines (0: no limit), the last one truncated.
     pub fn number_of_lines(mut self, lines: u32) -> Self {
@@ -1465,7 +1502,8 @@ pub fn view() -> View {
     View(ElNode::new(Tag::View))
 }
 
-/// A text block showing `content`.
+/// A text block showing `content`, then its children (spans:
+/// [`ParentElement`] for [`Text`]).
 pub fn text(content: impl Into<SharedString>) -> Text {
     let mut node = ElNode::new(Tag::Text);
     node.text = Some(content.into());

@@ -159,6 +159,8 @@ enum Part {
     VirtualList,
     /// One of the JS children (no node of its own).
     JsChild,
+    /// A piece of a text's content: a raw text node.
+    Raw,
 }
 
 /// The node's classes: its styles lowered, and what was merged after them.
@@ -1432,6 +1434,7 @@ impl<M: TextEngine> Core<M> {
                     let part = match &el.kind {
                         ElKind::Component(c) => Part::Component(c.name),
                         ElKind::VirtualList(_) => Part::VirtualList,
+                        ElKind::Raw => Part::Raw,
                         _ => Part::Node,
                     };
                     let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
@@ -1629,6 +1632,20 @@ impl<M: TextEngine> Core<M> {
         host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
+        if matches!(el.kind, ElKind::Raw) {
+            return self.reconcile_raw(prev, el, host);
+        }
+        // A text with spans: its own content is the first piece, as JS
+        // has it.
+        if !el.children.is_empty()
+            && let Some(content) = el.text.take()
+            && !content.is_empty()
+        {
+            let mut raw = ElNode::new(Tag::Text);
+            raw.text = Some(content);
+            raw.kind = ElKind::Raw;
+            el.children.insert(0, raw);
+        }
         let old_list = prev.as_ref().map(|p| p.list).unwrap_or_default();
         let (id, old_attrs, old_style, old_classes, old_events, old_children, old_text) = match prev
         {
@@ -1748,6 +1765,45 @@ impl<M: TextEngine> Core<M> {
             list,
             part,
             children,
+        }
+    }
+
+    /// A piece `el` of a text's content: its raw text node, created or
+    /// changed (the render's order puts it in place).
+    fn reconcile_raw(&mut self, prev: Option<Expanded>, el: ElNode, host: NodeId) -> Expanded {
+        let content = el.text.unwrap_or_else(|| "".into());
+        let id = match prev {
+            Some(p) => {
+                if p.text.as_ref().is_none_or(|(old, _)| *old != content) {
+                    let _ = self.apply_op(Op::SetText {
+                        id: p.id,
+                        text: content.as_str().to_owned(),
+                    });
+                }
+                p.id
+            }
+            None => {
+                let id = self.components.alloc();
+                let _ = self.apply_op(Op::CreateText {
+                    id,
+                    text: content.as_str().to_owned(),
+                });
+                self.components.owners.insert(id, host);
+                id
+            }
+        };
+        Expanded {
+            id,
+            tag: Tag::Text,
+            key: None,
+            text: Some((content, id)),
+            attrs: Attrs::default(),
+            style: StyleRefinement::default(),
+            classes: (None, None),
+            events: EventMask::default(),
+            list: ListConfig::default(),
+            part: Part::Raw,
+            children: Vec::new(),
         }
     }
 
@@ -1897,6 +1953,10 @@ impl<M: TextEngine> Core<M> {
             // A JS child leaves the wrapper being released.
             Part::JsChild => {
                 self.detach_id(e.id);
+                return;
+            }
+            Part::Raw => {
+                self.release_id(e.id);
                 return;
             }
             Part::Component(_) => self.release_instance(e.id),
