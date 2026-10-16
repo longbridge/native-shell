@@ -43,7 +43,7 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 
 nsh therefore renders modules with UIKit and Android views, so a module behaves like the rest of the app because it is made of the same views: one module format and one runtime, on UIKit and Android views today, and on GPUI for desktop clients once its backend lands, so a module written once can run in all three clients.
 
-The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps, and through the GPUI backend, desktop clients as well. A native Windows backend (WinUI) is not a goal for now.
+The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps, and through the GPUI backend, desktop clients as well. nsh also has desktop backends of its own: AppKit on [macOS](./macos.md), GTK 4 on [Linux](./linux.md) and Win32 windows drawn with Direct2D on [Windows](./windows.md).
 
 ## A module
 

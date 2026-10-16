@@ -21,13 +21,14 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 - **Text is laid out once**: `TextEngine` (defined in core) runs `prepare` on the engine thread (Apple: CTFramesetter) → `measure` at various widths →
   `layout` at the final size after layout (Apple: CTFrame). `MountItem::Text` hands the immutable result to the main thread, which only draws it
   (`CTFrameDraw` in `TextView`'s `drawRect`); the main thread never lays out text. Android's counterpart is `StaticLayout` (like RN's PreparedLayout),
-  Linux's Pango (glyph runs as plain data, drawn as `gsk::TextNode`s with the main thread's fonts).
+  Linux's Pango (glyph runs as plain data, drawn as `gsk::TextNode`s with the main thread's fonts), Windows' DirectWrite
+  (glyph runs recorded through a text renderer of nsh's own, drawn with Direct2D's `DrawGlyphRun`).
   Implementations must not touch main-thread-only UI objects.
 - Measure cache: one content-addressed LRU per engine (`MeasureCache`, two generations of hash maps, ≤1024 entries), keyed by a hash of the
   layout-relevant content (`AttributedText::layout_hash`, colors excluded) + the width constraint; nodes also cache `Prepared` and the final layout.
   A color-only change does not trigger layout, only a new final layout.
-- One `Surface` (Apple, Linux) / `NshView` (Android) is one engine (one QuickJS runtime), with no global singletons, so nsh can be embedded in
-  existing apps with several instances. `AppView` (Apple: a `UIView` or, on macOS, an `NSView`; Linux: a GTK widget) wraps a surface for embedding and owns its dev session; a standalone app is
+- One `Surface` (Apple, Linux, Windows) / `NshView` (Android) is one engine (one QuickJS runtime), with no global singletons, so nsh can be embedded in
+  existing apps with several instances. `AppView` (Apple: a `UIView` or, on macOS, an `NSView`; Linux: a GTK widget; Windows: a window) wraps a surface for embedding and owns its dev session; a standalone app is
   just "one AppView filling the window".
 - **Android**: the engine thread typesets with `StaticLayout` through JNI; each commit is one `byte[]` plus an object
   table handed to `Mounter.java` on the UI thread, and animation items stay in Rust (the flow, the units and the JNI
@@ -38,6 +39,10 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 - **macOS** (AppKit, `macos.md`): one flipped, layer-backed `NSView` per node at the core's frames, decorated by Core
   Animation (the iOS backend's), text and canvases drawn in `drawRect:`, desktop input and scroll views as on Linux; each
   commit is one main-queue hop; native animations run on the root's display link.
+- **Windows** (Win32, `windows.md`): one retained `NshView` per node, the whole tree drawn by the surface's window
+  with Direct2D into a flip-model swap chain (no child windows but web views and components' own windows); each
+  commit is one `WM_NSH_WAKE` posted to the window; native animations run on a ticker paced by the compositor
+  (`DwmFlush`).
 - **Web APIs** (TS apps only; Rust code uses crates of its choice): `fetch` with `Headers` / `Request` / `Response`, the
   Streams API (readable streams with byte streams and BYOB readers, writable and transform streams, `pipeTo` /
   `pipeThrough`, `TextEncoderStream` / `TextDecoderStream`), `Blob` / `File` / `FormData`, `URL` / `URLSearchParams`,
@@ -49,13 +54,14 @@ Input                        native gestures -> EngineControl::dispatch_event ->
   kilobytes instead of ICU4X's megabytes; trade-offs and limits in its module doc), in `Environment::locale` by
   default (the platform's region format: `NSLocale.currentLocale`, `Locale.getDefault()`).
 - **Networking**: requests go to the platform stack through `nsh_engine::Network`
-  (NSURLSession, HttpURLConnection; ureq on Linux and for `nsh trace`), streaming both ways: the stack reports the response head,
+  (NSURLSession, HttpURLConnection; ureq on Linux, on Windows and for `nsh trace`), streaming both ways: the stack reports the response head,
   then body chunks as they arrive (`FetchEvent`), and JS can pause reading (back pressure); a streamed request body is
   sent in chunks the stack asks for one at a time (`FetchEvent::BodyWanted`, chunked transfer encoding).
 
 ## Crates
 
-Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ← `nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` (the mobile components, `components.md`) depends on `nsh-core` only. `nsh-core` must not depend on any platform or JS crate.
+Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ← `nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` (the mobile components, `components.md`) depends on `nsh-core` only. `nsh-core` must not depend on any platform or JS crate.
 
-The CoreText, StaticLayout and Pango text engines are documented in `crates/nsh-platform-ios/src/text.rs`,
-`crates/nsh-platform-android/src/text.rs` and `crates/nsh-platform-linux/src/text.rs`, the measure cache in `crates/nsh-core/src/text.rs` (`MeasureCache`).
+The CoreText, StaticLayout, Pango and DirectWrite text engines are documented in `crates/nsh-platform-ios/src/text.rs`,
+`crates/nsh-platform-android/src/text.rs`, `crates/nsh-platform-linux/src/text.rs` and
+`crates/nsh-platform-windows/src/text.rs`, the measure cache in `crates/nsh-core/src/text.rs` (`MeasureCache`).

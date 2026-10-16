@@ -4,13 +4,20 @@
 with DirectWrite. `crates/nsh-windows-host` is its development host (`nsh run --target windows`, the default on
 Windows), `crates/nsh-windows-app` the release runner of `nsh package --target windows`. It follows the Linux
 backend's design module by module (`docs/dev/linux.md`): one retained view per node, the core lays everything out.
-User-facing page: `website/docs/windows.md`.
+Unlike GTK, nsh draws every view itself (there are no system widgets to host): text fields, headers, dialogs and
+video controls are nsh's own, drawn with Direct2D and DirectWrite. User-facing page: `website/docs/windows.md`.
 
 ## Building and checking
 
-Windows 10 1809 or later (Windows 11 recommended), the MSVC toolchain (Visual Studio Build Tools with the C++
-workload, for QuickJS) and the Windows SDK. Off Windows the crates are empty (like the other platform crates off their
-targets), so check them on Windows:
+Windows 10 1809 or later (Windows 11 recommended) and:
+
+- the MSVC toolchain: Visual Studio Build Tools with the "Desktop development with C++" workload (the compiler for
+  QuickJS) and the Windows SDK;
+- LLVM, for `libclang`: `nsh-js` turns on rquickjs' `bindgen` feature on every native target, so QuickJS' bindings
+  are generated at build time. bindgen finds LLVM in `C:\Program Files\LLVM`, else set `LIBCLANG_PATH` to its `bin`
+  (CI does).
+
+Off Windows the crates are empty (like the other platform crates off their targets), so check them on Windows:
 
 ```sh
 cargo clippy -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app --all-targets
@@ -18,42 +25,80 @@ cargo test -p nsh-platform-windows          # needs no window: tests do not open
 cargo build -p nsh-windows-host             # target\debug\nsh-windows-host.exe
 ```
 
-The Windows binaries are built for the machine itself, so the CLI finds them in `target\<profile>` and builds them
-first in a checkout; `cargo xtask dist` on Windows puts them in `dist\nsh\runtime\windows\` (`docs/dev/tooling.md`,
-`embedding.md`). CI: `.github/workflows/windows.yml`.
+If rustc or clippy overflows its stack on the `windows` crate (its generated bindings are very large), give it a
+bigger one: `RUST_MIN_STACK=268435456` (256 MiB) in the environment.
+
+The Windows binaries are built for the machine itself, so the CLI finds them in `target\<profile>` (not
+`target\<triple>\<profile>`) and builds them first in a checkout; `cargo xtask dist` on Windows puts them in
+`dist\nsh\runtime\windows\` next to `bin\nsh.exe` (`docs/dev/tooling.md`, `embedding.md`). CI:
+`.github/workflows/windows.yml` (windows-latest: clippy with `-D warnings` and tests of the Windows crates, the CLI,
+`nsh-dev` and xtask).
 
 Features: `js` (default; JS apps; without it the crate only runs Rust apps and links no QuickJS) and `dev` (the dev
-server client, log forwarding, the error overlay: `dev.rs`).
+server client, log forwarding, the error overlay: `dev.rs`). The host turns on `dev`, the runner only `js`.
 
 ## Architecture
 
 - **One retained view per node, one window per surface.** Each node is an `NshView` (`view.rs`): an `Rc` node with
-  its `ViewState` (frame, style, animated values, content), its children in drawing order and a weak parent. There are
-  no child windows: a surface's window draws its whole tree with Direct2D into a flip-model swap chain
-  (`render.rs`), so nothing nsh draws is ever covered by another `HWND` (the "airspace" problem of mixing child windows
-  with DirectX content). Changing a view (`changed` / `moved`) invalidates the window; `WM_PAINT` draws the tree once,
-  however many views changed.
+  its `ViewState` (frame, style, animated values, content), its children in drawing order and a weak parent. A
+  surface's window draws its whole tree with Direct2D into a flip-model swap chain (`render.rs`); nsh content needs
+  no child windows. Only web views and native components that bring a window of their own are child `HWND`s, and
+  they sit above everything nsh draws (the "airspace" limit, below). Changing a view (`changed` / `moved`)
+  invalidates the window; `WM_PAINT` draws the tree once, however many views changed.
 - **Drawing a view** (`render::draw_view`): shadows and background (`decor.rs`), the content clipped to the bounds
   (text, image, canvas), the children (clipped to the rounded bounds when the view clips), the items the view hosts
-  (`ViewState::natives`: text editors, headers, dialogs, overlays — the `Hosted` trait), the scroll indicator, then the
-  border, all inside an opacity layer when translucent. Transforms are CSS-like 4x4 matrices (`geom.rs`); affine ones
-  are Direct2D's 3x2 world transform, projective ones (perspective) draw the subtree into an offscreen bitmap mapped
-  with `DrawBitmap`'s perspective transform. Units are points: the device context's DPI is the window's.
+  (`ViewState::natives`: text editors, headers, dialogs, overlays, videos — the `Hosted` trait), the scroll
+  indicator, then the border, all inside an opacity layer when translucent. Transforms are CSS-like 4x4 matrices
+  (`geom.rs`); affine ones are Direct2D's 3x2 world transform, projective ones (perspective) draw the subtree into an
+  offscreen bitmap mapped with `DrawBitmap`'s perspective transform. Units are points: the device context's DPI is
+  the window's (the process is per-monitor DPI aware, v2).
 - **One hop per commit.** The engine runs on its own thread (`nsh_engine::Engine`); its sink queues each commit and
   posts one `WM_NSH_WAKE` to the window, and the main thread applies every queued batch in order (`surface.rs`,
-  `mount.rs`). Worker threads (image decoding, media callbacks) run code on the main thread with `window::invoke`
-  (a message-only dispatcher window) and find their surface by key; no globals are shared between surfaces.
-- **Text is typeset on the engine thread** with DirectWrite's shared, free-threaded factory; the final
-  `IDWriteTextLayout` is handed to the main thread, which only draws it and asks it where characters are (`text.rs`).
-- **Frames**: a ticker thread waits for each composition (`DwmFlush`) and posts `WM_NSH_TICK` while something
-  animates: native animation values (`animation.rs`), JS frame requests, transitions and keyframes (`transition.rs`),
-  scroll glides, navigation transitions, video frames (`Surface::on_frame`). The ticker parks when nothing animates.
+  `mount.rs`). The table of views by node id belongs to the mounter and is shared with the surface (`Rc<Views>`), so
+  input and hosted items find views by id while a batch is being applied. Worker threads (image decoding, media
+  callbacks, the dev client) run code on the main thread with `window::invoke` (a message-only dispatcher window) and
+  find their surface by key in a thread-local map; no globals are shared between surfaces.
+- **Text is typeset on the engine thread** with DirectWrite's shared, free-threaded factory; the final layout is plain
+  data (glyph runs recorded through a text renderer of nsh's own), which the main thread only draws and hit-tests
+  (`text.rs`).
+- **Frames**: a ticker thread waits for each composition (`DwmFlush`) and posts `WM_NSH_TICK` (one at a time) while
+  something animates: native animation values (`animation.rs`), JS frame requests, transitions and keyframes
+  (`transition.rs`), scroll glides, navigation transitions, video frames (`Surface::on_frame`). The ticker parks when
+  nothing animates. Caret blinking and animated GIF / WebP frames use thread timers instead, so they cost no frames.
 - **Devices**: one Direct3D 11 device (hardware, else WARP) and its Direct2D device and context per thread
   (`gfx.rs`); a lost device (driver update, GPU reset) is made again and `gfx::generation` tells caches of device
   resources (bitmaps, command lists) to make theirs again.
+- **The standalone app** (`run_app`, `app.rs`) runs the window and its message loop on a thread of its own
+  (`nsh-ui`, 8 MiB of stack for deep trees) and joins it: the devices, font faces and bitmaps cached in that thread's
+  thread-locals are released at a plain thread exit. Released by the main thread's thread-local destructors instead,
+  they would run inside `ExitProcess`, after the graphics DLLs are gone, and the process would end with a stray exit
+  code. The UI thread sets per-monitor DPI awareness and `OleInitialize`s (clipboard, drag and drop, WIC).
 - **Embedding**: `AppView` (`app.rs`) is one surface as a window: a child of the embedding app's window, or top-level;
-  `run_app` opens one and runs the message loop. `set_ui_sets` replaces the default `nsh/ui/mobile` set for apps with
-  Rust components of their own.
+  the host's message loop runs it. `set_ui_sets` replaces the default `nsh/ui/mobile` set for apps with Rust
+  components of their own.
+
+## How each area maps to Windows
+
+| Area | Module | Windows |
+|---|---|---|
+| Text | `text.rs` | DirectWrite on the engine thread: one `IDWriteTextLayout` per prepared text, re-broken at each width asked for; the final layout's glyph runs are recorded through a custom `IDWriteTextRenderer` and drawn on the main thread with `DrawGlyphRun`, so what was measured is what is drawn. Line heights follow Pango's model (each span as tall as its own font; DirectWrite only breaks lines). Color emoji are the COLR layers of `TranslateColorGlyphRun`. Colors and decorations are read per cluster from the drawn text's spans (a layout is reused for texts that only differ in them). Custom fonts load into an in-memory font collection (`IDWriteInMemoryFontFileLoader`). `fontVariant` is OpenType features. `selectable` text has a desktop-style range selection (mouse drags, Ctrl+A, Ctrl+C) |
+| Decoration | `decor.rs` | Direct2D geometries: shadows (React Native's take the box's shape with a fill, the content's without, as iOS), blurred once into bitmaps cached by what they look like (`decor/cache.rs`); colors; linear and radial gradients as gradient brushes, conic ones drawn into cached bitmaps (`decor/gradient.rs`); inset shadows; borders per side (over the children, as UIKit); outlines; `filter`s as Direct2D effects on the subtree recorded offscreen (`decor/layer.rs`); `mixBlendMode` and `backdropFilter` read the backdrop out of the pass's target |
+| Images | `image.rs` | Loaded and decoded on worker threads: WIC (PNG, JPEG, BMP, TIFF, ICO, HEIF / WebP with their codecs), the `image` crate for GIF and WebP (every frame of animations); pixels in an LRU cache per resolved location, Direct2D bitmaps made when first drawn and made again after a device loss; animated GIF / WebP on thread timers at their frame delays (paused while not drawn); blur and tint as effects at draw time |
+| Canvas | `canvas.rs` | The recorded drawing replayed into an `ID2D1CommandList` when it changes (vector: sharp at any scale), played back with the view's transform; the current path kept in canvas' model; shadows through the shadow effect; composite operations through the Composite / Blend effects; conic gradients as thin wedges masked by the shape; text in DirectWrite, the fonts `measureText` uses |
+| Scroll views | `scroll.rs` | Offsets of their own (`ScrollState`), reported as UIKit's `contentOffset`; wheel / touchpad / drag / touch scrolling with UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags (wheels stop at the edges); the keyboard (arrows by 40 pt, Page Up / Page Down by 87.5% of a page, Home / End, animated); mirrored horizontal lists for right to left; an indicator that fades |
+| Input | `input.rs`, `window.rs` | Its own hit testing over the views (frames, scroll offsets, 3D transforms inverted, `pointerEvents`, `hitSlop`, `overflow: hidden`, `Overflow` areas); mouse from the `WM_*BUTTON*` messages, touch and pen from `WM_POINTER*`; touches for the responder system with `panActivation` gates; presses, long presses, hover and pressed states, cursors; pan / pinch / rotate native values (Ctrl + wheel, and precision touchpads' pinch, which Windows sends as Ctrl + wheel, pinch the view under the pointer); wheel and precision touchpad scrolling routed to scroll views, staying on the view it began in; keys go to the system (dialogs), the focused field, selectable text, navigation, scroll views, then Tab between text fields |
+| Text inputs | `text_input.rs` | An editor of nsh's own (`text_input/model.rs`: text, selection, words, undo), drawn with DirectWrite and Direct2D as a hosted item at the content box; the view draws the decoration; IME composition through IMM32 (`ImmGetCompositionStringW`, the candidate window placed at the caret), enabled only while an editable, non-secure field has the focus; caret blinking on a thread timer; edit counts drop stale JS values; offsets converted between UTF-16 and UTF-8 |
+| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) drawn; native headers (bar, hairline, title, back button) drawn as hosted items, of a fixed height reported to the core (`set_screen_header`); leaving screens and modals slide out as images recorded into command lists; Escape (unless a text field has the focus: Escape leaves the field), Alt+Left, the Browser Back key and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close) |
+| Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close |
+| Dialogs, toasts | `system.rs` | Drawn in the surface as items the root hosts, in Windows 11's content dialog style (a rounded card, the default button in the system's accent color), not `MessageBox` / `TaskDialog`: they stay with an embedded surface and never run a modal loop of their own |
+| Video | `native/video.rs` | Media Foundation's media engine in frame-server mode on the thread's Direct3D 11 device (a DXGI device manager); each frame is copied into a texture Direct2D draws, so a video clips, transforms and is covered like any view; `controls` draws nsh's own control bar (play / pause, scrubber, time) |
+| Web views | `native/web.rs` | WebView2 (`webview2-com`, the loader linked statically: apps ship no `WebView2Loader.dll`) in a child window that follows its view after every frame, clipped with a window region; one environment per thread and profile folder (`%LOCALAPPDATA%\<app id>\WebView2`); a placeholder without the WebView2 Runtime |
+| Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent` draws with Direct2D in the view (`draw`) or brings a child window (`window`), placed as a web view's; `ComponentContext::emit` / `set_size` / `redraw` from any thread |
+| Accessibility | `access.rs`, `access/uia.rs` | UI Automation: a server-side provider tree answered on `WM_GETOBJECT`, one provider per exposed view (holding only the surface key and node id); control types from `accessibilityRole` / text / press handlers / labelled images; `testID` as the automation id; Invoke, Toggle, ExpandCollapse, SelectionItem, RangeValue, Value and Scroll patterns; `accessible={true}` groups its content as on iOS and Android; property, structure and live-region notification events only while a client listens |
+| Environment | `system.rs` | Re-read on `WM_SETTINGCHANGE` (and theme / DWM color changes). Color scheme: the app's appearance (`nsh.json` `"appearance"`, `setColorScheme`) when it forces one, else `AppsUseLightTheme`, live; the title bar (DWM's immersive dark mode) and the root's background follow it. The locale (`Intl`) from `GetUserDefaultLocaleName` (not `LANG` / `LC_*`); font scale from `TextScaleFactor` (Settings > Accessibility > Text size); reduce motion from `SPI_GETCLIENTAREAANIMATION`; right to left from the UI language's reading direction; the screen reader from `SPI_GETSCREENREADER`; the pixel ratio the window's DPI over 96; `Platform.OS` `"windows"`, idiom `desktop`, OS version `RtlGetVersion`'s major.minor (10.0 on Windows 11 too); the accent palette for dialogs; safe area and keyboard height 0 |
+| Clipboard | `system.rs` | The Win32 clipboard (`CF_UNICODETEXT`); reads are synchronous, so `Clipboard.getString` is answered at once |
+| Networking | `net.rs` | ureq (rustls, webpki roots), one thread per request, streaming both ways; only connecting and the response head have deadlines |
+| Dev | `dev.rs` | The dev server client on its own thread; the status pill and the error overlay drawn as items the root hosts, above the app and its modals |
 
 ## Checking a change: `--script`
 
@@ -65,13 +110,13 @@ in the background or covered.
 | Step | Does |
 |---|---|
 | `wait <ms>` | Waits. |
-| `shot <file.png>` | Draws the window's content offscreen at scale 1 into a PNG, whatever covers the window. |
+| `shot <file.png>` | Draws the window's content offscreen at scale 1 into a PNG, whatever covers the window. Web views and component windows (child windows) are not in it. |
 | `tap <x> <y>` | Presses and releases the mouse at a point (points, root coordinates). |
 | `drag <x0> <y0> <x1> <y1> [ms]` | Presses, moves in steps over `ms` (default 300), releases; `touch` the same with a finger. |
 | `wheel <x> <y> <dx> <dy>` | A wheel scroll (points, positive toward the end); `pad` a precision touchpad's. |
 | `hover <x> <y>` | Moves the pointer. |
 | `type <text>` | Types into the focused field. |
-| `key <name>` | Presses a key (`Return`, `BackSpace`, `Tab`, `Escape`, `Left`, `Page_Down`, `F5`, a letter; `ctrl+` / `shift+` / `alt+` prefixes); `selectall` is Ctrl+A. |
+| `key <name>` | Presses a key (`Return`, `BackSpace`, `Tab`, `Escape`, `Left`, `Home`, `Page_Down`, `F5`, a letter; `ctrl+` / `shift+` / `alt+` prefixes); `selectall` is Ctrl+A. |
 | `dark` / `light` | Switches the system's appearance (an app that forces one keeps it). |
 | `resize <w> <h>` | Resizes the window's client area (points). |
 | `quit` | Closes the window. |
@@ -82,6 +127,31 @@ target\debug\nsh-windows-host --bundle build\bundle.qbc --size 1200x800 --script
 ```
 
 Without `--bundle` the host connects to the dev server on this machine (`--dev-server ws://…/ws` names another);
-`--trace` logs per-commit timings.
+`--trace` logs per-commit timings. Timers are Win32's (~15.6 ms granularity): leave `wait`s some slack.
 
+## Not implemented, or different
 
+- **Web views** are WebView2 child windows: they cover nsh content drawn over them (a dialog, a sheet, a menu) and are
+  not in `--script` screenshots (which are drawn offscreen). `source.baseUrl` for HTML, `scrollEnabled` and
+  `allowsBackForwardNavigationGestures` are not supported. Without the WebView2 Runtime (it comes with Windows 11;
+  Windows 10 gets it with Edge) a web view shows a neutral placeholder.
+- **Video**: which formats play depends on the installed Media Foundation codecs; there is no poster; the control bar
+  always shows while `controls` is on. Unlike GTK, `rate` works.
+- **Zooming scroll views**: `zoomTo` and the zoom props are ignored. The scroll indicator cannot be dragged; notched
+  mouse wheels scroll in steps (not animated).
+- **`mixBlendMode` and `backdropFilter`** are drawn (unlike Linux), except inside a view that is itself drawn
+  offscreen (a filtered or 3D-transformed ancestor): there the blend is normal and the backdrop unfiltered.
+  `borderCurve: "continuous"` draws circular corners; Android's `elevation` is not drawn.
+- **Text**: head and middle ellipses apply to a single line only (more lines fall back to a tail ellipsis); the
+  paragraph direction is set per text, not per paragraph; color emoji come from COLR fonts only (Segoe UI Emoji is
+  one); small caps are not synthesized (only fonts with the `smcp` feature have them).
+- **Text inputs**: Tab moves between text fields only; there is no context menu; keyboard types and autofill do not
+  apply; the IME's composition is drawn inline at the caret. Clicking outside a field leaves the focus where it is (as
+  on Linux and Mac Catalyst; a click on another field moves it).
+- **Accessibility** (UI Automation): items nsh draws itself (header titles and buttons, dialogs, toasts) are not in the
+  tree; there is no Text pattern; headings report level 1; live regions raise UIA notifications.
+- **No desktop equivalent**: the status bar, input accessory views, `keyboardShouldPersistTaps` (there is no software
+  keyboard); the safe area and the keyboard height are 0.
+- **Precision touchpads**: Windows sends its own inertia as more wheel deltas, so a glide cannot be stopped by
+  touching the pad.
+- **Packaged apps** are a directory with `<name>.exe` and a `.zip` (`embedding.md`); nothing is installed.

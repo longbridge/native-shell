@@ -7,13 +7,14 @@ order: 29
 # 打包
 
 `nsh package` 把应用变成可以安装的产物：用于 iOS 模拟器的 `.app`、用于 iOS 真机的已签名 `.ipa`、用于 Android 的已签名
-`.apk`、用于 macOS 的 ad hoc 签名 `.app`，或用于 Linux 的目录和 `.tar.gz`。它把应用的 release 构建与 nsh 自带的**预构建运行时**组合在一起，因此不需要 Rust 工具链，不需要 Xcode 项目，也不需要 Gradle。
+`.apk`、用于 macOS 的 ad hoc 签名 `.app`、用于 Linux 的目录和 `.tar.gz`，或用于 Windows 的目录和 `.zip`。它把应用的 release 构建与 nsh 自带的**预构建运行时**组合在一起，因此不需要 Rust 工具链，不需要 Xcode 项目，也不需要 Gradle。
 
 ```sh
 nsh package App.tsx --target ios-simulator --run     # build, install and launch in the simulator
 nsh package App.tsx --target android --run           # build, install and launch on a device or emulator
 nsh package App.tsx --target macos --run             # build and launch on this Mac
 nsh package App.tsx --target linux --run             # build and launch on this machine
+nsh package App.tsx --target windows --run           # build and launch on this machine
 nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345)" --profile Dev.mobileprovision
 ```
 
@@ -57,7 +58,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 
 | 参数 | 说明 |
 |---|---|
-| `--target <ios \| ios-simulator \| android \| macos \| linux>` | 构建目标（必填）。 |
+| `--target <ios \| ios-simulator \| android \| macos \| linux \| windows>` | 构建目标（必填）。 |
 | `-o, --out <dir>` | 输出目录。默认为 `out`。 |
 | `--name <name>` | 显示名称。 |
 | `--id <id>` | Bundle identifier，如 `com.example.app`。 |
@@ -69,7 +70,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 | `--keystore <file>` | Android：release keystore（默认使用 debug 密钥）。 |
 | `--key-alias <alias>` | Android：keystore 中的密钥别名。 |
 | `--keystore-password <password>` | Android：keystore 密码；也可从 `NSH_KEYSTORE_PASSWORD` 读取。 |
-| `--run` | 构建完成后安装并启动：在 iOS 模拟器中，或在 `adb` 能看到的 Android 设备或模拟器上；macOS 和 Linux 应用在本机启动。不适用于 `--target ios`。 |
+| `--run` | 构建完成后安装并启动：在 iOS 模拟器中，或在 `adb` 能看到的 Android 设备或模拟器上；macOS、Linux 和 Windows 应用在本机启动。不适用于 `--target ios`。 |
 
 ## iOS 模拟器
 
@@ -152,6 +153,16 @@ nsh package App.tsx --target linux --run
 和图标 `<id>.png`），以及同样内容的 `out/<Name>.tar.gz`。请在 Linux 上打包：运行器是为构建它的机器构建的。运行应用的机器上必须装有
 GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 [Linux](./linux.md#打包)。
 
+## Windows
+
+```sh
+nsh package App.tsx --target windows --run
+```
+
+写出 `out\<Name>\`（带应用图标的可执行文件 `<Name>.exe`、`nsh\bundle.qbc`、`nsh\assets\…`，以及包含窗口标题、应用 id、版本和外观的
+`nsh\app.json`），以及同样内容的 `out\<Name>.zip`。不需要任何工具。请在 Windows 上打包：运行器是为构建它的机器构建的，而且只有
+Windows 能嵌入图标。应用可以从目录被复制到的任何位置运行，不需要安装。见 [Windows](./windows.md#打包)。
+
 ## 图标
 
 在 `nsh.json` 中（`"icon": "icon.png"`）或通过 `--icon` 提供一张正方形 PNG，最好是 1024×1024：
@@ -160,6 +171,7 @@ GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 
 - **Android：** 缩放到 192×192，用作启动器图标（`mipmap-xxxhdpi`）。
 - **macOS：** 由 `sips` 转换为 `AppIcon.icns`。
 - **Linux：** 复制为 `<id>.png`，`.desktop` 文件以它作为 `Icon`。
+- **Windows：** 缩放为 16 到 64 像素以及 256 像素，作为图标嵌入可执行文件，窗口、资源管理器和任务栏都会显示它。
 
 没有图标时，系统显示默认图标。
 
@@ -173,6 +185,7 @@ GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 
 | Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.qbc`、`assets/nsh/assets/…` |
 | macOS | `nsh-macos-app` 可执行文件，重命名为 `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.qbc`、`nsh/assets/…` |
 | Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.qbc`、`nsh/assets/…` |
+| Windows | `nsh-windows-app.exe` 可执行文件，重命名为 `<Name>.exe` | `<Name>\nsh\bundle.qbc`、`nsh\assets\…` |
 
 打包出的应用不注册任何[原生组件](./native-components.md)；如需使用原生组件，请把 nsh 嵌入你自己的应用。
 
@@ -181,8 +194,8 @@ GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 
 `nsh package` 会在 CLI 旁边查找预构建运行时（发行包中的 `bin/../runtime`）。在 nsh 的源码仓库中，它使用
 `target/<triple>/<profile>` 和 `target/android/<profile>`，profile 与 CLI 自身一致（debug 版 CLI 使用 debug 版运行时）：用
 `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim`（真机用 `aarch64-apple-ios`）和 `cargo xtask android`
-构建它们（release 版 CLI 需加上 `--release`）；`nsh-macos-app`（在 macOS 上）和 `nsh-linux-app`（在 Linux 上）为本机构建，位于 `target/<profile>`（`cargo build -p nsh-macos-app`、`cargo build -p nsh-linux-app`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
-`runtime/` 相同（`ios/iphoneos`、`ios/iphonesimulator`、`android/release`、`macos`、`linux` 等）。
+构建它们（release 版 CLI 需加上 `--release`）；`nsh-macos-app`（在 macOS 上）、`nsh-linux-app`（在 Linux 上）和 `nsh-windows-app`（在 Windows 上）为本机构建，位于 `target/<profile>`（`cargo build -p nsh-macos-app`、`cargo build -p nsh-linux-app`、`cargo build -p nsh-windows-app`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
+`runtime/` 相同（`ios/iphoneos`、`ios/iphonesimulator`、`android/release`、`macos`、`linux`、`windows` 等）。
 
 ## 另请参阅
 

@@ -1,6 +1,6 @@
 # Packaging and embedding
 
-- `nsh package <entry> --target ios|ios-simulator|android|linux|macos` builds an installable app from the prebuilt runtime: metadata from
+- `nsh package <entry> --target ios|ios-simulator|android|linux|macos|windows` builds an installable app from the prebuilt runtime: metadata from
   `nsh.json` next to the entry (`name`, `id`, `version`, `build`, `icon`; `appearance` also sets `UIUserInterfaceStyle`
   and a dark window theme, so the launch screen is in it) or flags. iOS: `.app`, `.ipa` with `--sign <identity>
   --profile <file.mobileprovision>` (entitlements come from the profile; icons are compiled by `actool` into `Assets.car`).
@@ -12,9 +12,18 @@
   release runner (`crates/nsh-macos-app`) as `Contents/MacOS/<executable>`, `Contents/Resources/nsh/` holding
   `bundle.qbc`, `assets/` and `app.json` (the window title and appearance), the icon as `AppIcon.icns` (`sips`), signed
   ad hoc (`codesign -s -`); `--run` opens it.
+  Windows: a directory `<name>\` with the release runner (`crates/nsh-windows-app`, a windowed program: no console)
+  as `<name>.exe` (characters Windows forbids in file names dropped), the icon embedded as its icon group 1 (which the
+  window class loads, and Explorer and the taskbar show) with Windows' resource update API (`crates/nsh-cli/src/windows.rs`:
+  16 to 64 pixels as DIBs plus a 256-pixel PNG; packaging off Windows keeps the runner's icon, with a warning), and
+  `nsh\bundle.qbc`, `nsh\assets\` and `nsh\app.json` (the window title, the app id, which groups the app's windows in
+  the taskbar, the version and the appearance, which the window opens in); plus the same as `<name>.zip`. No tools
+  are needed; `--run` launches the executable.
 - Embedding: iOS apps link `NativeShell.xcframework` and `import NativeShell` (Swift: `NshAppView`, a `UIView`;
   `NshTrust`, `NshPackage`, `NshLimits`, `NshError`); Android apps add `nsh.aar` and use `com.longbridge.nsh.NshView`.
-  `*Dev` / `-dev` variants can also load from a dev server. See `examples/embed-*`.
+  `*Dev` / `-dev` variants can also load from a dev server. See `examples/embed-*`. Rust desktop apps use the platform
+  crate itself: `nsh_platform_linux::AppView` (a GTK widget), `nsh_platform_macos::AppView` (an `NSView`) or
+  `nsh_platform_windows::AppView` (a child window of the app's `HWND`, run by the app's message loop; `windows.md`).
 - **Native components** (`nsh/native`; `component.rs`, `ComponentBox.java`): the embedding app registers its own native
   views by name — Swift `NshAppView.register(component:) { context in … }` (`NshComponent`: `view`, `setProp`,
   `command`), Java `NshView.registerComponent(name, factory)` (`NshComponent`), Rust `AppView::register_component`

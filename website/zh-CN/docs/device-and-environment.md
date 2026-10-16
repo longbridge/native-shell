@@ -168,6 +168,11 @@ const hapticsSupported = Platform.OS === "ios" || (Platform.OS === "android" && 
 `Platform.Version` 为 macOS 的版本号。安全区域和键盘高度为 0，`colorScheme()` 实时跟随系统外观，`fontScale()` 为 1，
 `PixelRatio.get()` 为显示器的缩放比例（backing scale）。
 
+在 [Windows](./windows.md) 上，`Platform.OS` 为 `"windows"`，界面风格为 `"desktop"`，`Platform.Version` 为 `"10.0"`，Windows 11
+上也是如此（Windows 沿用了这个版本号）。安全区域和键盘高度为 0，`colorScheme()` 实时跟随“设置 > 个性化 > 颜色”，`fontScale()`
+跟随“文本大小”设置（1 到 2.25），`reduceMotion()` 跟随“动画效果”设置，`PixelRatio.get()` 为显示器的缩放比例，`Intl`
+按用户的区域格式进行格式化。
+
 ## 像素密度
 
 `nsh/device` 中的 `PixelRatio` 在点与设备像素之间换算。

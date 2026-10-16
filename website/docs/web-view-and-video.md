@@ -8,10 +8,10 @@ order: 21
 
 `WebView` from `nsh/webview` and `Video` from `nsh/video` embed the platform's own web engine and media player as ordinary views. Because nsh renders with native views, they sit in your layout like any other element: they scroll with their parent, take rounded corners and clipping, and other views can overlap them without layering problems.
 
-| Component | iOS | Android | macOS | Linux |
-|---|---|---|---|---|
-| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | Not supported: a placeholder |
-| `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` | AVPlayerLayer; AVKit's AVPlayerView with `controls` | GTK's media stream (GStreamer) in a `GtkPicture`; `GtkVideo` with `controls` |
+| Component | iOS | Android | macOS | Linux | Windows |
+|---|---|---|---|---|---|
+| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | Not supported: a placeholder | WebView2, in a child window |
+| `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` | AVPlayerLayer; AVKit's AVPlayerView with `controls` | GTK's media stream (GStreamer) in a `GtkPicture`; `GtkVideo` with `controls` | Media Foundation's media engine, frames drawn with Direct2D; nsh's own control bar with `controls` |
 
 The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Import them from `nsh/webview` and `nsh/video`.
 
@@ -20,6 +20,13 @@ On [macOS](./macos.md) the web view has no scroll view of its own, so `scrollEna
 On [Linux](./linux.md) a web view would need WebKitGTK, which nsh does not use: it shows a neutral placeholder and
 ignores its commands. Videos play the formats the installed GStreamer plugins decode; `rate` is not supported (they
 play at 1×), and `onEnd` only comes for videos that do not loop.
+
+On [Windows](./windows.md) a web view is a WebView2 control in a child window that follows its view: it is clipped to
+its parents and rounded corners, but nsh content drawn over it (a dialog, a sheet) stays under it. It needs the
+WebView2 Runtime (part of Windows 11; installed with Edge on Windows 10), else it shows a placeholder;
+`source.baseUrl` for HTML, `scrollEnabled` and `allowsBackForwardNavigationGestures` are not supported. Videos are
+ordinary content (clipped, transformed and covered like any view) and play the formats the installed Media Foundation
+codecs decode; `rate` works, there is no poster, and the control bar always shows while `controls` is on.
 
 ## WebView
 

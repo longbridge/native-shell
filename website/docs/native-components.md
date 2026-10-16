@@ -7,7 +7,8 @@ order: 3.3
 # Native Components
 
 A native component is a view the **embedding app** registers by name: a map, a camera preview, a chart library, any
-`UIView` on iOS, `android.view.View` on Android, `NSView` on macOS or `gtk::Widget` on Linux. The nsh app declares it with `nativeComponent()` from
+`UIView` on iOS, `android.view.View` on Android, `NSView` on macOS, `gtk::Widget` on Linux, or Direct2D drawing or a
+child `HWND` on Windows. The nsh app declares it with `nativeComponent()` from
 [`nsh/native`](../modules/nsh-native.md) and uses it like any other component. nsh lays it out with the rest of the
 app, sends it props, delivers its events to handlers and forwards commands from a `ref`.
 
@@ -16,7 +17,8 @@ there is no layering problem, it clips, scrolls and receives touches like a `<Vi
 
 > [!NOTE]
 > Native components exist only where an app embeds nsh ([iOS](./embedding-ios.md), [Android](./embedding-android.md),
-> [macOS](./macos.md#embedding-in-a-mac-app), [Linux](./linux.md#embedding-in-a-gtk-app)).
+> [macOS](./macos.md#embedding-in-a-mac-app), [Linux](./linux.md#embedding-in-a-gtk-app),
+> [Windows](./windows.md#embedding-in-a-win32-app)).
 > A packaged standalone app (`nsh package`) or a development host registers none, so the element renders an empty
 > view there (the name is logged once as unknown).
 
@@ -436,6 +438,75 @@ fn register(app: &AppView) {
 The widget fills the container nsh lays out; `ComponentContext::emit` and `set_size` (points) work from any thread,
 as on iOS. Register before `AppView::load`. A registry belongs to one `AppView` (and the views made from the same
 `AppOptions`, whose `components` field it is).
+
+## Registering on Windows (Rust)
+
+On Windows nsh draws every view itself with Direct2D, so a component either draws into its container with Direct2D
+(`draw`) or brings a window of its own (`window`: a map control, a third-party view), registered on the
+[`AppView`](./windows.md#embedding-in-a-win32-app) of `nsh-platform-windows`:
+
+```rust
+use std::rc::Rc;
+use nsh_core::JsonValue;
+use nsh_platform_windows::{
+    windows::Win32::Graphics::Direct2D::{
+        Common::{D2D1_COLOR_F, D2D_RECT_F},
+        ID2D1DeviceContext,
+    },
+    AppView, ComponentContext, NativeComponent,
+};
+
+/// A box filled with the color of its `on` prop.
+struct Badge {
+    on: bool,
+    context: ComponentContext,
+}
+
+impl NativeComponent for Badge {
+    fn draw(&self, dc: &ID2D1DeviceContext, size: (f32, f32)) {
+        let color = if self.on {
+            D2D1_COLOR_F { r: 0.2, g: 0.7, b: 0.3, a: 1.0 }
+        } else {
+            D2D1_COLOR_F { r: 0.6, g: 0.6, b: 0.6, a: 1.0 }
+        };
+        // SAFETY: Direct2D calls on the context nsh draws with.
+        unsafe {
+            if let Ok(brush) = dc.CreateSolidColorBrush(&color, None) {
+                let rect = D2D_RECT_F { left: 0.0, top: 0.0, right: size.0, bottom: size.1 };
+                dc.FillRectangle(&rect, &brush);
+            }
+        }
+    }
+
+    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>) {
+        if name == "on" {
+            self.on = value.and_then(|v| v.as_bool()).unwrap_or(false);
+            self.context.set_size(120.0, 40.0);
+            self.context.redraw();
+        }
+    }
+
+    fn command(&mut self, name: &str, args: &JsonValue) {
+        // optional
+    }
+}
+
+fn register(app: &AppView) {
+    app.register_component(
+        "embed.badge",
+        Rc::new(|context: ComponentContext| -> Box<dyn NativeComponent> {
+            Box::new(Badge { on: false, context })
+        }),
+    );
+}
+```
+
+`draw` runs with every frame of the window, in the view's coordinates (points), clipped to its bounds; call
+`ComponentContext::redraw` when what it shows changes. A drawn component is covered, clipped and transformed like any
+view, and its container gets the touches. A component that returns a child window from `window` is moved, clipped and
+hidden with its view, receives its own input, and sits above everything nsh draws (nsh content over it is hidden, as
+with web views). `ComponentContext::emit`, `set_size` (points) and `redraw` work from any thread. Register before
+`AppView::load`; a registry belongs to one `AppView` (and the views made from the same `AppOptions`).
 
 ## Rules and limits
 

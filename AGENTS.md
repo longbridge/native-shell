@@ -8,7 +8,8 @@ Module code runs in QuickJS on a native runtime (the reactive graph, the rendere
 Rust); layout uses Taffy; embedding native components such as maps or web views has no layering problems. The
 toolchain is pure Rust and does not need Node.js; app developers get a prebuilt distribution (`cargo xtask dist`) and
 never need Rust either. Mobile comes first; Linux runs apps with GTK 4 widgets (`nsh-platform-linux`), macOS with AppKit views
-(`nsh-platform-macos`); a GPUI desktop backend is in development; the web build only runs the website's demos.
+(`nsh-platform-macos`), Windows in Win32 windows drawn with Direct2D (`nsh-platform-windows`); a GPUI desktop backend is
+in development; the web build only runs the website's demos.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.
@@ -67,6 +68,13 @@ crates/
                        native components, AppView, standalone app; feature `dev` as above; `--script` steps (docs/dev/macos.md)
   nsh-macos-host/      Development host on macOS (`nsh run --target macos`): connects to a dev server or runs a bundle
   nsh-macos-app/       Release runner on macOS: the executable of apps built by `nsh package --target macos`
+  nsh-platform-windows/ Win32 backend (Windows): one retained `NshView` per node, the tree drawn with Direct2D into a swap chain,
+                       DirectWrite text engine (typeset on the engine thread, glyph runs drawn on the main thread), input
+                       (mouse, touch, pen, wheel, precision touchpads), scroll views, nsh's own text editor (IMM32 IME),
+                       navigation, video (Media Foundation), web views (WebView2), native components, UI Automation,
+                       AppView, standalone app; feature `dev` as above; `--script` steps (docs/dev/windows.md)
+  nsh-windows-host/    Development host on Windows (`nsh run --target windows`): connects to a dev server or runs a bundle
+  nsh-windows-app/     Release runner on Windows: the executable of apps built by `nsh package --target windows`
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
   nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / check / dev / run / package; keygen /
@@ -84,7 +92,7 @@ examples/             Example apps (gallery: a demo index, one module per demo; 
 ```
 
 Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ←
-`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
+`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
 on `nsh-core` only and is used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
 on any platform or JS crate.
 
@@ -105,6 +113,7 @@ on any platform or JS crate.
 | the web runtime (`nsh-platform-web`), the website's demos | `docs/dev/web.md`, `website/README.md` |
 | the Linux backend (`nsh-platform-linux`, GTK 4) | `docs/dev/linux.md` |
 | the macOS backend (`nsh-platform-macos`, AppKit) | `docs/dev/macos.md` |
+| the Windows backend (`nsh-platform-windows`, Win32 / Direct2D) | `docs/dev/windows.md` |
 | a hot path | `docs/dev/performance.md` (baselines) |
 | anything platform-specific | `docs/dev/pitfalls.md` (verified constraints, by area) |
 | components (`nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md` |
@@ -115,7 +124,7 @@ including the user-facing pages in `website/` (English and `zh-CN`).
 ## Commands
 
 ```sh
-cargo run [-- <app>] [-- --target catalyst|ios|android]                            # the gallery on this machine's backend (AppKit / GTK), hot reload; rebuilt and restarted on Rust changes
+cargo run [-- <app>] [-- --target catalyst|ios|android]                            # the gallery on this machine's backend (AppKit / GTK / Win32), hot reload; rebuilt and restarted on Rust changes
 cargo xtask [<app>] [--target catalyst|ios|android] [-v]                           # the same without cargo's own two lines; -v (any nsh / xtask command): all output
 cargo build -p nsh-cli                                                             # build the nsh CLI
 ./target/debug/nsh init my-app                                                     # new app: App.tsx, nsh.json, tsconfig.json, .nsh/types
@@ -124,6 +133,7 @@ cargo build -p nsh-ios-host --target aarch64-apple-ios-sim                      
 cargo build -p nsh-ios-app --target aarch64-apple-ios-sim                              # the release runner (`nsh package --target ios-simulator`)
 cargo build -p nsh-linux-host                                                          # the Linux (GTK) development host (`nsh run` on Linux builds it in a checkout)
 cargo build -p nsh-macos-host                                                          # the macOS (AppKit) development host (`nsh run --target macos` builds it in a checkout)
+cargo build -p nsh-windows-host                                                        # the Windows development host (`nsh run` on Windows builds it in a checkout)
 ./target/debug/nsh trace examples/counter                                  # headless run: prints mount items and the time of every commit
 ./target/release/nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0       # headless scrolling (10pt per frame): per-frame list cost
 ./target/debug/nsh trace examples/hopper --tap label:Plan --wait 500 --safe-area 47,0,34,0   # tap by testID / label / text, run timers, insets
@@ -133,6 +143,8 @@ cargo build -p nsh-macos-host                                                   
 ./target/debug/nsh run examples/gallery --target android                   # on an emulator / device (needs `cargo xtask android --dev`)
 ./target/debug/nsh run examples/gallery --target linux                     # in a GTK window (the default on Linux)
 ./target/debug/nsh-linux-host --script "wait 800; shot a.png; quit"        # Linux host, scripted: screenshots and simulated input
+./target/debug/nsh run examples/gallery --target windows                   # in a Win32 window, 1200×800 (the default on Windows)
+./target/debug/nsh-windows-host --bundle build/bundle.qbc --script "wait 800; shot a.png; quit"   # Windows host, scripted (connects to `nsh dev` without --bundle)
 ./target/debug/nsh package examples/gallery --target ios-simulator --run   # installable app (.app / .ipa / .apk)
 cargo xtask android [--release] [--dev]                                            # Android runtime into target/android/<profile>[-dev]
 cargo xtask dist                                                                   # the distribution in dist/nsh
@@ -155,6 +167,8 @@ cargo xtask web                                                                 
 cargo clippy -p nsh-platform-web --target wasm32-unknown-unknown --features compiler   # the web backend (empty off WebAssembly)
 cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets      # the Linux backend (on Linux; empty elsewhere)
 cargo clippy -p nsh-platform-macos -p nsh-macos-host -p nsh-macos-app --all-targets --features nsh-platform-macos/dev   # the macOS backend (on macOS)
+cargo clippy -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app --all-targets   # the Windows backend (on Windows; empty elsewhere)
+cargo test -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app               # its tests (on Windows; they open no window)
 cd website && bun run dev                                                       # the documentation site (builds the player too)
 ```
 
@@ -163,7 +177,9 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 `nsh-platform-android` is empty off Android: check it with `cargo xtask android` (which sets up the NDK linker, `CC`,
 `AR` and bindgen's sysroot) and `cargo xtask clippy-android`. `nsh-platform-linux` and its hosts are empty off Linux:
 check them on Linux, with the GTK 4 (≥ 4.14) development packages installed. `nsh-platform-macos` and its hosts are
-empty off macOS (`target_os = "macos"`, not Catalyst). `.cargo/config.toml` sets
+empty off macOS (`target_os = "macos"`, not Catalyst). `nsh-platform-windows` and its hosts are empty off Windows:
+check them on Windows, with the MSVC Build Tools, the Windows SDK and LLVM (libclang for QuickJS' bindings);
+`RUST_MIN_STACK=268435456` if rustc overflows its stack on the `windows` crate. `.cargo/config.toml` sets
 `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.
 
 ## Rules
@@ -228,7 +244,7 @@ empty off macOS (`target_os = "macos"`, not Catalyst). `.cargo/config.toml` sets
 Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
 
 - Subjects and PR titles are `<area>: <What the change does>`: the area in lower case (a crate without `nsh-`:
-  `core`, `js`, `engine`, `bundler`, `cli`, ...; `ios`, `android`, `linux`; `runtime`, `mobile`, a module; `tailwind`, `text`,
+  `core`, `js`, `engine`, `bundler`, `cli`, ...; `ios`, `android`, `linux`, `windows`; `runtime`, `mobile`, a module; `tailwind`, `text`,
   `docs`, `examples`, `gallery`), several separated by commas (`ios, android: …`); then an imperative sentence starting
   with a capital letter, no trailing period, about 72 characters in all. Say what it does for nsh's users, not which
   files changed. Never conventional prefixes (`fix:`, `feat:`); check `git log` and match it.
@@ -258,7 +274,7 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
 
 ## Verification after changes
 
-1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, the macOS crates, `cargo xtask clippy-android` and, on Linux, the Linux crates).
+1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, the macOS crates, `cargo xtask clippy-android`, on Linux the Linux crates and on Windows the Windows crates).
 2. Changes to the runtime (`nsh-js`), engine or core: run `nsh trace` and check item counts and timings.
 3. Changes to the platform layer: launch with `nsh run`, check screenshots and simulate input where needed (the terminal needs the Screen
    Recording and Accessibility permissions; while the screen is locked the frontmost app is `loginwindow` and clicks fail, but window
@@ -266,3 +282,5 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
    Android: `adb exec-out screencap -p`, `adb shell input tap|swipe|text|keyevent` (all work with the screen locked).
    Linux: `nsh-linux-host --script "wait 800; shot a.png; tap 100 200; …; quit"` renders screenshots offscreen and
    simulates input (taps, drags, wheels, typing, keys, dark / light), without touching the screen (`docs/dev/linux.md`).
+   Windows: `nsh-windows-host --script "…"` does the same (also `touch` drags, precision touchpad `pad` scrolls,
+   `resize`); web views are child windows and missing from its screenshots (`docs/dev/windows.md`).

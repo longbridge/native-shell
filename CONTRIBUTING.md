@@ -66,7 +66,7 @@ Commit subjects and pull request titles name the area first, then say what chang
 ```
 
 - The area is the part of nsh the change is about, in lower case: a crate without its `nsh-` prefix (`core`, `animation`,
-  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`, `linux`), a JS layer or module
+  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`, `linux`, `windows`), a JS layer or module
   (`runtime`, `list`, `animated`, `mobile`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. Name two or
   three areas separated by commas when a change spans them (`ios, android: …`); a change everywhere names its
   subject instead (`signed packages: …`).
@@ -97,7 +97,10 @@ docs: Describe the capability checks of fetch redirects
 - Xcode, for the iOS, simulator and Mac Catalyst targets.
 - For Linux: the GTK 4 (4.14 or later) development packages (`libgtk-4-dev`, `gtk4`,
   `gtk4-devel`) and clang.
-- For Android: the Android SDK (`ANDROID_HOME`, or `~/Library/Android/sdk`) with platform 35 and build tools, an NDK
+- For Windows (10 1809 or later): Visual Studio Build Tools with the C++ workload and the Windows SDK, and LLVM
+  (libclang, for QuickJS' bindings; found in `C:\Program Files\LLVM`, else set `LIBCLANG_PATH`). If rustc overflows
+  its stack on the `windows` crate, set `RUST_MIN_STACK=268435456`.
+- For Android: the Android SDK (`ANDROID_HOME`, or `~/Library/Android/sdk`; `%LOCALAPPDATA%\Android\Sdk` on Windows) with platform 35 and build tools, an NDK
   (set `ANDROID_NDK_HOME` if the newest one installed is incomplete) and a JDK.
 
 ### Checks
@@ -111,20 +114,21 @@ cargo clippy --workspace --all-targets
 cargo clippy -p nsh-platform-ios -p nsh-ios-host -p nsh-ios-app --target aarch64-apple-ios-macabi --features nsh-platform-ios/embed,nsh-platform-ios/dev
 cargo xtask clippy-android
 cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets   # on Linux
+cargo clippy -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app --all-targets   # on Windows
 ```
 
-`nsh-platform-ios` and `nsh-platform-android` are empty crates on a macOS host, and the Linux crates are empty off
-Linux, so platform code is only checked by the platform-specific clippy runs above.
+`nsh-platform-ios` and `nsh-platform-android` are empty crates on a macOS host, and the Linux and Windows crates are
+empty off their systems, so platform code is only checked by the platform-specific clippy runs above.
 
 ### Run the examples
 
 `examples/gallery` has a demo for every area of nsh. If you change an existing feature, run the related demo on the
-platforms it touches. `cargo run` runs the gallery on the machine's own desktop backend (an AppKit window on macOS, a GTK window on Linux): it builds
+platforms it touches. `cargo run` runs the gallery on the machine's own desktop backend (an AppKit window on macOS, a GTK window on Linux, a Win32 window on Windows): it builds
 the CLI and the development host, reloads JS and TSX in place, and rebuilds and restarts the app whenever Rust code
 under `crates/` changes (components and modules are Rust and live in the host). Ctrl-C stops it.
 
 ```sh
-cargo run                                      # the gallery in an AppKit window (macOS) or a GTK window (Linux)
+cargo run                                      # the gallery in an AppKit (macOS), GTK (Linux) or Win32 (Windows) window
 cargo run -- examples/counter                  # another app: its directory (App.tsx is the entry) or entry module
 cargo run -- --target catalyst                 # in the Mac Catalyst window (UIKit, phone-style)
 cargo run -- --target ios                      # in an iOS simulator
@@ -139,6 +143,7 @@ cargo build -p nsh-cli
 ./target/debug/nsh run examples/gallery --target ios       # iOS simulator
 ./target/debug/nsh run examples/gallery --target android   # emulator or device
 ./target/debug/nsh run examples/gallery --target linux     # GTK window (the default on Linux)
+./target/debug/nsh run examples/gallery --target windows   # Win32 window (the default on Windows)
 ```
 
 ### Reviewing UI and platform changes

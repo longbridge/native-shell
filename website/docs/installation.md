@@ -8,7 +8,7 @@ order: 2
 
 Everything nsh does goes through one command, `nsh`. It bundles and compiles apps, runs the dev server, launches development hosts and packages installable apps. You can use it from a prebuilt distribution, which needs no Rust, or build it from a checkout of the repository.
 
-On top of `nsh`, each target needs the platform's own tools: Xcode for iOS and Mac Catalyst (its command line tools for macOS), the Android SDK for Android, GTK 4 for Linux.
+On top of `nsh`, each target needs the platform's own tools: Xcode for iOS and Mac Catalyst (its command line tools for macOS), the Android SDK for Android, GTK 4 for Linux, Windows 10 1809 or later for Windows.
 
 ## The prebuilt distribution
 
@@ -22,6 +22,7 @@ dist/nsh/runtime/ios/maccatalyst/nsh-ios-host                # the Mac Catalyst 
 dist/nsh/runtime/android/{release,dev}/                      # classes.dex, lib/<abi>/libnsh.so
 dist/nsh/runtime/macos/{nsh-macos-host,nsh-macos-app}        # the macOS (AppKit) development host and release runner
 dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        # the Linux development host and release runner
+dist/nsh/runtime/windows/{nsh-windows-host,nsh-windows-app}.exe  # the Windows development host and release runner
 dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  # embedding in iOS apps
 dist/nsh/embed/android/{nsh,nsh-dev}.aar                     # embedding in Android apps
 ```
@@ -33,7 +34,7 @@ export PATH="$PWD/dist/nsh/bin:$PATH"
 nsh --version
 ```
 
-The distribution is made with `cargo xtask dist` in a checkout (below). The `nsh` binary it contains is built for that machine. On a Mac with Xcode it includes the iOS and macOS runtimes (Apple Silicon); on Linux it includes the Linux runtime instead, built for that machine. Both include the Android runtime.
+The distribution is made with `cargo xtask dist` in a checkout (below). The `nsh` binary it contains is built for that machine. On a Mac with Xcode it includes the iOS and macOS runtimes (Apple Silicon); on Linux it includes the Linux runtime instead, built for that machine; on Windows the Windows runtime, with `bin\nsh.exe`. All include the Android runtime (on Windows only when the Android SDK is found).
 
 ## Building from a checkout
 
@@ -53,6 +54,7 @@ cargo build -p nsh-ios-host --target aarch64-apple-ios-sim      # nsh run --targ
 cargo xtask android --dev                                       # nsh run --target android
 cargo build -p nsh-macos-host                                   # nsh run --target macos (built for you in a checkout)
 cargo build -p nsh-linux-host                                   # nsh run on Linux (built for you in a checkout)
+cargo build -p nsh-windows-host                                 # nsh run on Windows (built for you in a checkout)
 ```
 
 For `nsh package`, build the release runners as well:
@@ -63,9 +65,10 @@ cargo build -p nsh-ios-app --target aarch64-apple-ios           # nsh package --
 cargo xtask android                                             # nsh package --target android
 cargo build -p nsh-macos-app                                    # nsh package --target macos
 cargo build -p nsh-linux-app                                    # nsh package --target linux
+cargo build -p nsh-windows-app                                  # nsh package --target windows
 ```
 
-A CLI built from a checkout looks for the runtimes in `target/<triple>/<profile>` (the macOS and Linux ones, built for this machine, in `target/<profile>`) and `target/android/<profile>[-dev]`, using its own profile: `./target/debug/nsh` uses debug runtimes, `./target/release/nsh` release ones. Build both with the same profile (add `--release` to all of them for faster apps).
+A CLI built from a checkout looks for the runtimes in `target/<triple>/<profile>` (the macOS, Linux and Windows ones, built for this machine, in `target/<profile>`) and `target/android/<profile>[-dev]`, using its own profile: `./target/debug/nsh` uses debug runtimes, `./target/release/nsh` release ones. Build both with the same profile (add `--release` to all of them for faster apps).
 
 > [!TIP]
 > `NSH_RUNTIME=/path/to/runtime` makes `nsh` use a runtime directory laid out like the distribution's `runtime/`, wherever the CLI itself lives.
@@ -80,7 +83,7 @@ A CLI built from a checkout looks for the runtimes in `target/<triple>/<profile>
 
 ### Android
 
-- **The Android SDK**, found through `ANDROID_HOME`, `ANDROID_SDK_ROOT` or `~/Library/Android/sdk`, with:
+- **The Android SDK**, found through `ANDROID_HOME`, `ANDROID_SDK_ROOT` or Android Studio's default place (`~/Library/Android/sdk`, `%LOCALAPPDATA%\Android\Sdk` on Windows), with:
   - `platforms;android-35` and a recent `build-tools` (nsh uses `aapt2`, `zipalign` and `apksigner` from it, no Gradle);
   - `platform-tools` (`adb`).
 - **A JDK** (`keytool` creates the debug keystore in `~/.android/debug.keystore` the first time you package, `apksigner` needs Java).
@@ -104,23 +107,31 @@ See [macOS](./macos.md).
 
 See [Linux](./linux.md).
 
+### Windows
+
+- **Windows 10 1809** or later, or Windows 11. The WebView2 Runtime (part of Windows 11, installed with Edge on Windows 10) for web views.
+- To build the runtime: **Visual Studio Build Tools** with the "Desktop development with C++" workload and the Windows SDK, and **LLVM** (libclang, for QuickJS' bindings; found in `C:\Program Files\LLVM`, else set `LIBCLANG_PATH`).
+
+See [Windows](./windows.md).
+
 ### Building the Android runtime
 
 Building the Android runtime from a checkout (`cargo xtask android`) additionally needs an **NDK** from the SDK (`ndk;<version>`; set `ANDROID_NDK_HOME` if the newest one installed is incomplete) and `javac`.
 
 ## What works where
 
-| Command | macOS | Linux |
-|---|---|---|
-| `nsh init`, `nsh build`, `nsh trace`, `nsh dev` | Yes | Yes |
-| `nsh run` (Mac Catalyst, the default on macOS) | Yes | No |
-| `nsh run --target macos`, `nsh package --target macos` | Yes | No |
-| `nsh run --target linux` (the default on Linux), `nsh package --target linux` | No | Yes |
-| `nsh run --target ios`, `nsh package --target ios` / `ios-simulator` | Yes, with Xcode | No |
-| `nsh run --target android`, `nsh package --target android` | Yes | Yes, from a checkout |
-| `nsh keygen`, `certify`, `publish`, `verify`, `revoke` | Yes | Yes |
+| Command | macOS | Linux | Windows |
+|---|---|---|---|
+| `nsh init`, `nsh build`, `nsh trace`, `nsh dev`, `nsh check` | Yes | Yes | Yes |
+| `nsh run` (Mac Catalyst, the default on macOS) | Yes | No | No |
+| `nsh run --target macos`, `nsh package --target macos` | Yes | No | No |
+| `nsh run --target linux` (the default on Linux), `nsh package --target linux` | No | Yes | No |
+| `nsh run --target windows` (the default on Windows), `nsh package --target windows` | No | No | Yes |
+| `nsh run --target ios`, `nsh package --target ios` / `ios-simulator` | Yes, with Xcode | No | No |
+| `nsh run --target android`, `nsh package --target android` | Yes | Yes, from a checkout | Yes, with the Android runtime |
+| `nsh keygen`, `certify`, `publish`, `verify`, `revoke` | Yes | Yes | Yes |
 
-On Linux, build the CLI and the Android runtime from a checkout (`cargo build -p nsh-cli` and `cargo xtask android --dev`); the NDK's Linux toolchain is used automatically. Building the Android runtime supports macOS and Linux hosts only.
+On Linux, build the CLI and the Android runtime from a checkout (`cargo build -p nsh-cli` and `cargo xtask android --dev`); the NDK's Linux toolchain is used automatically. On Windows the NDK's Windows toolchain is used the same way, and `cargo xtask dist` includes the Android runtime when it finds the Android SDK.
 
 ## Editor setup
 

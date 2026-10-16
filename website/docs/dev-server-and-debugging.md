@@ -10,12 +10,12 @@ During development, nsh builds your app on every save and pushes it to every con
 Two commands do this:
 
 - `nsh run` starts the dev server **and** launches a development host: a Mac Catalyst or AppKit window, a GTK window on
-  Linux, an iOS simulator or an Android device or emulator.
+  Linux, a Win32 window on Windows, an iOS simulator or an Android device or emulator.
 - `nsh dev` starts only the dev server, for hosts you start yourself: your own app with the development SDK, a device
   on the network, or several hosts at once.
 
 ```sh
-nsh run App.tsx                     # Mac Catalyst window, 390×844 (macOS); GTK window (Linux)
+nsh run App.tsx                     # Mac Catalyst window, 390×844 (macOS); GTK window (Linux); Win32 window (Windows)
 nsh run App.tsx --target macos      # AppKit window (macOS)
 nsh run App.tsx --target ios        # iOS simulator
 nsh run App.tsx --target android    # Android device or emulator
@@ -26,7 +26,7 @@ nsh dev App.tsx                     # server only
 
 | Flag | Description |
 |---|---|
-| `--target <catalyst \| ios \| android \| macos \| linux>` | Where to run. Default `catalyst` on macOS (an iPhone-sized, 390×844 Mac window), `linux` on Linux. |
+| `--target <catalyst \| ios \| android \| macos \| linux \| windows>` | Where to run. Default `catalyst` on macOS (an iPhone-sized, 390×844 Mac window), `linux` on Linux, `windows` on Windows. |
 | `--device <name or UDID>` | The iOS simulator to use. Default: a booted one, else the newest iPhone (booted for you). |
 | `--port <port>` | Dev server port. Default 8790; the next free port is used if it is taken. |
 | `--release` | Serve release builds (minified, no debug info, no hot updates). |
@@ -40,6 +40,8 @@ What each target does:
   reloads the latest build. Requires macOS 14 or later ([macOS](./macos.md)).
 - **`linux`** (Linux) runs the GTK development host in a 390×844 window, the same way: stopping `nsh run` closes
   it, closing the window ends `nsh run`. Requires GTK 4.14 or later ([Linux](./linux.md)).
+- **`windows`** (Windows) runs the Win32 development host in a 1200×800 window, the same way; the host never outlives
+  `nsh run`, even when the console is closed. Requires Windows 10 1809 or later ([Windows](./windows.md)).
 - **`ios`** installs the development host in the simulator, launches it pointed at the dev server and keeps watching.
   The simulator shares the Mac's network, so the host reaches the server on `127.0.0.1`. Stopping `nsh run` (Ctrl-C)
   closes the host, which would otherwise join the next session. Requires Xcode.
@@ -48,7 +50,7 @@ What each target does:
   emulator or a USB device. Requires the Android SDK (`ANDROID_HOME`). When `nsh run` ends (Ctrl-C too), it stops the
   host and removes that port forwarding, so the host does not join the next session.
 
-When `nsh run` ends, however it ends, it stops the host it started: it quits the Catalyst app, terminates the
+When `nsh run` ends, however it ends, it stops the host it started: it quits the Catalyst app or closes the macOS, Linux or Windows host, terminates the
 development host in the simulator, or force-stops it on the device.
 
 The hosts are generic: they run any nsh app the server sends, so there is nothing to build per app.

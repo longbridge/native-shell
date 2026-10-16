@@ -185,6 +185,11 @@ On [macOS](./macos.md) (the AppKit backend, not Mac Catalyst), `Platform.OS` is 
 `Platform.Version` the macOS version. The safe area and the keyboard height are 0, `colorScheme()` follows the
 system's appearance live, `fontScale()` is 1 and `PixelRatio.get()` the display's backing scale.
 
+On [Windows](./windows.md), `Platform.OS` is `"windows"`, the idiom `"desktop"` and `Platform.Version` `"10.0"`, on
+Windows 11 too (Windows kept the version number). The safe area and the keyboard height are 0, `colorScheme()` follows
+Settings > Personalization > Colors live, `fontScale()` the Text size setting (1 to 2.25), `reduceMotion()` the
+animation effects setting, `PixelRatio.get()` the monitor's scale, and `Intl` formats in the user's regional format.
+
 ## Pixel density
 
 `PixelRatio` from `nsh/device` converts between points and device pixels.

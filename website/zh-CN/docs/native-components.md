@@ -7,14 +7,14 @@ order: 3.3
 # 原生组件
 
 原生组件是由**嵌入方应用**按名称注册的视图：地图、相机预览、图表库，或者 iOS 上任意的 `UIView`、Android 上任意的
-`android.view.View`、macOS 上任意的 `NSView`、Linux 上任意的 `gtk::Widget`。nsh 应用通过 [`nsh/native`](../modules/nsh-native.md) 提供的 `nativeComponent()` 声明它，然后像使用其他组件一样使用它。nsh
+`android.view.View`、macOS 上任意的 `NSView`、Linux 上任意的 `gtk::Widget`，或者 Windows 上的 Direct2D 绘制或子 `HWND`。nsh 应用通过 [`nsh/native`](../modules/nsh-native.md) 提供的 `nativeComponent()` 声明它，然后像使用其他组件一样使用它。nsh
 会把它和应用的其余部分一起布局，向它发送 props，把它的事件交给对应的处理函数，并转发通过 `ref` 发出的命令。
 
 nsh 本身就用系统原生视图渲染，所以原生组件只是同一视图层级里多出来的一个子视图：不存在层级叠放问题，它会像 `<View>`
 一样被裁剪、随内容滚动并接收触摸。
 
 > [!NOTE]
-> 只有在嵌入 nsh 的应用中（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[macOS](./macos.md#嵌入-mac-应用)、[Linux](./linux.md#嵌入-gtk-应用)）才有原生组件。
+> 只有在嵌入 nsh 的应用中（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[macOS](./macos.md#嵌入-mac-应用)、[Linux](./linux.md#嵌入-gtk-应用)、[Windows](./windows.md#嵌入-win32-应用)）才有原生组件。
 > 打包出的独立应用（`nsh package`）和开发宿主不会注册任何组件，因此在那里该元素会渲染成一个空视图（并记录一次“未知名称”日志）。
 
 ## 整体流程
@@ -424,6 +424,73 @@ fn register(app: &AppView) {
 
 控件会铺满 nsh 布局出的容器；与 iOS 一样，`ComponentContext::emit` 和 `set_size`（单位为点）可在任意线程调用。请在
 `AppView::load` 之前注册。注册表属于一个 `AppView`（以及用同一个 `AppOptions` 创建的视图，注册表就是它的 `components` 字段）。
+
+## 在 Windows 上注册（Rust）
+
+在 Windows 上，nsh 用 Direct2D 自己绘制所有视图，因此组件要么用 Direct2D 绘制在它的容器里（`draw`），要么提供一个自己的窗口
+（`window`：地图控件、第三方视图），注册在 `nsh-platform-windows` 的 [`AppView`](./windows.md#嵌入-win32-应用) 上：
+
+```rust
+use std::rc::Rc;
+use nsh_core::JsonValue;
+use nsh_platform_windows::{
+    windows::Win32::Graphics::Direct2D::{
+        Common::{D2D1_COLOR_F, D2D_RECT_F},
+        ID2D1DeviceContext,
+    },
+    AppView, ComponentContext, NativeComponent,
+};
+
+/// 一个按 `on` 属性填充颜色的方块。
+struct Badge {
+    on: bool,
+    context: ComponentContext,
+}
+
+impl NativeComponent for Badge {
+    fn draw(&self, dc: &ID2D1DeviceContext, size: (f32, f32)) {
+        let color = if self.on {
+            D2D1_COLOR_F { r: 0.2, g: 0.7, b: 0.3, a: 1.0 }
+        } else {
+            D2D1_COLOR_F { r: 0.6, g: 0.6, b: 0.6, a: 1.0 }
+        };
+        // SAFETY: Direct2D calls on the context nsh draws with.
+        unsafe {
+            if let Ok(brush) = dc.CreateSolidColorBrush(&color, None) {
+                let rect = D2D_RECT_F { left: 0.0, top: 0.0, right: size.0, bottom: size.1 };
+                dc.FillRectangle(&rect, &brush);
+            }
+        }
+    }
+
+    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>) {
+        if name == "on" {
+            self.on = value.and_then(|v| v.as_bool()).unwrap_or(false);
+            self.context.set_size(120.0, 40.0);
+            self.context.redraw();
+        }
+    }
+
+    fn command(&mut self, name: &str, args: &JsonValue) {
+        // 可选
+    }
+}
+
+fn register(app: &AppView) {
+    app.register_component(
+        "embed.badge",
+        Rc::new(|context: ComponentContext| -> Box<dyn NativeComponent> {
+            Box::new(Badge { on: false, context })
+        }),
+    );
+}
+```
+
+`draw` 在窗口的每一帧都会调用，坐标为视图自身的坐标（点），并裁剪到视图边界；显示的内容变化时调用 `ComponentContext::redraw`。
+绘制出来的组件会像普通视图一样被遮挡、裁剪和变换，触摸由它的容器接收。通过 `window` 返回子窗口的组件会随视图移动、裁剪和隐藏，
+自己接收输入，并位于 nsh 绘制的所有内容之上（绘制在它上方的 nsh 内容会被遮住，和 Web 视图一样）。`ComponentContext::emit`、
+`set_size`（单位为点）和 `redraw` 可以在任意线程调用。请在 `AppView::load` 之前注册；注册表属于一个 `AppView`（以及用同一个
+`AppOptions` 创建的视图）。
 
 ## 规则与限制
 

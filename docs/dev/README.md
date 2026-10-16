@@ -21,6 +21,7 @@ For people working on native-shell itself (`AGENTS.md` at the root is the short 
 | [tooling.md](tooling.md) | `.nsh/types`, the dev server, hot reload, symbolication |
 | [macos.md](macos.md) | The macOS backend (AppKit): building, how each area maps to AppKit, `--script` checks, what differs |
 | [linux.md](linux.md) | The Linux backend (GTK 4): building, how each area maps to GTK, `--script` checks, what differs |
+| [windows.md](windows.md) | The Windows backend (Win32, Direct2D): building, how each area maps to Windows, `--script` checks, what differs |
 | [web.md](web.md) | The WebAssembly runtime of the website's demos: `LocalEngine`, the clock, the DOM protocol |
 | [performance.md](performance.md) | Baselines |
 | [pitfalls.md](pitfalls.md) | Verified constraints and pitfalls, by area |

@@ -225,6 +225,29 @@ Things that were found the hard way. Read the section of the area you change bef
 - `screencapture -l` needs the Screen Recording permission and fails ("could not create image from window") without
   it; while the screen is locked a full-screen capture is black.
 
+## Windows, Win32
+
+- **Git checks files out with CRLF** (`core.autocrlf=true`, Git for Windows' default), and `.rustfmt.toml`'s
+  `newline_style = "unix"` then makes `cargo +nightly fmt --all` rewrite every line of every file it touches. The
+  repository's `.gitattributes` forces LF; a checkout made before it needs `git add --renormalize .` (or a fresh
+  clone).
+- **rustc and clippy overflow their stack on the `windows` crate** (its generated bindings are huge): set
+  `RUST_MIN_STACK=268435456` when a build or clippy run dies with a stack overflow.
+- **Thread-local COM objects released inside `ExitProcess` end the process with a stray exit code**: the main thread's
+  thread-local destructors run after the graphics DLLs and their driver threads are gone. `run_app` runs the window on
+  a thread of its own and joins it, so the devices, font faces and bitmaps cached per thread go at a plain thread exit.
+- **Win32 timers tick at ~15.6 ms** (the default timer resolution) and wake-ups come late on a loaded machine: tests
+  must not assume two timers a few milliseconds apart run in separate turns (chain them instead), and `--script`
+  `wait`s need slack.
+- **Web views are child windows**: whatever nsh draws over one (a dialog, a sheet) is under it (the "airspace" limit),
+  and offscreen screenshots (`--script`'s `shot`) do not have them. Check web views on screen.
+- **`std::fs::canonicalize` returns verbatim paths** (`\\?\C:\…`), which rolldown and path prefix comparisons do not
+  take: the bundler and the CLI canonicalize with `dunce::canonicalize`, which keeps plain paths when they are valid.
+- **Git Bash sets `LANG`** whatever the user's settings: the Windows backend's locale is the user's regional format
+  (`GetUserDefaultLocaleName`) and ignores `LANG` / `LC_*`, as Windows programs do.
+- **A `:` in a package's asset path is dangerous**: joined onto the assets directory, a `C:` segment replaces it and
+  `name:stream` writes an NTFS alternate data stream. `nsh-package` refuses paths with `:`, as with `\` or `..`.
+
 ## Testing on simulators and emulators
 
 - **iOS simulator: launch apps only after `simctl bootstatus -b`**; apps launched while the simulator boots are sent to the

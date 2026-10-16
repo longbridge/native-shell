@@ -117,6 +117,15 @@ nsh run my-app/App.tsx
 
 应用会在一个 GTK 窗口（390×844 点）中打开。需要 GTK 4.14 及以上；见 [Linux](./linux.md)。
 
+#### Windows（Windows 上默认）
+
+```sh
+nsh run my-app/App.tsx
+```
+
+应用会在一个桌面窗口（1200×800 点）中打开，使用鼠标、触控板、触摸和键盘输入。需要 Windows 10 1809 及以上；见
+[Windows](./windows.md)。
+
 ### 用热重载编辑
 
 保持 `nsh run` 运行，修改 `App.tsx` 中的按钮文字：
@@ -217,6 +226,7 @@ nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
 nsh package my-app --target macos
 nsh package my-app --target linux
+nsh package my-app --target windows
 ```
 
 这是受支持的用法，也是把模块装到设备上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。

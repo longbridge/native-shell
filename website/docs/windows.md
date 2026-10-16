@@ -1,0 +1,135 @@
+---
+title: Windows
+description: Run nsh apps on Windows in Win32 windows drawn with Direct2D, package them, embed them in a Win32 app with AppView, and what the Windows backend does not support.
+order: 3.26
+---
+
+# Windows
+
+nsh apps also run on Windows. The Windows backend draws them in Win32 windows with Direct2D and lays out text with
+DirectWrite; the core, the reactive graph, the renderer, Taffy layout and the `nsh/ui/mobile` components are the same
+as on iOS and Android, so one bundle runs everywhere. On Windows, `Platform.OS` is `"windows"` and the
+`desktop={{…}}` props apply.
+
+## Requirements
+
+- **Windows 10 1809** or later, or Windows 11.
+- The **WebView2 Runtime** for web views. It comes with Windows 11 and with Microsoft Edge on Windows 10; without it a
+  `WebView` shows a placeholder.
+- **Media Foundation codecs** for the video formats your app plays (videos play through Windows' own media stack).
+- To build nsh's Windows runtime (from a checkout, or `cargo xtask dist` on Windows): Visual Studio Build Tools with
+  the C++ workload, the Windows SDK and LLVM (for QuickJS' bindings).
+
+## Running an app
+
+On Windows, `nsh run` opens the app in a window (1200×800 by default), with hot reload, logs in the terminal and the
+error overlay as on the other targets:
+
+```sh
+nsh run my-app                 # --target windows is the default on Windows
+```
+
+In a checkout, `nsh run` builds the development host (`nsh-windows-host.exe`) first; the distribution made on Windows
+ships it in `runtime\windows\`. Ctrl-C closes the window, and closing the window ends `nsh run`; the host never
+outlives `nsh`, however it ends. The host also runs a built bundle on its own:
+
+```sh
+nsh build my-app --release -o build
+dist\nsh\runtime\windows\nsh-windows-host --bundle build\bundle.qbc --size 390x844   # in a checkout: target\debug\nsh-windows-host
+```
+
+`--size` is the window's size in points (`<width>x<height>`).
+
+## Packaging
+
+```sh
+nsh package my-app --target windows [--run]
+```
+
+Writes a directory and the same as an archive:
+
+```text
+out\<Name>\
+  <Name>.exe             the executable (nsh's release runner), with the app's icon
+  nsh\bundle.qbc         your app, compiled
+  nsh\assets\…           the assets it imports
+  nsh\app.json           the window title, the app id, the version and the appearance
+out\<Name>.zip
+```
+
+The executable finds `nsh\` next to itself; copy the whole directory (or unpack the `.zip`) wherever the app should
+live: nothing is installed. The icon from `nsh.json` is embedded in the executable (Explorer and the taskbar show it)
+without any extra tools; packaging on another system keeps the default icon. The app id groups the app's windows in
+the taskbar. `--run` launches the app after packaging it. The executable is not signed: sign it with your own
+certificate (`signtool`) to distribute it.
+
+## Embedding in a Win32 app
+
+The `nsh-platform-windows` crate (from the nsh repository) gives a Rust Win32 app `AppView`: one nsh engine in a child
+window of a window of yours. Each `AppView` is independent; several can run at once.
+
+```rust
+use std::rc::Rc;
+use nsh_platform_windows::{
+    windows::{self, Win32::{Foundation::HWND, System::Ole::OleInitialize, UI::WindowsAndMessaging::MoveWindow}},
+    AppOptions, AppView, AssetBase, Bundle,
+};
+
+/// Called on the thread that runs your message loop, with your window.
+fn embed(parent: HWND) -> windows::core::Result<Rc<AppView>> {
+    // Once per thread: COM and OLE (the clipboard, image decoding).
+    unsafe { OleInitialize(None)? };
+    let view = AppView::new(
+        Some(parent),
+        AppOptions {
+            asset_base: Some(AssetBase::Directory("app/assets".into())),
+            app_id: "com.example.host".into(),
+            ..AppOptions::default()
+        },
+    )?;
+    // register native components here, before loading
+    let code = std::fs::read_to_string("app/bundle.js").expect("bundle");
+    view.load(Bundle::source(code).into());
+    Ok(view)
+}
+
+// On WM_SIZE of `parent`:
+// unsafe { MoveWindow(view.hwnd(), 0, 0, width, height, true) };
+```
+
+The view is a child window: your message loop runs it, and you place it with `MoveWindow` on its `hwnd()` when the
+parent resizes. `AppView::load` replaces whatever ran; `stop` (or destroying the window) ends the app. `asset_base`
+tells it where `asset:/` URIs resolve (`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.qbc`)
+load with `unsafe { Bundle::bytecode(bytes) }` (or `Bundle::read_trusted(path)`, unsafe too): QuickJS bytecode is trusted input, so
+only load it from your own app's files. A standalone window is `nsh_platform_windows::run_app(source, options)`.
+
+Native components are registered with `AppView::register_component`; see
+[Native components](./native-components.md#registering-on-windows-rust).
+
+## What differs on Windows
+
+The environment is a desktop's: the safe area and the keyboard height are 0, `Platform.constants.interfaceIdiom` is
+`"desktop"` and `Platform.Version` is `"10.0"` (on Windows 11 too: Windows kept the version number). Dark mode
+follows Settings > Personalization > Colors live, `fontScale()` the Text size setting, reduce motion the animation
+effects setting and the locale the user's regional format. See [Device and environment](./device-and-environment.md).
+
+Different, or not supported:
+
+- **`WebView`** is a WebView2 child window: nsh content drawn over it (a dialog, a sheet) is hidden under it.
+  `source.baseUrl` for HTML, `scrollEnabled` and `allowsBackForwardNavigationGestures` are not supported.
+- **Video**: the formats the installed codecs decode; no poster; the control bar always shows with `controls`.
+- **Zooming scroll views** (`zoomTo`, the zoom props); the scroll indicator cannot be dragged.
+- **`mixBlendMode` and `backdropFilter`** are drawn, but not inside a view that has a `filter` or a 3D transform;
+  `borderCurve: "continuous"` draws circular corners.
+- **Text**: head and middle ellipses on a single line only (more lines get a tail ellipsis); color emoji from COLR
+  fonts only; small caps only where the font has them.
+- **Text inputs**: no context menu; keyboard types and autofill do not apply; Tab moves between text fields.
+- **Accessibility** (UI Automation): headers' titles and buttons, dialogs and toasts are not exposed; headings report
+  level 1.
+- **Input accessory views** and the **status bar** (no desktop equivalent).
+
+## See also
+
+- [CLI](./cli.md): `nsh run --target windows`, `nsh package --target windows`
+- [Packaging](./packaging.md)
+- [Platform-specific code](./platform-specific.md)

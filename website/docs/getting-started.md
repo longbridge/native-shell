@@ -117,6 +117,15 @@ nsh run my-app/App.tsx
 
 The app opens in a GTK window (390×844 points). It needs GTK 4.14 or later; see [Linux](./linux.md).
 
+#### Windows (default on Windows)
+
+```sh
+nsh run my-app/App.tsx
+```
+
+The app opens in a desktop window (1200×800 points), with mouse, touchpad, touch and keyboard input. It needs Windows
+10 1809 or later; see [Windows](./windows.md).
+
 ### Edit with hot reload
 
 Leave `nsh run` running and change the label in `App.tsx`:
@@ -217,6 +226,7 @@ nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
 nsh package my-app --target macos
 nsh package my-app --target linux
+nsh package my-app --target windows
 ```
 
 This is a supported use, and the quickest way to put a module on a device, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).
