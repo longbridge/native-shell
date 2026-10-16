@@ -6,7 +6,7 @@ order: 24
 
 # 无障碍
 
-nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst 上的 VoiceOver、Android 上的 TalkBack、切换控制、语音控制等）看到的是应用真实的视图层级。你需要补充的是这些技术无法推断的描述：元素是什么、说什么、处于什么状态、能做什么。属性沿用 React Native 的名称和含义，所有元素都接受它们。
+nsh 用原生视图渲染，所以平台的辅助技术（iOS 和 Mac Catalyst 上的 VoiceOver、Android 上的 TalkBack、切换控制、语音控制等）看到的是应用真实的视图层级。你需要补充的是这些技术无法推断的描述：元素是什么、说什么、处于什么状态、能做什么。所有元素都接受下面的属性。
 
 ## 无需任何操作就能得到的
 
@@ -149,7 +149,7 @@ function Quantity() {
 <image src={decoration} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
 ```
 
-`accessibilityElementsHidden`（iOS 的叫法）和 `importantForAccessibility="no-hide-descendants"`（Android 的叫法）在两个平台上都会隐藏子树；两者同时设置是 React Native 的习惯，也没有坏处。
+`accessibilityElementsHidden`（iOS 的叫法）和 `importantForAccessibility="no-hide-descendants"`（Android 的叫法）在两个平台上都会隐藏子树；两者同时设置也没有坏处。
 
 ## AccessibilityInfo
 

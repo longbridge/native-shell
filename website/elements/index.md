@@ -87,7 +87,7 @@ start first.
 | `underlayColor` | `ColorValue` | | The background while pressed; the children fade to `underlayOpacity`. |
 | `underlayOpacity` | `number` | `0.85` | The children's opacity while `underlayColor` shows. |
 | `hitSlop` | `number \| { top?, right?, bottom?, left? }` | | Extends the touch area beyond the bounds, in points. |
-| `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | Which touches the view and its children receive (React Native semantics). |
+| `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | Which touches the view and its children receive: `"none"` neither, `"box-none"` only the children, `"box-only"` only the view itself. |
 
 `active:` Tailwind classes also apply while a view is pressed, with no JS round trip.
 
@@ -120,7 +120,7 @@ the velocity in points per second, and the bound values at that moment (a drag c
 
 ### Raw touches and the responder system
 
-For gestures the props above do not cover, every element takes React Native's touch and responder props:
+For gestures the props above do not cover, every element takes the touch and responder props:
 `onTouchStart`, `onTouchMove`, `onTouchEnd`, `onTouchCancel` (and their `…Capture` forms),
 `onStartShouldSetResponder`, `onMoveShouldSetResponder` (and `…Capture`), `onResponderGrant`, `onResponderReject`,
 `onResponderStart`, `onResponderMove`, `onResponderEnd`, `onResponderRelease`, `onResponderTerminate` and

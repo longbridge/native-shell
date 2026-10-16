@@ -6,7 +6,7 @@ order: 16
 
 # Style reference
 
-This page lists every key of the `style` prop. The keys and their types come from the generated declarations in `.nsh/types/nsh/types.d.ts`, so your editor checks them as you type. Styles follow React Native's semantics (flexbox with a column default, numbers are points), extended with CSS features React Native lacks: grid, gradients, box shadows, filters, blend modes, outlines, transitions and keyframe animations.
+This page lists every key of the `style` prop. The keys and their types come from the generated declarations in `.nsh/types/nsh/types.d.ts`, so your editor checks them as you type. Layout is flexbox with a column default, numbers are points, and the CSS features are there too: grid, gradients, box shadows, filters, blend modes, outlines, transitions and keyframe animations.
 
 For how to apply styles, combine them with classes and inherit text styles, see [Styling](../docs/styling.md). For the class syntax, see the [Tailwind reference](./tailwind-reference.md).
 
@@ -61,7 +61,7 @@ Strings with CSS syntax (`boxShadow`, `backgroundImage`, `filter`, `gridTemplate
 
 ## LayoutStyle
 
-Layout is computed in Rust (flexbox and CSS grid). The defaults are React Native's, not CSS's: `display: "flex"`, `flexDirection: "column"`, `flexShrink: 0`, `alignContent: "flex-start"`, `alignItems: "stretch"`, and no automatic minimum size. See [Layout](../docs/layout.md).
+Layout is computed in Rust (flexbox and CSS grid). The defaults differ from CSS's: `display: "flex"`, `flexDirection: "column"`, `flexShrink: 0`, `alignContent: "flex-start"`, `alignItems: "stretch"`, and no automatic minimum size. See [Layout](../docs/layout.md).
 
 ### Display and position
 
@@ -76,7 +76,7 @@ Layout is computed in Rust (flexbox and CSS grid). The defaults are React Native
 | `start` | `DimensionValue` | Left in left-to-right layouts, right in right-to-left ones. |
 | `end` | `DimensionValue` | Right in left-to-right layouts, left in right-to-left ones. |
 | `zIndex` | `number` | Order among siblings (stable for equal values); also the native stacking order. |
-| `direction` | `"inherit" \| "ltr" \| "rtl"` | Layout direction, inherited by default. Right to left, `left` and `right` properties mean start and end, as in React Native. |
+| `direction` | `"inherit" \| "ltr" \| "rtl"` | Layout direction, inherited by default. Right to left, `left` and `right` properties mean start and end. |
 
 ### Flexbox
 
@@ -84,9 +84,9 @@ Layout is computed in Rust (flexbox and CSS grid). The defaults are React Native
 |---|---|---|
 | `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | The main axis. Default `"column"`. |
 | `flexWrap` | `"wrap" \| "nowrap" \| "wrap-reverse"` | Whether children wrap onto several lines. Default `"nowrap"`. |
-| `flex` | `number` | React Native's `flex`, not the CSS shorthand: a positive number sets `flexGrow` to it, `flexShrink: 1` and `flexBasis: 0`; `0` makes the element inflexible; a negative number shrinks it down to its minimum size. |
+| `flex` | `number` | One number, not the CSS shorthand: a positive number sets `flexGrow` to it, `flexShrink: 1` and `flexBasis: 0`; `0` makes the element inflexible; a negative number shrinks it down to its minimum size. |
 | `flexGrow` | `number` | How much of the free space the element takes. Default `0`. |
-| `flexShrink` | `number` | How much the element shrinks when space runs out. Default `0` (React Native), not `1` as in CSS. |
+| `flexShrink` | `number` | How much the element shrinks when space runs out. Default `0`, not `1` as in CSS. |
 | `flexBasis` | `DimensionValue` | The main-axis size before free space is distributed. |
 | `justifyContent` | `"flex-start" \| "flex-end" \| "center" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch"` | Distribution of children along the main axis. Default `"flex-start"`. |
 | `alignItems` | `"flex-start" \| "flex-end" \| "center" \| "stretch" \| "baseline"` | Alignment of children on the cross axis. Default `"stretch"`. |
@@ -175,7 +175,7 @@ Everything drawn by a view. All keys of `LayoutStyle` apply too.
 |---|---|---|
 | `backgroundColor` | `ColorValue \| NativeNode` | The fill color. Takes a native animated color. |
 | `backgroundImage` | `string` | CSS gradients drawn over the background color: `linear-gradient(...)`, `radial-gradient(...)`, `conic-gradient(...)`, several separated by commas. |
-| `experimental_backgroundImage` | `string` | React Native's name of `backgroundImage`. |
+| `experimental_backgroundImage` | `string` | Alias of `backgroundImage`. |
 
 ```tsx
 <view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
@@ -229,13 +229,13 @@ An outline is drawn outside the border and takes no space in layout.
 
 ### Shadows
 
-Two ways to cast a shadow: the CSS `boxShadow` (several layers, spread, inset) or React Native's four `shadow*` keys.
+Two ways to cast a shadow: the CSS `boxShadow` (several layers, spread, inset) or the four `shadow*` keys.
 
 | Key | Type | Description |
 |---|---|---|
 | `boxShadow` | `string` | CSS `box-shadow`: offsets, blur, spread and color, several layers separated by commas, `inset` for inner shadows. |
-| `shadowColor` | `ColorValue` | React Native shadow color. |
-| `shadowOffset` | `{ width: number; height: number }` | Offset. Default `{ width: 0, height: -3 }`, as in React Native. |
+| `shadowColor` | `ColorValue` | Shadow color. |
+| `shadowOffset` | `{ width: number; height: number }` | Offset. Default `{ width: 0, height: -3 }`. |
 | `shadowOpacity` | `number` | Opacity, 0 to 1. Default `0` (no shadow). |
 | `shadowRadius` | `number` | Blur radius. Default `3`. |
 
@@ -395,7 +395,7 @@ How an image fills its box is the `resizeMode` prop of `<image>`, not a style; s
 
 ## Props that look like styles
 
-Some settings are props in nsh (as in React Native), not style keys. Their Tailwind classes exist, but an explicit prop wins over the class:
+Some settings are props in nsh, not style keys. Their Tailwind classes exist, but an explicit prop wins over the class:
 
 | Setting | Prop | Class |
 |---|---|---|

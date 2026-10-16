@@ -192,7 +192,7 @@ const hairline = 1 / PixelRatio.get();
 
 修改会立即生效，无需重启应用；本页的演示就在切换 `forceRTL`。
 
-用逻辑属性编写两个方向都适用的布局：`marginStart` / `marginEnd`、`paddingStart` / `paddingEnd`、`start` / `end`、`borderTopStartRadius` 等，它们在从左到右布局中表示左和右，从右到左时则相反。与 React Native 一样，`left` 和 `right` 本身也会互换。`direction` 样式（`"inherit"`、`"ltr"`、`"rtl"`）可以为子树覆盖方向，例如让电话号码或播放器控件保持从左到右。Tailwind 的 `rtl:` 和 `ltr:` 变体按方向生效。
+用逻辑属性编写两个方向都适用的布局：`marginStart` / `marginEnd`、`paddingStart` / `paddingEnd`、`start` / `end`、`borderTopStartRadius` 等，它们在从左到右布局中表示左和右，从右到左时则相反。`left` 和 `right` 本身也会互换。`direction` 样式（`"inherit"`、`"ltr"`、`"rtl"`）可以为子树覆盖方向，例如让电话号码或播放器控件保持从左到右。Tailwind 的 `rtl:` 和 `ltr:` 变体按方向生效。
 
 在从右到左布局中，横向滚动视图和列表从最右端开始。在 Android 上，宿主应用必须在清单中声明 `android:supportsRtl="true"`，原生控件才会镜像。
 

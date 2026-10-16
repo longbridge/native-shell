@@ -1,19 +1,19 @@
 ---
 title: 布局
-description: 采用 React Native 默认值的 Flexbox、CSS 网格、尺寸与百分比、宽高比、绝对定位、用 onLayout 测量、响应式布局以及从右到左布局。
+description: 默认纵向排列的 Flexbox、CSS 网格、尺寸与百分比、宽高比、绝对定位、用 onLayout 测量、响应式布局以及从右到左布局。
 order: 10
 demo: guide-layout
 ---
 
 # 布局
 
-nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局。Taffy 是 CSS flexbox、网格和块布局的 Rust 实现，nsh 为它配置了 React Native 的默认值。布局在核心中运行，发生在每一轮 JavaScript 执行之后，只有发生变化的 frame 会被发送到原生视图。文字由平台的文本引擎在同一线程上测量，因此布局从不需要等待主线程。
+nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局。Taffy 是 CSS flexbox、网格和块布局的 Rust 实现，nsh 对它做了配置，让子元素默认纵向排列且不收缩。布局在核心中运行，发生在每一轮 JavaScript 执行之后，只有发生变化的 frame 会被发送到原生视图。文字由平台的文本引擎在同一线程上测量，因此布局从不需要等待主线程。
 
 下面的布局属性都是样式属性，每个都有对应的 [Tailwind](./tailwind.md) 写法（`flex-row`、`gap-4`、`grid-cols-3`、`absolute inset-0` 等）。
 
 ## Flexbox
 
-视图用 flexbox 排列子元素。默认值来自 React Native，而不是 Web：
+视图用 flexbox 排列子元素。默认值与 Web 不同：
 
 | 属性 | nsh 默认值 | Web 默认值 |
 |---|---|---|
@@ -43,11 +43,11 @@ nsh 使用 [Taffy](https://github.com/DioxusLabs/taffy) 为每个元素做布局
 | `alignSelf` | 单个子元素在交叉轴上的对齐；`"auto"` 跟随父元素的 `alignItems` |
 | `alignContent` | 换行容器中各行的对齐 |
 | `flexWrap` | `"nowrap"`、`"wrap"`、`"wrap-reverse"` |
-| `flex` | React Native 的简写（见下文） |
+| `flex` | 单个数字的简写（见下文） |
 | `flexGrow`、`flexShrink`、`flexBasis` | 与 CSS 相同 |
 | `gap`、`rowGap`、`columnGap` | 子元素之间的间距 |
 
-`flex` 遵循 React Native 而不是 CSS 简写的语义：正数 `n` 表示按 `n` 增长、按 1 收缩、基准尺寸为 0，因此 `flex: 1` 的兄弟元素无论内容多少都会平分空间；`flex: 0`（默认值）让视图按内容确定大小；负数表示按该值收缩，直到最小尺寸。
+`flex` 只取一个数字，不是 CSS 简写：正数 `n` 表示按 `n` 增长、按 1 收缩、基准尺寸为 0，因此 `flex: 1` 的兄弟元素无论内容多少都会平分空间；`flex: 0`（默认值）让视图按内容确定大小；负数表示按该值收缩，直到最小尺寸。
 
 ```tsx
 <view style={{ flexDirection: "row", gap: 8 }}>

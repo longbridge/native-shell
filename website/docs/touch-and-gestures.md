@@ -220,7 +220,7 @@ Each handler gets a `GestureResponderEvent`:
 | `timestamp` | Milliseconds. |
 | `touches` | Every finger that is down. |
 | `changedTouches` | The fingers this event is about. |
-| `nativeEvent` | The event itself (React Native code reads `e.nativeEvent.locationX`). |
+| `nativeEvent` | The event itself, so `e.nativeEvent.locationX` works too. |
 | `stopPropagation()` | Views further out do not see this touch event. |
 
 ```tsx
@@ -233,7 +233,7 @@ Each handler gets a `GestureResponderEvent`:
 
 ## The responder system
 
-When JS has to own a touch sequence (finger drawing, a custom slider, a gesture the native recognizers do not offer), use the gesture responder system. It has React Native's semantics: one view at a time is the **responder** and receives the moves; views negotiate who that is.
+When JS has to own a touch sequence (finger drawing, a custom slider, a gesture the native recognizers do not offer), use the gesture responder system. One view at a time is the **responder** and receives the moves; views negotiate who that is.
 
 Becoming the responder:
 
@@ -292,7 +292,7 @@ function Sketch() {
 mount(Sketch);
 ```
 
-How it runs: a view with any touch or responder handler listens to touches natively; the platform reports the touches on it (and inside it) with the path of listening views, and the negotiation runs in the runtime's Rust code, calling your handlers in React Native's order. Two consequences:
+How it runs: a view with any touch or responder handler listens to touches natively; the platform reports the touches on it (and inside it) with the path of listening views, and the negotiation runs in the runtime's Rust code, calling your handlers in order: the `…Capture` handlers from the outermost view inwards, then the others from the target outwards. Two consequences:
 
 - **Native scroll views and JS responders compete.** If `onResponderGrant` returns `true`, the scroll views around the responder stop taking the touches until it ends. If a native scroll view starts dragging first, it wins: the responder gets `onResponderTerminate` and the touch handlers `onTouchCancel`.
 - **Each move is an event to JS.** Responder-driven drags are as smooth as your JS is fast; for drags that only move views, prefer [`pan`](#native-gestures-pan-pinch-and-rotation).
@@ -335,13 +335,13 @@ The callbacks get `(event, gestureState)`:
 | `moveX`, `moveY` | The latest position of the touches' centroid, in surface points. |
 | `x0`, `y0` | Where the centroid was when the responder was granted. |
 | `dx`, `dy` | Distance moved since the grant. |
-| `vx`, `vy` | Velocity, in points per **millisecond** (as in React Native). |
+| `vx`, `vy` | Velocity, in points per **millisecond**. |
 | `numberActiveTouches` | Fingers down. |
 
 The callbacks are `onStartShouldSetPanResponder(Capture)`, `onMoveShouldSetPanResponder(Capture)`, `onPanResponderGrant`, `onPanResponderReject`, `onPanResponderStart`, `onPanResponderMove`, `onPanResponderEnd`, `onPanResponderRelease`, `onPanResponderTerminate`, `onPanResponderTerminationRequest` and `onShouldBlockNativeResponder`. The last one defaults to `true`: a granted PanResponder keeps native scroll views from taking its touches.
 
 > [!NOTE]
-> Velocities differ by API: `PanResponder`'s `vx` / `vy` are points per millisecond (React Native's unit), while `onPanEnd`'s `velocityX` / `velocityY` and the `velocity` option of `spring` / `decay` are points per second. Multiply `vx` by 1000 before passing it to a spring.
+> Velocities differ by API: `PanResponder`'s `vx` / `vy` are points per millisecond, while `onPanEnd`'s `velocityX` / `velocityY` and the `velocity` option of `spring` / `decay` are points per second. Multiply `vx` by 1000 before passing it to a spring.
 
 ## Why some answers are props
 

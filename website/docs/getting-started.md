@@ -1,21 +1,24 @@
 ---
 title: Getting started
-description: Create an app with nsh init, read through its App.tsx, run it on Mac Catalyst, the iOS simulator or Android, and edit it with hot reload.
+description: "Write a module with nsh init, develop it with hot reload, host it in your iOS or Android app, and ship updates as signed packages; or package it as a standalone app."
 order: 3
 demo: guide-getting-started
 ---
 
 # Getting started
 
-This page creates a new app, explains the code `nsh init` writes, and runs it with hot reload. It assumes `nsh` is installed and on your `PATH` ([Installation](./installation.md)); in a checkout, use `./target/debug/nsh` instead.
+nsh's main use is hosting modules inside a native app (see [Introduction](./index.md)). This guide follows that path: write a module, develop it with hot reload, show it in your iOS or Android app, and ship an update as a signed package. It assumes `nsh` is installed and on your `PATH` ([Installation](./installation.md)); in a checkout, use `./target/debug/nsh` instead.
 
-## Create an app
+> [!TIP]
+> No app project at hand? The first two sections need none: `nsh run` shows the module in nsh's own development host on the Mac, the iOS simulator or Android. You can stop there, or [package it as a standalone app](#or-ship-it-as-a-standalone-app).
+
+## Create a module
 
 ```sh
 nsh init my-app
 ```
 
-`nsh init` creates the directory if it is missing and writes:
+A module is what a host app loads: one or more `.tsx` files with an entry. `nsh init` creates the directory if it is missing and writes:
 
 | File | What it is |
 |---|---|
@@ -27,7 +30,7 @@ nsh init my-app
 
 The display name defaults to the directory's name; pass `--name "My App"` to choose another. The id becomes `com.example.<name>`: change it in `nsh.json` before you ship. Files that already exist are kept, so you can run `nsh init` in a directory that has some of them.
 
-## The entry module
+### The entry module
 
 ```tsx
 import { mount, signal } from "nsh";
@@ -60,17 +63,19 @@ Line by line:
 - **`function App()`** is a component: a function that returns JSX. It runs **once**. `signal(0)` makes a value that changes over time.
 - **`{count()}`** reads the signal inside JSX. The compiler sees a call and makes this text follow the signal: when `count` changes, the runtime updates this one text, nothing else.
 - **`<view onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. Lowercase tags (`view`, `text`, `image`, `scroll`, `input`, ...) are [host elements](../elements/index.md).
-- **`style={{ … }}`** takes React Native–style properties. Layout is flexbox, with React Native's defaults (children stack in a column) ([Layout](./layout.md)).
+- **`style={{ … }}`** takes an object of camelCase style properties, with numbers in points. Layout is flexbox, and children stack in a column by default ([Layout](./layout.md)).
 - **`mount(App)`** renders the component into the app's surface.
 
 > [!IMPORTANT]
 > Text must be inside `<text>`. A bare string in a `<view>` (`<view>Hello</view>`) is not displayed.
 
-## Run it
+## Develop it
+
+### Run it
 
 `nsh run` starts a dev server, builds the app, launches a development host that loads it, and keeps rebuilding while you edit. Logs from the app (`console.log`, errors) appear in the terminal.
 
-### Mac Catalyst (default)
+#### Mac Catalyst (default)
 
 ```sh
 nsh run my-app/App.tsx
@@ -78,7 +83,7 @@ nsh run my-app/App.tsx
 
 The app opens in an iPhone-sized window (390×844 points) on your Mac. This is the fastest loop: no simulator to boot. It uses UIKit like iOS, so what you see is what an iPhone shows, apart from Mac-specific behavior such as scrolling with a mouse wheel.
 
-### iOS simulator
+#### iOS simulator
 
 ```sh
 nsh run my-app/App.tsx --target ios
@@ -87,7 +92,7 @@ nsh run my-app/App.tsx --target ios --device "iPhone 16 Pro"
 
 `nsh` uses a booted simulator, or boots the newest iPhone if none is running, and installs the development host into it. `--device` picks a simulator by name or UDID.
 
-### Android
+#### Android
 
 ```sh
 nsh run my-app/App.tsx --target android
@@ -95,7 +100,7 @@ nsh run my-app/App.tsx --target android
 
 Start an emulator or connect a device first (`adb devices` lists them; nsh uses the first one). `nsh` installs a development host APK (rebuilt only when the runtime changes) and forwards the dev server's port to the device with `adb reverse`, so it works over USB without a shared network.
 
-## Edit with hot reload
+### Edit with hot reload
 
 Leave `nsh run` running and change the label in `App.tsx`:
 
@@ -119,9 +124,83 @@ Use `<TapButton onPress={() => count.update((c) => c + 1)} />` in `App`, tap a f
 
 Hot replacement works per top-level component: a function with a capitalized name whose body contains JSX. A component renders again when its own code changes, or when the module's code outside components changes (a constant it uses, a helper). If an edit cannot be applied in place (for example, it imports an nsh module the running app did not import yet, or changes `nsh.json`'s capabilities), the host reloads the whole app.
 
-### Errors
+#### Errors
 
 A build error is printed in the terminal and shown on the device as a red overlay with the file, line and column; the app keeps running the last good build. The overlay disappears with the next successful build (tap it to dismiss it earlier). An exception thrown at run time is shown the same way, with its stack mapped back to your `.tsx` source.
+
+## Host it in your app
+
+Your app shows a module in a view of its own: `NshAppView` (a `UIView`) on iOS, `NshView` (an Android `View`) on Android. Place it like any other view, on any screen, as many times as you need. During development, point it at the dev server; in a release, load a built bundle or a downloaded package.
+
+### iOS
+
+Link `NativeShellDev.xcframework` in Debug and `NativeShell.xcframework` in Release ([Embedding in iOS apps](./embedding-ios.md)), then:
+
+```swift
+import NativeShell
+
+let app = NshAppView()
+app.onError = { message in print("nsh error: \(message)") }
+view.addSubview(app)   // and constrain it like any view
+
+#if DEBUG
+try app.connectDevServer(URL(string: "ws://127.0.0.1:8790/ws")!)   // `nsh dev my-app` on your Mac
+#else
+try app.loadBundle(at: Bundle.main.url(forResource: "bundle", withExtension: "qbc", subdirectory: "nsh")!)
+#endif
+```
+
+`nsh dev my-app/App.tsx` serves the module to the app and pushes every save, as `nsh run` does with its own host. For the release build, `nsh build my-app/App.tsx --release --out MyApp/nsh` writes the bundle into a folder you add to the app's resources.
+
+### Android
+
+Add `nsh-dev.aar` for debug builds and `nsh.aar` for release builds ([Embedding in Android apps](./embedding-android.md)), then:
+
+```kotlin
+val nsh = NshView(this)
+nsh.setErrorListener { message -> Log.e("nsh", message) }
+setContentView(nsh)   // or add it to any layout
+
+if (BuildConfig.DEBUG) {
+    nsh.connectDevServer("ws://127.0.0.1:8790/ws")   // with `adb reverse tcp:8790 tcp:8790`
+} else {
+    nsh.loadAssetBundle("nsh")   // assets/nsh, from `nsh build my-app/App.tsx --release --out app/src/main/assets/nsh`
+}
+```
+
+Before loading, the host decides what the module may do: `grantCapabilities` sets the network hosts and other capabilities it may reach, and limits cap its memory, call time and node count ([Sandbox and capabilities](./sandbox-and-capabilities.md)). To give modules your own native views (a map, a chart, a design-system component), register them as [native components](./native-components.md).
+
+## Ship updates as signed packages
+
+A module the app downloads after release comes as a signed package. Create a root key once and keep it offline, certify a release key with it, and publish:
+
+```sh
+nsh keygen keys/root && nsh keygen keys/release
+nsh certify --root keys/root.secret --key keys/release.pub --apps 'com.example.*' -o keys/release.cert
+nsh publish my-app/App.tsx --key keys/release.secret --cert keys/release.cert --build 2
+```
+
+The app trusts the root's public key and loads what it downloads; nsh verifies the signature, the certificate and the revocation list before running anything:
+
+```swift
+let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+let trust = try NshTrust(stateDirectory: support.appendingPathComponent("nsh"))
+try trust.addRoot(rootPublicKey)   // the contents of keys/root.pub
+let info = try await app.loadPackage(at: downloadedFile, trust: trust)
+```
+
+Android has the same flow with `NshTrust` and `NshPackage`. Hosting, delivery and revocation in detail: [Signed packages](./signed-packages.md).
+
+## Or ship it as a standalone app
+
+The same module can also be a whole app. `nsh package` builds an installable app around it from the prebuilt runtime, with no Xcode project or Gradle build of your own:
+
+```sh
+nsh package my-app --target ios-simulator --run
+nsh package my-app --target android
+```
+
+This is a supported use, and the quickest way to put a module on a device, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).
 
 ## Try it in the terminal
 
@@ -135,7 +214,7 @@ It is a quick way to check that an app starts without errors, and to see how muc
 
 ## Next steps
 
-- [Project structure](./project-structure.md): what goes in `nsh.json`, assets, modules.
-- [JSX and components](./jsx-and-components.md): props, children, control flow.
-- [Reactivity](./reactivity.md): signals, computed values and effects.
-- [Packaging](./packaging.md): build an installable `.app`, `.ipa` or `.apk`.
+- [Embedding in iOS apps](./embedding-ios.md) and [Embedding in Android apps](./embedding-android.md): the full host APIs.
+- [Signed packages](./signed-packages.md) and [Sandbox and capabilities](./sandbox-and-capabilities.md): delivery and what modules may do.
+- [JSX and components](./jsx-and-components.md) and [Reactivity](./reactivity.md): writing modules.
+- [Project structure](./project-structure.md): what goes in `nsh.json`, assets, files.

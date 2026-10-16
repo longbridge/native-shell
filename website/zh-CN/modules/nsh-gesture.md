@@ -6,7 +6,7 @@ order: 7
 
 # nsh/gesture
 
-`nsh/gesture` 导出 `PanResponder`：构建在手势响应者系统之上的拖动手势，回调和手势状态与 React Native 的 `PanResponder` 相同。它会帮你跟踪各触点的中心、移动距离和速度。
+`nsh/gesture` 导出 `PanResponder`：构建在手势响应者系统之上的拖动手势，通过 `onPanResponder…` 回调接收触摸事件和手势状态。它会帮你跟踪各触点的中心、移动距离和速度。
 
 ```ts
 import { PanResponder, type PanResponderGestureState } from "nsh/gesture";

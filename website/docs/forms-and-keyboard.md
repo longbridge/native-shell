@@ -101,7 +101,7 @@ An input is styled like text: `fontSize`, `color`, `fontFamily`, `textAlign`, `l
 | `"decimal-pad"` | Digits and a decimal separator. |
 | `"phone-pad"` | A phone dial pad. |
 
-`autoComplete` tells the system what the field holds, so it can offer saved names, addresses, passwords and one-time codes from messages. It takes React Native's values: `"name"`, `"given-name"`, `"family-name"`, `"email"`, `"tel"`, `"username"`, `"current-password"`, `"new-password"`, `"one-time-code"`, `"street-address"`, `"postal-code"`, `"country"`, `"cc-number"`, `"cc-exp"`, `"cc-csc"`, `"url"`, `"birthdate-full"` and others, or `"off"`. iOS's own names (`"emailAddress"`, `"oneTimeCode"`, ...) are accepted too, in `autoComplete` or `ios={{ textContentType }}`.
+`autoComplete` tells the system what the field holds, so it can offer saved names, addresses, passwords and one-time codes from messages. It takes these values: `"name"`, `"given-name"`, `"family-name"`, `"email"`, `"tel"`, `"username"`, `"current-password"`, `"new-password"`, `"one-time-code"`, `"street-address"`, `"postal-code"`, `"country"`, `"cc-number"`, `"cc-exp"`, `"cc-csc"`, `"url"`, `"birthdate-full"` and others, or `"off"`. iOS's own names (`"emailAddress"`, `"oneTimeCode"`, ...) are accepted too, in `autoComplete` or `ios={{ textContentType }}`.
 
 ```tsx
 <input keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" placeholder="E-mail" />

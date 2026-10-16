@@ -94,7 +94,7 @@ interface WebViewNavigation {
 
 ## Talking to the page
 
-The page sends strings to the app with `window.ReactNativeWebView.postMessage(…)` (the name React Native WebView uses, so existing pages work); the app sends strings to the page with `ref.postMessage(…)`. Send JSON for structured data.
+The page sends strings to the app with `window.ReactNativeWebView.postMessage(…)`; the app sends strings to the page with `ref.postMessage(…)`. Send JSON for structured data.
 
 ```tsx
 const page = `<!doctype html><html><head><meta name="viewport" content="width=device-width"></head>

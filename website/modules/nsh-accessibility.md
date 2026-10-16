@@ -56,7 +56,7 @@ const AccessibilityInfo: {
 };
 ```
 
-React Native's `AccessibilityInfo`. `screenReaderEnabled()` and `reduceMotion()` are the reactive forms of its settings; prefer them in components.
+The system's accessibility settings, read once or followed with listeners. `screenReaderEnabled()` and `reduceMotion()` are their reactive forms; prefer them in components.
 
 | Member | Description |
 |---|---|

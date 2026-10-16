@@ -56,7 +56,7 @@ const AccessibilityInfo: {
 };
 ```
 
-即 React Native 的 `AccessibilityInfo`。`screenReaderEnabled()` 和 `reduceMotion()` 是其设置项的响应式版本，在组件中优先使用它们。
+系统的无障碍设置，可以读取一次，也可以用监听器跟踪变化。`screenReaderEnabled()` 和 `reduceMotion()` 是它们的响应式版本，在组件中优先使用它们。
 
 | 成员 | 说明 |
 |---|---|

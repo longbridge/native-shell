@@ -81,7 +81,7 @@ mount(App);
 | `underlayColor` | `ColorValue` | | 按下时的背景色；子元素淡化到 `underlayOpacity`。 |
 | `underlayOpacity` | `number` | `0.85` | 显示 `underlayColor` 时子元素的不透明度。 |
 | `hitSlop` | `number \| { top?, right?, bottom?, left? }` | | 把触摸区域扩展到边界之外，单位为点。 |
-| `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | 视图及其子元素接收哪些触摸（与 React Native 语义相同）。 |
+| `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | 视图及其子元素接收哪些触摸：`"none"` 都不接收，`"box-none"` 只有子元素接收，`"box-only"` 只有视图本身接收。 |
 
 视图被按下时，`active:` Tailwind 类同样会生效，无需经过 JS。
 
@@ -112,7 +112,7 @@ mount(App);
 
 ### 原始触摸与响应者系统
 
-对于上面属性覆盖不到的手势，每个元素都支持 React Native 的触摸与响应者属性：
+对于上面属性覆盖不到的手势，每个元素都支持触摸与响应者属性：
 `onTouchStart`、`onTouchMove`、`onTouchEnd`、`onTouchCancel`（以及对应的 `…Capture` 形式）、
 `onStartShouldSetResponder`、`onMoveShouldSetResponder`（以及 `…Capture`）、`onResponderGrant`、`onResponderReject`、
 `onResponderStart`、`onResponderMove`、`onResponderEnd`、`onResponderRelease`、`onResponderTerminate` 和

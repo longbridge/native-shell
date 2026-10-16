@@ -94,7 +94,7 @@ interface WebViewNavigation {
 
 ## 与页面通信
 
-页面用 `window.ReactNativeWebView.postMessage(…)` 向应用发送字符串（沿用 React Native WebView 的命名，现有页面可以直接使用）；应用用 `ref.postMessage(…)` 向页面发送字符串。结构化数据请用 JSON 传递。
+页面用 `window.ReactNativeWebView.postMessage(…)` 向应用发送字符串；应用用 `ref.postMessage(…)` 向页面发送字符串。结构化数据请用 JSON 传递。
 
 ```tsx
 const page = `<!doctype html><html><head><meta name="viewport" content="width=device-width"></head>

@@ -44,11 +44,11 @@ mount(App);
 
 ## Layout
 
-A view lays out its children with flexbox, using React Native's defaults: `flexDirection: "column"`, `flexShrink: 0`,
+A view lays out its children with flexbox, with these defaults: `flexDirection: "column"`, `flexShrink: 0`,
 `alignContent: "flex-start"`, `position: "relative"`. `display: "grid"` switches to CSS grid and `display: "block"` to
 block layout. Sizes are in points. See [layout](../docs/layout.md) and the [style reference](../modules/style-reference.md).
 
-The Tailwind `flex` class follows CSS rather than React Native: `class="flex"` is a row. Use `flex-col` for a column.
+The Tailwind `flex` class follows CSS rather than the style default: `class="flex"` is a row. Use `flex-col` for a column.
 
 ## Props
 
@@ -110,7 +110,7 @@ takes presses of its own. See [text](./text.md#inline-views-and-images).
 
 ## Platform notes
 
-- `boxShadow` and the React Native shadow props (`shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset`) draw on
+- `boxShadow` and the shadow props (`shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset`) draw on
   both platforms; `android={{ elevation }}` gives Android's material shadow instead. On Android a shadow needs a
   background color (a view with a transparent background casts none).
 - `filter` on views: iOS supports only `opacity()`, `brightness()` up to 1 and `drop-shadow()` (images take every color

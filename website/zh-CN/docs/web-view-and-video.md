@@ -146,8 +146,6 @@ function App() {
 mount(App);
 ```
 
-`window.ReactNativeWebView` 与 React Native 使用的名称相同，所以为 React Native 应用编写的网页无需修改即可使用。
-
 `injectJavaScript(script)` 可以随时在当前页面中运行代码；`injectedJavaScript` 和 `injectedJavaScriptBeforeContentLoaded` 在每次页面加载时运行，分别在页面自己的脚本之后或之前，适合用来安装钩子：
 
 ```tsx

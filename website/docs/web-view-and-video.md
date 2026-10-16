@@ -146,8 +146,6 @@ function App() {
 mount(App);
 ```
 
-`window.ReactNativeWebView` is the same name React Native uses, so web pages written for React Native apps work unchanged.
-
 `injectJavaScript(script)` runs code in the current page at any time; `injectedJavaScript` and `injectedJavaScriptBeforeContentLoaded` run on every page load, before or after the page's own scripts, which is the place to install hooks:
 
 ```tsx

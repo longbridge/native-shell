@@ -1,7 +1,7 @@
 ---
 title: 嵌入 iOS 应用
 description: 把 NativeShell.xcframework 加入现有 iOS 应用，在 NshAppView 中显示 nsh 应用，并加载 bundle、签名包或连接开发服务器。
-order: 27
+order: 3.1
 ---
 
 # 嵌入 iOS 应用
@@ -11,6 +11,9 @@ order: 27
 nsh 应用共处同一个 UIKit 视图层级。
 
 每个 `NshAppView` 都是一个独立的引擎，拥有自己的 JS VM；没有全局单例，所以一个应用可以同时显示多个 nsh 应用，比如每个标签页一个。
+
+<img class="diagram diagram-light" src="/diagrams/host-app-light.svg" alt="一个宿主应用里有两个 NshAppView 区域：每个都是独立的引擎，有自己的线程、虚拟机、限制和能力；宿主授予能力、设置限制，并注册地图这样的原生组件。">
+<img class="diagram diagram-dark" src="/diagrams/host-app-dark.svg" alt="一个宿主应用里有两个 NshAppView 区域：每个都是独立的引擎，有自己的线程、虚拟机、限制和能力；宿主授予能力、设置限制，并注册地图这样的原生组件。">
 
 ## 获取 framework
 

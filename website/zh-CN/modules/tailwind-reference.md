@@ -23,7 +23,7 @@ order: 17
 - **变体在普通工具类之后应用**，顺序与 Tailwind 的变体顺序一致：位置（`first:` 等）、`group-*:`、`focus-within:`、`hover:`、`focus:`、`active:`、`enabled:`、`disabled:`、动效偏好、`max-*:` 断点、按宽度升序的断点、方向（横竖屏）、书写方向、`dark:`，最后是平台。因此 `"active:bg-red-500 bg-blue-500"` 按下时是红色。
 - **`style` 优先于类。** 内联 `style` 叠加在解析后的类之上。重要标记的工具类（`!p-4` 或 `p-4!`）连内联样式也能覆盖。
 - **文字样式会继承。** 写在视图上的文字类（`text-white`、`font-bold`、`text-center` 等）会像 CSS 一样传给其中的 `<text>` 和 `<input>`。
-- **display 遵循 CSS。** `flex` 和 `inline-flex` 是横向排列，除非有方向类另行指定，且与其在字符串中的位置无关（`flex-col flex` 是纵向）。没有 `flex` 的视图保持 React Native 默认的纵向排列。
+- **display 遵循 CSS。** `flex` 和 `inline-flex` 是横向排列，除非有方向类另行指定，且与其在字符串中的位置无关（`flex-col flex` 是纵向）。没有 `flex` 的视图保持 nsh 默认的纵向排列。
 
 ## 单位与主题
 

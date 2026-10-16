@@ -11,23 +11,8 @@ order: 35
 
 ## 全局概览
 
-```text
- build time (nsh CLI, Rust)                       run time (one engine per view)
-┌──────────────────────────────┐   bundle    ┌──────────────────────────────────────────────────────┐
-│ App.tsx ─▶ Oxc (strip TS)    │  .qbc/.js   │ engine thread                                        │
-│        ─▶ nsh JSX compiler   │ ──────────▶ │   QuickJS: your app's code only                      │
-│        ─▶ rolldown (bundle)  │  + map      │   nsh runtime (Rust): reactive graph, renderer,      │
-│        ─▶ QuickJS bytecode   │  + assets   │     modules ── ops ─▶ core: components, text,        │
-└──────────────────────────────┘             │     Taffy layout, diff ─▶ one MountBatch per commit  │
-                                             └───────────────────────────┬──────────────────────────┘
-                                                                         │ one hop per commit
-                                             ┌───────────────────────────▼──────────────────────────┐
-                                             │ main / UI thread                                     │
-                                             │   apply mount items to UIKit / Android views         │
-                                             │   draw prepared text, run native animations,         │
-                                             │   gestures ── events ─▶ engine thread                │
-                                             └──────────────────────────────────────────────────────┘
-```
+<img class="diagram diagram-light" src="/diagrams/architecture-light.svg" alt="nsh 应用如何运行：nsh CLI 把 App.tsx 构建为字节码；在引擎线程上，QuickJS 运行事件处理函数，nsh-js 的响应式图把操作排入队列，nsh-core 提交生成一个 MountBatch；它一次跳转到主线程，应用到 UIKit 或 Android 视图上；触摸作为事件传回引擎线程。原生动画在主线程运行，不经过 JavaScript。">
+<img class="diagram diagram-dark" src="/diagrams/architecture-dark.svg" alt="nsh 应用如何运行：nsh CLI 把 App.tsx 构建为字节码；在引擎线程上，QuickJS 运行事件处理函数，nsh-js 的响应式图把操作排入队列，nsh-core 提交生成一个 MountBatch；它一次跳转到主线程，应用到 UIKit 或 Android 视图上；触摸作为事件传回引擎线程。原生动画在主线程运行，不经过 JavaScript。">
 
 ## 构建：只有你的代码会成为 JS
 
@@ -59,7 +44,7 @@ order: 35
 - 编译后的 JSX 所调用的**渲染器**是原生的。它创建节点，并把每个变化转换为一个 **op**，直接推入原生队列：没有 JSON，
   也没有每个 prop 一条的消息。
 - **core** 维护所有节点的影子树（shadow tree）。一个 JS 轮次结束时，它一次性取出所有排队的 op 并进行 **commit**：
-  渲染 Rust 组件（`nsh/ui/mobile`），重建变化的文本，用 **Taffy** 布局（flexbox 和 grid，采用 React Native 的默认值），
+  渲染 Rust 组件（`nsh/ui/mobile`），重建变化的文本，用 **Taffy** 布局（flexbox 和 grid，默认纵向排列且不收缩），
   对 frame 和样式做 diff，并生成一个 **MountBatch**：原生视图所需的操作列表。
 
 ### 主线程
@@ -146,4 +131,3 @@ nsh 是一个 Rust workspace。编写应用时你永远不需要构建它（发�
 
 - [性能](./performance.md)
 - [响应式](./reactivity.md)
-- [与 React Native 对比](./react-native-comparison.md)

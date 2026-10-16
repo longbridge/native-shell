@@ -12,23 +12,8 @@ animations stay smooth while JS is busy, why the main thread never waits for you
 
 ## The big picture
 
-```text
- build time (nsh CLI, Rust)                       run time (one engine per view)
-┌──────────────────────────────┐   bundle    ┌──────────────────────────────────────────────────────┐
-│ App.tsx ─▶ Oxc (strip TS)    │  .qbc/.js   │ engine thread                                        │
-│        ─▶ nsh JSX compiler   │ ──────────▶ │   QuickJS: your app's code only                      │
-│        ─▶ rolldown (bundle)  │  + map      │   nsh runtime (Rust): reactive graph, renderer,      │
-│        ─▶ QuickJS bytecode   │  + assets   │     modules ── ops ─▶ core: components, text,        │
-└──────────────────────────────┘             │     Taffy layout, diff ─▶ one MountBatch per commit  │
-                                             └───────────────────────────┬──────────────────────────┘
-                                                                         │ one hop per commit
-                                             ┌───────────────────────────▼──────────────────────────┐
-                                             │ main / UI thread                                     │
-                                             │   apply mount items to UIKit / Android views         │
-                                             │   draw prepared text, run native animations,         │
-                                             │   gestures ── events ─▶ engine thread                │
-                                             └──────────────────────────────────────────────────────┘
-```
+<img class="diagram diagram-light" src="/diagrams/architecture-light.svg" alt="How an nsh app runs: the nsh CLI builds App.tsx into bytecode; on the engine thread, QuickJS runs a handler, the reactive graph in nsh-js queues ops, and nsh-core commits one MountBatch; it crosses to the main thread in one hop, which applies it to UIKit or Android views; touches go back as events. Native animations run on the main thread without JavaScript.">
+<img class="diagram diagram-dark" src="/diagrams/architecture-dark.svg" alt="How an nsh app runs: the nsh CLI builds App.tsx into bytecode; on the engine thread, QuickJS runs a handler, the reactive graph in nsh-js queues ops, and nsh-core commits one MountBatch; it crosses to the main thread in one hop, which applies it to UIKit or Android views; touches go back as events. Native animations run on the main thread without JavaScript.">
 
 ## Building: only your code becomes JS
 
@@ -64,8 +49,8 @@ Everything about your app's logic happens here:
 - **The renderer** your compiled JSX calls is native. It creates nodes and turns every change into an **op** pushed
   straight into a native queue: no JSON, no messages per prop.
 - **The core** keeps a shadow tree of all nodes. When a JS turn ends, it takes all queued ops at once and **commits**:
-  renders the Rust components (`nsh/ui/mobile`), rebuilds changed texts, lays out with **Taffy** (flexbox and grid, with
-  React Native's defaults), diffs frames and styles, and produces one **MountBatch**: the list of operations the native
+  renders the Rust components (`nsh/ui/mobile`), rebuilds changed texts, lays out with **Taffy** (flexbox and grid, with a
+  column default and no shrinking), diffs frames and styles, and produces one **MountBatch**: the list of operations the native
   views need.
 
 ### The main thread
@@ -161,4 +146,3 @@ engine, which is what lets `nsh trace` run the real runtime headless on any mach
 
 - [Performance](./performance.md)
 - [Reactivity](./reactivity.md)
-- [Comparison with React Native](./react-native-comparison.md)

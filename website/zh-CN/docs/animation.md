@@ -171,7 +171,7 @@ const t = createNativeValue(0);
 | `easing` | 塑造每一段的曲线。 |
 
 > [!IMPORTANT]
-> 插值默认会**截断**，这与 React Native 默认延伸不同。因此把滚动视图拉过顶部时，与滚动联动的标题栏不会超出它的终止状态。想让曲线继续延伸时，传入 `extrapolate: "extend"`。
+> 插值默认会**截断**：超出输入范围时，输出停留在最近的端点。因此把滚动视图拉过顶部时，与滚动联动的标题栏不会超出它的终止状态。想让曲线继续延伸时，传入 `extrapolate: "extend"`。
 
 ### 算术运算与 diffClamp
 
@@ -232,7 +232,7 @@ hop.start(({ finished }) => console.log(finished ? "landed" : "stopped"));
 
 ## Easing
 
-`nsh/animated` 中的 `Easing` 提供 React Native 的缓动曲线。它们是在原生端求值的数据，而不是 JS 函数。
+`nsh/animated` 中的 `Easing` 提供常用的缓动曲线。它们是在原生端求值的数据，而不是 JS 函数。
 
 | Easing | 说明 |
 |---|---|

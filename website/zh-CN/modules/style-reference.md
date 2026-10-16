@@ -6,7 +6,7 @@ order: 16
 
 # 样式参考
 
-本页列出 `style` 属性可用的每一个键。键名和类型来自生成的声明文件 `.nsh/types/nsh/types.d.ts`，编辑器会在你输入时检查它们。样式遵循 React Native 的语义（flexbox 默认纵向排列，数字的单位是点），并补充了 React Native 没有的 CSS 能力：网格、渐变、盒阴影、滤镜、混合模式、轮廓线、过渡和关键帧动画。
+本页列出 `style` 属性可用的每一个键。键名和类型来自生成的声明文件 `.nsh/types/nsh/types.d.ts`，编辑器会在你输入时检查它们。布局是默认纵向排列的 flexbox，数字的单位是点，同时支持这些 CSS 能力：网格、渐变、盒阴影、滤镜、混合模式、轮廓线、过渡和关键帧动画。
 
 样式怎么写、怎样与 class 组合、文字样式如何继承，见 [样式](../docs/styling.md)。class 的语法见 [Tailwind 参考](./tailwind-reference.md)。
 
@@ -61,7 +61,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 ## LayoutStyle
 
-布局在 Rust 中计算（flexbox 和 CSS 网格）。默认值沿用 React Native 而非 CSS：`display: "flex"`、`flexDirection: "column"`、`flexShrink: 0`、`alignContent: "flex-start"`、`alignItems: "stretch"`，并且没有自动最小尺寸。见 [布局](../docs/layout.md)。
+布局在 Rust 中计算（flexbox 和 CSS 网格）。默认值与 CSS 不同：`display: "flex"`、`flexDirection: "column"`、`flexShrink: 0`、`alignContent: "flex-start"`、`alignItems: "stretch"`，并且没有自动最小尺寸。见 [布局](../docs/layout.md)。
 
 ### 显示与定位
 
@@ -76,7 +76,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 | `start` | `DimensionValue` | 从左到右布局中为左，从右到左布局中为右。 |
 | `end` | `DimensionValue` | 从左到右布局中为右，从右到左布局中为左。 |
 | `zIndex` | `number` | 在兄弟元素间的次序（值相同时保持原顺序），也是原生视图的叠放次序。 |
-| `direction` | `"inherit" \| "ltr" \| "rtl"` | 布局方向，默认继承。从右到左时，`left` 和 `right` 属性表示起始和结束（与 React Native 相同）。 |
+| `direction` | `"inherit" \| "ltr" \| "rtl"` | 布局方向，默认继承。从右到左时，`left` 和 `right` 属性表示起始和结束。 |
 
 ### Flexbox
 
@@ -84,9 +84,9 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 |---|---|---|
 | `flexDirection` | `"row" \| "column" \| "row-reverse" \| "column-reverse"` | 主轴方向。默认 `"column"`。 |
 | `flexWrap` | `"wrap" \| "nowrap" \| "wrap-reverse"` | 子元素是否换行。默认 `"nowrap"`。 |
-| `flex` | `number` | React Native 的 `flex`，不是 CSS 简写：正数会把 `flexGrow` 设为该值，同时 `flexShrink: 1`、`flexBasis: 0`；`0` 让元素不伸缩；负数让元素可以收缩到最小尺寸。 |
+| `flex` | `number` | 单个数字，不是 CSS 简写：正数会把 `flexGrow` 设为该值，同时 `flexShrink: 1`、`flexBasis: 0`；`0` 让元素不伸缩；负数让元素可以收缩到最小尺寸。 |
 | `flexGrow` | `number` | 占用剩余空间的比例。默认 `0`。 |
-| `flexShrink` | `number` | 空间不足时的收缩比例。默认 `0`（React Native），而不是 CSS 的 `1`。 |
+| `flexShrink` | `number` | 空间不足时的收缩比例。默认 `0`，而不是 CSS 的 `1`。 |
 | `flexBasis` | `DimensionValue` | 分配剩余空间之前的主轴尺寸。 |
 | `justifyContent` | `"flex-start" \| "flex-end" \| "center" \| "space-between" \| "space-around" \| "space-evenly" \| "stretch"` | 子元素沿主轴的分布。默认 `"flex-start"`。 |
 | `alignItems` | `"flex-start" \| "flex-end" \| "center" \| "stretch" \| "baseline"` | 子元素在交叉轴上的对齐。默认 `"stretch"`。 |
@@ -175,7 +175,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 |---|---|---|
 | `backgroundColor` | `ColorValue \| NativeNode` | 填充色。接受原生动画颜色。 |
 | `backgroundImage` | `string` | 画在背景色之上的 CSS 渐变：`linear-gradient(...)`、`radial-gradient(...)`、`conic-gradient(...)`，多个用逗号分隔。 |
-| `experimental_backgroundImage` | `string` | `backgroundImage` 在 React Native 中的名字。 |
+| `experimental_backgroundImage` | `string` | `backgroundImage` 的别名。 |
 
 ```tsx
 <view style={{ height: 120, borderRadius: 16, backgroundImage: "linear-gradient(135deg, #6366f1, #ec4899)" }} />
@@ -229,13 +229,13 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 ### 阴影
 
-两种方式投射阴影：CSS 的 `boxShadow`（多层、扩展、内阴影），或 React Native 的四个 `shadow*` 键。
+两种方式投射阴影：CSS 的 `boxShadow`（多层、扩展、内阴影），或四个 `shadow*` 键。
 
 | 键 | 类型 | 说明 |
 |---|---|---|
 | `boxShadow` | `string` | CSS `box-shadow`：偏移、模糊、扩展和颜色，多层用逗号分隔，`inset` 表示内阴影。 |
-| `shadowColor` | `ColorValue` | React Native 阴影颜色。 |
-| `shadowOffset` | `{ width: number; height: number }` | 偏移。默认 `{ width: 0, height: -3 }`，与 React Native 相同。 |
+| `shadowColor` | `ColorValue` | 阴影颜色。 |
+| `shadowOffset` | `{ width: number; height: number }` | 偏移。默认 `{ width: 0, height: -3 }`。 |
 | `shadowOpacity` | `number` | 不透明度，0 到 1。默认 `0`（无阴影）。 |
 | `shadowRadius` | `number` | 模糊半径。默认 `3`。 |
 
@@ -395,7 +395,7 @@ const title: TextStyle = { fontSize: 17, fontWeight: "600", color: "#111" };
 
 ## 看起来像样式的属性
 
-有些设置在 nsh 中（与 React Native 一样）是属性而不是样式键。它们有对应的 Tailwind class，但显式设置的属性优先于 class：
+有些设置在 nsh 中是属性而不是样式键。它们有对应的 Tailwind class，但显式设置的属性优先于 class：
 
 | 设置 | 属性 | Class |
 |---|---|---|

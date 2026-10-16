@@ -1,21 +1,24 @@
 ---
 title: 快速开始
-description: 用 nsh init 创建应用，逐行阅读它的 App.tsx，在 Mac Catalyst、iOS 模拟器或 Android 上运行，并借助热重载编辑。
+description: 用 nsh init 编写一个模块，借助热重载开发，把它承载到你的 iOS 或 Android 应用里，并以签名包下发更新；也可以打包成独立应用。
 order: 3
 demo: guide-getting-started
 ---
 
 # 快速开始
 
-本页创建一个新应用，讲解 `nsh init` 生成的代码，并在热重载下运行它。这里假设 `nsh` 已安装并位于 `PATH` 中（[安装](./installation.md)）；如果使用源码仓库，请改用 `./target/debug/nsh`。
+nsh 的主要用途是在原生应用里承载模块（见[简介](./index.md)）。本指南沿着这条路线走：编写一个模块，借助热重载开发，在你的 iOS 或 Android 应用里显示它，再以签名包下发一次更新。前提是已经安装 `nsh` 并加入 `PATH`（[安装](./installation.md)）；在源码仓库中请改用 `./target/debug/nsh`。
 
-## 创建应用
+> [!TIP]
+> 手头没有应用工程？前两节都不需要：`nsh run` 会在 nsh 自带的开发宿主（Mac、iOS 模拟器或 Android）里显示模块。你可以到此为止，或者把它[打包成独立应用](#或者作为独立应用发布)。
+
+## 创建模块
 
 ```sh
 nsh init my-app
 ```
 
-`nsh init` 会在目录不存在时创建它，并写入：
+模块就是宿主应用加载的东西：一个或多个带入口的 `.tsx` 文件。`nsh init` 会在目录不存在时创建它，并写入：
 
 | 文件 | 作用 |
 |---|---|
@@ -27,7 +30,7 @@ nsh init my-app
 
 显示名称默认是目录名；可以用 `--name "My App"` 指定其他名称。id 会是 `com.example.<name>`：发布前请在 `nsh.json` 中修改。已存在的文件会被保留，所以你可以在已经有部分文件的目录里运行 `nsh init`。
 
-## 入口模块
+### 入口模块
 
 ```tsx
 import { mount, signal } from "nsh";
@@ -60,17 +63,19 @@ mount(App);
 - **`function App()`** 是一个组件：返回 JSX 的函数。它只运行**一次**。`signal(0)` 创建一个会随时间变化的值。
 - **`{count()}`** 在 JSX 中读取 signal。编译器看到这是一次调用，就让这段文本跟随该 signal：`count` 变化时，运行时只更新这一段文本，其他什么都不动。
 - **`<view onPress>`** 是一个响应按压的原生视图；`activeOpacity` 让它在按下时以原生方式变淡。小写标签（`view`、`text`、`image`、`scroll`、`input` 等）是 [宿主元素](../elements/index.md)。
-- **`style={{ … }}`** 接受 React Native 风格的属性。布局是 flexbox，采用 React Native 的默认值（子元素按列排列）（[布局](./layout.md)）。
+- **`style={{ … }}`** 接受由 camelCase 样式属性组成的对象，数字的单位是点。布局是 flexbox，子元素默认按列排列（[布局](./layout.md)）。
 - **`mount(App)`** 把组件渲染到应用的界面上。
 
 > [!IMPORTANT]
 > 文本必须放在 `<text>` 中。直接写在 `<view>` 里的字符串（`<view>Hello</view>`）不会显示。
 
-## 运行
+## 开发
+
+### 运行
 
 `nsh run` 会启动开发服务器、构建应用、启动加载该应用的开发宿主，并在你编辑时持续重新构建。应用的日志（`console.log`、错误）会显示在终端中。
 
-### Mac Catalyst（默认）
+#### Mac Catalyst（默认）
 
 ```sh
 nsh run my-app/App.tsx
@@ -78,7 +83,7 @@ nsh run my-app/App.tsx
 
 应用会在 Mac 上一个 iPhone 尺寸（390×844 点）的窗口中打开。这是最快的开发循环：不需要启动模拟器。它和 iOS 一样使用 UIKit，所以看到的效果就是 iPhone 上的效果，只有 Mac 特有的行为除外，例如用鼠标滚轮滚动。
 
-### iOS 模拟器
+#### iOS 模拟器
 
 ```sh
 nsh run my-app/App.tsx --target ios
@@ -87,7 +92,7 @@ nsh run my-app/App.tsx --target ios --device "iPhone 16 Pro"
 
 `nsh` 会使用已启动的模拟器；如果没有正在运行的模拟器，就启动最新的 iPhone，并把开发宿主安装进去。`--device` 按名称或 UDID 选择模拟器。
 
-### Android
+#### Android
 
 ```sh
 nsh run my-app/App.tsx --target android
@@ -95,7 +100,7 @@ nsh run my-app/App.tsx --target android
 
 先启动模拟器或连接设备（`adb devices` 会列出它们；nsh 使用第一个）。`nsh` 会安装一个开发宿主 APK（只在运行时变化时重新构建），并通过 `adb reverse` 把开发服务器的端口转发到设备上，因此通过 USB 即可工作，无需共享网络。
 
-## 用热重载编辑
+### 用热重载编辑
 
 保持 `nsh run` 运行，修改 `App.tsx` 中的按钮文字：
 
@@ -119,9 +124,83 @@ function TapButton(props: { onPress: () => void }) {
 
 热替换以顶层组件为单位：名称首字母大写、函数体中包含 JSX 的函数。组件在自身代码变化时，或模块中组件之外的代码（它用到的常量、辅助函数）变化时重新渲染。如果某次编辑无法原地应用（例如导入了运行中的应用尚未导入的 nsh 模块，或修改了 `nsh.json` 中的 capabilities），宿主会重新加载整个应用。
 
-### 错误
+#### 错误
 
 构建错误会打印在终端中，并在设备上以红色浮层显示文件、行号和列号；应用继续运行上一次成功的构建。下次构建成功后浮层会消失（也可以点击提前关闭）。运行时抛出的异常以同样方式显示，调用栈会映射回你的 `.tsx` 源码。
+
+## 承载到你的应用里
+
+应用用一个专门的视图显示模块：iOS 上是 `NshAppView`（一个 `UIView`），Android 上是 `NshView`（一个 Android `View`）。像其他视图一样摆放即可，可以放在任何页面，数量不限。开发时让它连接开发服务器；发布时加载构建好的 bundle 或下载的包。
+
+### iOS
+
+在 Debug 配置中链接 `NativeShellDev.xcframework`，在 Release 中链接 `NativeShell.xcframework`（[在 iOS 应用中嵌入](./embedding-ios.md)），然后：
+
+```swift
+import NativeShell
+
+let app = NshAppView()
+app.onError = { message in print("nsh error: \(message)") }
+view.addSubview(app)   // 再像普通视图一样设置约束
+
+#if DEBUG
+try app.connectDevServer(URL(string: "ws://127.0.0.1:8790/ws")!)   // 在 Mac 上运行 `nsh dev my-app`
+#else
+try app.loadBundle(at: Bundle.main.url(forResource: "bundle", withExtension: "qbc", subdirectory: "nsh")!)
+#endif
+```
+
+`nsh dev my-app/App.tsx` 把模块提供给应用，并在每次保存后推送更新，就像 `nsh run` 对它自带的宿主所做的那样。发布版用 `nsh build my-app/App.tsx --release --out MyApp/nsh` 把 bundle 写进一个文件夹，再把它加入应用的资源。
+
+### Android
+
+调试版添加 `nsh-dev.aar`，发布版添加 `nsh.aar`（[在 Android 应用中嵌入](./embedding-android.md)），然后：
+
+```kotlin
+val nsh = NshView(this)
+nsh.setErrorListener { message -> Log.e("nsh", message) }
+setContentView(nsh)   // 或者加入任意布局
+
+if (BuildConfig.DEBUG) {
+    nsh.connectDevServer("ws://127.0.0.1:8790/ws")   // 配合 `adb reverse tcp:8790 tcp:8790`
+} else {
+    nsh.loadAssetBundle("nsh")   // assets/nsh，由 `nsh build my-app/App.tsx --release --out app/src/main/assets/nsh` 生成
+}
+```
+
+加载之前，由宿主决定模块能做什么：`grantCapabilities` 设置它能访问的网络主机和其他能力，各项限制约束它的内存、调用时长和节点数（[沙箱与能力](./sandbox-and-capabilities.md)）。要让模块使用你自己的原生视图（地图、图表、设计系统组件），把它们注册为[原生组件](./native-components.md)。
+
+## 以签名包下发更新
+
+应用在发布之后下载的模块，以签名包的形式提供。先创建一个根密钥并离线保管，用它认证一个发布密钥，然后发布：
+
+```sh
+nsh keygen keys/root && nsh keygen keys/release
+nsh certify --root keys/root.secret --key keys/release.pub --apps 'com.example.*' -o keys/release.cert
+nsh publish my-app/App.tsx --key keys/release.secret --cert keys/release.cert --build 2
+```
+
+应用信任根公钥，并加载下载到的包；nsh 在运行任何代码之前校验签名、证书和吊销列表：
+
+```swift
+let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+let trust = try NshTrust(stateDirectory: support.appendingPathComponent("nsh"))
+try trust.addRoot(rootPublicKey)   // keys/root.pub 的内容
+let info = try await app.loadPackage(at: downloadedFile, trust: trust)
+```
+
+Android 上用 `NshTrust` 和 `NshPackage`，流程相同。承载、下发和吊销的细节见[签名包](./signed-packages.md)。
+
+## 或者作为独立应用发布
+
+同一个模块也可以组成一个完整的应用。`nsh package` 用预编译的运行时把它打成可安装的应用，不需要你自己的 Xcode 工程或 Gradle 构建：
+
+```sh
+nsh package my-app --target ios-simulator --run
+nsh package my-app --target android
+```
+
+这是受支持的用法，也是把模块装到设备上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。
 
 ## 在终端中试运行
 
@@ -135,7 +214,7 @@ nsh trace my-app/App.tsx
 
 ## 下一步
 
-- [项目结构](./project-structure.md)：`nsh.json` 里写什么、资源、模块。
-- [JSX 与组件](./jsx-and-components.md)：props、children、控制流。
-- [响应式](./reactivity.md)：signals、计算值和 effect。
-- [打包](./packaging.md)：构建可安装的 `.app`、`.ipa` 或 `.apk`。
+- [在 iOS 应用中嵌入](./embedding-ios.md)和[在 Android 应用中嵌入](./embedding-android.md)：完整的宿主 API。
+- [签名包](./signed-packages.md)和[沙箱与能力](./sandbox-and-capabilities.md)：下发方式，以及模块能做什么。
+- [JSX 与组件](./jsx-and-components.md)和[响应式](./reactivity.md)：编写模块。
+- [项目结构](./project-structure.md)：`nsh.json`、资源和文件。

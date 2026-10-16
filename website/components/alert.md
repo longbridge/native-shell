@@ -78,7 +78,7 @@ a button (Android, with `cancelable`). It does not reject.
 - **iOS**: the buttons are laid out by `UIAlertController`. A button with `style: "cancel"` is placed where iOS puts
   cancel buttons, which may differ from its position in your array; the index you get back is always its index in
   `buttons`.
-- **Android**: an `AlertDialog` shows at most three buttons. They are mapped as in React Native: the last button is the
+- **Android**: an `AlertDialog` shows at most three buttons. They are mapped by position: the last button is the
   positive button, the one before it the negative button, and the one before that the neutral button. Further buttons
   at the start of the array are not shown. Button styles do not change the look.
 

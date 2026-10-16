@@ -163,7 +163,7 @@ interface CompositeAnimation {
 }
 ```
 
-`Animated` builds animations out of steps, in the shape of React Native's `Animated`. Nothing runs until `start()`; then the whole tree runs natively, and each step starts on the UI thread at the exact moment the previous one ends (no frame gap, no JS round trip between steps).
+`Animated` builds animations out of steps (`timing`, `spring`, `decay`, `sequence`, `parallel`, ...). Nothing runs until `start()`; then the whole tree runs natively, and each step starts on the UI thread at the exact moment the previous one ends (no frame gap, no JS round trip between steps).
 
 | Function | Description |
 |---|---|
@@ -224,7 +224,7 @@ const Easing: {
 };
 ```
 
-An easing is data, not a JS function: the runtime evaluates it natively. Wherever an `Easing` is accepted you can pass a name (`"easeOut"`), a cubic Bézier as four numbers, or a curve from the `Easing` object (React Native's `Easing`).
+An easing is data, not a JS function: the runtime evaluates it natively. Wherever an `Easing` is accepted you can pass a name (`"easeOut"`), a cubic Bézier as four numbers, or a curve from the `Easing` object.
 
 | Curve | Shape |
 |---|---|

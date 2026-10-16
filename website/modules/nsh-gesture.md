@@ -6,7 +6,7 @@ order: 7
 
 # nsh/gesture
 
-`nsh/gesture` exports `PanResponder`: drag gestures on top of the gesture responder system, with the same callbacks and gesture state as React Native's `PanResponder`. It tracks the touches' centroid, the distance moved and the velocity for you.
+`nsh/gesture` exports `PanResponder`: drag gestures on top of the gesture responder system, with `onPanResponder…` callbacks that receive the touch event and a gesture state. It tracks the touches' centroid, the distance moved and the velocity for you.
 
 ```ts
 import { PanResponder, type PanResponderGestureState } from "nsh/gesture";

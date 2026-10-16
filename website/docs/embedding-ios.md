@@ -1,7 +1,7 @@
 ---
 title: Embedding in iOS Apps
 description: Add NativeShell.xcframework to an existing iOS app, show nsh apps in an NshAppView, and load bundles, signed packages or a dev server.
-order: 27
+order: 3.1
 ---
 
 # Embedding in iOS Apps
@@ -12,6 +12,9 @@ an app into it. Your native screens, navigation and the nsh app live side by sid
 
 Each `NshAppView` is one independent engine with its own JS VM; there are no global singletons, so an app can show
 several nsh apps at once, for example one per tab.
+
+<img class="diagram diagram-light" src="/diagrams/host-app-light.svg" alt="One host app with two NshAppView regions: each is its own engine with its own thread, VM, limits and capabilities; the host grants capabilities, sets limits and registers native components such as a map.">
+<img class="diagram diagram-dark" src="/diagrams/host-app-dark.svg" alt="One host app with two NshAppView regions: each is its own engine with its own thread, VM, limits and capabilities; the host grants capabilities, sets limits and registers native components such as a map.">
 
 ## Get the framework
 

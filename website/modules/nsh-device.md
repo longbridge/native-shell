@@ -68,7 +68,7 @@ const Platform: {
 };
 ```
 
-The platform the app runs on, constant while it runs (React Native's `Platform`).
+The platform the app runs on, constant while it runs.
 
 | Member | Description |
 |---|---|
@@ -121,7 +121,7 @@ const PixelRatio: {
 };
 ```
 
-Device pixels per point (React Native's `PixelRatio`).
+Device pixels per point.
 
 | Method | Description |
 |---|---|
@@ -148,7 +148,7 @@ const I18nManager: {
 };
 ```
 
-Right-to-left layout (React Native's `I18nManager`). In right-to-left layout, rows run from the right, and `left` / `right` style properties (`marginLeft`, `paddingRight`, ...) mean start and end. Changes apply at once; no restart is needed.
+Right-to-left layout. In right-to-left layout, rows run from the right, and `left` / `right` style properties (`marginLeft`, `paddingRight`, ...) mean start and end. Changes apply at once; no restart is needed.
 
 | Member | Description |
 |---|---|

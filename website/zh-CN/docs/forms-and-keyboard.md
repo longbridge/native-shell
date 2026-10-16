@@ -101,7 +101,7 @@ mount(App);
 | `"decimal-pad"` | 数字和小数点。 |
 | `"phone-pad"` | 电话拨号盘。 |
 
-`autoComplete` 告诉系统字段里装的是什么，系统就能提供已保存的姓名、地址、密码以及短信中的验证码。它采用 React Native 的取值：`"name"`、`"given-name"`、`"family-name"`、`"email"`、`"tel"`、`"username"`、`"current-password"`、`"new-password"`、`"one-time-code"`、`"street-address"`、`"postal-code"`、`"country"`、`"cc-number"`、`"cc-exp"`、`"cc-csc"`、`"url"`、`"birthdate-full"` 等，或 `"off"`。iOS 自己的名字（`"emailAddress"`、`"oneTimeCode"` 等）也可以用在 `autoComplete` 或 `ios={{ textContentType }}` 中。
+`autoComplete` 告诉系统字段里装的是什么，系统就能提供已保存的姓名、地址、密码以及短信中的验证码。它接受以下取值：`"name"`、`"given-name"`、`"family-name"`、`"email"`、`"tel"`、`"username"`、`"current-password"`、`"new-password"`、`"one-time-code"`、`"street-address"`、`"postal-code"`、`"country"`、`"cc-number"`、`"cc-exp"`、`"cc-csc"`、`"url"`、`"birthdate-full"` 等，或 `"off"`。iOS 自己的名字（`"emailAddress"`、`"oneTimeCode"` 等）也可以用在 `autoComplete` 或 `ios={{ textContentType }}` 中。
 
 ```tsx
 <input keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" placeholder="E-mail" />

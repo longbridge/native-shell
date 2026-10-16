@@ -73,7 +73,7 @@ Promise 解析为被按按钮在 `buttons` 中的序号；如果对话框未通�
 ## 平台说明
 
 - **iOS**：按钮由 `UIAlertController` 布局。`style: "cancel"` 的按钮会放在 iOS 放置取消按钮的位置，可能与它在数组中的位置不同；但返回的序号始终是它在 `buttons` 中的序号。
-- **Android**：`AlertDialog` 最多显示三个按钮，映射方式与 React Native 相同：最后一个按钮是 positive 按钮，倒数第二个是 negative 按钮，倒数第三个是 neutral 按钮。数组开头多出的按钮不会显示。按钮样式不影响外观。
+- **Android**：`AlertDialog` 最多显示三个按钮，按位置映射：最后一个按钮是 positive 按钮，倒数第二个是 negative 按钮，倒数第三个是 neutral 按钮。数组开头多出的按钮不会显示。按钮样式不影响外观。
 
 > [!TIP]
 > 主线程从不等待 JS，因此对话框以原生方式显示和应答，Promise 解析后你的代码才继续执行。你可以在任何事件处理函数中 `await` 一个警告框，例如配合 [`preventBack`](./navigation.md#leaving-a-screen) 在离开页面前请用户确认。

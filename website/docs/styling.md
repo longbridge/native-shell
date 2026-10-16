@@ -1,13 +1,13 @@
 ---
 title: Styling
-description: The style prop - React Native semantics with CSS additions - colors, borders, corners, shadows, gradients, filters, transforms and transitions, with platform differences.
+description: The style prop - camelCase properties with flexbox, grid and CSS effects - colors, borders, corners, shadows, gradients, filters, transforms and transitions, with platform differences.
 order: 8
 demo: guide-styling
 ---
 
 # Styling
 
-Every element takes a `style` prop: an object of camelCase properties, as in React Native, extended with CSS features React Native lacks (box shadows, gradients, filters, outlines, transitions, grid). Styles are decoded in Rust and only the properties that changed are sent to the native view. You can also style with [Tailwind classes](./tailwind.md); both resolve to the same native styles.
+Every element takes a `style` prop: an object of camelCase properties, including CSS features such as box shadows, gradients, filters, outlines, transitions and grid. Styles are decoded in Rust and only the properties that changed are sent to the native view. You can also style with [Tailwind classes](./tailwind.md); both resolve to the same native styles.
 
 ```tsx
 <view
@@ -59,7 +59,7 @@ When an element has both, `style` wins over `class`: classes are applied first, 
 
 ## Defaults
 
-nsh follows React Native's defaults rather than the web's:
+nsh's defaults differ from the web's:
 
 | | Default |
 |---|---|
@@ -131,7 +131,7 @@ Radii larger than half the side are clamped, so `borderRadius: 9999` makes a cir
 Three ways to cast a shadow:
 
 ```tsx
-// React Native's shadow properties
+// The shadow* properties
 <view style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
 
 // CSS box-shadow: several, comma separated, with spread and inset
@@ -157,7 +157,7 @@ Three ways to cast a shadow:
 <view style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
 ```
 
-`experimental_backgroundImage`, React Native's name for the property, is accepted too. Text elements do not draw gradients on iOS.
+`experimental_backgroundImage` is accepted too, as an alias of `backgroundImage`. Text elements do not draw gradients on iOS.
 
 ## Filters and blending
 
@@ -201,7 +201,7 @@ Platform support differs:
 
 Steps: `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate` (`rotateZ`), `rotateX`, `rotateY`, `skewX`, `skewY`, `perspective`. `transformOrigin` takes keywords, percentages and lengths (`"top left"`, `"50% 0"`, `[10, 20]`); the default is the center. Transforms do not affect layout: siblings are placed as if the view were untransformed.
 
-Android has no skew transforms (as in React Native).
+Android has no skew transforms.
 
 ## Transitions
 

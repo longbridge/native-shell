@@ -171,7 +171,7 @@ const t = createNativeValue(0);
 | `easing` | Shapes each segment. |
 
 > [!IMPORTANT]
-> Interpolations **clamp** by default, unlike React Native, where they extend. Pulling a scroll view past its top therefore does not push a scroll-linked header beyond its end state. Pass `extrapolate: "extend"` when you want the line to continue.
+> Interpolations **clamp** by default: outside the input range, the output stays at the nearest end. Pulling a scroll view past its top therefore does not push a scroll-linked header beyond its end state. Pass `extrapolate: "extend"` when you want the line to continue.
 
 ### Arithmetic and diffClamp
 
@@ -232,7 +232,7 @@ A `CompositeAnimation` has `start(callback?)` (also a promise of `finished`; cal
 
 ## Easing
 
-`Easing` from `nsh/animated` gives React Native's curves. They are data, evaluated natively, not JS functions.
+`Easing` from `nsh/animated` gives the standard easing curves. They are data, evaluated natively, not JS functions.
 
 | Easing | Description |
 |---|---|

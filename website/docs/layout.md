@@ -1,19 +1,19 @@
 ---
 title: Layout
-description: Flexbox with React Native's defaults, CSS grid, sizes and percentages, aspect ratio, absolute positioning, measuring with onLayout, responsive layouts and right-to-left.
+description: Flexbox with a column default, CSS grid, sizes and percentages, aspect ratio, absolute positioning, measuring with onLayout, responsive layouts and right-to-left.
 order: 10
 demo: guide-layout
 ---
 
 # Layout
 
-nsh lays out every element with [Taffy](https://github.com/DioxusLabs/taffy), a Rust implementation of CSS flexbox, grid and block layout, configured with React Native's defaults. Layout runs in the core, after each JavaScript turn, and only the frames that changed are sent to the native views. Text is measured by the platform's text engine on the same thread, so layout never waits for the main thread.
+nsh lays out every element with [Taffy](https://github.com/DioxusLabs/taffy), a Rust implementation of CSS flexbox, grid and block layout, configured so that children stack vertically and do not shrink by default. Layout runs in the core, after each JavaScript turn, and only the frames that changed are sent to the native views. Text is measured by the platform's text engine on the same thread, so layout never waits for the main thread.
 
 The layout properties below are style properties. Each has a [Tailwind](./tailwind.md) equivalent (`flex-row`, `gap-4`, `grid-cols-3`, `absolute inset-0`, ...).
 
 ## Flexbox
 
-A view lays out its children with flexbox. The defaults are React Native's, not the web's:
+A view lays out its children with flexbox. The defaults differ from the web's:
 
 | Property | nsh default | Web default |
 |---|---|---|
@@ -43,11 +43,11 @@ A view lays out its children with flexbox. The defaults are React Native's, not 
 | `alignSelf` | One child's cross-axis alignment; `"auto"` follows the parent's `alignItems` |
 | `alignContent` | Lines of a wrapping container |
 | `flexWrap` | `"nowrap"`, `"wrap"`, `"wrap-reverse"` |
-| `flex` | React Native's shorthand (below) |
+| `flex` | A single-number shorthand (below) |
 | `flexGrow`, `flexShrink`, `flexBasis` | As in CSS |
 | `gap`, `rowGap`, `columnGap` | Space between children |
 
-`flex` follows React Native, not the CSS shorthand: a positive number `n` means grow by `n`, shrink by 1 and start from a basis of 0, so `flex: 1` siblings share the space equally whatever their content; `flex: 0` (the default) sizes the view to its content; a negative number shrinks it by that much down to its minimum.
+`flex` takes one number and is not the CSS shorthand: a positive number `n` means grow by `n`, shrink by 1 and start from a basis of 0, so `flex: 1` siblings share the space equally whatever their content; `flex: 0` (the default) sizes the view to its content; a negative number shrinks it by that much down to its minimum.
 
 ```tsx
 <view style={{ flexDirection: "row", gap: 8 }}>

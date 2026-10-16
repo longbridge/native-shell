@@ -1,7 +1,7 @@
 ---
 title: 签名包
 description: 发布由宿主应用下载并验证的应用代码：密钥、证书、nsh publish、验证、吊销与回滚保护。
-order: 30
+order: 3.4
 ---
 
 # 签名包
@@ -9,14 +9,8 @@ order: 30
 签名包（`.nshpkg`）让宿主应用能够运行并非随应用一起发布的 nsh 代码：可以是应用自身 nsh 页面的更新，也可以是第三方
 小程序。`nsh publish` 负责构建并签名应用；宿主应用在运行任何代码之前，会依次验证签名、证书链、吊销状态和构建号。
 
-```text
-  offline                        your build machine                       the user's device
-┌──────────┐ certify ┌─────────────┐ publish ┌──────────────┐ download ┌─────────────────────────┐
-│ root key │────────▶│ release key │────────▶│ app.nshpkg   │─────────▶│ NshTrust (trusts root)  │
-└──────────┘         │ + cert      │         │ signed, with │          │ verify → accept → run   │
-                     └─────────────┘         │ the cert     │          └─────────────────────────┘
-                                             └──────────────┘
-```
+<img class="diagram diagram-light" src="/diagrams/signed-packages-light.svg" alt="签名包：离线的根密钥为发布密钥签发证书，限定应用 ID；nsh publish 用发布密钥签名包；在设备上，NshTrust 只信任根密钥和最新的吊销列表，依次检查证书、吊销、签名、应用 ID、文件哈希和构建号，然后运行模块或拒绝它。">
+<img class="diagram diagram-dark" src="/diagrams/signed-packages-dark.svg" alt="签名包：离线的根密钥为发布密钥签发证书，限定应用 ID；nsh publish 用发布密钥签名包；在设备上，NshTrust 只信任根密钥和最新的吊销列表，依次检查证书、吊销、签名、应用 ID、文件哈希和构建号，然后运行模块或拒绝它。">
 
 > [!NOTE]
 > nsh 只负责验证和运行包，不负责分发。包从哪里来（你的更新服务器、CDN、小程序商店）以及应用何时下载，都由宿主应用

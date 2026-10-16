@@ -42,9 +42,9 @@ mount(App);
 
 ## 布局
 
-view 用 flexbox 布局子元素，采用 React Native 的默认值：`flexDirection: "column"`、`flexShrink: 0`、`alignContent: "flex-start"`、`position: "relative"`。`display: "grid"` 切换为 CSS grid，`display: "block"` 切换为块布局。尺寸单位是点。参见[布局](../docs/layout.md)和[样式参考](../modules/style-reference.md)。
+view 用 flexbox 布局子元素，默认值为：`flexDirection: "column"`、`flexShrink: 0`、`alignContent: "flex-start"`、`position: "relative"`。`display: "grid"` 切换为 CSS grid，`display: "block"` 切换为块布局。尺寸单位是点。参见[布局](../docs/layout.md)和[样式参考](../modules/style-reference.md)。
 
-Tailwind 的 `flex` 类遵循 CSS 而不是 React Native：`class="flex"` 是横向排列。需要纵向排列时用 `flex-col`。
+Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` 是横向排列。需要纵向排列时用 `flex-col`。
 
 ## 属性
 
@@ -98,7 +98,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是 React Native：`class="flex"` 是横
 
 ## 平台说明
 
-- `boxShadow` 以及 React Native 的阴影属性（`shadowColor`、`shadowOpacity`、`shadowRadius`、`shadowOffset`）在两个平台上都会绘制；`android={{ elevation }}` 则改用 Android 的 Material 阴影。在 Android 上阴影需要背景色（背景透明的视图不会投下阴影）。
+- `boxShadow` 以及阴影属性（`shadowColor`、`shadowOpacity`、`shadowRadius`、`shadowOffset`）在两个平台上都会绘制；`android={{ elevation }}` 则改用 Android 的 Material 阴影。在 Android 上阴影需要背景色（背景透明的视图不会投下阴影）。
 - view 上的 `filter`：iOS 只支持 `opacity()`、不超过 1 的 `brightness()` 和 `drop-shadow()`（图片支持所有颜色滤镜和 `blur()`）；Android 从 API 31 起全部支持，低于该版本只支持颜色滤镜。
 - `backdropFilter: "blur(…)"` 在 iOS 上是系统材质（近似效果），在 Android 上需要 API 31。
 - Android 不支持 `skewX` / `skewY` 变换。

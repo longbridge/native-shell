@@ -1,13 +1,13 @@
 ---
 title: 样式
-description: style 属性：React Native 的语义加上 CSS 的扩展，包括颜色、边框、圆角、阴影、渐变、滤镜、变换和过渡，以及各平台的差异。
+description: style 属性：camelCase 属性，支持 flexbox、grid 和 CSS 效果，包括颜色、边框、圆角、阴影、渐变、滤镜、变换和过渡，以及各平台的差异。
 order: 8
 demo: guide-styling
 ---
 
 # 样式
 
-每个元素都接受 `style` 属性：一个由 camelCase 属性组成的对象，与 React Native 相同，并补充了 React Native 所没有的 CSS 能力（盒阴影、渐变、滤镜、轮廓线、过渡、grid）。样式在 Rust 中解析，只有变化了的属性才会发送给原生视图。你也可以用 [Tailwind 类名](./tailwind.md)设置样式，两者最终得到的是相同的原生样式。
+每个元素都接受 `style` 属性：一个由 camelCase 属性组成的对象，包括盒阴影、渐变、滤镜、轮廓线、过渡和 grid 等 CSS 能力。样式在 Rust 中解析，只有变化了的属性才会发送给原生视图。你也可以用 [Tailwind 类名](./tailwind.md)设置样式，两者最终得到的是相同的原生样式。
 
 ```tsx
 <view
@@ -59,7 +59,7 @@ const styles = {
 
 ## 默认值
 
-nsh 遵循 React Native 的默认值，而不是 Web 的：
+nsh 的默认值与 Web 不同：
 
 | | 默认值 |
 |---|---|
@@ -131,7 +131,7 @@ const palette = () =>
 有三种投射阴影的方式：
 
 ```tsx
-// React Native's shadow properties
+// The shadow* properties
 <view style={{ shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }} />
 
 // CSS box-shadow: several, comma separated, with spread and inset
@@ -157,7 +157,7 @@ const palette = () =>
 <view style={{ backgroundImage: "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)" }} />
 ```
 
-也接受 React Native 对该属性的命名 `experimental_backgroundImage`。在 iOS 上，文本元素不绘制渐变。
+也接受 `experimental_backgroundImage`，它是 `backgroundImage` 的别名。在 iOS 上，文本元素不绘制渐变。
 
 ## 滤镜与混合
 
@@ -201,7 +201,7 @@ const palette = () =>
 
 可用步骤：`translateX`、`translateY`、`scale`、`scaleX`、`scaleY`、`rotate`（`rotateZ`）、`rotateX`、`rotateY`、`skewX`、`skewY`、`perspective`。`transformOrigin` 接受关键字、百分比和长度（`"top left"`、`"50% 0"`、`[10, 20]`），默认为中心。变换不影响布局：兄弟视图的位置按视图未变换时计算。
 
-Android 不支持斜切（skew）变换（与 React Native 相同）。
+Android 不支持斜切（skew）变换。
 
 ## 过渡
 

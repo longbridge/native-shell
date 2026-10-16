@@ -1,7 +1,7 @@
 ---
 title: Embedding in Android Apps
 description: Add nsh.aar to an existing Android app, show nsh apps in an NshView, and load bundles, signed packages or a dev server.
-order: 28
+order: 3.2
 ---
 
 # Embedding in Android Apps
@@ -12,6 +12,9 @@ renders with ordinary Android views next to your own.
 
 Each `NshView` is one independent engine with its own JS VM; there are no global singletons, so several can run at
 once.
+
+<img class="diagram diagram-light" src="/diagrams/host-app-light.svg" alt="One host app with two nsh views (NshAppView on iOS, NshView on Android): each is its own engine with its own thread, VM, limits and capabilities; the host grants capabilities, sets limits and registers native components such as a map.">
+<img class="diagram diagram-dark" src="/diagrams/host-app-dark.svg" alt="One host app with two nsh views (NshAppView on iOS, NshView on Android): each is its own engine with its own thread, VM, limits and capabilities; the host grants capabilities, sets limits and registers native components such as a map.">
 
 ## Get the library
 

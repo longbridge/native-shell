@@ -68,7 +68,7 @@ const Platform: {
 };
 ```
 
-应用所运行的平台，运行期间不变（即 React Native 的 `Platform`）。
+应用所运行的平台，运行期间不变。
 
 | 成员 | 说明 |
 |---|---|
@@ -121,7 +121,7 @@ const PixelRatio: {
 };
 ```
 
-每个点对应的设备像素数（即 React Native 的 `PixelRatio`）。
+每个点对应的设备像素数。
 
 | 方法 | 说明 |
 |---|---|
@@ -148,7 +148,7 @@ const I18nManager: {
 };
 ```
 
-从右到左布局（即 React Native 的 `I18nManager`）。在从右到左布局中，行从右侧开始排列，`left` / `right` 样式属性（`marginLeft`、`paddingRight` 等）表示起始端和结束端。修改即时生效，无需重启。
+从右到左布局。在从右到左布局中，行从右侧开始排列，`left` / `right` 样式属性（`marginLeft`、`paddingRight` 等）表示起始端和结束端。修改即时生效，无需重启。
 
 | 成员 | 说明 |
 |---|---|

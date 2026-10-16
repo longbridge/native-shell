@@ -1,7 +1,7 @@
 ---
 title: Sandbox and Capabilities
 description: The limits every nsh app runs under (memory, time, nodes), the language hardening of release builds, and capabilities declared in nsh.json and granted by host apps.
-order: 31
+order: 3.5
 ---
 
 # Sandbox and Capabilities

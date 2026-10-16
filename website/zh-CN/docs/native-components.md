@@ -1,7 +1,7 @@
 ---
 title: 原生组件
 description: 在 nsh 应用中使用宿主应用的视图（地图、播放器、任意 UIView 或 Android View），支持 props、事件、命令和尺寸上报。
-order: 26
+order: 3.3
 ---
 
 # 原生组件

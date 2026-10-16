@@ -1,7 +1,7 @@
 ---
 title: 沙箱与能力
 description: 每个 nsh 应用运行时受到的限制（内存、时间、节点），release 构建的语言加固，以及在 nsh.json 中声明、由宿主应用授予的能力。
-order: 31
+order: 3.5
 ---
 
 # 沙箱与能力

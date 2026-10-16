@@ -220,7 +220,7 @@ mount(App);
 | `timestamp` | 毫秒。 |
 | `touches` | 所有按下的手指。 |
 | `changedTouches` | 本次事件涉及的手指。 |
-| `nativeEvent` | 事件本身（React Native 代码会读 `e.nativeEvent.locationX`）。 |
+| `nativeEvent` | 事件本身，因此 `e.nativeEvent.locationX` 也可用。 |
 | `stopPropagation()` | 外层视图不再收到这次触摸事件。 |
 
 ```tsx
@@ -233,7 +233,7 @@ mount(App);
 
 ## 手势响应者系统
 
-当 JS 必须独占一段触摸序列时（手写绘图、自定义滑块、原生识别器没有提供的手势），使用手势响应者系统。它的语义与 React Native 相同：同一时间只有一个视图是**响应者**并接收移动事件，由各视图协商出谁来担任。
+当 JS 必须独占一段触摸序列时（手写绘图、自定义滑块、原生识别器没有提供的手势），使用手势响应者系统。同一时间只有一个视图是**响应者**并接收移动事件，由各视图协商出谁来担任。
 
 成为响应者：
 
@@ -292,7 +292,7 @@ function Sketch() {
 mount(Sketch);
 ```
 
-运行方式：带有任何触摸或响应者处理函数的视图会在原生端监听触摸；平台把发生在它上面（及其内部）的触摸连同沿途正在监听的视图路径一起上报，协商过程在运行时的 Rust 代码中进行，并按 React Native 的顺序调用你的处理函数。由此有两个结果：
+运行方式：带有任何触摸或响应者处理函数的视图会在原生端监听触摸；平台把发生在它上面（及其内部）的触摸连同沿途正在监听的视图路径一起上报，协商过程在运行时的 Rust 代码中进行，并按顺序调用你的处理函数：先从最外层视图向内调用 `…Capture` 处理函数，再从目标向外调用其他处理函数。由此有两个结果：
 
 - **原生滚动视图与 JS 响应者相互竞争。** 如果 `onResponderGrant` 返回 `true`，响应者外层的滚动视图会停止接管触摸，直到手势结束。如果原生滚动视图先开始拖动，则滚动视图获胜：响应者收到 `onResponderTerminate`，触摸处理函数收到 `onTouchCancel`。
 - **每次移动都是一次发往 JS 的事件。** 由响应者驱动的拖动，流畅程度取决于 JS 的速度；只是移动视图的拖动，优先使用 [`pan`](#原生手势拖动捏合与旋转)。
@@ -335,13 +335,13 @@ mount(Ball);
 | `moveX`、`moveY` | 各触点中心的最新位置，surface 坐标（点）。 |
 | `x0`、`y0` | 成为响应者时触点中心的位置。 |
 | `dx`、`dy` | 自成为响应者以来移动的距离。 |
-| `vx`、`vy` | 速度，单位为每**毫秒**的点数（与 React Native 相同）。 |
+| `vx`、`vy` | 速度，单位为每**毫秒**的点数。 |
 | `numberActiveTouches` | 按下的手指数。 |
 
 可用的回调有 `onStartShouldSetPanResponder(Capture)`、`onMoveShouldSetPanResponder(Capture)`、`onPanResponderGrant`、`onPanResponderReject`、`onPanResponderStart`、`onPanResponderMove`、`onPanResponderEnd`、`onPanResponderRelease`、`onPanResponderTerminate`、`onPanResponderTerminationRequest` 和 `onShouldBlockNativeResponder`。最后一个默认为 `true`：成为响应者的 PanResponder 会阻止原生滚动视图接管它的触摸。
 
 > [!NOTE]
-> 不同 API 的速度单位不同：`PanResponder` 的 `vx` / `vy` 是每毫秒的点数（React Native 的单位），而 `onPanEnd` 的 `velocityX` / `velocityY` 以及 `spring` / `decay` 的 `velocity` 选项是每秒的点数。把 `vx` 传给弹簧前要乘以 1000。
+> 不同 API 的速度单位不同：`PanResponder` 的 `vx` / `vy` 是每毫秒的点数，而 `onPanEnd` 的 `velocityX` / `velocityY` 以及 `spring` / `decay` 的 `velocity` 选项是每秒的点数。把 `vx` 传给弹簧前要乘以 1000。
 
 ## 为什么有些答案是属性
 

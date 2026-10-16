@@ -1,11 +1,14 @@
 # AGENTS.md
 
-native-shell (nsh for short: crates, the CLI, the JS module and Java package all use `nsh`) is a React Native–like
-cross-platform UI framework: app code is written in TSX and runs in QuickJS on a native runtime (the reactive graph,
-the renderer and every module apps import are Rust); layout uses Taffy; everything renders with the system's native
-views (UIKit / Android View), so embedding native components such as maps or web views has no layering problems. The
+native-shell (nsh for short: crates, the CLI, the JS module and Java package all use `nsh`) is designed for
+AI-generated, dynamically delivered native UI: native iOS / Android apps embed it (`NshAppView`, `NshView`) and load
+TSX modules at run time — signed, sandboxed by the host, rendered with the system's native views (UIKit / Android
+View). Plugins for native apps and standalone apps use the same machinery.
+Module code runs in QuickJS on a native runtime (the reactive graph, the renderer and every module apps import are
+Rust); layout uses Taffy; embedding native components such as maps or web views has no layering problems. The
 toolchain is pure Rust and does not need Node.js; app developers get a prebuilt distribution (`cargo xtask dist`) and
-never need Rust either.
+never need Rust either. Mobile comes first; a GPUI desktop backend is in development; the web build only runs the
+website's demos.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.

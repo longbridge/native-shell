@@ -1,7 +1,7 @@
 ---
 title: Signed Packages
 description: "Ship app code that host apps download and verify: keys, certificates, nsh publish, verification, revocation and rollback protection."
-order: 30
+order: 3.4
 ---
 
 # Signed Packages
@@ -10,14 +10,8 @@ A signed package (`.nshpkg`) is how a host app runs nsh code it did not ship wit
 or a third-party mini app. `nsh publish` builds the app and signs it; the host app verifies the signature, the
 certificate chain, revocations and the build number before anything runs.
 
-```text
-  offline                        your build machine                       the user's device
-┌──────────┐ certify ┌─────────────┐ publish ┌──────────────┐ download ┌─────────────────────────┐
-│ root key │────────▶│ release key │────────▶│ app.nshpkg   │─────────▶│ NshTrust (trusts root)  │
-└──────────┘         │ + cert      │         │ signed, with │          │ verify → accept → run   │
-                     └─────────────┘         │ the cert     │          └─────────────────────────┘
-                                             └──────────────┘
-```
+<img class="diagram diagram-light" src="/diagrams/signed-packages-light.svg" alt="Signed packages: an offline root key certifies a release key for app ids; nsh publish signs the package with it; on the device, NshTrust trusts only the root and the newest revocation list, checks the certificate, revocations, signature, app id, file hashes and build number, then runs the module or refuses it.">
+<img class="diagram diagram-dark" src="/diagrams/signed-packages-dark.svg" alt="Signed packages: an offline root key certifies a release key for app ids; nsh publish signs the package with it; on the device, NshTrust trusts only the root and the newest revocation list, checks the certificate, revocations, signature, app id, file hashes and build number, then runs the module or refuses it.">
 
 > [!NOTE]
 > nsh verifies and runs packages; it does not deliver them. Where packages come from (your update server, a CDN, a

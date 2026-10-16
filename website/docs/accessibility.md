@@ -6,7 +6,7 @@ order: 24
 
 # Accessibility
 
-nsh renders with native views, so the platforms' assistive technologies (VoiceOver on iOS and Mac Catalyst, TalkBack on Android, Switch Control, Voice Control, ...) see your app's real view hierarchy. What you add are the descriptions those technologies cannot infer: what an element is, what it says, what state it is in and what it can do. The props follow React Native's names and meanings, and every element accepts them.
+nsh renders with native views, so the platforms' assistive technologies (VoiceOver on iOS and Mac Catalyst, TalkBack on Android, Switch Control, Voice Control, ...) see your app's real view hierarchy. What you add are the descriptions those technologies cannot infer: what an element is, what it says, what state it is in and what it can do. Every element accepts the props below.
 
 ## What you get without doing anything
 
@@ -149,7 +149,7 @@ Hide what adds nothing: decorative images, dividers, an icon next to a text that
 <image src={decoration} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
 ```
 
-`accessibilityElementsHidden` (iOS's name) and `importantForAccessibility="no-hide-descendants"` (Android's) both hide the subtree on both platforms; setting both is the React Native habit and harmless.
+`accessibilityElementsHidden` (iOS's name) and `importantForAccessibility="no-hide-descendants"` (Android's) both hide the subtree on both platforms; setting both is harmless.
 
 ## AccessibilityInfo
 
