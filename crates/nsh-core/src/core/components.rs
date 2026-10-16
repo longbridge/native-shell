@@ -1098,12 +1098,16 @@ impl<M: TextEngine> Core<M> {
                 let mut cx = self.erased_cx(host);
                 let mut failed = caught(|| inner.update(&mut cx)).err();
                 let context = |type_id| self.provided_above(host, type_id);
+                let measure = |font: &_, text: &str| {
+                    crate::canvas::measure_line(&self.text_engine, font, text)
+                };
                 let scope = RenderScope {
                     theme: &self.components.theme,
                     environment: &self.components.environment,
                     insets: self.insets_of(host),
                     globals: &self.components.globals,
                     context: &context,
+                    measure: &measure,
                 };
                 // A render that fails renders nothing.
                 let (el, reads) = match failed {

@@ -97,7 +97,10 @@ impl Component for Button {
   screens below keep their state; `on_dismiss` reports a native pop, and the render leaves the screen out). A
   component's root is a view (its host node), so a component cannot render its own screen: the screen's options
   belong to whoever renders the stack (state they depend on goes in a global or a context; `examples/gallery-rs`). Canvases draw a `Drawing`, recorded with `Painter` (the Canvas 2D
-  operations); a new drawing replaces the old one. Props that take a plain color (an input's placeholder color)
+  operations: `.fill_style(..)` / `.stroke_style(..)` take colors, `CanvasGradient::linear` / `radial` / `conic`
+  and native values; `.stroke_path(&canvas::svg_path(d))`; `cx.measure_text(font, text)` in the render is
+  `measureText`; operations built by hand take `painter.num(&v)` / `.paint(..)` and go in with `.op(..)`); a new
+  drawing replaces the old one. Props that take a plain color (an input's placeholder color)
   take `cx.color(theme.muted_foreground)`: the theme color for the appearance now.
 - **State** is `Self`, written like a TSX component where Rust allows:
 

@@ -9,7 +9,7 @@ use std::{
 
 use nsh_core::{
     Rect, TouchEvent, TouchPhase,
-    canvas::{CanvasTextAlign, CanvasTextBaseline, Composite, LineCap, LineJoin},
+    canvas::{CanvasGradient, CanvasTextAlign, CanvasTextBaseline, Composite, LineCap, LineJoin},
     nsh_anim::{Curve, EaseMode},
     ui::{AnyElement, prelude::*},
 };
@@ -176,10 +176,10 @@ impl Chart {
             .line_to(x(values.len() - 1), top + h)
             .line_to(x(0), top + h)
             .close_path()
-            .fill_linear_gradient(
-                (0.0, top),
-                (0.0, top + h),
-                vec![(0.0, rgba(0x3b82_f659)), (1.0, rgba(0x3b82_f600))],
+            .fill_style(
+                CanvasGradient::linear(0.0, top, 0.0, top + h)
+                    .add_color_stop(0.0, rgba(0x3b82_f659))
+                    .add_color_stop(1.0, rgba(0x3b82_f600)),
             )
             .fill()
             .begin_path();
@@ -418,10 +418,10 @@ impl Compositing {
             .composite(Composite::SourceOver)
             // Dashes and a gradient: TS fills a radial gradient, which
             // `Painter` lacks; a linear one has the same colors.
-            .fill_linear_gradient(
-                (width - 50.0, 20.0),
-                (width - 50.0, 100.0),
-                vec![(0.0, rgb(0xfde68a)), (1.0, rgb(0xf97316))],
+            .fill_style(
+                CanvasGradient::linear(width - 50.0, 20.0, width - 50.0, 100.0)
+                    .add_color_stop(0.0, rgb(0xfde68a))
+                    .add_color_stop(1.0, rgb(0xf97316)),
             )
             .begin_path()
             .arc(width - 50.0, 60.0, 40.0, 0.0, TAU)

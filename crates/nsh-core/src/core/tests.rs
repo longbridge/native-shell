@@ -4787,3 +4787,94 @@ mod touch {
         assert_eq!(values.rotation, Some(created[1]));
     }
 }
+
+/// Rust components' drawings (`ui::Painter`).
+mod painter {
+    use super::*;
+    use crate::{
+        canvas::{CanvasGradient, CanvasOp, FillRule, GradientShape, Num, Paint, svg_path},
+        ui::prelude::*,
+    };
+
+    /// A label placed by its measured width, gradients, a stroked SVG path
+    /// and an operation built by hand reading a native value.
+    #[derive(Default)]
+    struct Label {
+        offset: Option<NativeValue>,
+    }
+
+    impl Component for Label {
+        const NAME: &'static str = "test.label";
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+            self.offset = Some(cx.native_value(3.0));
+        }
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let Some(offset) = &self.offset else {
+                unreachable!("set up")
+            };
+            let width = cx.measure_text("600 20px system-ui", "100%");
+            let mut p = Painter::new()
+                .stroke_style(
+                    CanvasGradient::conic(0.0, 50.0, 50.0)
+                        .add_color_stop(1.0, rgb(0x6366f1))
+                        .add_color_stop(0.0, rgb(0x22d3ee)),
+                )
+                .stroke_path(&svg_path("M20 6L9 17l-5-5"))
+                .fill_style(CanvasGradient::radial(0.0, 0.0, 4.0, 0.0, 0.0, 40.0))
+                .fill_path(&svg_path("M0 0h10v10z"), FillRule::EvenOdd)
+                .fill_text("100%", 50.0 - width, 20.0);
+            let x = p.num(offset);
+            p = p.op(CanvasOp::LineDashOffset(x));
+            view().child(canvas(p))
+        }
+    }
+
+    #[test]
+    fn rust_drawings_measure_text_and_use_every_paint() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Label>(|| ()));
+        let batch = c.commit().unwrap();
+        let drawing = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Canvas { drawing, .. } => Some(drawing.clone()),
+                _ => None,
+            })
+            .expect("a drawing");
+        let ops = &drawing.ops;
+        // Stops sorted by offset, whatever order they came in.
+        let CanvasOp::StrokeStyle(Paint::Gradient(ring)) = &ops[0] else {
+            panic!("{:?}", ops[0])
+        };
+        assert!(matches!(
+            ring.shape,
+            GradientShape::Conic([0.0, 50.0, 50.0])
+        ));
+        assert_eq!(ring.stops[0], (0.0, rgb(0x22d3ee)));
+        assert!(matches!(&ops[1], CanvasOp::Stroke(Some(path)) if path.len() == 3));
+        assert!(matches!(
+            &ops[2],
+            CanvasOp::FillStyle(Paint::Gradient(g)) if matches!(g.shape, GradientShape::Radial(_))
+        ));
+        assert!(matches!(
+            &ops[3],
+            CanvasOp::Fill(Some(_), FillRule::EvenOdd)
+        ));
+        // 8pt per character in the fake engine.
+        assert!(matches!(
+            &ops[4],
+            CanvasOp::FillText {
+                x: Num::Const(18.0),
+                ..
+            }
+        ));
+        // The native value is a slot of the drawing.
+        assert_eq!(ops[5], CanvasOp::LineDashOffset(Num::Slot(0)));
+        assert_eq!(drawing.slots.len(), 1);
+    }
+}

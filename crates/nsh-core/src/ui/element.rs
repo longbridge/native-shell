@@ -139,6 +139,8 @@ pub(crate) struct RenderScope<'a> {
     pub(crate) globals: &'a Globals,
     /// The nearest provided value of a type above the component.
     pub(crate) context: &'a dyn Fn(TypeId) -> Option<Rc<dyn Any>>,
+    /// The width of a line of text in a canvas font (the text engine's).
+    pub(crate) measure: &'a dyn Fn(&crate::canvas::CanvasFont, &str) -> f32,
 }
 
 /// A value a render provides to the components below it.
@@ -293,6 +295,15 @@ impl<'a, C: Component> RenderCx<'a, C> {
     /// The layout runs right to left (TS: `I18nManager.isRTL`).
     pub fn rtl(&self) -> bool {
         self.read(env::RTL).rtl
+    }
+
+    /// The width of `text` on one line in `font` (the CSS `font` shorthand,
+    /// as [`super::Painter::font`] takes it; an invalid one measures in the
+    /// canvas default, `10px sans-serif`), measured by the platform's text
+    /// engine (TS: a canvas's `measureText(text).width`).
+    pub fn measure_text(&self, font: &str, text: &str) -> f32 {
+        let font = crate::canvas::CanvasFont::parse(font).unwrap_or_default();
+        (self.scope.measure)(&font, text)
     }
 
     /// A handler for an element of this render: `f` gets the component (its

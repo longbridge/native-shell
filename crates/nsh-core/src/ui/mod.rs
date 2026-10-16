@@ -68,8 +68,9 @@ pub use self::{
         VideoProgress, WebNavigation,
     },
     host::{
-        CanvasArg, CanvasView, Input, Modal, NativeView, Painter, Screen, Scroll, Stack, Video,
-        WebView, canvas, input, modal, native, screen, scroll, stack, video, web_view,
+        CanvasArg, CanvasPaint, CanvasView, Input, Modal, NativeView, Painter, Screen, Scroll,
+        Stack, Video, WebView, canvas, input, modal, native, screen, scroll, stack, video,
+        web_view,
     },
     module::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,

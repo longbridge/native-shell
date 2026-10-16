@@ -175,6 +175,42 @@ pub struct CanvasGradient {
     pub stops: Vec<(f32, Color)>,
 }
 
+impl CanvasGradient {
+    fn new(shape: GradientShape) -> Self {
+        Self {
+            shape,
+            stops: Vec::new(),
+        }
+    }
+
+    /// Along the line from (`x0`, `y0`) to (`x1`, `y1`)
+    /// (`createLinearGradient`).
+    pub fn linear(x0: f32, y0: f32, x1: f32, y1: f32) -> Self {
+        Self::new(GradientShape::Linear([x0, y0, x1, y1]))
+    }
+
+    /// From the circle at (`x0`, `y0`) of radius `r0` to the one at (`x1`,
+    /// `y1`) of radius `r1` (`createRadialGradient`).
+    pub fn radial(x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> Self {
+        Self::new(GradientShape::Radial([x0, y0, r0, x1, y1, r1]))
+    }
+
+    /// Around (`x`, `y`), from `start_angle` (radians, clockwise from the x
+    /// axis; `createConicGradient`).
+    pub fn conic(start_angle: f32, x: f32, y: f32) -> Self {
+        Self::new(GradientShape::Conic([start_angle, x, y]))
+    }
+
+    /// Adds `color` at `offset` (0..1, clamped; `addColorStop`): stops
+    /// apply in offset order, equal ones in the order added.
+    pub fn add_color_stop(mut self, offset: f32, color: Color) -> Self {
+        let offset = offset.clamp(0.0, 1.0);
+        let at = self.stops.partition_point(|(o, _)| *o <= offset);
+        self.stops.insert(at, (offset, color));
+        self
+    }
+}
+
 /// `fillStyle` / `strokeStyle`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Paint {
@@ -628,6 +664,12 @@ pub fn fit_radii(w: f32, h: f32, radii: [f32; 4]) -> [f32; 4] {
 }
 
 // --- SVG path data (`new Path2D("M0 0 L10 10")`) ----------------------------
+
+/// SVG path data as a path to fill, stroke or clip (TS: `new
+/// Path2D(d)`), parsed by [`parse_svg_path`].
+pub fn svg_path(d: &str) -> Path {
+    parse_svg_path(d).into()
+}
 
 /// Parses SVG path data into path operations (absolute coordinates;
 /// smooth curves made explicit, arcs as cubic Béziers). Parsing stops at

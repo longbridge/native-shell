@@ -21,7 +21,7 @@ use crate::{
     SnapAlignment, Tag, WebSource,
     canvas::{
         CanvasFont, CanvasGradient, CanvasImage, CanvasOp, CanvasTextAlign, CanvasTextBaseline,
-        Composite, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, Path, PathOp,
+        Composite, Drawing, FillRule, LineCap, LineJoin, Num, Paint, Path, PathOp,
     },
     js::host::HostProps,
 };
@@ -812,9 +812,51 @@ impl<A: super::Animated> From<&A> for CanvasArg {
     }
 }
 
+/// What a drawing fills or strokes with (`fillStyle` / `strokeStyle`): a
+/// color, a gradient ([`CanvasGradient::linear`], `radial`, `conic`), or a
+/// native value interpolating colors
+/// ([`super::NativeNode::interpolate_colors`]), read as it moves.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanvasPaint(CanvasPaintKind);
+
+#[derive(Debug, Clone, PartialEq)]
+enum CanvasPaintKind {
+    Color(Color),
+    Gradient(Arc<CanvasGradient>),
+    Node(super::NativeNode),
+}
+
+impl From<Color> for CanvasPaint {
+    fn from(color: Color) -> Self {
+        Self(CanvasPaintKind::Color(color))
+    }
+}
+
+impl From<CanvasGradient> for CanvasPaint {
+    fn from(gradient: CanvasGradient) -> Self {
+        Self(CanvasPaintKind::Gradient(Arc::new(gradient)))
+    }
+}
+
+impl From<Arc<CanvasGradient>> for CanvasPaint {
+    fn from(gradient: Arc<CanvasGradient>) -> Self {
+        Self(CanvasPaintKind::Gradient(gradient))
+    }
+}
+
+impl<A: super::Animated> From<&A> for CanvasPaint {
+    fn from(a: &A) -> Self {
+        Self(CanvasPaintKind::Node(a.native_node()))
+    }
+}
+
 /// Records a [`Drawing`] with the HTML Canvas 2D operations (Rust names):
 /// `Painter::new().fill_color(red).fill_rect(0.0, 0.0, w, h).finish()`.
-/// Coordinates are points from the canvas's top left.
+/// Coordinates are points from the canvas's top left. Numbers and paints
+/// may be native values (the canvas draws again natively as they move);
+/// operations without a method here are built by hand with
+/// [`Painter::num`], [`Painter::paint`] and [`Painter::op`]. Text is
+/// measured with [`super::RenderCx::measure_text`].
 #[derive(Debug, Clone, Default)]
 pub struct Painter {
     drawing: Drawing,
@@ -833,18 +875,35 @@ impl Painter {
         self.drawing
     }
 
-    fn num(&mut self, n: impl Into<CanvasArg>) -> Num {
-        match n.into().0 {
+    /// `value` as a number of this drawing, for an operation built by hand
+    /// ([`Self::op`]): a native value becomes a slot the canvas reads while
+    /// it draws, kept alive with the drawing.
+    pub fn num(&mut self, value: impl Into<CanvasArg>) -> Num {
+        match value.into().0 {
             CanvasArgKind::Const(n) => Num::Const(n),
-            CanvasArgKind::Node(node) => {
-                let slot = self.drawing.slot(node.id());
-                self.nodes.push(node);
-                Num::Slot(slot)
-            }
+            CanvasArgKind::Node(node) => Num::Slot(self.slot(node)),
         }
     }
 
-    fn op(mut self, op: CanvasOp) -> Self {
+    /// `paint` as a paint of this drawing, for an operation built by hand
+    /// ([`Self::op`]).
+    pub fn paint(&mut self, paint: impl Into<CanvasPaint>) -> Paint {
+        match paint.into().0 {
+            CanvasPaintKind::Color(color) => Paint::Color(color),
+            CanvasPaintKind::Gradient(gradient) => Paint::Gradient(gradient),
+            CanvasPaintKind::Node(node) => Paint::Slot(self.slot(node)),
+        }
+    }
+
+    fn slot(&mut self, node: super::NativeNode) -> u16 {
+        let slot = self.drawing.slot(node.id());
+        self.nodes.push(node);
+        slot
+    }
+
+    /// Records `op` (one built by hand: its numbers and paints from
+    /// [`Self::num`] and [`Self::paint`]).
+    pub fn op(mut self, op: CanvasOp) -> Self {
         self.drawing.ops.push(op);
         self
     }
@@ -881,6 +940,25 @@ impl Painter {
         self.op(CanvasOp::Rotate(a))
     }
 
+    /// Multiplies the transform by the matrix `[a c e; b d f]`
+    /// (`transform`).
+    pub fn transform(mut self, m: [impl Into<CanvasArg>; 6]) -> Self {
+        let m = m.map(|n| self.num(n));
+        self.op(CanvasOp::Transform(m))
+    }
+
+    /// Replaces the transform with the matrix `[a c e; b d f]`
+    /// (`setTransform`).
+    pub fn set_transform(mut self, m: [impl Into<CanvasArg>; 6]) -> Self {
+        let m = m.map(|n| self.num(n));
+        self.op(CanvasOp::SetTransform(m))
+    }
+
+    /// Back to no transform (`resetTransform`).
+    pub fn reset_transform(self) -> Self {
+        self.set_transform([1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+    }
+
     /// Starts a new path.
     pub fn begin_path(self) -> Self {
         self.op(CanvasOp::BeginPath)
@@ -896,6 +974,17 @@ impl Painter {
     pub fn line_to(mut self, x: impl Into<CanvasArg>, y: impl Into<CanvasArg>) -> Self {
         let (x, y) = (self.num(x), self.num(y));
         self.path(PathOp::LineTo(x, y))
+    }
+
+    /// A quadratic Bézier curve to `to` (`quadraticCurveTo`).
+    pub fn quadratic_curve_to(self, control: (f32, f32), to: (f32, f32)) -> Self {
+        let c = Num::Const;
+        self.path(PathOp::QuadTo([
+            c(control.0),
+            c(control.1),
+            c(to.0),
+            c(to.1),
+        ]))
     }
 
     /// A cubic Bézier curve to (`x`, `y`).
@@ -914,12 +1003,36 @@ impl Painter {
     /// A circular arc around (`x`, `y`); angles in radians, clockwise from
     /// the x axis.
     pub fn arc(
+        self,
+        x: impl Into<CanvasArg>,
+        y: impl Into<CanvasArg>,
+        radius: impl Into<CanvasArg>,
+        start: impl Into<CanvasArg>,
+        end: impl Into<CanvasArg>,
+    ) -> Self {
+        self.arc_in(x, y, radius, start, end, false)
+    }
+
+    /// [`Self::arc`] drawn counterclockwise.
+    pub fn arc_counterclockwise(
+        self,
+        x: impl Into<CanvasArg>,
+        y: impl Into<CanvasArg>,
+        radius: impl Into<CanvasArg>,
+        start: impl Into<CanvasArg>,
+        end: impl Into<CanvasArg>,
+    ) -> Self {
+        self.arc_in(x, y, radius, start, end, true)
+    }
+
+    fn arc_in(
         mut self,
         x: impl Into<CanvasArg>,
         y: impl Into<CanvasArg>,
         radius: impl Into<CanvasArg>,
         start: impl Into<CanvasArg>,
         end: impl Into<CanvasArg>,
+        ccw: bool,
     ) -> Self {
         let (x, y, radius, start, end) = (
             self.num(x),
@@ -934,7 +1047,37 @@ impl Painter {
             radius,
             start,
             end,
-            ccw: false,
+            ccw,
+        })
+    }
+
+    /// An arc of `radius` tangent to the lines to (`x1`, `y1`) and on to
+    /// (`x2`, `y2`) (`arcTo`): a rounded corner.
+    pub fn arc_to(self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) -> Self {
+        let c = Num::Const;
+        self.path(PathOp::ArcTo([c(x1), c(y1), c(x2), c(y2), c(radius)]))
+    }
+
+    /// An elliptical arc around (`x`, `y`) with radii `radius` turned by
+    /// `rotation`; angles in radians, clockwise (`counterclockwise` draws
+    /// the other way).
+    #[allow(clippy::too_many_arguments)]
+    pub fn ellipse(
+        self,
+        x: f32,
+        y: f32,
+        radius: (f32, f32),
+        rotation: f32,
+        start: f32,
+        end: f32,
+        counterclockwise: bool,
+    ) -> Self {
+        let c = Num::Const;
+        self.path(PathOp::Ellipse {
+            geometry: [c(x), c(y), c(radius.0), c(radius.1), c(rotation)],
+            start: c(start),
+            end: c(end),
+            ccw: counterclockwise,
         })
     }
 
@@ -946,8 +1089,14 @@ impl Painter {
 
     /// A rectangle subpath with round corners (one radius for all).
     pub fn round_rect(self, x: f32, y: f32, w: f32, h: f32, radius: f32) -> Self {
+        self.round_rect_corners(x, y, w, h, [radius; 4])
+    }
+
+    /// A rectangle subpath with round corners: top left, top right, bottom
+    /// right, bottom left.
+    pub fn round_rect_corners(self, x: f32, y: f32, w: f32, h: f32, radii: [f32; 4]) -> Self {
         let c = Num::Const;
-        self.path(PathOp::RoundRect([c(x), c(y), c(w), c(h)], [c(radius); 4]))
+        self.path(PathOp::RoundRect([c(x), c(y), c(w), c(h)], radii.map(c)))
     }
 
     /// A straight line back to the subpath's start.
@@ -957,13 +1106,24 @@ impl Painter {
 
     /// Fills the current path.
     pub fn fill(self) -> Self {
-        self.op(CanvasOp::Fill(None, FillRule::NonZero))
+        self.fill_with(FillRule::NonZero)
     }
 
-    /// Fills `path` (SVG path data, parsed now).
+    /// Fills the current path by `rule`.
+    pub fn fill_with(self, rule: FillRule) -> Self {
+        self.op(CanvasOp::Fill(None, rule))
+    }
+
+    /// Fills `path` (TS: `fill(path2d)`; parse SVG data once with
+    /// [`crate::canvas::svg_path`]).
+    pub fn fill_path(self, path: &Path, rule: FillRule) -> Self {
+        self.op(CanvasOp::Fill(Some(path.clone()), rule))
+    }
+
+    /// Fills SVG path data (parsed now: [`Self::fill_path`] reuses a
+    /// parsed path).
     pub fn fill_svg(self, data: &str) -> Self {
-        let path: Path = crate::canvas::parse_svg_path(data).into();
-        self.op(CanvasOp::Fill(Some(path), FillRule::NonZero))
+        self.fill_path(&crate::canvas::svg_path(data), FillRule::NonZero)
     }
 
     /// Strokes the current path.
@@ -971,9 +1131,29 @@ impl Painter {
         self.op(CanvasOp::Stroke(None))
     }
 
+    /// Strokes `path` (TS: `stroke(path2d)`).
+    pub fn stroke_path(self, path: &Path) -> Self {
+        self.op(CanvasOp::Stroke(Some(path.clone())))
+    }
+
+    /// Strokes SVG path data (parsed now).
+    pub fn stroke_svg(self, data: &str) -> Self {
+        self.stroke_path(&crate::canvas::svg_path(data))
+    }
+
     /// Clips to the current path.
     pub fn clip(self) -> Self {
-        self.op(CanvasOp::Clip(None, FillRule::NonZero))
+        self.clip_with(FillRule::NonZero)
+    }
+
+    /// Clips to the current path by `rule`.
+    pub fn clip_with(self, rule: FillRule) -> Self {
+        self.op(CanvasOp::Clip(None, rule))
+    }
+
+    /// Clips to `path` (TS: `clip(path2d)`).
+    pub fn clip_path(self, path: &Path, rule: FillRule) -> Self {
+        self.op(CanvasOp::Clip(Some(path.clone()), rule))
     }
 
     /// Fills a rectangle.
@@ -1002,27 +1182,25 @@ impl Painter {
 
     /// Fills with `color`.
     pub fn fill_color(self, color: Color) -> Self {
-        self.op(CanvasOp::FillStyle(Paint::Color(color)))
+        self.fill_style(color)
     }
 
     /// Strokes with `color`.
     pub fn stroke_color(self, color: Color) -> Self {
-        self.op(CanvasOp::StrokeStyle(Paint::Color(color)))
+        self.stroke_style(color)
     }
 
-    /// Fills with a linear gradient from (`x0`, `y0`) to (`x1`, `y1`).
-    pub fn fill_linear_gradient(
-        self,
-        from: (f32, f32),
-        to: (f32, f32),
-        stops: Vec<(f32, Color)>,
-    ) -> Self {
-        self.op(CanvasOp::FillStyle(Paint::Gradient(Arc::new(
-            CanvasGradient {
-                shape: GradientShape::Linear([from.0, from.1, to.0, to.1]),
-                stops,
-            },
-        ))))
+    /// Fills with `paint`: a color, a gradient or a native value of colors
+    /// (`fillStyle`).
+    pub fn fill_style(mut self, paint: impl Into<CanvasPaint>) -> Self {
+        let paint = self.paint(paint);
+        self.op(CanvasOp::FillStyle(paint))
+    }
+
+    /// Strokes with `paint` (`strokeStyle`).
+    pub fn stroke_style(mut self, paint: impl Into<CanvasPaint>) -> Self {
+        let paint = self.paint(paint);
+        self.op(CanvasOp::StrokeStyle(paint))
     }
 
     /// The stroke width.
@@ -1041,9 +1219,22 @@ impl Painter {
         self.op(CanvasOp::LineJoin(join))
     }
 
+    /// How far mitered joins reach, in line widths (`miterLimit`; at least
+    /// 1).
+    pub fn miter_limit(self, limit: f32) -> Self {
+        self.op(CanvasOp::MiterLimit(limit.max(1.0)))
+    }
+
     /// Dashes: lengths of dashes and gaps.
     pub fn line_dash(self, segments: &[f32]) -> Self {
         self.op(CanvasOp::LineDash(segments.into()))
+    }
+
+    /// Where the dashes start along the line (`lineDashOffset`; a native
+    /// value marches them).
+    pub fn line_dash_offset(mut self, offset: impl Into<CanvasArg>) -> Self {
+        let o = self.num(offset);
+        self.op(CanvasOp::LineDashOffset(o))
     }
 
     /// The opacity of what is drawn next.
@@ -1060,11 +1251,12 @@ impl Painter {
     /// Shadows of what is drawn next.
     pub fn shadow(self, color: Color, blur: f32, offset: (f32, f32)) -> Self {
         self.op(CanvasOp::ShadowColor(color))
-            .op(CanvasOp::ShadowBlur(blur))
+            .op(CanvasOp::ShadowBlur(blur.max(0.0)))
             .op(CanvasOp::ShadowOffset(offset.0, offset.1))
     }
 
-    /// The font (CSS `font` shorthand: `"600 14px Inter"`).
+    /// The font (CSS `font` shorthand: `"600 14px Inter"`); an invalid one
+    /// keeps the previous font, as in HTML.
     pub fn font(self, font: &str) -> Self {
         match CanvasFont::parse(font) {
             Some(font) => self.op(CanvasOp::Font(font)),
@@ -1083,22 +1275,76 @@ impl Painter {
     }
 
     /// Fills `text` at (`x`, `y`).
-    pub fn fill_text(self, text: &str, x: f32, y: f32) -> Self {
-        self.op(CanvasOp::FillText {
-            text: text.into(),
-            x: Num::Const(x),
-            y: Num::Const(y),
-            max_width: None,
+    pub fn fill_text(self, text: &str, x: impl Into<CanvasArg>, y: impl Into<CanvasArg>) -> Self {
+        self.text(text, x, y, None, false)
+    }
+
+    /// Fills `text` at (`x`, `y`), narrowed to fit `max_width`.
+    pub fn fill_text_max_width(
+        self,
+        text: &str,
+        x: impl Into<CanvasArg>,
+        y: impl Into<CanvasArg>,
+        max_width: f32,
+    ) -> Self {
+        self.text(text, x, y, Some(max_width), false)
+    }
+
+    /// Strokes the outline of `text` at (`x`, `y`).
+    pub fn stroke_text(self, text: &str, x: impl Into<CanvasArg>, y: impl Into<CanvasArg>) -> Self {
+        self.text(text, x, y, None, true)
+    }
+
+    /// Strokes the outline of `text` at (`x`, `y`), narrowed to fit
+    /// `max_width`.
+    pub fn stroke_text_max_width(
+        self,
+        text: &str,
+        x: impl Into<CanvasArg>,
+        y: impl Into<CanvasArg>,
+        max_width: f32,
+    ) -> Self {
+        self.text(text, x, y, Some(max_width), true)
+    }
+
+    fn text(
+        mut self,
+        text: &str,
+        x: impl Into<CanvasArg>,
+        y: impl Into<CanvasArg>,
+        max_width: Option<f32>,
+        stroke: bool,
+    ) -> Self {
+        let (text, x, y) = (text.into(), self.num(x), self.num(y));
+        self.op(if stroke {
+            CanvasOp::StrokeText {
+                text,
+                x,
+                y,
+                max_width,
+            }
+        } else {
+            CanvasOp::FillText {
+                text,
+                x,
+                y,
+                max_width,
+            }
         })
     }
 
     /// Draws the image at `uri` (a URL or `asset:/path`) into the rectangle.
     pub fn draw_image(self, uri: &str, x: f32, y: f32, w: f32, h: f32) -> Self {
-        let c = Num::Const;
+        self.draw_image_part(uri, None, [x, y, w, h])
+    }
+
+    /// Draws the part `source` of the image at `uri` (`[x, y, w, h]` in
+    /// image pixels; `None`: all of it) into `dest` (`[x, y, w, h]`).
+    pub fn draw_image_part(self, uri: &str, source: Option<[f32; 4]>, dest: [f32; 4]) -> Self {
         self.op(CanvasOp::DrawImage {
             image: CanvasImage { uri: uri.into() },
-            source: None,
-            dest: [c(x), c(y), c(w), c(h)],
+            source,
+            dest: dest.map(Num::Const),
         })
     }
 }
