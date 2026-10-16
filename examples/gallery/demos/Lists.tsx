@@ -1,93 +1,216 @@
 import { Input, Scroll, signal, Text, View, type YNode } from "nsh";
+import { LayoutAnimation } from "nsh/animated";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
-import { colors } from "../ui";
+import { Icon, type IconName } from "../icons";
+import { Appear, Badge, Button, colors, finish, IconTile, Meter, mono, Press, radius, RoundButton, Section, Segmented, type Tone, toneColor, toneTint } from "../ui";
 
-const tints = ["#fde2e4", "#e2ece9", "#dfe7fd", "#fff1e6", "#e8e8e4", "#cddafd"];
+const tones: Tone[] = ["accent", "info", "warn", "up", "danger", "neutral"];
+
+/** A small pill action for list headers (36 pt, 44 pt with its hit slop). */
+function Action(props: { label: string; icon?: IconName; onPress: () => void }) {
+  return (
+    <Press onPress={props.onPress} accessibilityLabel={props.label} hitSlop={4}>
+      <View
+        style={{
+          height: 36,
+          paddingHorizontal: 14,
+          borderRadius: 18,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          backgroundColor: colors.raised,
+          borderWidth: 1,
+          borderColor: colors.border,
+          ...finish.raised,
+        }}
+      >
+        {props.icon ? <Icon name={props.icon} size={14} tint={colors.text} /> : null}
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>{props.label}</Text>
+      </View>
+    </Press>
+  );
+}
 
 /** Three columns, a header and a footer, padding and gaps, viewability. */
 function Grid() {
-  const items = Array.from({ length: 90 }, (_, i) => ({ id: i, height: 70 + (i % 4) * 20 }));
-  const visible = signal("");
+  const items = Array.from({ length: 90 }, (_, i) => ({ id: i, height: 84 + (i % 4) * 22, tone: tones[i % tones.length] }));
+  const first = signal(-1);
+  const last = signal(-1);
   let list!: YNode;
   return (
     <List
       ref={list}
       each={items}
       numColumns={3}
-      estimatedItemSize={90}
+      estimatedItemSize={110}
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 12, gap: 8 }}
+      contentContainerStyle={{ padding: 16, gap: 8 }}
       viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-      onViewableItemsChanged={({ viewableItems }) =>
-        visible.set(viewableItems.length ? `${viewableItems[0].index}–${viewableItems[viewableItems.length - 1].index}` : "")
-      }
+      onViewableItemsChanged={({ viewableItems }) => {
+        first.set(viewableItems.length ? viewableItems[0].index : -1);
+        last.set(viewableItems.length ? viewableItems[viewableItems.length - 1].index : -1);
+      }}
       ListHeaderComponent={
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }}>
-          <Text style={{ flex: 1, color: colors.muted }}>Visible {visible()}</Text>
-          <Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })} style={{ color: colors.accent }}>
-            Item 60
-          </Text>
-          <Text onPress={() => list.scrollToEnd()} style={{ color: colors.accent }}>
-            End
-          </Text>
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderRadius: radius.card,
+            borderCurve: "continuous",
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+            gap: 12,
+            marginBottom: 4,
+            ...finish.card,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>Viewable items (at least half shown)</Text>
+              <Text style={{ fontSize: 30, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"], letterSpacing: -0.5 }}>
+                {first() < 0 ? "—" : `${first()}–${last()}`}
+                <Text style={{ fontSize: 15, fontWeight: "500", color: colors.accent }}>
+                  {first() < 0 ? "" : `  ${last() - first() + 1} visible`}
+                </Text>
+              </Text>
+            </View>
+            <Text style={{ fontSize: 13, color: colors.faint, paddingBottom: 6 }}>90 items, 3 columns</Text>
+          </View>
+          <Meter value={last() < 0 ? 0 : (last() + 1) / items.length} />
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Action label="Jump to 60" icon="arrow-down" onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })} />
+            <Action label="End" onPress={() => list.scrollToEnd()} />
+          </View>
         </View>
       }
-      ListFooterComponent={<Text style={{ textAlign: "center", color: colors.muted, padding: 12 }}>— the end —</Text>}
+      ListFooterComponent={
+        <Text style={{ textAlign: "center", color: colors.faint, fontSize: 13, padding: 16 }}>End of the list</Text>
+      }
     >
       {(item) => (
         <View
           style={{
             height: item().height,
-            borderRadius: 10,
-            backgroundColor: tints[item().id % tints.length],
-            alignItems: "center",
-            justifyContent: "center",
+            borderRadius: radius.inset,
+            borderCurve: "continuous",
+            borderWidth: 1,
+            borderColor: item().id === 60 ? toneColor("accent") : colors.border,
+            backgroundColor: colors.raised,
+            ...finish.raised,
+            padding: 12,
+            justifyContent: "space-between",
           }}
         >
-          <Text style={{ fontSize: 17, fontWeight: "600" }}>{item().id}</Text>
+          <View style={{ width: 18, height: 4, borderRadius: 2, backgroundColor: toneColor(item().tone) }} />
+          <View>
+            <Text style={{ fontSize: 22, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>{item().id}</Text>
+            <Text style={{ fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>{item().height} pt</Text>
+          </View>
         </View>
       )}
     </List>
   );
 }
 
+const people = [
+  ["Ada", "Lovelace", "Analytical Engine notes"],
+  ["Alan", "Kay", "Smalltalk"],
+  ["Barbara", "Liskov", "CLU, substitution"],
+  ["Brian", "Kernighan", "AWK, The C book"],
+  ["Claude", "Shannon", "Information theory"],
+  ["Dennis", "Ritchie", "C, Unix"],
+  ["Donald", "Knuth", "TeX, TAOCP"],
+  ["Edsger", "Dijkstra", "Shortest paths"],
+  ["Frances", "Allen", "Optimizing compilers"],
+  ["Grace", "Hopper", "COBOL, the first compiler"],
+  ["Guido", "van Rossum", "Python"],
+  ["Ken", "Thompson", "Unix, UTF-8"],
+  ["Linus", "Torvalds", "Linux, Git"],
+  ["Margaret", "Hamilton", "Apollo flight software"],
+  ["Niklaus", "Wirth", "Pascal, Oberon"],
+] as const;
+
 /** Section headers stick to the top until the next one pushes them out. */
 function Contacts() {
-  const names = ["Ada", "Alan", "Barbara", "Brian", "Claude", "Dennis", "Donald", "Edsger", "Frances", "Grace", "Guido", "Ken", "Linus", "Margaret", "Niklaus"];
   // One list of header and name rows; the headers' indices stick.
-  type Row = { header: string } | { name: string; last: boolean };
+  type Row = { header: string; count: number } | { first: string; last: string; note: string; tone: Tone; end: boolean };
   const rows: Row[] = [];
   const headers: number[] = [];
-  for (const letter of [...new Set(names.map((n) => n[0]))]) {
+  for (const letter of [...new Set(people.map((p) => p[0][0]))]) {
+    const group = people.filter((p) => p[0][0] === letter);
     headers.push(rows.length);
-    rows.push({ header: letter });
-    const group = names.filter((n) => n[0] === letter);
-    group.forEach((name, i) => rows.push({ name, last: i === group.length - 1 }));
+    rows.push({ header: letter, count: group.length });
+    group.forEach(([first, last, note], i) =>
+      rows.push({ first, last, note, tone: tones[(rows.length + i) % (tones.length - 1)], end: i === group.length - 1 }),
+    );
   }
   return (
-    <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1, backgroundColor: colors.surface }}>
+    <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={60} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
       {(row) => {
-        const header = () => row() as { header: string };
-        const contact = () => row() as { name: string; last: boolean };
+        const header = () => row() as { header: string; count: number };
+        const person = () => row() as { first: string; last: string; note: string; tone: Tone; end: boolean };
         return (
           <If
             when={"header" in row()}
             else={
               <View
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderBottomWidth: contact().last ? 0 : 1,
-                  borderBottomColor: "#eaeef2",
-                }}
+                onPress={() => {}}
+                underlayColor={colors.raised}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 16, height: 60 }}
               >
-                <Text style={{ fontSize: 17 }}>{contact().name}</Text>
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: toneTint(person().tone),
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: toneColor(person().tone) }}>
+                    {person().first[0]}
+                    {person().last[0]}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    alignSelf: "stretch",
+                    justifyContent: "center",
+                    gap: 2,
+                    paddingRight: 16,
+                    borderBottomWidth: person().end ? 0 : 1,
+                    borderBottomColor: colors.line,
+                  }}
+                >
+                  <Text style={{ fontSize: 15, color: colors.text }}>
+                    {person().first} <Text style={{ fontWeight: "600" }}>{person().last}</Text>
+                  </Text>
+                  <Text numberOfLines={1} style={{ fontSize: 13, color: colors.muted }}>
+                    {person().note}
+                  </Text>
+                </View>
               </View>
             }
           >
-            <View style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
-              <Text style={{ fontWeight: "700", color: colors.muted }}>{header().header}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                height: 34,
+                paddingHorizontal: 16,
+                gap: 10,
+                // Opaque: rows scroll under it while it sticks.
+                backgroundColor: colors.background,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.accent }}>{header().header}</Text>
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
+              <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>{header().count}</Text>
             </View>
           </If>
         );
@@ -96,60 +219,90 @@ function Contacts() {
   );
 }
 
-type Message = { id: number; text: string; mine: boolean };
+type Message = { id: number; text: string; mine: boolean; time: string };
+
+const lines = [
+  "Did the build go out?",
+  "Yes, 2.4 is live on both stores",
+  "Crash rate?",
+  "Flat. 0.02 %",
+  "Nice. The list scrolls so much smoother now",
+  "Recycling plus native layout, no JS per frame",
+  "Ship it",
+];
 
 /** An inverted list: starts at the newest message, keeps its place as older ones load. */
 function Chat() {
   const insets = useSafeAreaInsets();
   let next = 0;
-  const message = (text: string, mine: boolean): Message => ({ id: next++, text, mine });
-  const messages = signal(
-    Array.from({ length: 30 }, (_, i) => message(`Message ${30 - i}`, i % 3 === 0)),
-  );
+  const stamp = (n: number) => `${String(9 + Math.floor(n / 60) % 12).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+  const message = (text: string, mine: boolean): Message => ({ id: next, text, mine, time: stamp(next++) });
+  const messages = signal(Array.from({ length: 30 }, (_, i) => message(lines[i % lines.length], i % 3 === 0)));
   const draft = signal("");
+  const older = signal(0);
   const send = () => {
     if (!draft().trim()) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
     messages.update((m) => [message(draft(), true), ...m]);
     draft.set("");
   };
   const loadOlder = () => {
     const count = messages().length;
-    messages.update((m) => [...m, ...Array.from({ length: 20 }, (_, i) => message(`Older ${count + i + 1}`, i % 4 === 0))]);
+    older.set(older() + 1);
+    messages.update((m) => [...m, ...Array.from({ length: 20 }, (_, i) => message(`Older message ${count + i + 1}`, i % 4 === 0))]);
   };
   return (
     <KeyboardAvoidingView style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.up }} />
+        <Text style={{ flex: 1, fontSize: 13, color: colors.muted }}>Release room</Text>
+        <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>
+          {messages().length} messages, {older()} older pages
+        </Text>
+      </View>
       <List
         each={messages()}
         inverted
-        estimatedItemSize={44}
+        estimatedItemSize={52}
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 12, gap: 6 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 6 }}
         keyboardDismissMode="interactive"
         onEndReached={loadOlder}
         onEndReachedThreshold={0.5}
       >
         {(m) => (
-          <View
-            style={{
-              alignSelf: m().mine ? "flex-end" : "flex-start",
-              maxWidth: "75%",
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 14,
-              backgroundColor: m().mine ? colors.accent : colors.surface,
-            }}
-          >
-            <Text style={{ color: m().mine ? "#ffffff" : colors.text, fontSize: 16 }}>{m().text}</Text>
+          <View style={{ alignSelf: m().mine ? "flex-end" : "flex-start", maxWidth: "78%", gap: 3, alignItems: m().mine ? "flex-end" : "flex-start" }}>
+            <View
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 9,
+                borderRadius: 18,
+                borderCurve: "continuous",
+                borderBottomRightRadius: m().mine ? 6 : 18,
+                borderBottomLeftRadius: m().mine ? 18 : 6,
+                backgroundColor: m().mine ? colors.accent : colors.raised,
+                ...(m().mine ? finish.accent : finish.raised),
+                borderWidth: m().mine ? 0 : 1,
+                borderColor: colors.border,
+              }}
+            >
+              <Text style={{ color: m().mine ? colors.onAccent : colors.text, fontSize: 15 }}>{m().text}</Text>
+            </View>
+            <Text style={{ fontSize: 11, color: colors.faint, fontVariant: ["tabular-nums"], paddingHorizontal: 4 }}>{m().time}</Text>
           </View>
         )}
       </List>
       <View
         style={{
           flexDirection: "row",
+          alignItems: "center",
           gap: 8,
-          padding: 8,
+          paddingHorizontal: 16,
+          paddingTop: 8,
           paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
           backgroundColor: colors.surface,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
         }}
       >
         <Input
@@ -158,22 +311,36 @@ function Chat() {
           onSubmitEditing={send}
           blurOnSubmit={false}
           placeholder="Message"
+          placeholderTextColor={colors.faint}
+          selectionColor={colors.accent}
           returnKeyType="send"
-          style={{ flex: 1, fontSize: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 }}
+          style={{
+            flex: 1,
+            height: 44,
+            fontSize: 15,
+            color: colors.text,
+            backgroundColor: colors.inset,
+            ...finish.inset,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 22,
+            paddingHorizontal: 16,
+          }}
         />
-        <Text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
-          Send
-        </Text>
+        <RoundButton icon="arrow-up" label="Send" onPress={send} />
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+const ranges = ["Today", "Yesterday", "This week", "This month", "This year", "All time", "Custom"];
+
 /** Horizontal scrolling, pull to refresh on a plain scroll view, and an empty list. */
 function More() {
   const refreshing = signal(false);
   const refreshed = signal(0);
-  const items = signal<number[]>([]);
+  const range = signal("This week");
+  const items = signal<{ n: number; tone: Tone }[]>([]);
   const refresh = () => {
     refreshing.set(true);
     setTimeout(() => {
@@ -181,49 +348,129 @@ function More() {
       refreshing.set(false);
     }, 1000);
   };
+  const edit = (change: () => void) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    change();
+  };
   const cards = Array.from({ length: 1000 }, (_, i) => i);
   return (
     <Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={refresh}>
-      <View style={{ paddingVertical: 12, gap: 16 }}>
-        <Text style={{ marginHorizontal: 12, color: colors.muted }}>Pull down to refresh (refreshed {refreshed()} times)</Text>
-        <Text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal scroll view</Text>
-        <Scroll horizontal showsIndicator={false}>
-          <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12 }}>
-            <Each of={["Today", "Yesterday", "This week", "This month", "This year", "All time", "Custom"]}>
-              {(label) => (
-                <Text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: colors.surface }}>
-                  {label()}
-                </Text>
-              )}
-            </Each>
-          </View>
-        </Scroll>
-        <Text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal list of 1000 recycled cards</Text>
-        <List each={cards} horizontal estimatedItemSize={130} style={{ height: 120 }} contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}>
-          {(i) => (
-            <View style={{ width: 120, height: 120, borderRadius: 12, backgroundColor: tints[i() % tints.length], alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ fontSize: 20, fontWeight: "700" }}>{i()}</Text>
+      <View style={{ padding: 16, gap: 16 }}>
+        <Section title="Pull to refresh">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <IconTile name="arrow-down" tint={refreshing() ? colors.accent : colors.text} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ fontSize: 15, color: colors.text }}>{refreshing() ? "Refreshing…" : "Pull the page down"}</Text>
+              <Text style={{ fontSize: 13, color: colors.muted }}>The system spinner on a plain scroll view</Text>
             </View>
-          )}
-        </List>
-        <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 12 }}>
-          <Text style={{ flex: 1, fontWeight: "600" }}>An empty list ({items().length} items)</Text>
-          <Text onPress={() => items.set([...items(), items().length + 1])} style={{ color: colors.accent, marginRight: 16 }}>
-            Add
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 28, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>{refreshed()}</Text>
+              <Text style={{ fontSize: 12, color: colors.faint }}>refreshes</Text>
+            </View>
+          </View>
+        </Section>
+
+        <Section title="Horizontal scroll view" note={range()}>
+          <View style={{ marginHorizontal: -14 }}>
+            <Scroll horizontal showsIndicator={false}>
+              <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 14 }}>
+                <Each of={ranges}>
+                  {(label) => (
+                    <Press onPress={() => range.set(label())} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: range() === label() }}>
+                      <View
+                        style={{
+                          height: 36,
+                          paddingHorizontal: 14,
+                          borderRadius: 18,
+                          justifyContent: "center",
+                          backgroundColor: range() === label() ? colors.light : colors.raised,
+                          ...(range() === label() ? finish.light : finish.raised),
+                          borderWidth: range() === label() ? 0 : 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: range() === label() ? "#111214" : colors.muted }}>{label()}</Text>
+                      </View>
+                    </Press>
+                  )}
+                </Each>
+              </View>
+            </Scroll>
+          </View>
+        </Section>
+
+        <Section title="Horizontal list" note="1,000 recycled cards">
+          <View style={{ marginHorizontal: -14 }}>
+            <List each={cards} horizontal estimatedItemSize={130} showsIndicator={false} style={{ height: 124 }} contentContainerStyle={{ paddingHorizontal: 14, gap: 10 }}>
+              {(i) => {
+                const tone = () => tones[i() % (tones.length - 1)];
+                const load = () => ((i() * 37) % 100) / 100;
+                return (
+                  <View
+                    style={{
+                      width: 120,
+                      height: 124,
+                      borderRadius: radius.inset,
+                      borderCurve: "continuous",
+                      backgroundColor: colors.raised,
+                      ...finish.raised,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: 12,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.muted, fontVariant: ["tabular-nums"] }}>Card {i() + 1}</Text>
+                    <Text style={{ fontSize: 26, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>
+                      {Math.round(load() * 100)}
+                      <Text style={{ fontSize: 15, fontWeight: "500", color: toneColor(tone()) }}> %</Text>
+                    </Text>
+                    <Meter value={load()} tone={tone()} />
+                  </View>
+                );
+              }}
+            </List>
+          </View>
+        </Section>
+
+        <Section title="An empty list" note={`${items().length} items`}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Add"
+                icon="plus"
+                onPress={() => edit(() => items.set([...items(), { n: items().length + 1, tone: tones[items().length % (tones.length - 1)] }]))}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button label="Clear" variant="secondary" disabled={!items().length} onPress={() => edit(() => items.set([]))} />
+            </View>
+          </View>
+          <List
+            each={items()}
+            estimatedItemSize={48}
+            style={{ height: 196, borderRadius: radius.control, backgroundColor: colors.surface, ...finish.card, borderWidth: 1, borderColor: colors.line }}
+            ListEmptyComponent={
+              <View style={{ alignItems: "center", justifyContent: "center", gap: 10, height: 194 }}>
+                <IconTile name="lists" tint={colors.faint} />
+                <Text style={{ fontSize: 13, color: colors.muted }}>Nothing here yet: tap Add</Text>
+              </View>
+            }
+            ItemSeparatorComponent={() => <View style={{ height: 1, marginLeft: 14, backgroundColor: colors.line }} />}
+          >
+            {(item) => (
+              <View style={{ height: 48, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2.5, backgroundColor: toneColor(item().tone) }} />
+                <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>Item {item().n}</Text>
+                <Badge label={item().tone} tone={item().tone} />
+              </View>
+            )}
+          </List>
+          <Text style={{ fontSize: 13, color: colors.muted }}>
+            <Text style={{ fontFamily: mono, color: colors.text }}>ListEmptyComponent</Text> while empty, separators between rows; changes animate with{" "}
+            <Text style={{ fontFamily: mono, color: colors.text }}>LayoutAnimation</Text>.
           </Text>
-          <Text onPress={() => items.set([])} style={{ color: colors.accent }}>
-            Clear
-          </Text>
-        </View>
-        <List
-          each={items()}
-          estimatedItemSize={44}
-          style={{ height: 180, marginHorizontal: 12, borderRadius: 10, backgroundColor: colors.surface }}
-          ListEmptyComponent={<Text style={{ padding: 24, textAlign: "center", color: colors.muted }}>Nothing here yet: tap Add</Text>}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: "#eaeef2" }} />}
-        >
-          {(n) => <Text style={{ padding: 12 }}>Item {n()}</Text>}
-        </List>
+        </Section>
       </View>
     </Scroll>
   );
@@ -231,42 +478,46 @@ function More() {
 
 type Tab = "grid" | "sections" | "chat" | "more";
 
+const tabs = [
+  { value: "grid", label: "Grid" },
+  { value: "sections", label: "Sections" },
+  { value: "chat", label: "Chat" },
+  { value: "more", label: "More" },
+] as const;
+
 export function Lists() {
   const tab = signal<Tab>("grid");
-  const tabButton = (id: Tab, label: string) => (
-    <Text
-      onPress={() => tab.set(id)}
-      style={{
-        flex: 1,
-        textAlign: "center",
-        paddingVertical: 6,
-        borderRadius: 8,
-        overflow: "hidden",
-        backgroundColor: tab() === id ? colors.surface : "transparent",
-        fontWeight: "600",
-      }}
-    >
-      {label}
-    </Text>
-  );
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ flexDirection: "row", margin: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
-        {tabButton("grid", "Grid")}
-        {tabButton("sections", "Sections")}
-        {tabButton("chat", "Chat")}
-        {tabButton("more", "More")}
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+        <Segmented options={tabs} value={tab()} onChange={(v) => tab.set(v)} />
       </View>
       {(() => {
         switch (tab()) {
           case "grid":
-            return <Grid />;
+            return (
+              <Appear flex>
+                <Grid />
+              </Appear>
+            );
           case "sections":
-            return <Contacts />;
+            return (
+              <Appear flex>
+                <Contacts />
+              </Appear>
+            );
           case "chat":
-            return <Chat />;
+            return (
+              <Appear flex>
+                <Chat />
+              </Appear>
+            );
           case "more":
-            return <More />;
+            return (
+              <Appear flex>
+                <More />
+              </Appear>
+            );
         }
       })()}
     </View>

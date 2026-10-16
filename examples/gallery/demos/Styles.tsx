@@ -1,61 +1,467 @@
-import { Scroll, signal, Text, View } from "nsh";
-import { createNativeValue } from "nsh/animated";
+import { type JSX, Scroll, signal, Text, View, type ViewStyle } from "nsh";
+import { Animated, createNativeValue, Easing } from "nsh/animated";
 import { I18nManager } from "nsh/device";
 import { Image } from "nsh/image";
 import { List } from "nsh/list";
+import { Appear, Badge, Button, Caption, Card, colors, finish, mono, Press, radius, Segmented, tints, Toggle } from "../ui";
 
-const card = {
-  width: 150,
-  height: 110,
+/** The stage every specimen stands on: the card's light, without its drop shadow. */
+const stage = {
+  height: 104,
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: "#ffffff",
+  borderRadius: radius.control,
+  borderCurve: "continuous",
+  backgroundColor: colors.surface,
+  borderWidth: 1,
+  borderColor: colors.line,
+  backgroundImage: finish.card.backgroundImage,
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
 } as const;
 
-function Label(props: { children: string }) {
-  return <Text style={{ fontSize: 13, fontWeight: "600", color: "#1f2328" }}>{props.children}</Text>;
+/** A specimen box: a raised surface the styles are tried on. */
+const box = {
+  width: 112,
+  height: 76,
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: colors.raised,
+} as const;
+
+function Label(props: { children: string; color?: string }) {
+  return <Text style={{ fontSize: 13, fontWeight: "600", color: props.color ?? colors.text }}>{props.children}</Text>;
 }
 
-/** Two faces back to back: each hides while turned away. */
-function FlipCard() {
-  const angle = createNativeValue(0);
-  let flipped = false;
-  const flip = () => {
-    flipped = !flipped;
-    angle.timing(flipped ? 180 : 0, { duration: 500, easing: "easeInOut" });
-  };
-  const face = { ...card, position: "absolute", left: 0, top: 0, borderRadius: 14, backfaceVisibility: "hidden" } as const;
+/**
+ * One cell of a two-column grid: the specimen on a stage, a label, the
+ * style it shows (`code`, monospaced) and a plain note.
+ */
+function Tile(props: { label: string; code?: string; note?: string; onPress?: () => void; children: JSX.Element }) {
   return (
-    <View onPress={flip} style={{ width: 150, height: 110 }}>
-      <View style={{ ...face, backgroundColor: "#ddf4ff", transform: [{ perspective: 600 }, { rotateY: angle }] }}>
-        <Label>Front (tap)</Label>
+    <View style={{ flexBasis: "40%", flexGrow: 1, gap: 8 }}>
+      <View onPress={props.onPress} style={stage}>
+        {props.children}
       </View>
-      <View
-        style={{
-          ...face,
-          backgroundColor: "#fff8c5",
-          transform: [{ perspective: 600 }, { rotateY: angle.interpolate({ inputRange: [0, 180], outputRange: [180, 360] }) }],
-        }}
-      >
-        <Label>Back: backfaceVisibility</Label>
+      <View style={{ gap: 3, paddingHorizontal: 2 }}>
+        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text }}>{props.label}</Text>
+        <If when={props.code}>
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.muted, fontFamily: mono }}>
+            {props.code}
+          </Text>
+        </If>
+        <If when={props.note}>
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>
+            {props.note}
+          </Text>
+        </If>
       </View>
     </View>
   );
 }
 
+function Grid(props: { children: JSX.Element }) {
+  return <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 16 }}>{props.children}</View>;
+}
+
+/** Circular and continuous corners side by side, at the same radius. */
+function Corners() {
+  const shapes: { label: string; style: ViewStyle }[] = [
+    { label: "Circular", style: { width: 60, height: 60, borderRadius: 20, backgroundColor: colors.info } },
+    { label: "Continuous", style: { width: 60, height: 60, borderRadius: 20, borderCurve: "continuous", backgroundColor: colors.info } },
+    {
+      label: "One corner",
+      style: { width: 60, height: 60, borderRadius: 20, borderCurve: "continuous", borderWidth: 2.5, borderColor: colors.accent, borderTopLeftRadius: 4 },
+    },
+    { label: "Pill", style: { width: 60, height: 28, borderRadius: 14, borderCurve: "continuous", backgroundColor: colors.up } },
+  ];
+  return (
+    <Card icon="styles" title="Corners" subtitle="borderRadius · borderCurve · per corner">
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Each of={shapes}>
+          {(shape) => (
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <View style={{ height: 64, justifyContent: "center" }}>
+                <View style={shape().style} />
+              </View>
+              <Text style={{ fontSize: 12, color: colors.muted }}>{shape().label}</Text>
+            </View>
+          )}
+        </Each>
+      </View>
+      <Caption label="Continuous corners ease into the edges" note="Radius 20 pt" />
+      <Grid>
+        <Tile label="Top corners" code="borderTop*Radius" note="28 pt">
+          <View style={{ ...box, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1.5, borderColor: colors.accent }}>
+            <Label color={colors.accent}>28 pt</Label>
+          </View>
+        </Tile>
+        <Tile label="Mixed radii" note="44 · 6 · 28 · 0 pt, clockwise">
+          <View
+            style={{
+              ...box,
+              backgroundColor: tints.info,
+              borderTopLeftRadius: 44,
+              borderTopRightRadius: 6,
+              borderBottomRightRadius: 28,
+              borderWidth: 2,
+              borderColor: colors.info,
+            }}
+          >
+            <Label color={colors.info}>Mixed</Label>
+          </View>
+        </Tile>
+      </Grid>
+    </Card>
+  );
+}
+
+function Borders() {
+  return (
+    <Card icon="components" title="Borders" subtitle="per side · dashed · dotted">
+      <Grid>
+        <Tile label="Per-side borders" note="6 · 2 · 4 · 1 pt, clockwise">
+          <View
+            style={{
+              ...box,
+              borderTopWidth: 6,
+              borderTopColor: colors.danger,
+              borderRightWidth: 2,
+              borderRightColor: colors.up,
+              borderBottomWidth: 4,
+              borderBottomColor: colors.info,
+              borderLeftWidth: 1,
+              borderLeftColor: colors.warn,
+            }}
+          />
+        </Tile>
+        <Tile label="Dashed / dotted" code="borderStyle">
+          <View style={{ gap: 8 }}>
+            <View style={{ width: 112, height: 28, borderRadius: 8, borderWidth: 1.5, borderColor: colors.info, borderStyle: "dashed" }} />
+            <View style={{ width: 112, height: 28, borderRadius: 8, borderWidth: 3, borderColor: colors.warn, borderStyle: "dotted" }} />
+          </View>
+        </Tile>
+      </Grid>
+    </Card>
+  );
+}
+
+/** Shadows that read on a dark page: colored glows rather than black. */
+function Shadows() {
+  return (
+    <Card icon="spark" title="Shadows and glow" subtitle="shadowColor · elevation · text shadow">
+      <Grid>
+        <Tile label="Glow" code="shadowColor" note="A colored shadow">
+          <View
+            style={{
+              ...box,
+              borderRadius: 16,
+              borderCurve: "continuous",
+              backgroundColor: colors.accent,
+              shadowColor: colors.accent,
+              shadowOpacity: 0.55,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 6 },
+            }}
+          >
+            <Label color={colors.onAccent}>Glow</Label>
+          </View>
+        </Tile>
+        <Tile label="Offset shadow" code="shadowOffset" note="4, 8 pt · radius 10">
+          <View
+            style={{
+              ...box,
+              backgroundColor: "#1d2740",
+              borderTopLeftRadius: 30,
+              borderBottomRightRadius: 30,
+              borderWidth: 1,
+              borderColor: colors.info,
+              shadowColor: colors.info,
+              shadowOpacity: 0.45,
+              shadowRadius: 10,
+              shadowOffset: { width: 4, height: 8 },
+            }}
+          >
+            <Label color={colors.info}>Offset</Label>
+          </View>
+        </Tile>
+        <Tile label="Image corners" note="Two radii and a shadow">
+          <Image
+            src="https://picsum.photos/seed/nsh/300/220"
+            style={{
+              width: 112,
+              height: 76,
+              borderTopLeftRadius: 28,
+              borderBottomRightRadius: 28,
+              backgroundColor: colors.raised,
+              shadowColor: "#000000",
+              shadowOpacity: 0.6,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 8 },
+            }}
+          />
+        </Tile>
+        <Tile label="Text shadow" note="Shadow of the content">
+          <View style={{ ...box, backgroundColor: "transparent", shadowColor: colors.danger, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } }}>
+            <Text style={{ fontSize: 24, fontWeight: "800", color: colors.text, letterSpacing: -0.5 }}>Shadow</Text>
+          </View>
+        </Tile>
+        <Tile label="Text corners" note="Radii on a Text">
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: "600",
+              color: colors.up,
+              backgroundColor: tints.up,
+              borderTopLeftRadius: 14,
+              borderBottomRightRadius: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+            }}
+          >
+            Text corners
+          </Text>
+        </Tile>
+        <Tile label="Elevation" code="elevation: 10" note="Android">
+          <View android={{ elevation: 10 }} style={{ ...box, borderRadius: 16, backgroundColor: colors.raised, shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 6 } }}>
+            <Label>Elevation</Label>
+          </View>
+        </Tile>
+      </Grid>
+    </Card>
+  );
+}
+
+/** Clipping, stacking order and opacity, each one tap away. */
+function Layers() {
+  const clip = signal(true);
+  const front = signal(0);
+  const opacity = createNativeValue(0.45);
+  const level = signal<"0.2" | "0.45" | "1">("0.45");
+  const stack = [colors.danger, colors.info, colors.up];
+  return (
+    <Card icon="lists" title="Clipping and layers" subtitle="overflow · zIndex · opacity" right={<Toggle value={clip()} onChange={(v) => clip.set(v)} label="Clip" />}>
+      <Grid>
+        <Tile label={clip() ? "Clipped" : "Visible"} code={`overflow: ${clip() ? "hidden" : "visible"}`} note="Tap to switch" onPress={() => clip.set(!clip())}>
+          <View
+            style={{
+              ...box,
+              backgroundColor: tints.warn,
+              borderRadius: 22,
+              borderWidth: 1.5,
+              borderColor: colors.warn,
+              overflow: clip() ? "hidden" : "visible",
+            }}
+          >
+            <View style={{ position: "absolute", left: -26, top: -26, width: 72, height: 72, borderRadius: 36, backgroundColor: colors.danger }} />
+            <Label color={colors.warn}>Tap</Label>
+          </View>
+        </Tile>
+        <Tile label="Stacking order" code="zIndex" note={`Front: ${front() + 1} of 3 · tap`} onPress={() => front.set((front() + 1) % 3)}>
+          <View style={{ width: 130, height: 84 }}>
+            <Each of={stack}>
+              {(color, i) => (
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 4 + i() * 28,
+                    top: 2 + i() * 14,
+                    width: 64,
+                    height: 52,
+                    borderRadius: 12,
+                    borderCurve: "continuous",
+                    backgroundColor: color(),
+                    borderWidth: front() === i() ? 2 : 0,
+                    borderColor: colors.text,
+                    zIndex: front() === i() ? 10 : 0,
+                    shadowColor: "#000000",
+                    shadowOpacity: 0.5,
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 3 },
+                  }}
+                />
+              )}
+            </Each>
+          </View>
+        </Tile>
+      </Grid>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 14, borderCurve: "continuous", backgroundColor: colors.info, opacity, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#0c1020", fontVariant: ["tabular-nums"] }}>{level()}</Text>
+        </View>
+        <View style={{ flex: 1, gap: 8 }}>
+          <Caption label="Opacity" note="Animated natively" />
+          <Segmented
+            options={[
+              { value: "0.2", label: "0.2" },
+              { value: "0.45", label: "0.45" },
+              { value: "1", label: "1" },
+            ]}
+            value={level()}
+            onChange={(v) => {
+              level.set(v);
+              opacity.timing(Number(v), { duration: 260, easing: Easing.out(Easing.cubic) });
+            }}
+          />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+/** Two faces back to back: each hides while turned away. */
+function FlipCard() {
+  const angle = createNativeValue(0);
+  const flipped = signal(false);
+  const flip = () => {
+    flipped.set(!flipped());
+    angle.spring(flipped() ? 180 : 0, { stiffness: 140, damping: 16 });
+  };
+  const face = {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: radius.card,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    padding: 16,
+    justifyContent: "space-between",
+    backfaceVisibility: "hidden",
+  } as const;
+  return (
+    <Press onPress={flip} scale={0.98} accessibilityLabel="Flip the card">
+      <View style={{ height: 132 }}>
+        <View
+          style={{
+            ...face,
+            backgroundColor: "#1a2134",
+            backgroundImage: "linear-gradient(180deg, #212a42 0%, #171d2d 100%)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), 0 10px 24px rgba(0,0,0,0.4)",
+            borderColor: "#2b3a5c",
+            transform: [{ perspective: 800 }, { rotateY: angle }],
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Badge label="front" tone="info" />
+            <Text style={{ fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>0°</Text>
+          </View>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontSize: 20, fontWeight: "600", color: colors.text }}>Tap to flip</Text>
+            <Text style={{ fontSize: 13, color: colors.muted }}>A spring turns it on the UI thread</Text>
+          </View>
+        </View>
+        <View
+          style={{
+            ...face,
+            backgroundColor: "#202814",
+            backgroundImage: "linear-gradient(180deg, #283219 0%, #1b2211 100%)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), 0 10px 24px rgba(0,0,0,0.4)",
+            borderColor: "#3b4a22",
+            transform: [{ perspective: 800 }, { rotateY: angle.interpolate({ inputRange: [0, 180], outputRange: [180, 360] }) }],
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Badge label="back" tone="accent" />
+            <Text style={{ fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>180°</Text>
+          </View>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontSize: 20, fontWeight: "600", color: colors.text }}>backfaceVisibility</Text>
+            <Text style={{ fontSize: 13, color: colors.muted }}>hidden: each face hides while turned away</Text>
+          </View>
+        </View>
+      </View>
+    </Press>
+  );
+}
+
+function Transforms() {
+  // A slow native sway, so the perspective reads as depth.
+  const sway = createNativeValue(-30);
+  Animated.loop(
+    Animated.sequence([
+      Animated.timing(sway, { toValue: 30, duration: 2200, easing: Easing.inOut(Easing.sin) }),
+      Animated.timing(sway, { toValue: -30, duration: 2200, easing: Easing.inOut(Easing.sin) }),
+    ]),
+  ).start();
+  return (
+    <Card icon="physics" title="3D transforms" subtitle="perspective · rotateX/Y · skew · origin">
+      <FlipCard />
+      <Grid>
+        <Tile label="Perspective" code="rotateY" note="Swaying, driven natively">
+          <View style={{ ...box, borderRadius: 14, backgroundColor: tints.info, borderWidth: 1, borderColor: colors.info, transform: [{ perspective: 400 }, { rotateY: sway }] }}>
+            <Label color={colors.info}>Y axis</Label>
+          </View>
+        </Tile>
+        <Tile label="Tilt" code="rotateX: 40deg">
+          <View style={{ ...box, borderRadius: 14, backgroundColor: tints.accent, borderWidth: 1, borderColor: colors.accent, transform: [{ perspective: 400 }, { rotateX: "40deg" }] }}>
+            <Label color={colors.accent}>X axis</Label>
+          </View>
+        </Tile>
+        <Tile label="Skew" code="skewX: -12deg" note="iOS">
+          <View style={{ ...box, borderRadius: 10, backgroundColor: tints.warn, borderWidth: 1, borderColor: colors.warn, transform: [{ skewX: "-12deg" }] }}>
+            <Label color={colors.warn}>Skew</Label>
+          </View>
+        </Tile>
+        <Tile label="Origin" code="transformOrigin" note="Top left · rotated 30°">
+          <View style={{ width: 112, height: 84 }}>
+            <View style={{ position: "absolute", left: 30, top: 14, width: 54, height: 54, borderRadius: 6, borderWidth: 1, borderColor: colors.faint, borderStyle: "dashed" }} />
+            <View
+              style={{
+                position: "absolute",
+                left: 30,
+                top: 14,
+                width: 54,
+                height: 54,
+                borderRadius: 6,
+                backgroundColor: "rgba(255,97,112,0.55)",
+                transformOrigin: "top left",
+                transform: [{ rotate: "30deg" }],
+              }}
+            />
+            <View style={{ position: "absolute", left: 26, top: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.text }} />
+          </View>
+        </Tile>
+      </Grid>
+    </Card>
+  );
+}
+
+function Numerals() {
+  const figure = { fontSize: 22, color: colors.text, fontWeight: "500" } as const;
+  return (
+    <Card icon="text" title="Numerals" subtitle="fontVariant">
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.muted }}>Proportional</Text>
+          <Text style={figure}>1,111.11</Text>
+          <Text style={figure}>8,888.88</Text>
+        </View>
+        <View style={{ width: 1, backgroundColor: colors.line }} />
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.accent, fontFamily: mono }}>tabular-nums</Text>
+          <Text style={[figure, { fontVariant: ["tabular-nums"] }]}>1,111.11</Text>
+          <Text style={[figure, { fontVariant: ["tabular-nums"] }]}>8,888.88</Text>
+        </View>
+      </View>
+      <View style={{ height: 1, backgroundColor: colors.line }} />
+      <Caption label={<Text style={{ fontSize: 18, color: colors.text, fontVariant: ["small-caps"] }}>Small Caps</Text>} note={<Text style={{ fontFamily: mono }}>small-caps</Text>} />
+      <Caption label={<Text style={{ fontSize: 18, color: colors.text, fontVariant: ["oldstyle-nums"] }}>Oldstyle 1234567890</Text>} note={<Text style={{ fontFamily: mono }}>oldstyle-nums</Text>} />
+    </Card>
+  );
+}
+
 /** Rows, `marginStart` and text under a right-to-left layout. */
 function RightToLeft() {
+  const tones = [colors.danger, colors.info, colors.up];
+  const chip = { width: 40, height: 40, borderRadius: 10, borderCurve: "continuous", alignItems: "center", justifyContent: "center" } as const;
   return (
-    <View style={{ width: "100%", gap: 10, padding: 14, backgroundColor: "#ffffff", borderRadius: 12 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text style={{ flex: 1, fontWeight: "600" }}>{I18nManager.isRTL ? "Right to left" : "Left to right"}</Text>
-        <Text
-          onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}
-          style={{ color: "#ffffff", backgroundColor: "#0969da", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, overflow: "hidden" }}
-        >
-          Flip
-        </Text>
-      </View>
+    <Card
+      icon="nav"
+      title="Right to left"
+      subtitle={I18nManager.isRTL ? "isRTL: true" : "isRTL: false"}
+      right={<Button label="Flip" variant="secondary" onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)} />}
+    >
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Each of={["1", "2", "3"]}>
           {(n, i) => (
@@ -63,232 +469,65 @@ function RightToLeft() {
               style={{
                 width: 44,
                 height: 44,
-                borderRadius: 8,
+                borderRadius: 10,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: ["#fd8c73", "#54aeff", "#4ac26b"][i()],
+                backgroundColor: tones[i()],
                 marginStart: i() === 0 ? 16 : 0,
                 borderTopStartRadius: 22,
               }}
             >
-              <Text style={{ color: "#ffffff", fontWeight: "700" }}>{n()}</Text>
+              <Text style={{ color: "#0c0d0f", fontWeight: "700", fontSize: 15 }}>{n()}</Text>
             </View>
           )}
         </Each>
       </View>
-      <Text>Text aligns to the start side; the first box has marginStart 16 and a round top-start corner.</Text>
-      <Text style={{ fontSize: 13, color: "#6e7781" }}>A horizontal scroll view and a horizontal list start at the start side:</Text>
+      <Text style={{ fontSize: 15, lineHeight: 21, color: colors.text }}>
+        Text aligns to the start side; the first box has marginStart 16 and a round top-start corner.
+      </Text>
+      <Caption label="Horizontal scroll view" note={<Text style={{ fontFamily: mono }}>Scroll</Text>} />
       <Scroll horizontal showsIndicator={false} style={{ height: 40 }}>
-        <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
+        <View style={{ flexDirection: "row", gap: 6 }}>
           <Each of={Array.from({ length: 12 }, (_, i) => i + 1)}>
             {(n) => (
-              <View style={{ width: 40, height: 40, borderRadius: 6, backgroundColor: "#ddf4ff", alignItems: "center", justifyContent: "center" }}>
-                <Text>{String(n())}</Text>
+              <View style={{ ...chip, backgroundColor: tints.info }}>
+                <Text style={{ fontSize: 13, color: colors.info, fontVariant: ["tabular-nums"] }}>{String(n())}</Text>
               </View>
             )}
           </Each>
         </View>
       </Scroll>
+      <Caption label="Horizontal list" note={<Text style={{ fontFamily: mono }}>List</Text>} />
       <List each={Array.from({ length: 30 }, (_, i) => i + 1)} horizontal estimatedItemSize={46} showsIndicator={false} style={{ height: 40 }}>
         {(n) => (
-          <View style={{ width: 40, height: 40, marginEnd: 6, borderRadius: 6, backgroundColor: "#fff8c5", alignItems: "center", justifyContent: "center" }}>
-            <Text>{String(n())}</Text>
+          <View style={{ ...chip, marginEnd: 6, backgroundColor: tints.accent }}>
+            <Text style={{ fontSize: 13, color: colors.accent, fontVariant: ["tabular-nums"] }}>{String(n())}</Text>
           </View>
         )}
       </List>
-      <Text style={{ textAlign: "left", color: "#6e7781" }}>textAlign left (the start side right to left)</Text>
-      <Text style={{ writingDirection: "rtl", color: "#6e7781" }}>مرحبا بالعالم — writingDirection rtl</Text>
-    </View>
+      <View style={{ height: 1, backgroundColor: colors.line }} />
+      <Text style={{ fontSize: 13, textAlign: "left", color: colors.muted }}>textAlign left (the start side right to left)</Text>
+      <Text style={{ fontSize: 13, writingDirection: "rtl", color: colors.muted }}>مرحبا بالعالم — writingDirection rtl</Text>
+    </Card>
   );
 }
 
 export function Styles() {
-  const clip = signal(true);
-  const front = signal(0);
+  const sections = [Corners, Borders, Shadows, Layers, Transforms, Numerals, RightToLeft];
   return (
-    <Scroll style={{ flex: 1 }}>
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 24, padding: 24, justifyContent: "center" }}>
-      <View style={{ ...card, borderRadius: 16, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }}>
-        <Label>Shadow</Label>
-      </View>
-      <View
-        style={{
-          ...card,
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          borderWidth: 2,
-          borderColor: "#8250df",
-        }}
-      >
-        <Label>Top corners</Label>
-      </View>
-      <View
-        style={{
-          ...card,
-          backgroundColor: "#ddf4ff",
-          borderTopLeftRadius: 44,
-          borderTopRightRadius: 6,
-          borderBottomRightRadius: 28,
-          borderWidth: 3,
-          borderColor: "#0969da",
-          shadowColor: "#0969da",
-          shadowOpacity: 0.35,
-          shadowRadius: 10,
-          shadowOffset: { width: 4, height: 8 },
-        }}
-      >
-        <Label>Mixed radii</Label>
-      </View>
-      <View
-        onPress={() => clip.set(!clip())}
-        style={{
-          ...card,
-          backgroundColor: "#fff8c5",
-          borderRadius: 24,
-          borderWidth: 2,
-          borderColor: "#9a6700",
-          overflow: clip() ? "hidden" : "visible",
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-        }}
-      >
-        <View style={{ position: "absolute", left: -30, top: -30, width: 90, height: 90, borderRadius: 45, backgroundColor: "#bf3989" }} />
-        <Label>{clip() ? "Clipped (tap)" : "Visible (tap)"}</Label>
-      </View>
-      <Image
-        src="https://picsum.photos/seed/nsh/300/220"
-        style={{
-          width: 150,
-          height: 110,
-          borderTopLeftRadius: 36,
-          borderBottomRightRadius: 36,
-          backgroundColor: "#e1e4e8",
-          shadowOpacity: 0.3,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 6 },
-        }}
-      />
-      <View style={{ ...card, backgroundColor: "transparent", shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 2, height: 2 } }}>
-        <Text style={{ fontSize: 22, fontWeight: "bold", color: "#1f2328" }}>Text shadow</Text>
-      </View>
-      <View style={{ width: 150, alignItems: "center" }}>
-        <Text
-          style={{
-            fontSize: 15,
-            color: "#ffffff",
-            backgroundColor: "#1a7f37",
-            borderTopLeftRadius: 14,
-            borderBottomRightRadius: 14,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Each of={sections}>
+          {(Section, i) => {
+            const Body = Section();
+            return (
+              <Appear index={i()}>
+                <Body />
+              </Appear>
+            );
           }}
-        >
-          Text corners
-        </Text>
-      </View>
-      <View
-        style={{
-          ...card,
-          borderTopWidth: 6,
-          borderTopColor: "#cf222e",
-          borderRightWidth: 2,
-          borderRightColor: "#1a7f37",
-          borderBottomWidth: 4,
-          borderBottomColor: "#0969da",
-          borderLeftWidth: 1,
-          borderLeftColor: "#8250df",
-        }}
-      >
-        <Label>Per-side borders</Label>
-      </View>
-      <View style={{ ...card, gap: 8 }}>
-        <View style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 2, borderColor: "#0969da", borderStyle: "dashed" }} />
-        <View style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 3, borderColor: "#bf3989", borderStyle: "dotted" }} />
-        <Label>Dashed / dotted</Label>
-      </View>
-      <View style={{ ...card, width: 324, gap: 8 }}>
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "#8250df" }} />
-          <View style={{ width: 64, height: 64, borderRadius: 20, borderCurve: "continuous", backgroundColor: "#8250df" }} />
-          <View
-            style={{ width: 64, height: 64, borderRadius: 20, borderCurve: "continuous", borderWidth: 3, borderColor: "#0969da", borderTopLeftRadius: 4 }}
-          />
-          <View style={{ width: 64, height: 30, borderRadius: 15, borderCurve: "continuous", backgroundColor: "#1a7f37" }} />
-        </View>
-        <Label>Circular / continuous corners</Label>
-      </View>
-      <View onPress={() => front.set((front() + 1) % 3)} style={{ ...card, backgroundColor: "transparent" }}>
-        <Each of={["#fd8c73", "#54aeff", "#4ac26b"]}>
-          {(color, i) => (
-            <View
-              style={{
-                position: "absolute",
-                left: 20 + i() * 30,
-                top: 10 + i() * 22,
-                width: 70,
-                height: 56,
-                borderRadius: 10,
-                backgroundColor: color(),
-                zIndex: front() === i() ? 10 : 0,
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                shadowOffset: { width: 0, height: 2 },
-              }}
-            />
-          )}
         </Each>
-        <View style={{ position: "absolute", bottom: -18 }}>
-          <Label>zIndex (tap)</Label>
-        </View>
       </View>
-      <View style={{ ...card, backgroundColor: "#ddf4ff", transform: [{ perspective: 400 }, { rotateY: "35deg" }] }}>
-        <Label>rotateY + perspective</Label>
-      </View>
-      <View style={{ ...card, backgroundColor: "#fbefff", transform: [{ perspective: 400 }, { rotateX: "40deg" }] }}>
-        <Label>rotateX</Label>
-      </View>
-      <View style={{ ...card, backgroundColor: "#fff1e5", transform: [{ skewX: "-12deg" }] }}>
-        <Label>skewX (iOS)</Label>
-      </View>
-      <View style={{ ...card, backgroundColor: "#1f2328", opacity: 0.45 }}>
-        <Text style={{ color: "#ffffff", fontWeight: "600" }}>opacity 0.45</Text>
-      </View>
-      <View android={{ elevation: 10 }} style={{ ...card, borderRadius: 16 }}>
-        <Label>elevation 10 (Android)</Label>
-      </View>
-      <View style={{ ...card, backgroundColor: "transparent" }}>
-        <View style={{ width: 60, height: 60, borderWidth: 1, borderColor: "#d0d7de", borderStyle: "dashed", position: "absolute", left: 45, top: 15 }} />
-        <View
-          style={{
-            width: 60,
-            height: 60,
-            position: "absolute",
-            left: 45,
-            top: 15,
-            backgroundColor: "rgba(130,80,223,0.6)",
-            transformOrigin: "top left",
-            transform: [{ rotate: "30deg" }],
-          }}
-        />
-        <View style={{ position: "absolute", bottom: -18 }}>
-          <Label>transformOrigin top left</Label>
-        </View>
-      </View>
-      <FlipCard />
-      <View style={{ ...card, alignItems: "flex-start", paddingHorizontal: 16, gap: 2 }}>
-        <Text style={{ fontSize: 13, color: "#6e7781" }}>Proportional / tabular</Text>
-        <Text style={{ fontSize: 18 }}>1,111.11</Text>
-        <Text style={{ fontSize: 18 }}>8,888.88</Text>
-        <Text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>1,111.11</Text>
-        <Text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>8,888.88</Text>
-      </View>
-      <View style={{ ...card }}>
-        <Text style={{ fontSize: 18, fontVariant: ["small-caps"] }}>Small Caps</Text>
-        <Text style={{ fontSize: 18, fontVariant: ["oldstyle-nums"] }}>Oldstyle 1234567890</Text>
-      </View>
-      <RightToLeft />
-    </View>
     </Scroll>
   );
 }

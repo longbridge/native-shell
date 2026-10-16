@@ -1,20 +1,114 @@
-import { Input, Scroll, signal, Text, View } from "nsh";
+import { Input, type JSX, Scroll, signal, Text, View } from "nsh";
 import { Image } from "nsh/image";
 import logo from "../logo@2x.png";
+import { Icon, type IconName } from "../icons";
+import { Appear, colors } from "../ui";
 
+/**
+ * The gallery's dark design built from class strings alone: the graphite
+ * surfaces and the citrus accent are `nsh.json` theme colors
+ * (`graphite-*`, `citrus`), the light and depth (`finish` in ui.tsx) are
+ * gradients and arbitrary shadows, everything else is stock Tailwind.
+ */
 const photo = "https://picsum.photos/seed/nsh-tailwind/600/400";
 
-function Section(props: { title: string; children: any }) {
+/** The finishes of ui.tsx as classes: a top-lit gradient, a highlight along the top edge, a soft shadow. */
+const finish = {
+  card: "bg-linear-to-b from-[#1d1e22] to-[#17181b] inset-shadow-[0_1px_0_rgba(255,255,255,0.06)] shadow-[0_10px_28px_rgba(0,0,0,0.38)]",
+  inset: "inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)]",
+  raised: "bg-linear-to-b from-[#2d2f34] to-[#222428] inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] shadow-[0_1px_2px_rgba(0,0,0,0.45)]",
+  light: "bg-linear-to-b from-[#fbfbfc] to-[#d4d6d9] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] shadow-[0_3px_10px_rgba(0,0,0,0.4)]",
+  accent: "bg-linear-to-b from-[#dbf893] to-[#b3dd4e] inset-shadow-[0_1px_0_rgba(255,255,255,0.45)] shadow-[0_3px_12px_rgba(200,242,109,0.22)]",
+};
+
+/** A card: an icon tile, a title and the classes it shows, over a darker inset. */
+function Card(props: { icon: IconName; title: string; subtitle: string; children: JSX.Element }) {
   return (
-    <View class="gap-2">
-      <Text class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{props.title}</Text>
-      <View class="gap-3 rounded-card bg-white p-4 dark:bg-zinc-800">{props.children}</View>
+    <View class={`rounded-2xl border border-graphite-border bg-graphite-card p-[5px] ${finish.card}`}>
+      <View class="flex-row items-center gap-3 px-[11px] pb-3 pt-[11px]">
+        <View class={`size-10 items-center justify-center rounded-xl border border-graphite-border bg-graphite-raised ${finish.raised}`}>
+          <Icon name={props.icon} size={20} tint={colors.text} />
+        </View>
+        <View class="flex-1 gap-0.5">
+          <Text class="text-[17px] font-semibold text-zinc-100">{props.title}</Text>
+          <Text numberOfLines={2} class="font-mono text-xs leading-4 text-zinc-400">
+            {props.subtitle}
+          </Text>
+        </View>
+      </View>
+      <View class={`gap-3 rounded-xl border border-graphite-line bg-graphite-inset p-3.5 ${finish.inset}`}>{props.children}</View>
     </View>
   );
 }
 
 function Label(props: { children: string }) {
-  return <Text class="text-center text-[11px] text-zinc-500 dark:text-zinc-400">{props.children}</Text>;
+  return <Text class="text-center text-xs text-zinc-400 tabular-nums">{props.children}</Text>;
+}
+
+/** A gradient hero lit by a citrus glow, with a big tabular figure and two badges. */
+function Hero() {
+  return (
+    <View
+      class={`overflow-hidden rounded-2xl border border-graphite-border bg-linear-to-br from-[#26282d] via-graphite-card to-graphite-inset p-5 inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] shadow-[0_10px_28px_rgba(0,0,0,0.38)]`}
+    >
+      <View class="absolute -right-20 -top-24 size-72 rounded-full bg-radial from-citrus/20 to-transparent to-70%" />
+      <View class="flex-row flex-wrap items-center gap-2">
+        <View class="h-[26px] flex-row items-center gap-1.5 rounded-full bg-white/10 px-2.5 ring-1 ring-inset ring-white/10">
+          <View class="size-2 items-center justify-center">
+            <View class="absolute size-2 rounded-full bg-citrus animate-ping" />
+            <View class="size-1.5 rounded-full bg-citrus" />
+          </View>
+          <Text class="text-xs font-medium text-zinc-100">Resolved natively</Text>
+        </View>
+        <View class="h-[26px] justify-center rounded-full bg-zinc-200 px-2.5 dark:bg-white/10">
+          <Text class="font-mono text-xs text-zinc-900 dark:text-zinc-100">dark:</Text>
+        </View>
+      </View>
+      <Text class="mt-6 text-[13px] text-zinc-400">This screen, styled with classes</Text>
+      <Text class="text-5xl font-semibold tracking-tight text-zinc-100 tabular-nums">
+        {String(sections.length)}
+        <Text class="text-[17px] font-normal tracking-normal text-zinc-400"> cards</Text>
+      </Text>
+      <Text class="mt-2 font-mono text-xs text-zinc-500">bg-linear-to-br · bg-radial · inset-shadow-[…]</Text>
+    </View>
+  );
+}
+
+/** A grid of figures, each with a tinted note. */
+function Stats() {
+  const stats = [
+    { label: "Swatches", value: String(palette.length * shades.length), note: `${palette.length} hues × ${shades.length} shades`, tone: "text-citrus" },
+    { label: "Gradients", value: "4", note: "Linear, radial, conic", tone: "text-emerald-400" },
+    { label: "Animations", value: "4", note: "Spin, ping, pulse, bounce", tone: "text-sky-400" },
+    { label: "Unknown classes", value: "0", note: "Checked at build", tone: "text-amber-400" },
+  ];
+  return (
+    <Card icon="stocks" title="Stat grid" subtitle="grid grid-cols-2 gap-2">
+      <View class="grid grid-cols-2 gap-2">
+        <Each of={stats}>
+          {(s) => (
+            <View class="gap-1 rounded-[10px] border border-graphite-line bg-linear-to-b from-[#1d1e22] to-[#17181b] p-3 inset-shadow-[0_1px_0_rgba(255,255,255,0.05)]">
+              <Text class="text-xs text-zinc-500">{s().label}</Text>
+              <Text class="text-[26px] font-semibold tracking-tight text-zinc-100 tabular-nums">{s().value}</Text>
+              <Text numberOfLines={1} class={`text-xs tabular-nums ${s().tone}`}>
+                {s().note}
+              </Text>
+            </View>
+          )}
+        </Each>
+      </View>
+      <View class="flex-row flex-wrap gap-x-4 gap-y-2">
+        <Each of={["bg-citrus", "bg-emerald-400", "bg-sky-400", "bg-amber-400"]}>
+          {(c, i) => (
+            <View class="flex-row items-center gap-1.5">
+              <View class={`size-2.5 rounded-[3px] ${c()}`} />
+              <Text class="text-[13px] text-zinc-400">{["Palette", "Gradients", "Motion", "Checks"][i()]}</Text>
+            </View>
+          )}
+        </Each>
+      </View>
+    </Card>
+  );
 }
 
 /** Buttons: press states without JS, transitions, `disabled:`. */
@@ -22,79 +116,93 @@ function Buttons() {
   const count = signal(0);
   const busy = signal(false);
   return (
-    <View class="gap-3">
-      <View class="flex-row flex-wrap gap-2">
-        <View
-          onPress={() => count.set(count() + 1)}
-          class="rounded-lg bg-brand-600 px-4 py-2 transition-colors duration-150 active:bg-brand-700 hover:bg-brand-500"
-        >
-          <Text class="font-medium text-white">Pressed {count()}×</Text>
-        </View>
+    <Card icon="components" title="Buttons" subtitle="active: hover: transition disabled: bg-linear-to-b">
+      <View
+        onPress={() => count.set(count() + 1)}
+        class={`h-11 flex-row items-center justify-center rounded-[10px] bg-zinc-100 ${finish.light} transition duration-150 active:scale-[0.97] active:opacity-90`}
+      >
+        <Text class="text-[15px] font-semibold text-zinc-900">Pressed {count()}×</Text>
+      </View>
+      <View class="flex-row gap-2">
         <View
           onPress={() => count.set(0)}
-          class="rounded-lg border border-zinc-300 px-4 py-2 transition active:scale-95 active:bg-zinc-100 dark:border-zinc-600 dark:active:bg-zinc-700"
+          class={`h-11 flex-1 items-center justify-center rounded-[10px] border border-graphite-border bg-graphite-raised ${finish.raised} transition active:scale-95 active:opacity-80`}
         >
-          <Text class="font-medium text-zinc-900 dark:text-white">Reset</Text>
+          <Text class="text-[15px] font-semibold text-zinc-100">Reset</Text>
         </View>
         <View
           onPress={() => busy.set(!busy())}
           disabled={busy()}
-          class="rounded-full bg-emerald-500 px-4 py-2 disabled:opacity-40 active:bg-emerald-600"
+          class={`h-11 flex-1 items-center justify-center rounded-[10px] bg-citrus ${finish.accent} transition active:scale-95 hover:opacity-90 disabled:opacity-40`}
         >
-          <Text class="font-medium text-white">{busy() ? "Disabled" : "Enabled"}</Text>
+          <Text class="text-[15px] font-semibold text-citrus-ink">{busy() ? "Disabled" : "Disable me"}</Text>
         </View>
       </View>
-      <View onPress={() => busy.set(false)} class="self-start rounded-md px-2 py-1 active:bg-zinc-100 dark:active:bg-zinc-700">
-        <Text class="text-sm text-brand-600 underline decoration-dotted underline-offset-4">Enable again</Text>
+      <View onPress={() => busy.set(false)} class="min-h-11 justify-center self-start rounded-lg px-1 active:bg-white/5">
+        <Text class="text-sm text-citrus underline decoration-dotted underline-offset-4">Enable again</Text>
       </View>
-    </View>
+    </Card>
   );
 }
 
+/** Cards: a group press row, tinted badges, an inner ring. */
 function Cards() {
+  const badges = [
+    "bg-emerald-400/15 text-emerald-400",
+    "bg-sky-400/15 text-sky-400",
+    "bg-amber-400/15 text-amber-400",
+    "border border-rose-400 text-rose-400",
+  ];
   return (
-    <View class="gap-3">
-      <View class="group flex-row items-center gap-3 rounded-2xl bg-white p-3 shadow-lg ring-1 ring-black/5 transition-transform duration-200 active:scale-[0.98] dark:bg-zinc-700">
-        <Image src={logo} class="size-12 rounded-xl" />
+    <Card icon="styles" title="Cards and badges" subtitle="group-active: ring-inset shadow-*">
+      <View class="group flex-row items-center gap-3 rounded-xl bg-linear-to-b from-[#2d2f34] to-[#222428] p-3 shadow-md shadow-black/40 ring-1 ring-inset ring-white/10 transition-transform duration-200 active:scale-[0.98]">
+        <Image src={logo} class="size-12 rounded-[10px]" />
         <View class="flex-1 gap-0.5">
-          <Text class="text-base font-semibold text-zinc-900 dark:text-white">Group press</Text>
-          <Text class="text-sm text-zinc-500 group-active:text-brand-600 dark:text-zinc-300">Press the card: this line changes color</Text>
+          <Text class="text-base font-semibold text-zinc-100">Group press</Text>
+          <Text class="text-[13px] text-zinc-400 group-active:text-citrus">Press the card: this line changes color</Text>
         </View>
-        <Text class="text-2xl text-zinc-300 transition-transform group-active:translate-x-1">›</Text>
+        <Text class="text-2xl text-zinc-600 transition-transform group-active:translate-x-1">›</Text>
       </View>
-      <View class="overflow-hidden rounded-2xl bg-linear-to-br from-brand-500 via-fuchsia-500 to-orange-400 p-5 shadow-xl shadow-brand-500/40">
-        <Text class="text-xl font-bold text-white">Gradient card</Text>
-        <Text class="mt-1 text-sm text-white/80">bg-linear-to-br from-brand-500 via-fuchsia-500 to-orange-400</Text>
+      <View class="flex-row flex-wrap gap-2">
+        <Each of={badges}>
+          {(b, i) => (
+            <View class={`h-[26px] justify-center rounded-full px-2.5 ${b()}`}>
+              <Text class="text-xs font-medium">{["Filled", "Live", "Pending", "Outline"][i()]}</Text>
+            </View>
+          )}
+        </Each>
       </View>
-    </View>
+    </Card>
   );
 }
 
 function Layout() {
   return (
-    <View class="gap-3">
+    <Card icon="lists" title="Flex, grid, breakpoints" subtitle="flex-[2] col-span-2 row-span-2 sm:">
       <View class="flex-row gap-2">
-        <View class="h-10 flex-1 rounded-md bg-sky-200" />
-        <View class="h-10 flex-[2] rounded-md bg-sky-400" />
-        <View class="h-10 w-10 rounded-md bg-sky-600" />
+        <View class="h-10 flex-1 rounded-lg bg-sky-400/20" />
+        <View class="h-10 flex-[2] rounded-lg bg-sky-400/50" />
+        <View class="size-10 rounded-lg bg-sky-400" />
       </View>
       <View class="grid grid-cols-3 gap-2">
-        <View class="col-span-2 h-12 items-center justify-center rounded-md bg-violet-200">
-          <Text class="text-xs text-violet-900">col-span-2</Text>
+        <View class="col-span-2 h-12 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/15">
+          <Text class="font-mono text-xs text-violet-300">col-span-2</Text>
         </View>
-        <View class="h-12 rounded-md bg-violet-300" />
-        <View class="h-12 rounded-md bg-violet-400" />
-        <View class="row-span-2 rounded-md bg-violet-500" />
-        <View class="h-12 rounded-md bg-violet-600" />
-        <View class="h-12 rounded-md bg-violet-700" />
-        <View class="h-12 rounded-md bg-violet-800" />
+        <View class="h-12 rounded-lg bg-violet-500/25" />
+        <View class="h-12 rounded-lg bg-violet-500/35" />
+        <View class="row-span-2 items-center justify-center rounded-lg bg-violet-500">
+          <Text class="font-mono text-[11px] text-white">row-span-2</Text>
+        </View>
+        <View class="h-12 rounded-lg bg-violet-500/45" />
+        <View class="h-12 rounded-lg bg-violet-500/55" />
+        <View class="h-12 rounded-lg bg-violet-500/70" />
       </View>
       <View class="flex-col gap-2 sm:flex-row">
-        <View class="h-8 flex-1 rounded-md bg-amber-300" />
-        <View class="h-8 flex-1 rounded-md bg-amber-500" />
+        <View class="h-8 flex-1 rounded-lg bg-amber-400/30" />
+        <View class="h-8 flex-1 rounded-lg bg-amber-400/60" />
       </View>
-      <Label>The last row is a column on phones and a row from `sm:` (640pt) up.</Label>
-    </View>
+      <Label>The last row is a column on phones and a row from 640 pt up (sm:).</Label>
+    </Card>
   );
 }
 
@@ -103,200 +211,203 @@ const shades = ["100", "300", "500", "700", "900"];
 
 function Colors() {
   return (
-    <View class="gap-1">
-      <Each of={palette}>
-        {(name) => (
-          <View class="flex-row gap-1">
-            <Text class="w-16 text-xs text-zinc-500">{name()}</Text>
-            <Each of={shades}>{(shade) => <View class={`h-6 flex-1 rounded bg-${name()}-${shade()}`} />}</Each>
-          </View>
-        )}
-      </Each>
-    </View>
+    <Card icon="image" title="Palette" subtitle="bg-{color}-{shade}">
+      <View class="gap-1.5">
+        <Each of={palette}>
+          {(name) => (
+            <View class="flex-row items-center gap-1.5">
+              <Text class="w-16 text-xs text-zinc-400">{name()}</Text>
+              <Each of={shades}>{(shade) => <View class={`h-6 flex-1 rounded-md bg-${name()}-${shade()}`} />}</Each>
+            </View>
+          )}
+        </Each>
+      </View>
+    </Card>
   );
 }
 
 function Shadows() {
-  const sizes = ["shadow-xs", "shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "shadow-2xl"];
+  const sizes = ["shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "shadow-2xl"];
   return (
-    <View class="gap-4">
-      <View class="flex-row flex-wrap justify-between gap-y-5 px-1 py-2">
+    <Card icon="spark" title="Shadows, rings, outlines" subtitle="shadow-* ring-* outline-* inset-shadow-*">
+      <View class="flex-row justify-between px-1 py-2">
         <Each of={sizes}>
           {(s) => (
-            <View class="gap-1">
-              <View class={`size-14 rounded-xl bg-white dark:bg-zinc-600 ${s()}`} />
+            <View class="items-center gap-2">
+              <View class={`size-12 rounded-xl bg-graphite-raised shadow-black ${s()}`} />
               <Label>{s().slice(7)}</Label>
             </View>
           )}
         </Each>
       </View>
-      <View class="flex-row justify-between px-1">
-        <View class="gap-1">
-          <View class="size-14 rounded-xl bg-zinc-100 inset-shadow-sm" />
-          <Label>inset</Label>
+      <View class="flex-row justify-between px-1 pb-1">
+        <View class="items-center gap-2">
+          <View class="size-12 rounded-xl bg-black inset-shadow-sm inset-shadow-white/10 ring-1 ring-inset ring-white/10" />
+          <Label>Inset</Label>
         </View>
-        <View class="gap-1">
-          <View class="size-14 rounded-xl bg-white ring-2 ring-sky-500 ring-offset-2" />
-          <Label>ring</Label>
+        <View class="items-center gap-2">
+          <View class="size-12 rounded-xl bg-graphite-raised ring-2 ring-sky-400 ring-offset-2 ring-offset-graphite-inset" />
+          <Label>Ring</Label>
         </View>
-        <View class="gap-1">
-          <View class="size-14 rounded-full bg-white outline-2 outline-offset-2 outline-dashed outline-pink-500" />
-          <Label>outline</Label>
+        <View class="items-center gap-2">
+          <View class="size-12 rounded-full bg-graphite-raised outline-2 outline-offset-2 outline-dashed outline-pink-400" />
+          <Label>Outline</Label>
         </View>
-        <View class="gap-1">
-          <View class="size-14 rounded-xl bg-emerald-500 shadow-lg shadow-emerald-500/50" />
-          <Label>colored</Label>
+        <View class="items-center gap-2">
+          <View class="size-12 rounded-xl bg-emerald-400 shadow-lg shadow-emerald-400/50" />
+          <Label>Glow</Label>
         </View>
       </View>
-    </View>
+    </Card>
   );
 }
 
 function Gradients() {
   const kinds = [
-    "bg-linear-to-r from-sky-400 to-blue-600",
-    "bg-linear-45 from-rose-400 via-fuchsia-500 to-indigo-500",
-    "bg-radial from-yellow-200 to-orange-500",
-    "bg-conic from-red-500 via-green-500 to-red-500",
+    ["bg-linear-to-r from-sky-400 to-blue-600", "Linear"],
+    ["bg-linear-45 from-rose-400 via-fuchsia-500 to-indigo-500", "45°"],
+    ["bg-radial from-yellow-200 to-orange-500", "Radial"],
+    ["bg-conic from-red-500 via-green-500 to-red-500", "Conic"],
   ];
   return (
-    <View class="flex-row justify-between">
-      <Each of={kinds}>{(k) => <View class={`size-16 rounded-xl ${k()}`} />}</Each>
-    </View>
+    <Card icon="canvas" title="Gradients" subtitle="bg-linear-* bg-radial bg-conic">
+      <View class="flex-row justify-between">
+        <Each of={kinds}>
+          {(k) => (
+            <View class="items-center gap-2">
+              <View class={`size-16 rounded-2xl ${k()[0]}`} />
+              <Label>{k()[1]}</Label>
+            </View>
+          )}
+        </Each>
+      </View>
+    </Card>
   );
 }
 
 function Typography() {
   return (
-    <View class="gap-2">
-      <Text class="text-3xl font-black tracking-tight text-zinc-900 dark:text-white">Display</Text>
-      <Text class="text-lg font-light text-zinc-700 dark:text-zinc-200">Light, large and relaxed</Text>
-      <Text class="font-serif text-lg italic text-zinc-700 dark:text-zinc-200">Serif italic</Text>
-      <Text class="font-mono text-sm text-zinc-700 tabular-nums dark:text-zinc-200">font-mono 0123456789</Text>
-      <View class="flex-row flex-wrap gap-x-4 gap-y-1 text-zinc-800 dark:text-zinc-100">
-        <Text class="underline decoration-wavy decoration-red-500">wavy</Text>
-        <Text class="underline decoration-double decoration-sky-500">double</Text>
+    <Card icon="text" title="Typography" subtitle="font-* tracking-* decoration-* line-clamp-*">
+      <Text class="text-3xl font-black tracking-tight text-zinc-100">Display</Text>
+      <Text class="text-lg font-light text-zinc-300">Light, large and relaxed</Text>
+      <Text class="font-serif text-lg italic text-zinc-300">Serif italic</Text>
+      <Text class="font-mono text-sm text-zinc-300 tabular-nums">font-mono 0123456789</Text>
+      <View class="flex-row flex-wrap gap-x-4 gap-y-1 text-[15px] text-zinc-200">
+        <Text class="underline decoration-wavy decoration-rose-400">wavy</Text>
+        <Text class="underline decoration-double decoration-sky-400">double</Text>
         <Text class="underline decoration-dashed decoration-2">dashed</Text>
-        <Text class="line-through decoration-zinc-400">struck</Text>
-        <Text class="uppercase tracking-widest text-xs font-semibold text-brand-600">caps</Text>
+        <Text class="line-through decoration-zinc-500">struck</Text>
+        <Text class="text-xs font-semibold uppercase tracking-widest text-citrus">caps</Text>
       </View>
-      <Text class="truncate text-sm text-zinc-500">truncate: a single line that is far too long to fit in the card cut with an ellipsis</Text>
-      <Text class="line-clamp-2 text-sm leading-relaxed text-zinc-500">
+      <Text class="truncate text-[13px] text-zinc-500">truncate: a single line that is far too long to fit in the card cut with an ellipsis</Text>
+      <Text class="line-clamp-2 text-[13px] leading-relaxed text-zinc-500">
         line-clamp-2: Text is laid out once on the engine thread and drawn on the main thread; classes reach it through the same style path as everything
         else, so the third line of this paragraph never shows.
       </Text>
-      <Text class="text-shadow-md text-xl font-bold text-white bg-sky-500 rounded-md px-2 self-start">text-shadow-md</Text>
-    </View>
+      <Text class="self-start rounded-md bg-sky-500 px-2 text-xl font-bold text-white text-shadow-md">text-shadow-md</Text>
+    </Card>
   );
 }
 
 function Effects() {
   return (
-    <View class="gap-3">
+    <Card icon="photos" title="Filters and blur" subtitle="grayscale sepia blur backdrop-blur mix-blend">
       <View class="flex-row justify-between">
         <Each of={["", "grayscale", "sepia", "blur-sm", "brightness-50"]}>
           {(f) => (
-            <View class="gap-1">
-              <Image src={photo} class={`size-14 rounded-lg ${f()}`} />
-              <Label>{f() || "none"}</Label>
+            <View class="items-center gap-1.5">
+              <Image src={photo} class={`size-14 rounded-xl ${f()}`} />
+              <Label>{f() || "None"}</Label>
             </View>
           )}
         </Each>
       </View>
-      <View class="h-28 overflow-hidden rounded-xl">
+      <View class="h-32 overflow-hidden rounded-xl">
         <Image src={photo} class="absolute inset-0 size-full" />
-        <View class="absolute inset-x-3 bottom-3 rounded-lg bg-white/40 px-3 py-2 backdrop-blur-md">
-          <Text class="text-sm font-semibold text-zinc-900">backdrop-blur-md bg-white/40</Text>
+        <View class="absolute inset-x-3 bottom-3 rounded-lg border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
+          <Text class="text-[13px] font-semibold text-white">backdrop-blur-md bg-black/40</Text>
         </View>
         <View class="absolute right-3 top-3 size-10 rounded-full bg-yellow-300 mix-blend-multiply" />
       </View>
-    </View>
+    </Card>
   );
 }
 
 function Motion() {
   return (
-    <View class="flex-row items-center justify-between px-2 py-3">
-      <View class="gap-2 items-center">
-        <View class="size-8 rounded-md bg-brand-500 animate-spin" />
-        <Label>spin</Label>
-      </View>
-      <View class="gap-2 items-center">
-        <View class="size-8 items-center justify-center">
-          <View class="absolute size-4 rounded-full bg-sky-400 animate-ping" />
-          <View class="size-4 rounded-full bg-sky-500" />
+    <Card icon="animation" title="Animations and transforms" subtitle="animate-* rotate-* skew-* scale-*">
+      <View class="flex-row items-center justify-between px-1 py-2">
+        <View class="items-center gap-2.5">
+          <View class="size-8 rounded-lg bg-violet-500 animate-spin" />
+          <Label>Spin</Label>
         </View>
-        <Label>ping</Label>
+        <View class="items-center gap-2.5">
+          <View class="size-8 items-center justify-center">
+            <View class="absolute size-4 rounded-full bg-sky-400 animate-ping" />
+            <View class="size-4 rounded-full bg-sky-400" />
+          </View>
+          <Label>Ping</Label>
+        </View>
+        <View class="items-center gap-2.5">
+          <View class="h-8 w-14 rounded-lg bg-graphite-raised animate-pulse" />
+          <Label>Pulse</Label>
+        </View>
+        <View class="items-center gap-2.5">
+          <View class="size-8 rounded-full bg-orange-400 animate-bounce" />
+          <Label>Bounce</Label>
+        </View>
+        <View class="items-center gap-2.5">
+          <View class="size-8 rotate-12 skew-x-6 scale-90 rounded-lg bg-emerald-400" />
+          <Label>Transform</Label>
+        </View>
       </View>
-      <View class="gap-2 items-center">
-        <View class="h-8 w-14 rounded-md bg-zinc-300 animate-pulse" />
-        <Label>pulse</Label>
-      </View>
-      <View class="gap-2 items-center">
-        <View class="size-8 rounded-full bg-orange-400 animate-bounce" />
-        <Label>bounce</Label>
-      </View>
-      <View class="gap-2 items-center">
-        <View class="size-8 rotate-12 skew-x-6 scale-90 rounded-md bg-emerald-500" />
-        <Label>transform</Label>
-      </View>
-    </View>
+    </Card>
   );
 }
 
 function Lists() {
   const items = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
   return (
-    <View class="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
-      <Each of={items}>
-        {(item) => (
-          <View class="flex-row items-center justify-between border-t border-zinc-200 px-3 py-2.5 first:border-t-0 even:bg-zinc-50 last:bg-rose-50 active:bg-brand-50 dark:border-zinc-700 dark:even:bg-zinc-900 dark:last:bg-rose-950">
-            <Text class="text-zinc-800 dark:text-zinc-100">{item()}</Text>
-            <Text class="text-xs text-zinc-400">›</Text>
-          </View>
-        )}
-      </Each>
-    </View>
+    <Card icon="lists" title="Structural variants" subtitle="first: even: last: active:">
+      <View class="overflow-hidden rounded-xl border border-graphite-line">
+        <Each of={items}>
+          {(item) => (
+            <View class="min-h-12 flex-row items-center justify-between border-t border-graphite-line px-3.5 first:border-t-0 even:bg-white/5 last:bg-rose-500/10 active:bg-citrus/10">
+              <Text class="text-[15px] text-zinc-200 last:text-rose-300">{item()}</Text>
+              <Text class="text-base text-zinc-600">›</Text>
+            </View>
+          )}
+        </Each>
+      </View>
+    </Card>
   );
 }
 
 function Inputs() {
   return (
-    <View class="gap-2">
+    <Card icon="form" title="Inputs" subtitle="focus: placeholder: caret-*">
       <Input
         placeholder="Focus me"
-        class="rounded-lg border border-zinc-300 px-3 py-2 text-base text-zinc-900 placeholder:text-zinc-400 caret-brand-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-600 dark:text-white"
+        class="h-11 rounded-[10px] border border-graphite-border bg-graphite-card px-3.5 inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)] text-[15px] text-zinc-100 placeholder:text-zinc-600 caret-citrus focus:border-citrus focus:ring-2 focus:ring-citrus/25"
       />
-      <Label>focus: border and ring, placeholder: color, caret color</Label>
-    </View>
+      <Label>Focus adds a border and a ring; the placeholder and caret colors are classes too.</Label>
+    </Card>
   );
 }
 
-const sections: [string, () => any][] = [
-  ["Buttons: active, hover, transition, disabled", Buttons],
-  ["Cards: shadow, ring, group, gradient", Cards],
-  ["Flex, grid, breakpoints", Layout],
-  ["Palette", Colors],
-  ["Shadows, rings, outlines", Shadows],
-  ["Gradients", Gradients],
-  ["Typography", Typography],
-  ["Filters, backdrop blur, blend modes", Effects],
-  ["Animations and transforms", Motion],
-  ["first:, even:, last:", Lists],
-  ["Inputs", Inputs],
-];
+const sections: (() => JSX.Element)[] = [Hero, Stats, Buttons, Cards, Layout, Shadows, Gradients, Typography, Effects, Motion, Lists, Inputs, Colors];
 
 export function Tailwind() {
   return (
-    <Scroll class="flex-1 bg-zinc-100 dark:bg-zinc-900">
-      <View class="gap-5 p-4">
+    <Scroll class="flex-1 bg-graphite-page">
+      <View class="gap-4 p-4 pb-10">
         <Each of={sections}>
-          {(section) => {
-            const [title, Body] = section();
+          {(section, i) => {
+            const Body = section();
             return (
-              <Section title={title}>
+              <Appear index={i()}>
                 <Body />
-              </Section>
+              </Appear>
             );
           }}
         </Each>

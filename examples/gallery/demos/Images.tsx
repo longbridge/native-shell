@@ -1,189 +1,316 @@
-import { Scroll, signal, Text, View } from "nsh";
+import { type JSX, Scroll, signal, Text, View } from "nsh";
 import { Image } from "nsh/image";
 import bounce from "../bounce.gif";
 import logo from "../logo@2x.png";
 import spinner from "../spinner.webp";
-import { Button, colors, Section } from "../ui";
+import { Appear, Badge, Button, Caption, Card, colors, finish, Meter, mono, radius } from "../ui";
 
-const wide = "https://picsum.photos/seed/nsh-wide/480/240";
+// Fixed photos (in color), large enough to stay sharp at 3x.
+const wide = "https://picsum.photos/id/1015/1200/600";
+const photo = (id: number, w: number, h: number) => `https://picsum.photos/id/${id}/${w}/${h}`;
 
-function Caption(props: { children: string }) {
-  return <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>{props.children}</Text>;
+/** Every photo's frame: rounded, a hairline border, a raised fill while it loads. */
+const frame = { borderRadius: radius.control, borderCurve: "continuous", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.raised } as const;
+
+/** A quiet label under a tile (`code` for API values). */
+function Note(props: { children: string; code?: boolean }) {
+  return (
+    <Text numberOfLines={1} style={{ fontSize: 13, color: colors.muted, fontFamily: props.code ? mono : undefined, fontVariant: ["tabular-nums"], textAlign: "center" }}>
+      {props.children}
+    </Text>
+  );
+}
+
+/** A tile on the inset: something centered on a raised square, a note below. */
+function Tile(props: { note: string; code?: boolean; height?: number; children: JSX.Element }) {
+  return (
+    <View style={{ flex: 1, gap: 8 }}>
+      <View
+        style={{
+          height: props.height ?? 76,
+          borderRadius: radius.control,
+          borderCurve: "continuous",
+          backgroundColor: colors.raised,
+          ...finish.raised,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {props.children}
+      </View>
+      <Note code={props.code}>{props.note}</Note>
+    </View>
+  );
+}
+
+/** A 2:1 image in squares, one per resize mode. */
+function ResizeModes() {
+  const rows = [
+    ["cover", "contain"],
+    ["stretch", "center"],
+  ] as const;
+  return (
+    <Card icon="image" title="Resize modes" subtitle="A 2:1 image in square frames">
+      <Each of={rows}>
+        {(row) => (
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <Each of={row()}>
+              {(mode) => (
+                <View style={{ flex: 1, gap: 8 }}>
+                  <Image src={wide} resizeMode={mode()} style={{ ...frame, height: 140 }} />
+                  <Note code>{mode()}</Note>
+                </View>
+              )}
+            </Each>
+          </View>
+        )}
+      </Each>
+    </Card>
+  );
+}
+
+function Corners() {
+  const square = { ...frame, width: 88, height: 88 } as const;
+  return (
+    <Card icon="styles" title="Corners and borders" subtitle="Radii per corner, borders on the image">
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <Image src={wide} style={{ ...square, borderRadius: 44 }} />
+          <Note>Circle</Note>
+        </View>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <Image src={wide} style={{ ...square, borderRadius: 18, borderWidth: 2, borderColor: colors.accent }} />
+          <Note>Border</Note>
+        </View>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <Image src={wide} style={{ ...square, borderRadius: 0, borderTopLeftRadius: 40, borderBottomRightRadius: 40 }} />
+          <Note>Two corners</Note>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function Assets() {
+  const tints = [
+    { label: "Accent", color: colors.accent },
+    { label: "Info", color: colors.info },
+    { label: "Danger", color: colors.danger },
+  ];
+  return (
+    <Card icon="star" title="Assets and tint" subtitle="logo@2x.png, tinted natively">
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <Tile note="Original">
+          <Image src={logo} />
+        </Tile>
+        <Each of={tints}>
+          {(tint) => (
+            <Tile note={tint().label}>
+              <Image src={logo} style={{ tintColor: tint().color }} />
+            </Tile>
+          )}
+        </Each>
+      </View>
+    </Card>
+  );
+}
+
+function Animated() {
+  return (
+    <Card icon="animation" title="Animated GIF and WebP" subtitle="Decoded and played natively">
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <Tile note="bounce.gif" code height={96}>
+          <Image src={bounce} />
+        </Tile>
+        <Tile note="spinner.webp" code height={96}>
+          <Image src={spinner} />
+        </Tile>
+        <Tile note="Scaled, round" height={96}>
+          <Image src={bounce} style={{ width: 48, height: 48, borderRadius: 24 }} />
+        </Tile>
+      </View>
+    </Card>
+  );
 }
 
 /** Network images behind a placeholder, fading in; "Reload" asks for
  * images that are not cached yet. */
 function Placeholders() {
   const seed = signal(1);
-  const fades = [0, 300, 1000];
+  // A new size per reload: a URL not in the cache yet.
+  const fades = [
+    { id: 1043, ms: 0 },
+    { id: 1080, ms: 300 },
+    { id: 1069, ms: 1000 },
+  ];
   return (
-    <View style={{ gap: 10 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+    <Card
+      icon="photos"
+      title="Placeholder and fade"
+      subtitle="defaultSource, then a fade"
+      right={<Button label="Reload" variant="secondary" onPress={() => seed.set(seed() + 1)} />}
+    >
+      <View style={{ flexDirection: "row", gap: 12 }}>
         <Each of={fades}>
           {(fade) => (
-            <View style={{ gap: 4, alignItems: "center" }}>
+            <View style={{ flex: 1, gap: 8 }}>
               <Image
-                src={`https://picsum.photos/seed/nsh-fade-${seed()}-${fade()}/300/300`}
+                src={photo(fade().id, 600 + seed(), 600 + seed())}
                 defaultSource={logo}
-                fadeDuration={fade()}
+                fadeDuration={fade().ms}
                 resizeMode="cover"
-                style={{ width: 100, height: 100, borderRadius: 12, backgroundColor: "#eaeef2" }}
+                style={{ ...frame, height: 100 }}
               />
-              <Caption>{`fade ${fade()}ms`}</Caption>
+              <Note>{`${fade().ms} ms`}</Note>
             </View>
           )}
         </Each>
       </View>
-      <Button label="Reload" onPress={() => seed.set(seed() + 1)} />
-    </View>
+      <Caption label="Loads" note={`${seed()}`} />
+    </Card>
   );
 }
 
 function Blur() {
   const radii = [0, 2, 6, 16];
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-      <Each of={radii}>
-        {(radius) => (
-          <View style={{ gap: 4, alignItems: "center" }}>
-            <Image src={wide} blurRadius={radius()} style={{ width: 76, height: 76, borderRadius: 8 }} />
-            <Caption>{`blur ${radius()}`}</Caption>
-          </View>
-        )}
-      </Each>
-    </View>
+    <Card icon="spark" title="Blur radius" subtitle="blurRadius, applied while decoding">
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Each of={radii}>
+          {(r) => (
+            <View style={{ flex: 1, gap: 8 }}>
+              <Image src={wide} blurRadius={r()} style={{ ...frame, height: 76 }} />
+              <Note>{r() === 0 ? "None" : `${r()} pt`}</Note>
+            </View>
+          )}
+        </Each>
+      </View>
+    </Card>
   );
 }
 
 function Info() {
-  const big = "https://picsum.photos/seed/nsh-progress/2400/1600";
-  const size = signal("");
-  const prefetched = signal("");
-  const progress = signal("");
+  const big = photo(1018, 2400, 1600);
+  const size = signal("—");
+  const prefetched = signal("—");
+  const progress = signal(0);
+  const status = signal("not shown");
   const show = signal(false);
   return (
-    <View style={{ gap: 10 }}>
+    <Card icon="search" title="Size, prefetch, progress" subtitle="Image.getSize · Image.prefetch · onProgress">
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Button
-          label="getSize"
-          onPress={() =>
-            Image.getSize(big).then(
-              (s) => size.set(`${s.width}×${s.height} px`),
-              (e) => size.set(String(e)),
-            )
-          }
-        />
-        <Button label="prefetch" color="#8250df" onPress={() => Image.prefetch(big).then((ok) => prefetched.set(ok ? "prefetched" : "failed"))} />
-        <Button label={show() ? "Hide" : "Show"} color="#1a7f37" onPress={() => show.set(!show())} />
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Size"
+            variant="secondary"
+            onPress={() =>
+              Image.getSize(big).then(
+                (s) => size.set(`${s.width}×${s.height} px`),
+                (e) => size.set(String(e)),
+              )
+            }
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Prefetch"
+            variant="secondary"
+            onPress={() => {
+              prefetched.set("loading…");
+              Image.prefetch(big).then((ok) => prefetched.set(ok ? "in memory" : "failed"));
+            }}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label={show() ? "Hide" : "Show"} variant={show() ? "secondary" : "accent"} onPress={() => show.set(!show())} />
+        </View>
       </View>
-      <Text style={{ color: colors.muted }}>
-        {[size(), prefetched(), progress()].filter(Boolean).join(" · ") || "Prefetch, then show: no download, no progress"}
-      </Text>
-      {show() && (
+      <View style={{ gap: 8 }}>
+        <Caption label="getSize" note={size()} />
+        <Caption label="prefetch" note={prefetched()} />
+        <Caption label="onProgress" note={`${Math.round(progress() * 100)}% · ${status()}`} />
+        <Meter value={progress()} tone={progress() >= 1 ? "up" : "accent"} />
+      </View>
+      <If when={show()} else={<Note>Prefetch, then show: no download, no progress</Note>}>
+        <Appear>
+          <Image
+            src={big}
+            onLoadStart={() => status.set("loading")}
+            onProgress={(e) => progress.set(e.loaded / Math.max(1, e.total))}
+            onLoad={() => {
+              if (progress() === 0) status.set("loaded (no download)");
+              else status.set("loaded");
+              progress.set(1);
+            }}
+            style={{ ...frame, height: 170 }}
+          />
+        </Appear>
+      </If>
+    </Card>
+  );
+}
+
+function Events() {
+  const events = signal<string[]>([]);
+  const log = (line: string) => events.set([...events(), line]);
+  const loaded = signal("…");
+  const failed = signal("Loading…");
+  const thumb = { ...frame, width: 96, height: 64 } as const;
+  return (
+    <Card icon="bell" title="Events" subtitle="Load start, load, error, load end">
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <Image
-          src={big}
-          onProgress={(e) => progress.set(`${Math.round((e.loaded / Math.max(1, e.total)) * 100)}%`)}
-          onLoad={() => progress.update((p) => (p ? `${p} loaded` : "loaded (no download)"))}
-          style={{ height: 160, borderRadius: 10, backgroundColor: "#eaeef2" }}
+          src={photo(1084, 600, 400)}
+          onLoadStart={() => log("onLoadStart")}
+          onLoad={(e) => {
+            log("onLoad");
+            loaded.set(`${e.width}×${e.height}`);
+          }}
+          onError={(e) => loaded.set(e.message)}
+          onLoadEnd={() => log("onLoadEnd")}
+          style={thumb}
         />
-      )}
-    </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 15, color: colors.text }}>picsum.photos</Text>
+          <Text style={{ fontSize: 13, color: colors.up, fontVariant: ["tabular-nums"] }}>{`Loaded, ${loaded()} px`}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 12 }}>
+        <View style={{ ...thumb, alignItems: "center", justifyContent: "center", borderColor: "rgba(255,97,112,0.4)" }}>
+          <Image src="https://example.invalid/missing.png" onError={(e) => failed.set(e.message)} style={{ ...thumb, position: "absolute", left: -1, top: -1, borderWidth: 0 }} />
+          <Text style={{ fontSize: 20, color: colors.danger }}>×</Text>
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 15, color: colors.text }}>example.invalid</Text>
+          <Text numberOfLines={3} style={{ fontSize: 13, color: colors.danger }}>{failed()}</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <If when={events().length > 0} else={<Note>No load events yet</Note>}>
+          <Each of={events()}>{(e) => <Badge label={e()} tone={e() === "onLoad" ? "up" : "neutral"} />}</Each>
+        </If>
+      </View>
+    </Card>
   );
 }
 
 export function Images() {
-  const events = signal<string[]>([]);
-  const log = (line: string) => events.set([...events(), line]);
-  const loaded = signal("loading…");
-  const failed = signal("loading…");
+  const cards = [ResizeModes, Corners, Assets, Animated, Placeholders, Blur, Info, Events];
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <Section title="Resize modes (a 2:1 image in squares)">
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" }}>
-            <Each of={["cover", "contain", "stretch", "center"] as const}>
-              {(mode) => (
-                <View style={{ gap: 4 }}>
-                  <Image src={wide} resizeMode={mode()} style={{ width: 140, height: 140, backgroundColor: "#eaeef2" }} />
-                  <Caption>{mode()}</Caption>
-                </View>
-              )}
-            </Each>
-          </View>
-        </Section>
-        <Section title="Corners and borders">
-          <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
-            <Image src={wide} style={{ width: 90, height: 90, borderRadius: 45 }} />
-            <Image src={wide} style={{ width: 90, height: 90, borderRadius: 16, borderWidth: 3, borderColor: "#8250df" }} />
-            <Image src={wide} style={{ width: 90, height: 90, borderTopLeftRadius: 40, borderBottomRightRadius: 40 }} />
-          </View>
-        </Section>
-        <Section title="Assets and tint">
-          <View style={{ flexDirection: "row", gap: 16, alignItems: "center", justifyContent: "center" }}>
-            <View style={{ gap: 4, alignItems: "center" }}>
-              <Image src={logo} />
-              <Caption>logo@2x.png</Caption>
-            </View>
-            <Each of={["#cf222e", "#1a7f37", "#0969da"]}>
-              {(tint) => (
-                <View style={{ gap: 4, alignItems: "center" }}>
-                  <Image src={logo} style={{ tintColor: tint() }} />
-                  <Caption>{tint()}</Caption>
-                </View>
-              )}
-            </Each>
-          </View>
-        </Section>
-        <Section title="Animated GIF and WebP">
-          <View style={{ flexDirection: "row", gap: 24, justifyContent: "center" }}>
-            <View style={{ gap: 4, alignItems: "center" }}>
-              <Image src={bounce} />
-              <Caption>bounce.gif</Caption>
-            </View>
-            <View style={{ gap: 4, alignItems: "center" }}>
-              <Image src={spinner} />
-              <Caption>spinner.webp</Caption>
-            </View>
-            <View style={{ gap: 4, alignItems: "center" }}>
-              <Image src={bounce} style={{ width: 48, height: 48, borderRadius: 24 }} />
-              <Caption>scaled, round</Caption>
-            </View>
-          </View>
-        </Section>
-        <Section title="Placeholder (defaultSource) and fade in">
-          <Placeholders />
-        </Section>
-        <Section title="Blur radius">
-          <Blur />
-        </Section>
-        <Section title="Image.getSize, Image.prefetch, onProgress">
-          <Info />
-        </Section>
-        <Section title="Events">
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-            <Image
-              src="https://picsum.photos/seed/nsh-load/300/200"
-              onLoadStart={() => log("onLoadStart")}
-              onLoad={(e) => {
-                log("onLoad");
-                loaded.set(`onLoad: ${e.width}×${e.height}`);
-              }}
-              onError={(e) => loaded.set(`onError: ${e.message}`)}
-              onLoadEnd={() => log("onLoadEnd")}
-              style={{ width: 90, height: 60, borderRadius: 8, backgroundColor: "#eaeef2" }}
-            />
-            <Text style={{ flex: 1 }}>{loaded()}</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-            <Image
-              src="https://example.invalid/missing.png"
-              onError={(e) => failed.set(`onError: ${e.message}`)}
-              style={{ width: 90, height: 60, borderRadius: 8, backgroundColor: "#eaeef2" }}
-            />
-            <Text numberOfLines={3} style={{ flex: 1 }}>{failed()}</Text>
-          </View>
-          <Caption>{events().join(" → ") || "no load events yet"}</Caption>
-        </Section>
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Each of={cards}>
+          {(Demo, i) => {
+            const Body = Demo();
+            return (
+              <Appear index={i()}>
+                <Body />
+              </Appear>
+            );
+          }}
+        </Each>
       </View>
     </Scroll>
   );

@@ -1,146 +1,274 @@
-import { Input, Scroll, signal, Text, View } from "nsh";
+import { Input, type InputProps, type JSX, Scroll, signal, Text, View, type YNode } from "nsh";
 import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/accessibility";
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
 import { InputAccessoryView } from "nsh/ios";
 import { Button, Card, KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/ui/mobile";
+import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
-import { Button as UiButton, colors, Section } from "../ui";
+import {
+  Appear,
+  Badge,
+  Button as UiButton,
+  Caption,
+  Card as UiCard,
+  colors,
+  finish,
+  header,
+  IconTile,
+  Inset,
+  mono,
+  Press,
+  radius,
+  Row,
+  Segmented,
+  tints,
+  Toggle,
+  type Tone,
+  toneColor,
+  toneTint,
+} from "../ui";
 
 const hairline = 1 / PixelRatio.get();
 
-const styles = {
-  row: { flexDirection: "row", alignItems: "center", gap: 12 },
-  card: { backgroundColor: "#ffffff", borderRadius: 10, padding: 12, borderWidth: hairline, borderColor: colors.border },
-  label: { fontSize: 15, color: colors.text },
-  muted: { fontSize: 13, color: colors.muted },
-} as const;
+/** A dark input, 48 pt tall. */
+function Field(props: InputProps) {
+  const focused = signal(false);
+  return (
+    <Input
+      placeholderTextColor={colors.faint}
+      selectionColor={colors.accent}
+      onFocus={() => focused.set(true)}
+      onBlur={() => focused.set(false)}
+      {...props}
+      style={{
+        height: 48,
+        paddingHorizontal: 14,
+        fontSize: 15,
+        color: colors.text,
+        backgroundColor: colors.inset,
+        borderWidth: 1,
+        borderColor: focused() ? colors.accent : colors.border,
+        borderRadius: radius.control,
+        ...finish.inset,
+      }}
+    />
+  );
+}
+
+/** A cell of a row of equal widths. */
+function Cell(props: { children: JSX.Element }) {
+  return <View style={{ flex: 1 }}>{props.children}</View>;
+}
+
+/** A row that pushes a screen. */
+function LinkRow(props: { icon: IconName; title: string; note: string; onPress: () => void }) {
+  return (
+    <Press onPress={props.onPress} scale={0.98} accessibilityLabel={props.title}>
+      <View style={{ minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 10, paddingVertical: 8 }}>
+        <IconTile name={props.icon} size={34} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 15, fontWeight: "500", color: colors.text }}>{props.title}</Text>
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>
+            {props.note}
+          </Text>
+        </View>
+        <Icon name="chevron" size={14} tint={colors.faint} />
+      </View>
+    </Press>
+  );
+}
+
+const presets = [
+  { value: "spring", label: "Spring" },
+  { value: "easeInEaseOut", label: "Ease" },
+  { value: "linear", label: "Linear" },
+] as const;
+
+const tileTones: Tone[] = ["accent", "info", "warn", "up", "danger"];
 
 function LayoutAnimations() {
   const items = signal([1, 2, 3]);
+  const preset = signal<(typeof presets)[number]["value"]>("spring");
   let next = 4;
   const animate = (change: () => void) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets[preset()]);
     change();
   };
   return (
-    <Section title="Layout animation">
-      <View style={styles.row}>
-        <UiButton label="Add" onPress={() => animate(() => items.set([next++, ...items()]))} />
-        <UiButton label="Shuffle" color="#8250df" onPress={() => animate(() => items.set([...items()].sort(() => Math.random() - 0.5)))} />
-        <UiButton label="Remove" color="#cf222e" onPress={() => animate(() => items.set(items().slice(1)))} />
-      </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+    <UiCard icon="animation" title="Layout animation" subtitle="configureNext, then change the tree" right={<Badge label={`${items().length}`} />}>
+      <Segmented options={presets} value={preset()} onChange={(p) => preset.set(p)} size="small" />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, minHeight: 56 }}>
         <Each of={items()}>
           {(n) => (
-            <View style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: "#ddf4ff", alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ fontWeight: "600" }}>{n()}</Text>
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                borderCurve: "continuous",
+                backgroundColor: toneTint(tileTones[n() % tileTones.length]),
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: "600", fontVariant: ["tabular-nums"], color: toneColor(tileTones[n() % tileTones.length]) }}>{n()}</Text>
             </View>
           )}
         </Each>
       </View>
-    </Section>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Cell><UiButton label="Add" icon="plus" onPress={() => animate(() => items.set([next++, ...items()]))} /></Cell>
+        <Cell><UiButton label="Shuffle" variant="secondary" onPress={() => animate(() => items.set([...items()].sort(() => Math.random() - 0.5)))} /></Cell>
+        <Cell><UiButton label="Remove" variant="secondary" disabled={items().length === 0} onPress={() => animate(() => items.set(items().slice(1)))} /></Cell>
+      </View>
+    </UiCard>
   );
 }
 
 function PressableSheet() {
   const sheet = signal(false);
   return (
-    <Section title="Sheet">
+    <UiCard icon="components" title="Sheet" subtitle="A Tailwind active: variant opens it">
       <View
         onPress={() => sheet.set(true)}
-        class="rounded-[10px] bg-[#8250df] p-3.5 transition active:scale-[0.97] active:bg-[#bf3989]"
+        accessibilityRole="button"
+        style={{ boxShadow: finish.accent.boxShadow }}
+        class="h-12 flex-row items-center justify-center gap-2 rounded-[12px] bg-[#c8f26d] transition active:scale-[0.97] active:bg-[#a9d14f]"
       >
-        <Text style={{ color: "#ffffff", fontWeight: "600" }}>Open a sheet</Text>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onAccent }}>Open a sheet</Text>
       </View>
+      <Caption label="Scales and darkens while pressed" note="active:scale-[0.97]" />
       <Modal visible={sheet()} ios={{ presentationStyle: "pageSheet" }} animationType="slide" onRequestClose={() => sheet.set(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface, padding: 20, gap: 16 }}>
-          <Text style={{ fontSize: 24, fontWeight: "700" }}>A sheet</Text>
-          <Text style={{ color: colors.muted }}>Swipe down (iOS) or press back (Android) to close.</Text>
-          <UiButton label="Close" onPress={() => sheet.set(false)} />
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={{ flex: 1, padding: 16, gap: 16 }}>
+            <View style={{ gap: 8, paddingHorizontal: 4, paddingTop: 8 }}>
+              <View style={{ flexDirection: "row" }}>
+                <Badge label="pageSheet" tone="accent" />
+              </View>
+              <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.text }}>A sheet</Text>
+              <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>Swipe down (iOS) or press back (Android) to close.</Text>
+            </View>
+            <View style={{ flex: 1 }} />
+            <UiButton label="Close" onPress={() => sheet.set(false)} />
+          </View>
         </SafeAreaView>
       </Modal>
-    </Section>
+    </UiCard>
   );
 }
 
+/** A tile to press, with the prop it shows. */
+function Tile(props: { title: string; note: string; children?: JSX.Element }) {
+  return (
+    <View style={{ minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 15, color: colors.text }}>{props.title}</Text>
+        <Text style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>{props.note}</Text>
+      </View>
+      {props.children}
+    </View>
+  );
+}
+
+const tile = {
+  borderRadius: radius.control,
+  borderCurve: "continuous",
+  borderWidth: 1,
+  borderColor: colors.border,
+  backgroundColor: colors.surface,
+  // The raised highlight without its gradient, so an underlay color shows.
+  boxShadow: finish.raised.boxShadow,
+} as const;
+
 /** Press feedback is native: opacity, an underlay, classes; `disabled` takes no presses. */
 function PressFeedback() {
-  const last = signal("nothing yet");
+  const last = signal("None yet");
   const disabled = signal(false);
   return (
-    <Section title="Press feedback">
-      <View style={styles.card} activeOpacity={0.4} onPress={() => last.set("activeOpacity")}>
-        <Text style={styles.label}>activeOpacity: fades while pressed</Text>
+    <UiCard icon="gestures" title="Press feedback" subtitle="Drawn natively while the finger is down">
+      <View style={tile} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
+        <Tile title="Fades while pressed" note="activeOpacity={0.4}" />
       </View>
-      <View style={styles.card} underlayColor="#dbeafe" onPress={() => last.set("underlayColor")}>
-        <Text style={styles.label}>underlayColor: the background while pressed</Text>
+      <View style={tile} underlayColor={colors.raised} onPress={() => last.set("Underlay tile")}>
+        <Tile title="Lights up while pressed" note="underlayColor" />
       </View>
-      <View
-        style={styles.card}
-        disabled={disabled()}
-        underlayColor="#fee2e2"
-        class="disabled:opacity-40"
-        onPress={() => last.set("disabled view")}
-      >
-        <Text style={styles.label}>{disabled() ? "disabled: takes no presses" : "enabled"}</Text>
+      <View style={tile} disabled={disabled()} underlayColor={tints.danger} class="disabled:opacity-40" onPress={() => last.set("Enabled tile")}>
+        <Tile title={disabled() ? "Takes no presses" : "Enabled"} note="disabled + disabled:opacity-40">
+          <Badge label={disabled() ? "Off" : "On"} tone={disabled() ? "neutral" : "up"} />
+        </Tile>
       </View>
-      <View style={styles.row}>
-        <UiButton label={disabled() ? "Enable" : "Disable"} color="#57606a" onPress={() => disabled.set(!disabled())} />
-        <Text style={styles.muted}>Last pressed: {last()}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Caption label="Last pressed" note={last()} />
+        </View>
+        <Toggle value={disabled()} onChange={(v) => disabled.set(v)} label="Disable the third tile" />
       </View>
-    </Section>
+    </UiCard>
   );
 }
 
 function Accessory() {
   const text = signal("");
-  let input: any;
+  let input: YNode | undefined;
   return (
-    <Section title="InputAccessoryView">
-      <Input
-        ref={input}
+    <UiCard icon="text" title="Input accessory" subtitle="A bar over the iOS keyboard" right={<Badge label="nsh/ios" />}>
+      <Field
+        ref={(node) => (input = node)}
         value={text()}
         onChangeText={(v) => text.set(v)}
-        placeholder="Focus me (iOS shows a bar over the keyboard)"
+        placeholder="Focus me"
         ios={{ inputAccessoryViewID: "counter" }}
-        style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 }}
       />
-      <If when={Platform.OS === "android"}>
-        <Text style={styles.muted}>Android has no input accessories.</Text>
-      </If>
-      <InputAccessoryView nativeID="counter" style={{ backgroundColor: "#f6f8fa" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: hairline, borderTopColor: colors.border }}>
-          <Text style={[styles.muted, { flex: 1 }]}>{text().length} characters</Text>
-          <UiButton label="Clear" color="#57606a" onPress={() => text.set("")} />
-          <View style={{ width: 8 }} />
+      <Caption label={Platform.OS === "android" ? "Android has no input accessories" : "The bar counts what you type"} note='inputAccessoryViewID="counter"' />
+      <InputAccessoryView nativeID="counter" style={{ backgroundColor: colors.surface }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderTopWidth: hairline,
+            borderTopColor: colors.border,
+          }}
+        >
+          <Text style={{ flex: 1, fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>{`${text().length} characters`}</Text>
+          <UiButton label="Clear" variant="secondary" onPress={() => text.set("")} />
           <UiButton label="Done" onPress={() => input?.blur()} />
         </View>
       </InputAccessoryView>
-    </Section>
+    </UiCard>
   );
 }
+
+const behaviors = [
+  { value: "padding", label: "padding" },
+  { value: "height", label: "height" },
+  { value: "position", label: "position" },
+] as const;
+
+const behaviorNote = {
+  padding: "The bottom pads: the tinted background stays under the keyboard.",
+  height: "The view shrinks: its background ends at the keyboard.",
+  position: "The inner content view moves up as a whole.",
+} as const;
 
 function AvoidingPage() {
   const behavior = signal<"padding" | "height" | "position">("padding");
   return (
-    <Screen title="KeyboardAvoidingView">
-      <KeyboardAvoidingView behavior={behavior()} style={{ flex: 1, backgroundColor: "#ddf4ff" }} contentContainerStyle={{ flex: 1 }}>
-        <View style={{ flex: 1, padding: 16, gap: 12 }}>
-          <Text style={styles.label}>behavior="{behavior()}"</Text>
-          <View style={styles.row}>
-            <Each of={["padding", "height", "position"] as const}>
-              {(b) => <UiButton label={b()} color={behavior() === b() ? colors.accent : "#57606a"} onPress={() => behavior.set(b())} />}
-            </Each>
-          </View>
-          <Text style={styles.muted}>
-            padding: the bottom pads (the blue background stays under the keyboard); height: the view shrinks; position: the content moves up.
-          </Text>
+    <Screen title="KeyboardAvoidingView" {...header}>
+      <KeyboardAvoidingView behavior={behavior()} style={{ flex: 1, backgroundColor: tints.info }} contentContainerStyle={{ flex: 1 }}>
+        <View style={{ flex: 1, padding: 16, gap: 16 }}>
+          <Appear>
+            <UiCard icon="form" title={`behavior="${behavior()}"`} subtitle="Focus the field at the bottom">
+              <Segmented options={behaviors} value={behavior()} onChange={(b) => behavior.set(b)} />
+              <Text style={{ fontSize: 14, lineHeight: 20, color: colors.muted }}>{behaviorNote[behavior()]}</Text>
+            </UiCard>
+          </Appear>
           <View style={{ flex: 1 }} />
-          <Input
-            placeholder="Type here"
-            style={{ backgroundColor: "#ffffff", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, fontSize: 16 }}
-          />
+          <Field placeholder="Type here" />
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -151,18 +279,17 @@ function ModalOptions() {
   const visible = signal(false);
   const translucent = signal(false);
   return (
-    <Section title="Modal options">
-      <View style={styles.row}>
-        <UiButton label="Open" onPress={() => visible.set(true)} />
-        <UiButton
-          label={`statusBarTranslucent: ${translucent()}`}
-          color="#57606a"
-          onPress={() => translucent.set(!translucent())}
-        />
-      </View>
-      <Text style={styles.muted}>
+    <UiCard
+      icon="system"
+      title="Modal options"
+      subtitle="statusBarTranslucent, orientations"
+      right={<Toggle value={translucent()} onChange={(v) => translucent.set(v)} label="statusBarTranslucent" />}
+    >
+      <Text style={{ fontSize: 14, lineHeight: 20, color: colors.muted }}>
         Android: translucent content reaches under the status bar. iOS: this modal allows portrait and landscape.
       </Text>
+      <Caption label="statusBarTranslucent" note={String(translucent())} />
+      <UiButton label="Open the modal" variant="secondary" onPress={() => visible.set(true)} />
       <Modal
         visible={visible()}
         animationType="slide"
@@ -170,15 +297,21 @@ function ModalOptions() {
         ios={{ supportedOrientations: ["portrait", "landscape"] }}
         onRequestClose={() => visible.set(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "#fff8c5" }}>
+        <View style={{ flex: 1, backgroundColor: "#16200d" }}>
           <SafeAreaView style={{ flex: 1, padding: 16, gap: 12 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>A modal</Text>
-            <Text style={styles.muted}>The yellow background starts {translucent() ? "under" : "below"} the status bar on Android.</Text>
+            <View style={{ flexDirection: "row", paddingTop: 8 }}>
+              <Badge label={translucent() ? "translucent" : "opaque bar"} tone="accent" />
+            </View>
+            <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.text }}>A modal</Text>
+            <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>
+              The olive background starts {translucent() ? "under" : "below"} the status bar on Android.
+            </Text>
+            <View style={{ flex: 1 }} />
             <UiButton label="Close" onPress={() => visible.set(false)} />
           </SafeAreaView>
         </View>
       </Modal>
-    </Section>
+    </UiCard>
   );
 }
 
@@ -194,33 +327,39 @@ function PlatformInfo() {
     ["reduceMotion()", String(reduceMotion())],
   ];
   const announced = signal(0);
-  let target: any;
+  let target: YNode | undefined;
   return (
-    <Section title="Platform, PixelRatio, AccessibilityInfo">
-      <Each of={rows()}>
-        {(row) => (
-          <View style={[styles.row, { justifyContent: "space-between" }]}>
-            <Text style={styles.muted}>{row()[0]}</Text>
-            <Text style={styles.label}>{row()[1]}</Text>
-          </View>
-        )}
-      </Each>
-      <View style={{ height: hairline, backgroundColor: colors.text }} />
-      <Text style={styles.muted}>The line above is one device pixel tall.</Text>
-      <View style={styles.row}>
-        <UiButton
+    <UiCard icon="spark" title="Platform" subtitle="Platform, PixelRatio, AccessibilityInfo" right={<Badge label={Platform.OS} tone="accent" />}>
+      <View>
+        <Each of={rows()}>
+          {(row, i) => (
+            <Row first={i() === 0}>
+              <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: colors.muted, fontFamily: mono }}>
+                {row()[0]}
+              </Text>
+              <Text numberOfLines={1} style={{ fontSize: 14, color: colors.text, fontVariant: ["tabular-nums"] }}>
+                {row()[1]}
+              </Text>
+            </Row>
+          )}
+        </Each>
+      </View>
+      <View style={{ height: hairline, backgroundColor: colors.accent }} />
+      <Caption label="The line above is one device pixel tall" note={`${hairline.toFixed(3)} pt`} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Cell><UiButton
           label="Announce"
           onPress={() => {
             announced.set(announced() + 1);
             AccessibilityInfo.announceForAccessibility(`Announcement ${announced()}`);
           }}
-        />
-        <UiButton label="Focus the note" color="#57606a" onPress={() => AccessibilityInfo.setAccessibilityFocus(target)} />
+        /></Cell>
+        <Cell><UiButton label="Focus the note" variant="secondary" onPress={() => target && AccessibilityInfo.setAccessibilityFocus(target)} /></Cell>
       </View>
-      <Text ref={target} style={styles.muted}>
+      <Text ref={(node) => (target = node)} style={{ fontSize: 13, lineHeight: 18, color: colors.faint }}>
         With VoiceOver or TalkBack on, the buttons above speak and move the reader here.
       </Text>
-    </Section>
+    </UiCard>
   );
 }
 
@@ -228,39 +367,79 @@ function PlatformInfo() {
 function MobileComponents() {
   const presses = signal(0);
   return (
-    <Section title="nsh/ui/mobile">
-      <Button title={`Primary (${presses()})`} onPress={() => presses.set(presses() + 1)} />
-      <Button title="Secondary" variant="secondary" onPress={() => presses.set(presses() + 1)} />
-      <Button title="Danger" variant="danger" onPress={() => presses.set(presses() + 1)} />
-      <Button title="Plain" variant="plain" onPress={() => presses.set(presses() + 1)} />
-      <Button title="Disabled" disabled onPress={() => presses.set(presses() + 1)} />
+    <UiCard icon="mobile" title="nsh/ui/mobile" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? "tap" : "taps"}`} tone={presses() ? "accent" : "neutral"} />}>
+      <Button title="Primary" onPress={() => presses.set(presses() + 1)} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button title="Secondary" variant="secondary" onPress={() => presses.set(presses() + 1)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button title="Danger" variant="danger" onPress={() => presses.set(presses() + 1)} />
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button title="Plain" variant="plain" onPress={() => presses.set(presses() + 1)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button title="Disabled" variant="secondary" disabled onPress={() => presses.set(presses() + 1)} />
+        </View>
+      </View>
       <Card
         header={<Text>Card with slots</Text>}
-        footer={<Button title="Reset" variant="plain" onPress={() => presses.set(0)} />}
+        footer={
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Button title="Reset" variant="secondary" onPress={() => presses.set(0)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title="Add one" onPress={() => presses.set(presses() + 1)} />
+            </View>
+          </View>
+        }
       >
         <Text>The header, this body and the footer are JSX in a Rust component's slots and children.</Text>
       </Card>
       <Card variant="outlined">
         <Text>An outlined card, children only.</Text>
       </Card>
-    </Section>
+      <Caption label="Colors come from the app's theme" note="theme.json" />
+    </UiCard>
   );
 }
 
 export function Components() {
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode="interactive">
-      <View style={{ padding: 16, gap: 20 }}>
-        <MobileComponents />
-        <PressFeedback />
-        <PressableSheet />
-        <LayoutAnimations />
-        <Accessory />
-        <Section title="KeyboardAvoidingView">
-          <UiButton label="padding / height / position" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
-        </Section>
-        <ModalOptions />
-        <PlatformInfo />
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Appear>
+          <MobileComponents />
+        </Appear>
+        <Appear index={1}>
+          <PressFeedback />
+        </Appear>
+        <Appear index={2}>
+          <PressableSheet />
+        </Appear>
+        <Appear index={3}>
+          <LayoutAnimations />
+        </Appear>
+        <Appear index={4}>
+          <Accessory />
+        </Appear>
+        <Appear index={5}>
+          <UiCard title="Keyboard avoidance" subtitle="Content outside scroll views" flush>
+            <Inset padding={0} gap={0}>
+              <LinkRow icon="form" title="KeyboardAvoidingView" note="padding / height / position" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
+            </Inset>
+          </UiCard>
+        </Appear>
+        <Appear index={6}>
+          <ModalOptions />
+        </Appear>
+        <Appear index={7}>
+          <PlatformInfo />
+        </Appear>
       </View>
     </Scroll>
   );
