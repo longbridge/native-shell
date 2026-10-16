@@ -432,15 +432,38 @@ pub(crate) fn nc_calc_size(
         let params = &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS);
         let top = params.rgrc[0].top;
         DefWindowProcW(hwnd, WM_NCCALCSIZE, wparam, lparam);
-        // A maximized window hangs off its monitor by its resize border.
+        // A maximized window hangs off its monitor by its resize border;
+        // otherwise Windows 11 draws its border along the window's top edge,
+        // over whatever is there: the app starts below it, so that its
+        // title bar is all visible (and centered as laid out).
         params.rgrc[0].top = top
             + if zoomed(hwnd) {
                 frame_thickness(hwnd)
             } else {
-                0
+                top_border(hwnd)
             };
     }
     Some(LRESULT(0))
+}
+
+/// The visible border the system draws along a window's top edge, in
+/// pixels (Windows 11; 0 where there is none).
+fn top_border(hwnd: HWND) -> i32 {
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, DwmGetWindowAttribute,
+    };
+    let mut thickness: u32 = 0;
+    // SAFETY: a u32 out value, as the attribute is.
+    let ok = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_VISIBLE_FRAME_BORDER_THICKNESS,
+            &mut thickness as *mut u32 as *mut _,
+            std::mem::size_of::<u32>() as u32,
+        )
+    }
+    .is_ok();
+    if ok { thickness.min(8) as i32 } else { 0 }
 }
 
 /// The caption button at `(x, y)` (points), as its hit test code.
