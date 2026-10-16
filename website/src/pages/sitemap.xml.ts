@@ -10,7 +10,10 @@ export const GET: APIRoute = async () => {
   const abs = (href: string) => new URL(href, SITE_URL).href;
 
   // Each entry lists its translations, so search engines pair the locales.
-  const entries: { href: string; en?: string; zh?: string }[] = [{ href: url(''), en: url(''), zh: url('zh-CN') }, { href: url('zh-CN'), en: url(''), zh: url('zh-CN') }];
+  const entries: { href: string; en?: string; zh?: string }[] = [];
+  for (const [e, z] of [[url(''), url('zh-CN')], [url('playground'), url('zh-CN/playground')]]) {
+    entries.push({ href: e, en: e, zh: z }, { href: z, en: e, zh: z });
+  }
   for (const page of [...en, ...zh]) {
     const enPage = en.find((p) => p.section === page.section && p.slug === page.slug);
     const zhPage = zh.find((p) => p.section === page.section && p.slug === page.slug);

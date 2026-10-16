@@ -41,6 +41,9 @@ thread_local! {
     /// The bytes of the asset JS hands over in `read_asset`.
     pub(crate) static ASSET: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
     static FRAME_REQUESTED: Cell<bool> = const { Cell::new(false) };
+    /// What the last [`nsh_compile`] made: the module or the error.
+    #[cfg(feature = "compiler")]
+    static COMPILED: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 struct Running {
@@ -218,6 +221,44 @@ pub unsafe extern "C" fn nsh_start(
         });
     });
     pump()
+}
+
+/// Compiles one module (`name`'s extension says TSX, TS, JSX or JS) to the
+/// ES module [`nsh_start`] runs, for the playground. Returns 1 when it
+/// compiled, 0 for an error; [`nsh_compiled_ptr`] / [`nsh_compiled_len`]
+/// give the module or the error text.
+///
+/// # Safety
+///
+/// Both ranges are memory from [`nsh_alloc`].
+#[cfg(feature = "compiler")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nsh_compile(
+    name: *const u8,
+    name_len: usize,
+    ptr: *const u8,
+    len: usize,
+) -> u32 {
+    // SAFETY: guaranteed by the caller.
+    let (name, source) = unsafe { (string(name, name_len), string(ptr, len)) };
+    let result = nsh_bundler::compile_module(&name, &source, &[nsh_ui_mobile::registry()]);
+    let ok = result.is_ok();
+    COMPILED.with(|c| *c.borrow_mut() = result.unwrap_or_else(|e| e));
+    ok as u32
+}
+
+/// Where the text of the last [`nsh_compile`] starts.
+#[cfg(feature = "compiler")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nsh_compiled_ptr() -> *const u8 {
+    COMPILED.with(|c| c.borrow().as_ptr())
+}
+
+/// The length of the text of the last [`nsh_compile`] in bytes.
+#[cfg(feature = "compiler")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nsh_compiled_len() -> usize {
+    COMPILED.with(|c| c.borrow().len())
 }
 
 /// Stops the app.

@@ -38,11 +38,20 @@ The output directory holds:
 | File | What it is |
 |---|---|
 | `nsh.wasm` | The engine, the core, the mobile components and QuickJS (about 4.6 MB, 1.5 MB gzipped) |
+| `nsh-playground.wasm` | The same plus nsh's TSX compiler, for the [playground](#the-playground) (about 8 MB, 2.4 MB gzipped) |
 | `nsh.js` | The DOM runtime: loads `nsh.wasm`, applies batches, turns input into events |
 | `index.html` | A player page: runs `demos/<name>.js` for `#<name>` |
 | `demos/<name>.js` | Each demo bundled by `nsh build --release` |
 
 Serve the directory with any static server (it needs the `application/wasm` MIME type for streaming compilation) and open `index.html#counter`.
+
+## The playground
+
+The [Playground](/playground) edits and runs an app in the browser: the page compiles the TSX with nsh's own JSX compiler (built into `nsh-playground.wasm`, without rolldown) and runs it on every pause in typing. Every demo on this site has an **Edit in Playground** link, and **Share** puts the code in the link itself, so nothing is stored on a server.
+
+A playground app is one module: it imports nsh's modules (`nsh`, `nsh/*`, `nsh/ui/mobile`) but no other files or packages. `console.log` output and errors appear below the phone.
+
+The compiler is also a Rust function, `nsh_bundler::compile_module(name, source, ui_sets)`, available without the crate's `bundle` feature.
 
 ## Embed it in a page
 
@@ -58,6 +67,8 @@ const player = await createPlayer(document.querySelector("#phone"), {
 });
 player.run(await (await fetch("./bundle.js")).text());
 ```
+
+With `nsh-playground.wasm`, `player.runSource(tsx)` compiles TSX first and returns the compile error, or `null`; `player.compile(tsx)` returns `{ code }` or `{ error }`.
 
 The container's size is the app's window (`windowSize()`); resizing the container resizes the app. `player.setDark(true)` switches the appearance at run time, which apps observe through `colorScheme()` and `dark:` classes.
 

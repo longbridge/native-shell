@@ -128,19 +128,29 @@ class Player {
         log: (level, p, l) => {
           const message = this.str(p, l);
           (level <= 1 ? console.error : level === 2 ? console.warn : console.log)("[nsh]", message);
+          this.options.onLog?.(level <= 1 ? "error" : level === 2 ? "warn" : "log", message);
         },
         read_asset: () => 0,
       },
     };
-    const source = typeof url === "string" || url instanceof URL ? fetch(url) : url;
-    let result;
+    const response = () => (typeof url === "string" || url instanceof URL ? fetch(url) : url);
+    let module;
     try {
-      result = await WebAssembly.instantiateStreaming(source, imports);
+      module = await WebAssembly.compileStreaming(response());
     } catch {
-      const bytes = await (await (typeof url === "string" || url instanceof URL ? fetch(url) : url)).arrayBuffer();
-      result = await WebAssembly.instantiate(bytes, imports);
+      module = await WebAssembly.compile(await (await response()).arrayBuffer());
     }
-    this.wasm = result.instance.exports;
+    // The compiler's dependencies link wasm-bindgen glue they never call
+    // here (oxc-browserslist's dates): stubs that say so if they are.
+    for (const { module: name, name: field, kind } of WebAssembly.Module.imports(module)) {
+      if (kind !== "function" || imports[name]?.[field]) continue;
+      imports[name] ??= {};
+      imports[name][field] = () => {
+        throw new Error(`nsh.wasm called ${name}.${field}, which the web runtime does not provide`);
+      };
+    }
+    imports.__wbindgen_placeholder__ && (imports.__wbindgen_placeholder__.__wbindgen_describe = () => {});
+    this.wasm = (await WebAssembly.instantiate(module, imports)).exports;
     new ResizeObserver(() => this.resized()).observe(this.root);
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
       if (this.options.dark === undefined) this.setDark(e.matches);
@@ -202,6 +212,25 @@ class Player {
     this.size = [width, height];
     this.call(() => this.withStrings([code], (p, l) =>
       this.wasm.nsh_start(p, l, width, height, this.dark ? 1 : 0, devicePixelRatio || 1)));
+  }
+
+  /**
+   * Compiles one TSX module to what `run` takes, in the page (only with
+   * `nsh-playground.wasm`): `{ code }` or `{ error }` (with a code frame).
+   */
+  compile(source, name = "App.tsx") {
+    if (!this.wasm.nsh_compile) return { error: "this runtime has no compiler (load nsh-playground.wasm)" };
+    const ok = this.withStrings([name, source], (np, nl, sp, sl) => this.wasm.nsh_compile(np, nl, sp, sl));
+    const text = this.str(this.wasm.nsh_compiled_ptr(), this.wasm.nsh_compiled_len());
+    return ok ? { code: text } : { error: text };
+  }
+
+  /** Compiles and runs `source`; the compile error, or null. */
+  runSource(source, name = "App.tsx") {
+    const result = this.compile(source, name);
+    if (result.error) return result.error;
+    this.run(result.code);
+    return null;
   }
 
   stop() {
@@ -269,6 +298,8 @@ class Player {
 
   showError(message) {
     console.error("[nsh]", message);
+    this.options.onError?.(message);
+    if (this.options.overlay === false) return;
     let box = this.root.querySelector(":scope > .nsh-error");
     if (!box) {
       box = document.createElement("div");

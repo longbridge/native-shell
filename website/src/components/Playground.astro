@@ -1,0 +1,241 @@
+---
+// The playground: a TSX editor beside a phone running it. The page compiles
+// and runs the code in the browser (`play/index.html?playground`, the
+// runtime with nsh's JSX compiler); nothing is sent to a server.
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { BASE, type Lang } from '../lib/site';
+import { hasPlayer } from '../lib/demo.js';
+
+export interface Props {
+  lang?: Lang;
+}
+
+const { lang = 'en' } = Astro.props;
+const zh = lang === 'zh-CN';
+const demos = readdirSync(join(process.cwd(), 'demos'))
+  .filter((f) => f.endsWith('.tsx'))
+  .map((f) => f.slice(0, -4))
+  .sort((a, b) => (a === 'counter' ? -1 : b === 'counter' ? 1 : a.localeCompare(b)));
+const player = `${BASE}play/index.html?playground&theme=light`;
+const t = zh
+  ? {
+      title: '在线试用',
+      intro: '在浏览器里编写 nsh 应用：代码在本页编译，由 WebAssembly 版运行时立即运行，不经过服务器。',
+      example: '示例',
+      run: '运行',
+      share: '分享',
+      copied: '链接已复制',
+      reset: '重置',
+      output: '输出',
+      clear: '清空',
+      empty: '没有输出。console.log 和错误会显示在这里。',
+      compiled: '已编译并运行',
+      loading: '正在加载运行时…',
+      dark: '深色',
+      noPlayer: '播放器尚未构建：运行 bun run dev（或 cargo xtask web）后刷新。',
+      note: '只能导入 nsh 的模块（nsh、nsh/*、nsh/ui/mobile）；无网络、无相对导入。',
+    }
+  : {
+      title: 'Playground',
+      intro: 'Write an nsh app in the browser: the page compiles it and the WebAssembly runtime runs it right away, without a server.',
+      example: 'Example',
+      run: 'Run',
+      share: 'Share',
+      copied: 'Link copied',
+      reset: 'Reset',
+      output: 'Output',
+      clear: 'Clear',
+      empty: 'No output. console.log calls and errors show up here.',
+      compiled: 'Compiled and running',
+      loading: 'Loading the runtime…',
+      dark: 'Dark',
+      noPlayer: 'The player is not built: run bun run dev (or cargo xtask web) and reload.',
+      note: 'Imports are nsh’s modules only (nsh, nsh/*, nsh/ui/mobile); no network, no relative imports.',
+    };
+---
+
+<section class="playground" data-playground data-player={player} data-has-player={hasPlayer() ? '' : undefined} data-copy={JSON.stringify(t)}>
+  <header class="playground__head">
+    <div>
+      <h1>{t.title}</h1>
+      <p>{t.intro}</p>
+    </div>
+  </header>
+
+  <div class="playground__toolbar">
+    <label class="playground__field">
+      <span>{t.example}</span>
+      <select data-example>
+        {demos.map((name) => <option value={name}>{name}.tsx</option>)}
+      </select>
+    </label>
+    <span class="playground__status" data-status aria-live="polite"></span>
+    <div class="playground__actions">
+      <label class="playground__toggle">
+        <input type="checkbox" data-dark />
+        <span>{t.dark}</span>
+      </label>
+      <button type="button" class="pg-btn" data-reset>{t.reset}</button>
+      <button type="button" class="pg-btn" data-share>{t.share}</button>
+      <button type="button" class="pg-btn pg-btn--primary" data-run title="Ctrl / ⌘ + Enter">{t.run}</button>
+    </div>
+  </div>
+
+  <div class="playground__body">
+    <div class="playground__editor" data-editor></div>
+    <div class="playground__side">
+      <div class="playground__stage">
+        <div class="phone" style="--phone-w:390;--phone-h:844">
+          <div class="phone__screen">
+            {hasPlayer()
+              ? <iframe data-frame title={t.title} width="390" height="844"></iframe>
+              : <div class="phone__placeholder"><p class="phone__placeholder-title">{t.noPlayer}</p></div>}
+          </div>
+        </div>
+      </div>
+      <div class="playground__output">
+        <div class="playground__output-head">
+          <span>{t.output}</span>
+          <button type="button" class="pg-link" data-clear>{t.clear}</button>
+        </div>
+        <div class="playground__log" data-log><p class="playground__empty">{t.empty}</p></div>
+      </div>
+    </div>
+  </div>
+  <p class="playground__note">{t.note}</p>
+</section>
+
+<script>
+  import { mountPlayground } from '../lib/playground-client';
+  for (const el of document.querySelectorAll<HTMLElement>('[data-playground]')) mountPlayground(el);
+</script>
+
+<style is:global>
+  .playground {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 2.25rem clamp(1rem, 3vw, 2.5rem) 2.5rem;
+  }
+  .playground__head h1 { margin: 0; font-size: 1.75rem; letter-spacing: -0.02em; }
+  .playground__head p { margin: 0.35rem 0 0; color: var(--muted-foreground); max-width: 46rem; }
+  .playground__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.25rem 0 0.75rem;
+  }
+  .playground__field { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted-foreground); }
+  .playground__field select {
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.8rem;
+  }
+  .playground__status { min-width: 0; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; color: var(--muted-foreground); }
+  .playground__status[data-kind="error"] { color: var(--destructive); }
+  .playground__status[data-kind="ok"] { color: var(--success); }
+  .playground__actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+  .playground__toggle { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--muted-foreground); cursor: pointer; }
+  .pg-btn {
+    height: 2rem;
+    padding: 0 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .pg-btn:hover { border-color: var(--border-hover); background: var(--secondary); }
+  .pg-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--brand-contrast); }
+  .pg-btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .pg-link { border: 0; background: none; color: var(--muted-foreground); font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0; }
+  .pg-link:hover { color: var(--foreground); }
+  .playground__body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    height: calc(100vh - 13rem);
+    min-height: 34rem;
+  }
+  .playground__editor {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-surface);
+    overflow: hidden;
+    background: var(--code-bg);
+  }
+  .playground__editor .cm-editor { height: 100%; font-size: 13px; }
+  .playground__editor .cm-scroller { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); line-height: 1.6; }
+  .playground__editor .cm-focused { outline: none; }
+  .playground__side { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; width: calc(390px * 0.72 + 20px); }
+  .playground__stage { display: flex; justify-content: center; }
+  .playground__stage .phone { --phone-scale: 0.72; }
+  .playground__output {
+    flex: 1;
+    min-height: 6rem;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+  }
+  .playground__output-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    background: var(--secondary);
+  }
+  .playground__log {
+    flex: 1;
+    overflow: auto;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  .playground__log pre { margin: 0 0 0.4rem; white-space: pre-wrap; word-break: break-word; font: inherit; }
+  .playground__log [data-level="error"] { color: var(--destructive); }
+  .playground__log [data-level="warn"] { color: var(--warning); }
+  .playground__empty { margin: 0; color: var(--muted-foreground); font-family: inherit; }
+  .playground__note { margin: 0.75rem 0 0; font-size: 0.8rem; color: var(--muted-foreground); }
+
+  /* Syntax colors from the site's code tokens: they follow the theme. */
+  .playground .tok-keyword { color: var(--code-keyword); }
+  .playground .tok-string, .playground .tok-string2 { color: var(--code-string); }
+  .playground .tok-comment { color: var(--code-comment); font-style: italic; }
+  .playground .tok-number, .playground .tok-bool, .playground .tok-atom { color: var(--code-number); }
+  .playground .tok-typeName, .playground .tok-className { color: var(--code-type); }
+  .playground .tok-propertyName { color: var(--code-property); }
+  .playground .tok-variableName2, .playground .tok-definition { color: var(--code-fn); }
+  .playground .tok-tagName { color: var(--code-keyword); }
+  .playground .tok-attributeName { color: var(--code-type); }
+  .playground .cm-gutters { background: var(--code-bg); border-right: 1px solid var(--border); color: var(--muted-foreground); }
+  .playground .cm-activeLine, .playground .cm-activeLineGutter { background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+  .playground .cm-content { caret-color: var(--foreground); color: var(--code-fg); }
+  .playground .cm-selectionBackground, .playground .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--selection) 30%, transparent) !important; }
+
+  @media (max-width: 900px) {
+    .playground__body { grid-template-columns: 1fr; height: auto; }
+    .playground__editor { height: 28rem; }
+    .playground__side { width: auto; }
+    .playground__output { min-height: 10rem; }
+    .playground__actions { margin-left: 0; flex-wrap: wrap; }
+  }
+</style>

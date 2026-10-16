@@ -70,6 +70,7 @@ const COPY = {
     preview: 'Preview',
     source: 'Source',
     open: 'Open in new tab',
+    edit: 'Edit in Playground',
     frame: (name) => `Live demo: ${name}`,
     pending: 'The live preview is not built yet.',
     runLocally: 'Run it on a simulator or device:',
@@ -80,6 +81,7 @@ const COPY = {
     preview: '预览',
     source: '源码',
     open: '在新标签页打开',
+    edit: '在线编辑',
     frame: (name) => `在线示例：${name}`,
     pending: '在线预览尚未构建。',
     runLocally: '在模拟器或真机上运行：',
@@ -137,6 +139,7 @@ export async function demoPanelHtml(name, { base = '/', lang = 'en' } = {}) {
         <button type="button" role="tab" id="${id}-tab-source" aria-controls="${id}-source" aria-selected="false" tabindex="-1" data-demo-view="source">${escape(t.source)}</button>
       </div>
       <span class="demo__file">${escape(file)}</span>
+      <a class="demo__open" href="${escape(`${base}${lang === 'zh-CN' ? 'zh-CN/' : ''}playground#demo=${encodeURIComponent(name)}`)}">${escape(t.edit)}<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></a>
       <a class="demo__open" href="${escape(playerHref(name, base))}" target="_blank" rel="noopener">${escape(t.open)}<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>
     </figcaption>
     <div class="demo__body">

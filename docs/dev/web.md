@@ -7,7 +7,8 @@ User-facing page: `website/docs/web.md`.
 ## Building
 
 `cargo xtask web` builds `nsh.wasm` (`--target wasm32-unknown-unknown --release`), copies `web/nsh.js` and
-`web/index.html` (the player), and bundles each demo with `nsh build --release` into `website/public/play/` (generated,
+`web/index.html` (the player), `nsh-playground.wasm` (feature `compiler`, built in `target/web-playground` so the two
+builds keep their caches), and bundles each demo with `nsh build --release` into `website/public/play/` (generated,
 ignored by git). Check the crate with `cargo clippy -p nsh-platform-web --target wasm32-unknown-unknown`: off
 WebAssembly it is empty. `.cargo/config.toml` gives wasm32 an 8 MiB stack (QuickJS recursion).
 
@@ -27,6 +28,19 @@ WebAssembly it is empty. `.cargo/config.toml` gives wasm32 an 8 MiB stack (Quick
   generation on 64-bit targets, 20 and 11 (under a set top bit) on 32-bit ones (`reactive.rs`, `pack`). Anything that
   stores more than a pointer's worth of bits in an opaque must do the same.
 - `nsh-package` cannot generate keys there (no `getrandom`); verifying works.
+
+## The playground's compiler
+
+Feature `compiler` adds `nsh_compile` (and `nsh_compiled_ptr` / `_len`): `nsh_bundler::compile_module`, the one-module
+path of the bundler (`crates/nsh-bundler/src/compile.rs`: oxc parse, TypeScript removal, nsh's JSX compiler,
+codegen). Rolldown does not build for wasm32, so `nsh-bundler` puts bundling behind its default feature `bundle`
+(rolldown, tokio, assets, `.nsh/types`); the workspace depends on it without, and the CLI and the engine's tests
+turn it on. The compiler grows the module by about 3 MB, so the docs pages load `nsh.wasm` and only the playground
+`nsh-playground.wasm`.
+
+oxc's transformer links `oxc-browserslist`, whose wasm32 build depends on `js-sys`: the module imports wasm-bindgen
+glue (`__wbindgen_placeholder__`, `__wbindgen_externref_xform__`) that nsh never calls (it only reads dates for
+browserslist queries). `nsh.js` gives every import it does not know a stub that throws if called.
 
 ## The protocol
 

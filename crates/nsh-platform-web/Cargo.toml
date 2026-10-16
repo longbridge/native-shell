@@ -9,6 +9,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The playground's build (`nsh-playground.wasm`): also compiles TSX in the
+# page (`nsh_compile`; nsh's JSX compiler, no rolldown), about 3 MB more.
+compiler = ["dep:nsh-bundler"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -18,6 +23,7 @@ nsh-core.workspace = true
 nsh-anim.workspace = true
 nsh-engine = { workspace = true, features = ["js"] }
 nsh-ui-mobile.workspace = true
+nsh-bundler = { workspace = true, optional = true }
 serde_json.workspace = true
 log.workspace = true
 rustc-hash.workspace = true

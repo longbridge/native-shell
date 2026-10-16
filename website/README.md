@@ -79,6 +79,15 @@ CI sets `NSH_REQUIRE_PLAY=1`, so a failed player build fails the deployment
 instead of publishing pages without their live demos. Pull requests build and
 test without deploying.
 
+## Playground
+
+`/playground` (`src/components/Playground.astro`, `src/lib/playground-client.ts`)
+edits and runs one-module apps in the browser: CodeMirror, and the player in
+playground mode (`play/index.html?playground`, which loads
+`nsh-playground.wasm`, the runtime with the TSX compiler). Demo panels link to
+it with `#demo=<name>`; Share links carry the code itself (`#code=`, deflated,
+base64url).
+
 ## Demos
 
 `demos/<name>.tsx` are small runnable nsh apps (try one with

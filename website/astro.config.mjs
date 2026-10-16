@@ -38,5 +38,8 @@ export default defineConfig({
 
   vite: {
     plugins: [tailwindcss(), playDev(BASE)],
+    // The playground's editor (CodeMirror, about 500 kB) is one chunk,
+    // loaded by that page only.
+    build: { chunkSizeWarningLimit: 600 },
   },
 });

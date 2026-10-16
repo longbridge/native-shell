@@ -18,45 +18,80 @@
 <script type="module">
   // Runs website demo `#<name>` (demos/<name>.js, bundled by `nsh build`).
   // `?theme=dark|light` overrides the system appearance.
+  //
+  // `?playground`: loads the runtime with the TSX compiler and runs the
+  // source the embedding page posts: `{ type: "run", source }`. It posts
+  // back `{ type: "ready" }` once loaded, `{ type: "compiled", error }`
+  // after each run (`error` null when it compiled), and `{ type:
+  // "runtime-error", message }` / `{ type: "log", level, message }` while
+  // the app runs.
   import { createPlayer } from "./nsh.js";
 
   const status = document.getElementById("status");
   const params = new URLSearchParams(location.search);
+  const playground = params.has("playground");
   const theme = params.get("theme");
-  const options = { assetBase: new URL("assets/", location.href).href };
+  const post = (message) => parent !== window && parent.postMessage({ source: "nsh-player", ...message }, "*");
+  const options = {
+    assetBase: new URL("assets/", location.href).href,
+    wasm: playground ? "./nsh-playground.wasm" : "./nsh.wasm",
+    onError: (message) => post({ type: "runtime-error", message }),
+    onLog: (level, message) => post({ type: "log", level, message }),
+  };
   if (theme === "dark" || theme === "light") options.dark = theme === "dark";
   if (options.dark) document.documentElement.style.background = "#000";
+
+  let loading;
+  const player = () => (loading ??= createPlayer(document.getElementById("app"), options).then((p) => (window.player = p)));
 
   async function start() {
     const name = decodeURIComponent(location.hash.slice(1)) || "counter";
     status.textContent = "Loading…";
     status.style.display = "";
     try {
-      const [player, code] = await Promise.all([
-        window.player ?? createPlayer(document.getElementById("app"), options),
+      const [p, code] = await Promise.all([
+        player(),
         fetch(`demos/${encodeURIComponent(name)}.js`).then((r) => {
           if (!r.ok) throw new Error(`no demo named “${name}”`);
           return r.text();
         }),
       ]);
-      window.player = player;
       status.style.display = "none";
-      player.run(code);
+      p.run(code);
     } catch (err) {
       status.textContent = String(err.message ?? err);
     }
   }
 
-  // The embedding page can switch the appearance: postMessage({ theme }).
-  addEventListener("message", (e) => {
-    const t = e.data?.theme;
+  addEventListener("message", async (e) => {
+    const data = e.data ?? {};
+    // The embedding page can switch the appearance: postMessage({ theme }).
+    const t = data.theme;
     if ((t === "dark" || t === "light") && window.player) {
       document.documentElement.style.background = t === "dark" ? "#000" : "#fff";
       window.player.setDark(t === "dark");
     }
+    if (playground && data.type === "run" && typeof data.source === "string") {
+      const p = await player();
+      status.style.display = "none";
+      post({ type: "compiled", error: p.runSource(data.source, data.name ?? "App.tsx") });
+    }
   });
-  addEventListener("hashchange", start);
-  start();
+
+  if (playground) {
+    player().then(
+      () => {
+        status.textContent = "";
+        post({ type: "ready" });
+      },
+      (err) => {
+        status.textContent = String(err.message ?? err);
+      },
+    );
+  } else {
+    addEventListener("hashchange", start);
+    start();
+  }
 </script>
 </body>
 </html>

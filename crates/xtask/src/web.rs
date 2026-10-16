@@ -6,6 +6,7 @@
 //! <out>/index.html    the player: runs demos/<name>.js for `#<name>`
 //! <out>/nsh.js        the DOM runtime (crates/nsh-platform-web/web)
 //! <out>/nsh.wasm      the engine, the core and QuickJS
+//! <out>/nsh-playground.wasm   the same plus the TSX compiler (the playground)
 //! <out>/demos/<name>.js
 //! ```
 
@@ -32,6 +33,20 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
         "--target",
         WASM,
     ])?;
+    // Its own target directory: switching the feature would rebuild the
+    // other one every time.
+    cargo(&[
+        "build",
+        "--release",
+        "-p",
+        "nsh-platform-web",
+        "--features",
+        "compiler",
+        "--target",
+        WASM,
+        "--target-dir",
+        "target/web-playground",
+    ])?;
     cargo(&["build", "--release", "-p", "nsh-cli"])?;
     fs::create_dir_all(out.join("demos"))?;
     copy(
@@ -40,6 +55,13 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
             .join(WASM)
             .join("release/nsh_platform_web.wasm"),
         &out.join("nsh.wasm"),
+    )?;
+    copy(
+        &root
+            .join("target/web-playground")
+            .join(WASM)
+            .join("release/nsh_platform_web.wasm"),
+        &out.join("nsh-playground.wasm"),
     )?;
     let web = root.join("crates/nsh-platform-web/web");
     for file in ["nsh.js", "index.html"] {

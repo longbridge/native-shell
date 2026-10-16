@@ -73,8 +73,9 @@ test('internal links reach a built page and anchor', () => {
         broken.push(`${from} → ${href}`);
         continue;
       }
-      // The player's hash names a demo, not an element.
-      if (hash && !path.startsWith('/play/') && file.endsWith('.html') && !idsOf(file).has(decodeURIComponent(hash))) broken.push(`${from} → ${href} (no #${hash})`);
+      // The player's hash names a demo, the playground's holds its state
+      // (`#demo=`, `#code=`): no element.
+      if (hash && !path.startsWith('/play/') && !hash.includes('=') && file.endsWith('.html') && !idsOf(file).has(decodeURIComponent(hash))) broken.push(`${from} → ${href} (no #${hash})`);
     }
   }
   expect(broken).toEqual([]);
