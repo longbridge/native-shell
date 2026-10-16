@@ -28,6 +28,11 @@
   `viewabilityConfig` (`itemVisiblePercentThreshold` / `viewAreaCoveragePercentThreshold` / `minimumViewTime`), `keyExtractor`,
   `refreshing` / `onRefresh`, `scrollValue`. Positions, columns, sticky travel and viewability are all computed in the core; sticky cells
   are pinned natively on every scroll (`MountItem::StickyCells`: translate by `clamp(offset - start, 0, end - start)`).
+- **List scroll commands**: the core resolves a list's `scrollToEnd` / `scrollToIndex` to a `ScrollTo` with the sizes it
+  knows, which are estimates for rows never rendered; the target stays pinned (`ListState::follow_pin`), and as the rows
+  around it are measured the list follows it (a `ScrollBy`, or a retargeted `ScrollTo` while an animated scroll is in
+  flight) until the rows in the viewport are all measured, the user scrolls away or the items change. Platforms only
+  apply what they get.
 - **List internals** (the window, binding cells, recycling): `crates/nsh-core/src/core/list.rs`.
 - **Rust components**: the same props are `Scrollable`'s methods (`scroll()`, `virtual_list(..)`) and
   `VirtualList`'s (header, footer, empty view, separators, sticky rows, viewability); `docs/dev/components.md`.

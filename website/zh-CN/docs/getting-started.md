@@ -75,7 +75,7 @@ mount(App);
 
 `nsh run` 会启动开发服务器、构建应用、启动加载该应用的开发宿主，并在你编辑时持续重新构建。应用的日志（`console.log`、错误）会显示在终端中。
 
-#### Mac Catalyst（默认）
+#### Mac Catalyst（macOS 上默认）
 
 ```sh
 nsh run my-app/App.tsx
@@ -99,6 +99,14 @@ nsh run my-app/App.tsx --target android
 ```
 
 先启动模拟器或连接设备（`adb devices` 会列出它们；nsh 使用第一个）。`nsh` 会安装一个开发宿主 APK（只在运行时变化时重新构建），并通过 `adb reverse` 把开发服务器的端口转发到设备上，因此通过 USB 即可工作，无需共享网络。
+
+#### Linux（Linux 上默认）
+
+```sh
+nsh run my-app/App.tsx
+```
+
+应用会在一个 GTK 窗口（390×844 点）中打开。需要 GTK 4.14 及以上；见 [Linux](./linux.md)。
 
 ### 用热重载编辑
 
@@ -198,6 +206,7 @@ Android 上用 `NshTrust` 和 `NshPackage`，流程相同。承载、下发和�
 ```sh
 nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
+nsh package my-app --target linux
 ```
 
 这是受支持的用法，也是把模块装到设备上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。

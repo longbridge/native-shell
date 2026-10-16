@@ -4,8 +4,8 @@
 after it ships: an iOS or Android app embeds an `NshAppView` / `NshView`, and nsh runs TSX modules in it — signed
 packages the app verifies, each in a sandboxed QuickJS VM with host-set limits and capabilities — rendered with the
 system's own views (UIKit, Android views). The same mechanism makes native apps extensible in general (plugins,
-features delivered after release); standalone apps are a second use. Mobile clients come first; desktop clients follow
-through a GPUI backend in development. The host stays a native app; nsh is the layer inside it.
+features delivered after release); standalone apps are a second use. Mobile clients come first; on Linux, apps run with GTK 4
+widgets; other desktop clients follow through a GPUI backend in development. The host stays a native app; nsh is the layer inside it.
 
 Inside, only a module's code is JavaScript: signals, the renderer and every module it imports are Rust, layout is
 Taffy, and the toolchain is a single `nsh` binary (no Node.js, and no Rust toolchain for module authors).
@@ -32,18 +32,18 @@ edited components render again, the rest of the app keeps its state). Logs and e
 `dist/nsh` (made by `cargo xtask dist`) contains the CLI and prebuilt runtimes:
 
 ```sh
-dist/nsh/bin/nsh run examples/gallery                      # Mac Catalyst window (390×844), macOS only
+dist/nsh/bin/nsh run examples/gallery                      # Mac Catalyst window (390×844) on macOS, a GTK window on Linux
 dist/nsh/bin/nsh run examples/gallery --target ios         # iOS simulator (boots one if none is running)
 dist/nsh/bin/nsh run examples/gallery --target android     # Android emulator or device
 ```
 
-Requirements: Xcode for the Mac and iOS targets; for Android, the Android SDK (`ANDROID_HOME`, or
+Requirements: Xcode for the Mac and iOS targets; GTK 4 (4.14 or later) for Linux; for Android, the Android SDK (`ANDROID_HOME`, or
 `~/Library/Android/sdk`) with a running emulator or a device connected over `adb`. Pick a simulator with
 `--device "iPhone 16 Pro"`.
 
 ### From a checkout
 
-`cargo run` runs the gallery in the Mac Catalyst window, with hot reload; it rebuilds and restarts it when the Rust
+`cargo run` runs the gallery in the Mac Catalyst window (on Linux, in the GTK host), with hot reload; it rebuilds and restarts it when the Rust
 code changes. Other apps and targets:
 
 ```sh

@@ -66,7 +66,7 @@ Commit subjects and pull request titles name the area first, then say what chang
 ```
 
 - The area is the part of nsh the change is about, in lower case: a crate without its `nsh-` prefix (`core`, `animation`,
-  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`), a JS layer or module
+  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`, `linux`), a JS layer or module
   (`runtime`, `list`, `animated`, `mobile`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. Name two or
   three areas separated by commas when a change spans them (`ios, android: …`); a change everywhere names its
   subject instead (`signed packages: …`).
@@ -95,6 +95,8 @@ docs: Describe the capability checks of fetch redirects
 - Rust through rustup: `rust-toolchain.toml` selects stable and installs the iOS and Android targets. A nightly
   toolchain for `cargo +nightly fmt`.
 - Xcode, for the iOS, simulator and Mac Catalyst targets.
+- For Linux: the GTK 4 (4.14 or later) development packages (`libgtk-4-dev`, `gtk4`,
+  `gtk4-devel`) and clang.
 - For Android: the Android SDK (`ANDROID_HOME`, or `~/Library/Android/sdk`) with platform 35 and build tools, an NDK
   (set `ANDROID_NDK_HOME` if the newest one installed is incomplete) and a JDK.
 
@@ -108,10 +110,11 @@ cargo +nightly fmt --all
 cargo clippy --workspace --all-targets
 cargo clippy -p nsh-platform-ios -p nsh-ios-host -p nsh-ios-app --target aarch64-apple-ios-macabi --features nsh-platform-ios/embed,nsh-platform-ios/dev
 cargo xtask clippy-android
+cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets   # on Linux
 ```
 
-`nsh-platform-ios` and `nsh-platform-android` are empty crates on a macOS host, so platform code is only checked by
-the two platform-specific clippy runs above.
+`nsh-platform-ios` and `nsh-platform-android` are empty crates on a macOS host, and the Linux crates are empty off
+Linux, so platform code is only checked by the platform-specific clippy runs above.
 
 ### Run the examples
 
@@ -125,6 +128,7 @@ cargo run                                      # the gallery in the Mac Catalyst
 cargo run -- examples/counter                  # another app: its directory (App.tsx is the entry) or entry module
 cargo run -- --target ios                      # in an iOS simulator
 cargo run -- --target android                  # on an Android device or emulator
+cargo run -- --target linux                    # in a GTK window (the default on Linux)
 ```
 
 `nsh run` itself works too; in a checkout it builds the host it needs first:
@@ -134,6 +138,7 @@ cargo build -p nsh-cli
 ./target/debug/nsh run examples/gallery                    # Mac Catalyst window
 ./target/debug/nsh run examples/gallery --target ios       # iOS simulator
 ./target/debug/nsh run examples/gallery --target android   # emulator or device
+./target/debug/nsh run examples/gallery --target linux     # GTK window (the default on Linux)
 ```
 
 ### Reviewing UI and platform changes

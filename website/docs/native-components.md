@@ -7,7 +7,7 @@ order: 3.3
 # Native Components
 
 A native component is a view the **embedding app** registers by name: a map, a camera preview, a chart library, any
-`UIView` on iOS or `android.view.View` on Android. The nsh app declares it with `nativeComponent()` from
+`UIView` on iOS, `android.view.View` on Android or `gtk::Widget` on Linux. The nsh app declares it with `nativeComponent()` from
 [`nsh/native`](../modules/nsh-native.md) and uses it like any other component. nsh lays it out with the rest of the
 app, sends it props, delivers its events to handlers and forwards commands from a `ref`.
 
@@ -15,7 +15,8 @@ Because nsh renders with the system's own views, a native component is just one 
 there is no layering problem, it clips, scrolls and receives touches like a `<View>`.
 
 > [!NOTE]
-> Native components exist only where an app embeds nsh ([iOS](./embedding-ios.md), [Android](./embedding-android.md)).
+> Native components exist only where an app embeds nsh ([iOS](./embedding-ios.md), [Android](./embedding-android.md),
+> [Linux](./linux.md#embedding-in-a-gtk-app)).
 > A packaged standalone app (`nsh package`) or a development host registers none, so the element renders an empty
 > view there (the name is logged once as unknown).
 
@@ -336,6 +337,53 @@ fn register(app: &AppView, make_view: impl Fn() -> objc2::rc::Retained<UIView> +
 
 `ComponentContext::emit(name, data)` sends an event (`data` is a `serde_json::Value`) and `set_size(width, height)`
 reports the size; both work from any thread.
+
+## Registering on Linux (Rust)
+
+On Linux the component is a GTK widget, registered on the [`AppView`](./linux.md#embedding-in-a-gtk-app) of
+`nsh-platform-linux`:
+
+```rust
+use std::rc::Rc;
+use nsh_core::JsonValue;
+use nsh_platform_linux::{gtk4 as gtk, AppView, ComponentContext, NativeComponent};
+use gtk::prelude::*;
+
+struct Badge {
+    label: gtk::Label,
+    context: ComponentContext,
+}
+
+impl NativeComponent for Badge {
+    fn widget(&self) -> gtk::Widget {
+        self.label.clone().upcast()
+    }
+
+    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>) {
+        if name == "text" {
+            self.label.set_text(value.and_then(|v| v.as_str()).unwrap_or(""));
+            self.context.set_size(120.0, 40.0);
+        }
+    }
+
+    fn command(&mut self, name: &str, args: &JsonValue) {
+        // optional
+    }
+}
+
+fn register(app: &AppView) {
+    app.register_component(
+        "embed.badge",
+        Rc::new(|context: ComponentContext| -> Box<dyn NativeComponent> {
+            Box::new(Badge { label: gtk::Label::new(None), context })
+        }),
+    );
+}
+```
+
+The widget fills the container nsh lays out; `ComponentContext::emit` and `set_size` (points) work from any thread,
+as on iOS. Register before `AppView::load`. A registry belongs to one `AppView` (and the views made from the same
+`AppOptions`, whose `components` field it is).
 
 ## Rules and limits
 

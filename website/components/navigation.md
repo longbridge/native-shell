@@ -146,6 +146,7 @@ The child function receives the route value itself and an accessor of its positi
 | `preventBack` | `boolean` | `false` | The user cannot leave the screen. See [Leaving a screen](#leaving-a-screen). |
 | `animation` | `"default" \| "fade" \| "none"` | `"default"` | How the screen enters and leaves. |
 | `ios` | `{ headerLargeTitle?: boolean; headerBackTitle?: string }` | none | iOS only: a large title that shrinks into the bar as the content scrolls; the label of the back button that leads back to this screen. |
+| `desktop` | `{ headerLargeTitle?: boolean; headerBackTitle?: string }` | none | Desktop only (macOS, Windows, Linux): the same options on a desktop header. |
 | `style` | `StyleProp<ViewStyle>` | none | The screen's style. |
 | `children` | `JSX.Element` | none | The content. |
 | `onBackRequest` | `() => void` | none | The user tried to leave a screen that has `preventBack`. |
@@ -231,6 +232,7 @@ function Settings() {
 | `transparent` | `boolean` | `false` | The background shows what is behind, for dialogs and overlays. |
 | `dismissible` | `boolean` | `false` | The user closes it natively (iOS sheet swiped down, Android back button); then `onRequestClose` and `onDismiss` are called. Without it, those gestures only ask to close. |
 | `ios` | `{ presentationStyle?: "fullScreen" \| "pageSheet" \| "formSheet"; supportedOrientations?: (…)[] }` | none | iOS only: `pageSheet` and `formSheet` keep what is behind visible; the orientations the modal allows (default: the presenter's). |
+| `desktop` | `{ presentationStyle?: "fullScreen" \| "pageSheet" \| "formSheet" }` | none | Desktop only (macOS, Windows, Linux): `pageSheet` and `formSheet` are cards centered in the window over a dimmed backdrop; clicking the backdrop or pressing Escape asks to close. |
 | `android` | `{ statusBarTranslucent?: boolean }` | none | Android only: the content reaches under the status bar (by default it starts below it). |
 | `style` | `StyleProp<ViewStyle>` | none | The modal's style. |
 | `children` | `JSX.Element` | none | The content. |

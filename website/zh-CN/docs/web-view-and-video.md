@@ -8,12 +8,15 @@ order: 21
 
 `nsh/webview` 中的 `WebView` 和 `nsh/video` 中的 `Video` 把平台自己的网页引擎和媒体播放器作为普通视图嵌入。由于 nsh 用原生视图渲染，它们在布局中与其他元素无异：随父视图滚动、支持圆角和裁剪，其他视图可以覆盖在它们上面而不会出现层级问题。
 
-| 组件 | iOS | Android |
-|---|---|---|
-| `WebView` | WKWebView | `android.webkit.WebView` |
-| `Video` | AVPlayerLayer；设置 `controls` 时为 AVPlayerViewController | TextureView 上的 MediaPlayer；设置 `controls` 时为 MediaController |
+| 组件 | iOS | Android | Linux |
+|---|---|---|---|
+| `WebView` | WKWebView | `android.webkit.WebView` | 不支持：显示占位视图 |
+| `Video` | AVPlayerLayer；设置 `controls` 时为 AVPlayerViewController | TextureView 上的 MediaPlayer；设置 `controls` 时为 MediaController | `GtkPicture` 中的 GTK 媒体流（GStreamer）；设置 `controls` 时为 `GtkVideo` |
 
 它们背后的框架（WebKit、AVFoundation）在应用第一次用到时才加载，所以从不显示网页或视频的应用不会在启动时为它们付出代价。请从 `nsh/webview` 和 `nsh/video` 导入它们。
+
+在 [Linux](./linux.md) 上，Web 视图需要 WebKitGTK，而 nsh 不使用它：Web 视图只显示一个中性的占位视图，并忽略它的命令。视频能播放哪些格式取决于已安装的
+GStreamer 插件；不支持 `rate`（始终以 1× 播放），`onEnd` 只对不循环的视频触发。
 
 ## WebView
 

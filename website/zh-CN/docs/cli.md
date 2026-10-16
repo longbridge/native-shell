@@ -64,14 +64,14 @@ nsh init [DIR] [--name <NAME>]
 ## nsh run
 
 ```sh
-nsh run [ENTRY] [--target catalyst|ios|android] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
+nsh run [ENTRY] [--target catalyst|ios|android|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
 ```
 
-启动开发服务器（同 `nsh dev`），启动一个从它加载应用的开发宿主，并在每次保存时重新构建。热模块替换会就地修补正在运行的应用；应用的日志和错误会打印在终端里。用 Ctrl-C 停止（或关闭 Catalyst 窗口）。
+启动开发服务器（同 `nsh dev`），启动一个从它加载应用的开发宿主，并在每次保存时重新构建。热模块替换会就地修补正在运行的应用；应用的日志和错误会打印在终端里。用 Ctrl-C 停止（或关闭 Catalyst 或 Linux 窗口）。
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `--target <TARGET>` | `catalyst` | `catalyst`：Mac Catalyst 宿主，一个 iPhone 大小的窗口（390×844）。`ios`：iOS 模拟器中的宿主。`android`：Android 设备或模拟器上的宿主。 |
+| `--target <TARGET>` | macOS 上为 `catalyst`，Linux 上为 `linux` | `catalyst`：Mac Catalyst 宿主，一个 iPhone 大小的窗口（390×844）。`ios`：iOS 模拟器中的宿主。`android`：Android 设备或模拟器上的宿主。`linux`：GTK 宿主，一个 390×844 的窗口（[Linux](./linux.md)）。 |
 | `--device <DEVICE>` | | 要使用的 iOS 模拟器，按名称（`"iPhone 16 Pro"`）或 UDID 指定。默认：已启动的模拟器，否则启动最新的 iPhone。 |
 | `--port <PORT>` | `8790` | 开发服务器端口。被占用时使用下一个空闲端口。 |
 | `--release` | | 压缩代码并去掉调试信息。release 包没有热模块替换：每次保存都会重新加载应用。 |
@@ -149,14 +149,14 @@ nsh build [ENTRY] [-o <OUT>] [--release]
 ## nsh package
 
 ```sh
-nsh package [ENTRY] --target ios|ios-simulator|android [-o <OUT>] [flags]
+nsh package [ENTRY] --target ios|ios-simulator|android|linux [-o <OUT>] [flags]
 ```
 
-用预构建的运行时以 release 模式构建可安装的应用。整个过程不涉及 Rust，也不需要 Xcode 工程或 Gradle 构建：nsh 自己组装应用包，并使用 Xcode 的 `actool` 和 `codesign`（iOS）或 SDK 中的 `aapt2`、`zipalign` 和 `apksigner`（Android）。元数据来自 `nsh.json`，可被参数覆盖。
+用预构建的运行时以 release 模式构建可安装的应用。整个过程不涉及 Rust，也不需要 Xcode 工程或 Gradle 构建：nsh 自己组装应用包，并使用 Xcode 的 `actool` 和 `codesign`（iOS）或 SDK 中的 `aapt2`、`zipalign` 和 `apksigner`（Android）；Linux 则复制运行器并用 `tar` 生成 `.tar.gz`。元数据来自 `nsh.json`，可被参数覆盖。
 
 | 参数 | 说明 |
 |---|---|
-| `--target <TARGET>` | 必填。`ios`：iOS 设备，签名的 `.ipa`（不带 `--sign` 时为未签名的 `.app`）。`ios-simulator`：ad hoc 签名的 `.app`。`android`：签名的 `.apk`。 |
+| `--target <TARGET>` | 必填。`ios`：iOS 设备，签名的 `.ipa`（不带 `--sign` 时为未签名的 `.app`）。`ios-simulator`：ad hoc 签名的 `.app`。`android`：签名的 `.apk`。`linux`：一个目录 `<Name>/`（可执行文件、`nsh/`、`.desktop` 文件）和 `<Name>.tar.gz`（[Linux](./linux.md#打包)）。 |
 | `-o, --out <OUT>` | 输出目录（默认 `out`）。 |
 | `--name <NAME>` | 显示名称。 |
 | `--id <ID>` | Bundle identifier，例如 `com.example.app`。 |
@@ -168,12 +168,13 @@ nsh package [ENTRY] --target ios|ios-simulator|android [-o <OUT>] [flags]
 | `--keystore <FILE>` | Android：release keystore。默认使用 `~/.android/debug.keystore` 中的调试密钥（不存在时创建）。 |
 | `--key-alias <ALIAS>` | Android：keystore 中的密钥别名。 |
 | `--keystore-password <PASSWORD>` | Android：keystore 密码，也可从 `NSH_KEYSTORE_PASSWORD` 读取。 |
-| `--run` | 打包完成后安装并启动应用：在模拟器中（`ios-simulator`）或在已连接的 Android 设备上。 |
+| `--run` | 打包完成后安装并启动应用：在模拟器中（`ios-simulator`）或在已连接的 Android 设备上；`linux` 则直接启动它。 |
 
 ```sh
 nsh package App.tsx --target ios-simulator --run
 nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345)" --profile dev.mobileprovision
 nsh package App.tsx --target android --keystore release.jks --key-alias upload
+nsh package App.tsx --target linux
 ```
 
 参见[打包](./packaging.md)。

@@ -160,6 +160,10 @@ const hapticsSupported = Platform.OS === "ios" || (Platform.OS === "android" && 
 
 `nsh trace` 以 iOS 身份无界面运行。
 
+在 [Linux](./linux.md) 上，`Platform.OS` 为 `"linux"`，界面风格为 `"desktop"`，`Platform.Version` 为内核的主、次版本号（`"6.12"`）：
+各发行版给版本编号的方式无法相互比较。在那里，安全区域和键盘高度为 0，`colorScheme()` 实时跟随桌面的设置（XDG 设置门户），
+`fontScale()` 跟随桌面的文字缩放，`PixelRatio.get()` 跟随显示器的缩放比例（包括小数缩放）。
+
 ## 像素密度
 
 `nsh/device` 中的 `PixelRatio` 在点与设备像素之间换算。

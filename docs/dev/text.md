@@ -18,7 +18,12 @@
   action mode offers Copy, Select all and Share. A touch elsewhere in the surface (`Mounter.touchDown`), new text or
   detaching ends it; one selection at a time per surface. Copy leaves attachments' placeholders out on both. Text that is
   not selectable has no interaction, listener or extra drawing. Web: the browser's own selection, `::selection` in
-  `selectionColor`.
+  `selectionColor`. Linux (`text.rs`, desktop conventions): a mouse drag selects characters (past a 3 pt slop, 10 pt over a
+  press target, so clicking a link still presses it), a double click words, a triple click the paragraph (drags go on by
+  them), Shift+click extends; the highlight is drawn behind the glyphs in `selectionColor` at 30% (the system blue by
+  default); the view takes keyboard focus only while it has a selection, for Ctrl+C (and Ctrl+Insert), Ctrl+A and
+  Escape, and a press anywhere else or losing focus ends it; a finished drag also sets the primary selection.
+  Touchscreen drags scroll instead; there is no context menu.
 - **Inline attachments**: any other element inside a `<Text>` (also inside its spans) is an attachment: laid out as its own
   layout root at its content size (`update_attachments`), it becomes an object replacement character (U+FFFC,
   `AttributedText::attachments`) that the engine sizes to it on the baseline (CTRunDelegate; Android a `ReplacementSpan`), so

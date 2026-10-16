@@ -137,6 +137,7 @@ const depth = () => nav.routes().length;
 | `preventBack` | `boolean` | `false` | 用户不能离开该页面。见[离开页面](#leaving-a-screen)。 |
 | `animation` | `"default" \| "fade" \| "none"` | `"default"` | 页面进入和离开的方式。 |
 | `ios` | `{ headerLargeTitle?: boolean; headerBackTitle?: string }` | 无 | 仅 iOS：随内容滚动收缩进栏内的大标题；返回到本页面的返回按钮文字。 |
+| `desktop` | `{ headerLargeTitle?: boolean; headerBackTitle?: string }` | 无 | 仅桌面（macOS、Windows、Linux）：桌面标题栏上的同样选项。 |
 | `style` | `StyleProp<ViewStyle>` | 无 | 页面样式。 |
 | `children` | `JSX.Element` | 无 | 内容。 |
 | `onBackRequest` | `() => void` | 无 | 用户试图离开设置了 `preventBack` 的页面。 |
@@ -217,6 +218,7 @@ function Settings() {
 | `transparent` | `boolean` | `false` | 背景透出后面的内容，用于对话框和浮层。 |
 | `dismissible` | `boolean` | `false` | 用户以原生方式关闭它（iOS 下滑关闭 sheet、Android 返回键），随后调用 `onRequestClose` 和 `onDismiss`。不设置时，这些手势只是请求关闭。 |
 | `ios` | `{ presentationStyle?: "fullScreen" \| "pageSheet" \| "formSheet"; supportedOrientations?: (…)[] }` | 无 | 仅 iOS：`pageSheet` 和 `formSheet` 会让后面的内容保持可见；Modal 允许的屏幕方向（默认与呈现它的界面一致）。 |
+| `desktop` | `{ presentationStyle?: "fullScreen" \| "pageSheet" \| "formSheet" }` | 无 | 仅桌面（macOS、Windows、Linux）：`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗；点击背景或按 Escape 请求关闭。 |
 | `android` | `{ statusBarTranslucent?: boolean }` | 无 | 仅 Android：内容延伸到状态栏下方（默认从状态栏下方开始）。 |
 | `style` | `StyleProp<ViewStyle>` | 无 | Modal 的样式。 |
 | `children` | `JSX.Element` | 无 | 内容。 |

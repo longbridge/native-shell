@@ -171,6 +171,26 @@ Things that were found the hard way. Read the section of the area you change bef
   so a line is wider than its sum of advances; `TextLayouts.Prepared.desired` adds the largest negative spacing back, or text laid
   out at its natural width wraps (`tracking-tight`).
 
+## Linux, GTK
+
+- **inotify reports reads** (`Access` events), FSEvents does not: file watchers (`nsh dev`, `cargo run`'s xtask) ignore
+  `Access` events, or the build's own reads of the sources start the next build, forever. inotify also reports paths
+  under the watched one as given: watch a canonical path (a `..` in it makes every path look like a dot entry).
+- **GDK frame times are microseconds** (`FrameClock::frame_time`); `nsh_anim::Graph::tick` takes seconds and the
+  scroll and transition code milliseconds: convert at each call site.
+- **A widget's accessible role is effectively fixed** once its AT context is realized: GTK refuses to change it (with a
+  critical), and nothing tells whether it is. Roles are decided when the view is created, from the batch that creates
+  it (`access::prepare`); a later change detaches the view and puts it back.
+- **`gtk_snapshot_append_repeating_radial_gradient` does not repeat** on GTK 4.22: append a
+  `gsk::RepeatingRadialGradientNode` made with its constructor.
+- **Bitmap fonts (color emoji) describe their strike's size**: a run's font description from
+  `describe_with_absolute_size` names the bitmap size, not the size asked for; set the absolute size again before the
+  main thread loads the font by description.
+- **GDK decodes only PNG, JPEG and TIFF by itself**; GIF and WebP need gdk-pixbuf loaders many systems lack, so the
+  `image` crate decodes them (their first frame).
+- **Tiling window managers ignore the host's `--size`** (the window's default size): scripted screenshots have the size
+  the window got.
+
 ## Testing on simulators and emulators
 
 - **iOS simulator: launch apps only after `simctl bootstatus -b`**; apps launched while the simulator boots are sent to the

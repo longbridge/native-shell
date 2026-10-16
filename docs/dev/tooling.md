@@ -63,8 +63,8 @@ step, the details only when something fails. Every command prints through it:
 - Tools run captured: `ui::cargo` (every cargo build: the app's crate, the hosts, `cargo xtask android`) shows the
   crate being compiled in its spinner, counts cargo's warnings into the `✓` line and, when the build fails, returns a
   `ui::failure` whose details are cargo's whole output; `ui::report` prints `error <message>` and those details (the
-  commands' errors all end there, `main_with`). `ui::quiet` keeps the Catalyst host's own output (AppKit's notes) and
-  shows it if the host fails. simctl, adb, codesign and the SDK's tools were captured already.
+  commands' errors all end there, `main_with`). `ui::quiet` keeps the Catalyst and Linux hosts' own output (AppKit's notes,
+  GTK's) and shows it if the host fails. simctl, adb, codesign and the SDK's tools were captured already.
 - Log lines (`logger.rs`): the library crates and the devices log through `log`; normally warnings and errors are shown
   without targets (a device's after its name: `warn iOS Simulator: …`), `js` lines and a device's lines from other
   crates (the app's Rust code) plainly (with the device's name when several are connected), `nsh::perf` as `perf …`;
@@ -86,6 +86,11 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   connected hosts; new clients subscribe before receiving the current state, so no event is missed. Protocol: `crates/nsh-dev/src/protocol.rs`
   (JSON text frames + binary frames).
 - Bytecode version negotiation: the client reports `BYTECODE_VERSION` in its handshake; on a mismatch the server sends JS source instead.
+- Watching ignores `Access` events: inotify (Linux) reports reads, FSEvents does not, so the build's own reads of the
+  sources would start the next build, forever.
+- `nsh run` defaults to the host that runs on this machine: `--target catalyst` on macOS, `--target linux` (the GTK
+  host, `crates/nsh-linux-host`, run in place: it needs no app bundle) on Linux. Both hosts are stopped with the run
+  (Ctrl-C, SIGTERM, the session ending); a host that exits with an error ends it with its kept output.
 - `nsh run --target android` forwards the dev server's port to the device (`adb reverse tcp:<port> tcp:<port>`,
   `android::Reverse`) and removes that rule, and only that one (`adb reverse --remove tcp:<port>`), however the run
   ends: normally, by an error, by Ctrl-C or SIGTERM, or for a restart of an app with a Rust crate (exit code 75; the
@@ -185,8 +190,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
 
 - A Cargo workspace in `<app>/.nsh/rust`, written on every command (files only when they change): `cli` (the
   command line, `nsh_cli::main_with` of the mobile UI and the app's set), `ios-host` / `ios-app` (the development
-  host and the release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`) and
-  `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime looks up when an engine starts). They
+  host and the release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`),
+  `linux-host` / `linux-app` (the same on Linux, `nsh_platform_linux::set_ui_sets`) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime looks up when an engine starts). They
   build against nsh's sources (the checkout the running `nsh` was built in, or `NSH_SOURCE`) with nsh's `Cargo.lock`
   and target directory, so only the app's code and what links it compile; the binaries are named after the app
   (`nsh-app-<package>-cli`).
@@ -194,7 +199,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
   (`NSH_RUST_APP` names the workspace). Everything then knows the app's set: the bundler keeps its imports, bytecode
   links against its exports, `.nsh/types` declares it (`.nsh/types/<specifier>.d.ts`, found through tsconfig's `"*"`
   path, which falls back to `node_modules`), `nsh trace` renders it. The hosts `run` and `package` need are built
-  for the app instead of taken from the runtime (iOS `--target` triples; Android: the prebuilt `classes.dex` with
+  for the app instead of taken from the runtime (iOS `--target` triples; Linux's `linux-host` / `linux-app` for this
+  machine; Android: the prebuilt `classes.dex` with
   the app's `libnsh.so` for each ABI of the prebuilt runtime, cross-compiled with the NDK).
 - `nsh dev` / `nsh run` watch the crate too: a change to its `.rs` files, `Cargo.toml` or `assets/` ends the app's
   command line with exit code 75, and `nsh` builds it and runs the command again (the app restarts; JS and TSX edits
@@ -207,7 +213,7 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
 ## Finding the runtimes
 
 The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distribution layout) or, in a checkout, in
-`target/<triple>/<profile>` and `target/android/<profile>[-dev]` with the CLI's own profile (`NSH_RUNTIME` overrides). In a checkout (`<root>/target/<profile>/nsh` next to
+`target/<triple>/<profile>` (Linux's, built for this machine, in `target/<profile>`) and `target/android/<profile>[-dev]` with the CLI's own profile (`NSH_RUNTIME` overrides). In a checkout (`<root>/target/<profile>/nsh` next to
 `crates/nsh-ios-host`), the CLI builds what it needs with cargo first (`cargo build -p nsh-ios-host --target ...`,
 `cargo xtask android --dev`), so `nsh run` never uses a missing or stale host.
 
@@ -215,8 +221,10 @@ The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distributi
 
 Commands that build an app take its entry module or its directory (the current one by default), whose `App.tsx` is
 the entry (matched in any case: `crates/nsh-cli/src/entry.rs`). `cargo run` is `xtask run` (the workspace's default
-member): the gallery in the Mac Catalyst host through `nsh run`, in a process group of its own that is stopped and
-started again when a source under `crates/` changes (`crates/xtask/src/run.rs`). The first two lines (`Finished`,
+member): the gallery in the Mac Catalyst host (on Linux the GTK host) through `nsh run`, in a process group of its own that is stopped and
+started again when a source under `crates/` changes (`crates/xtask/src/run.rs`; it watches the canonical
+`crates/`: inotify reports paths under the one watched as given, and the `..` of `CARGO_MANIFEST_DIR/../..` would make
+every path look like a dot entry, which is skipped). The first two lines (`Finished`,
 `Running`) are the outer `cargo run`'s own, which only a global `term.quiet` would hide (it would hide `cargo build`'s
 too); `cargo xtask [run] [<app>]` is the same task through the alias in `.cargo/config.toml` (`run -q`), without them. xtask
 drops the variables `cargo run` sets for it (`CARGO_MANIFEST_DIR`, `CARGO_PKG_*`, ...) first: the builds it and `nsh`

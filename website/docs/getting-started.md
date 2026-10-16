@@ -75,7 +75,7 @@ Line by line:
 
 `nsh run` starts a dev server, builds the app, launches a development host that loads it, and keeps rebuilding while you edit. Logs from the app (`console.log`, errors) appear in the terminal.
 
-#### Mac Catalyst (default)
+#### Mac Catalyst (default on macOS)
 
 ```sh
 nsh run my-app/App.tsx
@@ -99,6 +99,14 @@ nsh run my-app/App.tsx --target android
 ```
 
 Start an emulator or connect a device first (`adb devices` lists them; nsh uses the first one). `nsh` installs a development host APK (rebuilt only when the runtime changes) and forwards the dev server's port to the device with `adb reverse`, so it works over USB without a shared network.
+
+#### Linux (default on Linux)
+
+```sh
+nsh run my-app/App.tsx
+```
+
+The app opens in a GTK window (390×844 points). It needs GTK 4.14 or later; see [Linux](./linux.md).
 
 ### Edit with hot reload
 
@@ -198,6 +206,7 @@ The same module can also be a whole app. `nsh package` builds an installable app
 ```sh
 nsh package my-app --target ios-simulator --run
 nsh package my-app --target android
+nsh package my-app --target linux
 ```
 
 This is a supported use, and the quickest way to put a module on a device, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).

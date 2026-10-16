@@ -176,6 +176,11 @@ const hapticsSupported = Platform.OS === "ios" || (Platform.OS === "android" && 
 
 `nsh trace` runs headless as iOS.
 
+On [Linux](./linux.md), `Platform.OS` is `"linux"`, the idiom `"desktop"` and `Platform.Version` the kernel's major
+and minor version (`"6.12"`): distributions number their releases in ways that cannot be compared. There, the safe
+area and the keyboard height are 0, `colorScheme()` follows the desktop's setting (the XDG settings portal) live,
+`fontScale()` the desktop's text scaling and `PixelRatio.get()` the display's scale, fractional ones included.
+
 ## Pixel density
 
 `PixelRatio` from `nsh/device` converts between points and device pixels.

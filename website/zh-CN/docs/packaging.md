@@ -6,12 +6,13 @@ order: 29
 
 # 打包
 
-`nsh package` 把应用变成可以安装的产物：用于 iOS 模拟器的 `.app`、用于 iOS 真机的已签名 `.ipa`，或用于 Android 的已签名
-`.apk`。它把应用的 release 构建与 nsh 自带的**预构建运行时**组合在一起，因此不需要 Rust 工具链，不需要 Xcode 项目，也不需要 Gradle。
+`nsh package` 把应用变成可以安装的产物：用于 iOS 模拟器的 `.app`、用于 iOS 真机的已签名 `.ipa`、用于 Android 的已签名
+`.apk`，或用于 Linux 的目录和 `.tar.gz`。它把应用的 release 构建与 nsh 自带的**预构建运行时**组合在一起，因此不需要 Rust 工具链，不需要 Xcode 项目，也不需要 Gradle。
 
 ```sh
 nsh package App.tsx --target ios-simulator --run     # build, install and launch in the simulator
 nsh package App.tsx --target android --run           # build, install and launch on a device or emulator
+nsh package App.tsx --target linux --run             # build and launch on this machine
 nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345)" --profile Dev.mobileprovision
 ```
 
@@ -55,7 +56,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 
 | 参数 | 说明 |
 |---|---|
-| `--target <ios \| ios-simulator \| android>` | 构建目标（必填）。 |
+| `--target <ios \| ios-simulator \| android \| linux>` | 构建目标（必填）。 |
 | `-o, --out <dir>` | 输出目录。默认为 `out`。 |
 | `--name <name>` | 显示名称。 |
 | `--id <id>` | Bundle identifier，如 `com.example.app`。 |
@@ -67,7 +68,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 | `--keystore <file>` | Android：release keystore（默认使用 debug 密钥）。 |
 | `--key-alias <alias>` | Android：keystore 中的密钥别名。 |
 | `--keystore-password <password>` | Android：keystore 密码；也可从 `NSH_KEYSTORE_PASSWORD` 读取。 |
-| `--run` | 构建完成后安装并启动：在 iOS 模拟器中，或在 `adb` 能看到的 Android 设备或模拟器上。不适用于 `--target ios`。 |
+| `--run` | 构建完成后安装并启动：在 iOS 模拟器中，或在 `adb` 能看到的 Android 设备或模拟器上；Linux 应用在本机启动。不适用于 `--target ios`。 |
 
 ## iOS 模拟器
 
@@ -130,12 +131,23 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 
 建议使用环境变量而不是 `--keystore-password`，以免密码留在 shell 历史记录中。
 
+## Linux
+
+```sh
+nsh package App.tsx --target linux --run
+```
+
+写出 `out/<Name>/`（可执行文件 `<Name>`、`nsh/bundle.qbc`、`nsh/assets/…`、包含窗口标题和应用 id 的 `nsh/app.json`、`<id>.desktop`
+和图标 `<id>.png`），以及同样内容的 `out/<Name>.tar.gz`。请在 Linux 上打包：运行器是为构建它的机器构建的。运行应用的机器上必须装有
+GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 [Linux](./linux.md#打包)。
+
 ## 图标
 
 在 `nsh.json` 中（`"icon": "icon.png"`）或通过 `--icon` 提供一张正方形 PNG，最好是 1024×1024：
 
 - **iOS：** 由 Xcode 的 `actool` 编译进应用的资源目录（`Assets.car`），iOS 所需的各种尺寸都由它生成。
 - **Android：** 缩放到 192×192，用作启动器图标（`mipmap-xxxhdpi`）。
+- **Linux：** 复制为 `<id>.png`，`.desktop` 文件以它作为 `Icon`。
 
 没有图标时，系统显示默认图标。
 
@@ -147,6 +159,7 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 |---|---|---|
 | iOS | `nsh-ios-app` 可执行文件 | `<Name>.app/nsh/bundle.qbc`、`nsh/assets/…` |
 | Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.qbc`、`assets/nsh/assets/…` |
+| Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.qbc`、`nsh/assets/…` |
 
 打包出的应用不注册任何[原生组件](./native-components.md)；如需使用原生组件，请把 nsh 嵌入你自己的应用。
 
@@ -155,8 +168,8 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 `nsh package` 会在 CLI 旁边查找预构建运行时（发行包中的 `bin/../runtime`）。在 nsh 的源码仓库中，它使用
 `target/<triple>/<profile>` 和 `target/android/<profile>`，profile 与 CLI 自身一致（debug 版 CLI 使用 debug 版运行时）：用
 `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim`（真机用 `aarch64-apple-ios`）和 `cargo xtask android`
-构建它们（release 版 CLI 需加上 `--release`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
-`runtime/` 相同（`ios/iphoneos`、`ios/iphonesimulator`、`android/release` 等）。
+构建它们（release 版 CLI 需加上 `--release`）；在 Linux 上，`nsh-linux-app` 为本机构建，位于 `target/<profile>`（`cargo build -p nsh-linux-app`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
+`runtime/` 相同（`ios/iphoneos`、`ios/iphonesimulator`、`android/release`、`linux` 等）。
 
 ## 另请参阅
 

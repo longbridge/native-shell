@@ -55,7 +55,9 @@ globals.
   `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar `backgroundColor` (a Rust component's `android`
   prop). Alert's `cancelable` is an option of both platforms (iOS alerts are never dismissed by a tap outside). iOS:
   input `inputAccessoryViewID` / `textContentType` / `keyboardAppearance`, Screen `headerLargeTitle` / `headerBackTitle`, Modal
-  `presentationStyle` / `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`.
+  `presentationStyle` / `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`. Desktop: Screen
+  `headerLargeTitle` / `headerBackTitle`, Modal `presentationStyle` (a prop of several platforms names each:
+  `#[prop(ios = "x", desktop = "x")]`).
 - A module's exports are made when a bundle first imports it; what must always happen (the root's direction, the
   themes) is the renderer's (`dom.rs`, `setup`), not a module's.
 

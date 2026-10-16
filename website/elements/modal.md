@@ -99,5 +99,6 @@ None.
 ## Platform notes
 
 - Android: the back button goes to the topmost modal first, before stacks and `BackHandler` listeners.
-- `presentationStyle` and `supportedOrientations` are iOS only and ignored on Android.
+- `presentationStyle` and `supportedOrientations` are iOS only and ignored on Android. On a desktop, `desktop={{ presentationStyle }}`
+  makes `pageSheet` / `formSheet` a card centered in the window over a dimmed backdrop.
 - Without `statusBarTranslucent`, an Android modal's content starts below the status bar.

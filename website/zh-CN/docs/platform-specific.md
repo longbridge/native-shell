@@ -55,8 +55,10 @@ order: 25
 | `ios={{ headerLargeTitle }}`、`ios={{ headerBackTitle }}` | `Screen` | 大标题；返回按钮上的文字。 |
 | `ios={{ presentationStyle }}`、`ios={{ supportedOrientations }}` | `Modal` | `"pageSheet"` / `"formSheet"` 表单样式；允许的方向。 |
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | 滑动在页面历史中前进后退。 |
+| `desktop={{ headerLargeTitle }}`、`desktop={{ headerBackTitle }}` | `Screen` | 大标题；返回按钮上的文字。 |
+| `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`：窗口中居中的卡片。 |
 
-`desktop={{…}}` 在所有地方都可以使用，为桌面专属属性预留；目前还没有。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
+`desktop={{…}}` 在所有地方都可以使用；上面列出的是目前仅限桌面的属性。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
 
 在两个平台上都存在、只是效果略有不同的属性不做分组：`Alert.alert` 的 `cancelable` 选项两个平台都有（iOS 提示框本来就不会因点击外部而关闭），`pagingEnabled`、`refreshing`、`hitSlop` 等在所有平台上都可用。
 
@@ -130,7 +132,7 @@ function PhotoViewer() {
 
 ## Platform.OS 与 Platform.select
 
-`nsh/device` 中的 `Platform` 告诉你应用运行在哪里：`Platform.OS` 为 `"ios"`、`"android"`、`"macos"`、`"windows"` 或 `"linux"`（Mac Catalyst 为 `"ios"`，同时 `Platform.isMacCatalyst` 为真）。`Version`、`isPad` 等见[设备与环境](./device-and-environment.md#平台)。
+`nsh/device` 中的 `Platform` 告诉你应用运行在哪里：`Platform.OS` 为 `"ios"`、`"android"`、`"macos"`、`"windows"` 或 `"linux"`（Mac Catalyst 为 `"ios"`，同时 `Platform.isMacCatalyst` 为真；[Linux 后端](./linux.md)为 `"linux"`，其中的元素会应用 `desktop` 属性）。`Version`、`isPad` 等见[设备与环境](./device-and-environment.md#平台)。
 
 ```tsx
 import { Platform } from "nsh/device";

@@ -89,5 +89,6 @@ modal 是受控的：用户下滑 sheet 或按返回键时，nsh 通过 `onReque
 ## 平台说明
 
 - Android：返回键首先交给最上层的 modal，然后才是导航栈和 `BackHandler` 监听器。
-- `presentationStyle` 和 `supportedOrientations` 仅适用于 iOS，在 Android 上会被忽略。
+- `presentationStyle` 和 `supportedOrientations` 仅适用于 iOS，在 Android 上会被忽略。在桌面上，`desktop={{ presentationStyle }}`
+  让 `pageSheet` / `formSheet` 成为窗口中居中的卡片，背后的内容变暗。
 - 未设置 `statusBarTranslucent` 时，Android modal 的内容从状态栏下方开始。

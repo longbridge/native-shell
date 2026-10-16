@@ -9,13 +9,13 @@ order: 32
 During development, nsh builds your app on every save and pushes it to every connected host, which updates in place.
 Two commands do this:
 
-- `nsh run` starts the dev server **and** launches a development host: a Mac Catalyst window, an iOS simulator or an
-  Android device or emulator.
+- `nsh run` starts the dev server **and** launches a development host: a Mac Catalyst window, a GTK window on Linux, an
+  iOS simulator or an Android device or emulator.
 - `nsh dev` starts only the dev server, for hosts you start yourself: your own app with the development SDK, a device
   on the network, or several hosts at once.
 
 ```sh
-nsh run App.tsx                     # Mac Catalyst window, 390×844 (macOS)
+nsh run App.tsx                     # Mac Catalyst window, 390×844 (macOS); GTK window (Linux)
 nsh run App.tsx --target ios        # iOS simulator
 nsh run App.tsx --target android    # Android device or emulator
 nsh dev App.tsx                     # server only
@@ -25,7 +25,7 @@ nsh dev App.tsx                     # server only
 
 | Flag | Description |
 |---|---|
-| `--target <catalyst \| ios \| android>` | Where to run. Default `catalyst`: an iPhone-sized (390×844) Mac window. |
+| `--target <catalyst \| ios \| android \| linux>` | Where to run. Default `catalyst` on macOS (an iPhone-sized, 390×844 Mac window), `linux` on Linux. |
 | `--device <name or UDID>` | The iOS simulator to use. Default: a booted one, else the newest iPhone (booted for you). |
 | `--port <port>` | Dev server port. Default 8790; the next free port is used if it is taken. |
 | `--release` | Serve release builds (minified, no debug info, no hot updates). |
@@ -35,6 +35,8 @@ What each target does:
 
 - **`catalyst`** (macOS) runs the development host as a Mac app. Stopping `nsh run` (Ctrl-C, or `kill`) closes it, and
   closing the window ends `nsh run`.
+- **`linux`** (Linux) runs the GTK development host in a 390×844 window, the same way: stopping `nsh run` closes
+  it, closing the window ends `nsh run`. Requires GTK 4.14 or later ([Linux](./linux.md)).
 - **`ios`** installs the development host in the simulator, launches it pointed at the dev server and keeps watching.
   The simulator shares the Mac's network, so the host reaches the server on `127.0.0.1`. Stopping `nsh run` (Ctrl-C)
   closes the host, which would otherwise join the next session. Requires Xcode.

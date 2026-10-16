@@ -55,8 +55,10 @@ What exists today:
 | `ios={{ headerLargeTitle }}`, `ios={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `ios={{ presentationStyle }}`, `ios={{ supportedOrientations }}` | `Modal` | `"pageSheet"` / `"formSheet"` sheets; allowed orientations. |
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | Swipe back and forward in the page history. |
+| `desktop={{ headerLargeTitle }}`, `desktop={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
+| `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`: a card centered in the window. |
 
-`desktop={{…}}` is accepted everywhere and reserved for desktop-only props; none exist yet. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
+`desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 
 Cross-platform props whose effect differs slightly are not grouped: `Alert.alert`'s `cancelable` option exists on both (iOS alerts are simply never dismissed by a tap outside), and `pagingEnabled`, `refreshing`, `hitSlop` and the rest work on every platform.
 
@@ -130,7 +132,7 @@ In an app embedded in a native one, the host app's view controller decides the s
 
 ## Platform.OS and Platform.select
 
-`Platform` from `nsh/device` tells you where the app runs: `Platform.OS` is `"ios"`, `"android"`, `"macos"`, `"windows"` or `"linux"` (Mac Catalyst is `"ios"`, with `Platform.isMacCatalyst`). See [Device and environment](./device-and-environment.md#the-platform) for `Version`, `isPad` and the rest.
+`Platform` from `nsh/device` tells you where the app runs: `Platform.OS` is `"ios"`, `"android"`, `"macos"`, `"windows"` or `"linux"` (Mac Catalyst is `"ios"`, with `Platform.isMacCatalyst`; the [Linux backend](./linux.md) is `"linux"`, and its elements apply their `desktop` props). See [Device and environment](./device-and-environment.md#the-platform) for `Version`, `isPad` and the rest.
 
 ```tsx
 import { Platform } from "nsh/device";
