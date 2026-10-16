@@ -848,14 +848,16 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
 }
 
 /// Tab and Shift + Tab move the keyboard focus between the text fields, in
-/// tree order (GTK's focus chain does this on Linux).
+/// tree order (GTK's focus chain does this on Linux), within the newest
+/// modal: the views under it never get the focus. The field reached has
+/// its text selected, as in Windows' dialogs.
 fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     let m = event.modifiers;
     if event.vk != VK_TAB || m.ctrl || m.alt || m.meta {
         return false;
     }
     let mut fields = Vec::new();
-    collect_fields(&surface.root, &mut fields);
+    collect_fields(&crate::navigation::focus_scope(surface), &mut fields);
     if fields.is_empty() {
         return false;
     }
@@ -868,7 +870,7 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         (None, false) => 0,
         (None, true) => n - 1,
     };
-    crate::text_input::focus(&fields[next]);
+    crate::text_input::tab_to(&fields[next]);
     true
 }
 

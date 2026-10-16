@@ -83,7 +83,7 @@ use windows::{
                 },
                 KeyboardAndMouse::{
                     VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT,
-                    VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+                    VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_UP,
                 },
             },
             WindowsAndMessaging::{
@@ -818,33 +818,6 @@ fn set_focus(surface: &Rc<Surface>, view: Option<&NshView>) {
     place_ime(surface);
 }
 
-/// The next (or previous) input of the surface in tree order after
-/// `from`, skipping hidden ones; wraps around.
-fn next_input(surface: &Surface, from: &NshView, forward: bool) -> Option<NshView> {
-    fn walk(view: &NshView, out: &mut Vec<NshView>) {
-        {
-            let s = view.state();
-            if s.style.hidden || s.concealed {
-                return;
-            }
-            if s.input.is_some() {
-                out.push(view.clone());
-            }
-        }
-        view.with_children(|children| children.iter().for_each(|c| walk(c, out)));
-    }
-    let mut inputs = Vec::new();
-    walk(&surface.root, &mut inputs);
-    let at = inputs.iter().position(|v| v == from)?;
-    let n = inputs.len();
-    let next = if forward {
-        (at + 1) % n
-    } else {
-        (at + n - 1) % n
-    };
-    (next != at).then(|| inputs[next].clone())
-}
-
 // --- The IME -----------------------------------------------------------------
 
 /// Enables the IME while an editable, non-secure field has the focus.
@@ -1365,6 +1338,21 @@ pub(crate) fn blur_all(surface: &Rc<Surface>) {
     set_focus(surface, None);
 }
 
+/// Focuses `view`, reached with Tab: as in Windows' dialogs, its text is
+/// selected.
+pub(crate) fn tab_to(view: &NshView) {
+    let Some(surface) = surface_of(view) else {
+        return;
+    };
+    set_focus(&surface, Some(view));
+    if let Some(input) = input_of(view)
+        && input.focused.get()
+    {
+        input.model.borrow_mut().select_all();
+        after_edit(&surface, view, &input, false);
+    }
+}
+
 /// `setSelection` (UTF-16 offsets).
 pub(crate) fn set_selection(view: &NshView, start: u32, end: u32) {
     let Some(input) = input_of(view) else {
@@ -1651,19 +1639,6 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
             }
             false
         }
-        _ if vk == VK_TAB.0 && !m.ctrl && !m.alt => match next_input(surface, &view, !m.shift) {
-            Some(next) => {
-                set_focus(surface, Some(&next));
-                if let Some(input) = input_of(&next) {
-                    // As Windows' dialogs do, the field reached with Tab
-                    // has its text selected.
-                    input.model.borrow_mut().select_all();
-                    after_edit(surface, &next, &input, false);
-                }
-                true
-            }
-            None => false,
-        },
         _ if m.ctrl && !m.alt => match vk {
             0x41 => moved(&|model| model.select_all()),
             0x43 => {

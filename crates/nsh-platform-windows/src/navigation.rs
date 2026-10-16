@@ -1094,6 +1094,10 @@ struct ModalNav {
     /// Dims the window behind a sheet; clicking it asks to close.
     scrim: Option<Scrim>,
     reported: Option<(Size, EdgeInsets)>,
+    /// The field that had the keyboard focus when it was presented: it
+    /// gets it back when the modal closes, as a desktop dialog gives it
+    /// back.
+    restore: Option<NshView>,
 }
 
 /// The screen under the moving one darkening (a fill it hosts while the
@@ -1654,6 +1658,7 @@ impl Nav {
             return;
         };
         let Some(view) = m.view.take() else { return };
+        let restore = m.restore.take();
         let motion = modal_motion(m.config.animation, reduce_motion(surface));
         let frame = view.state().frame;
         // Recorded when the batch began tearing it down, or now (the user
@@ -1672,6 +1677,14 @@ impl Nav {
         view.unparent();
         set_shift(&view, (0.0, 0.0));
         set_fade(&view, 1.0);
+        if let Some(field) = restore
+            && field.attached()
+            && crate::text_input::focused(surface).is_none()
+            && is_ancestor(&self.focus_scope(surface), &field)
+        {
+            // Not while another modal still covers it.
+            crate::text_input::focus(&field);
+        }
         match (motion, image) {
             (Some((duration, fade)), Some(picture)) => {
                 let layer = layer_view();
@@ -1740,6 +1753,16 @@ impl Nav {
             None => return false,
         }
         true
+    }
+
+    /// Where the keyboard focus may go: the newest modal, else the whole
+    /// surface.
+    fn focus_scope(&self, surface: &Surface) -> NshView {
+        self.order
+            .last()
+            .and_then(|id| self.modals.get(id))
+            .and_then(|m| m.view.clone())
+            .unwrap_or_else(|| surface.root.clone())
     }
 
     /// What going back acts on (`back_press`: the app listens to
@@ -2114,6 +2137,13 @@ pub(crate) fn present(surface: &Rc<Surface>, view: &NshView) {
     if m.view.is_some() {
         return;
     }
+    // The field being typed in under the modal leaves it (until the modal
+    // closes); one of the modal's own keeps it.
+    let field = crate::text_input::focused(surface).filter(|f| !is_ancestor(view, f));
+    if let Some(field) = &field {
+        crate::text_input::blur(field);
+    }
+    m.restore = field;
     m.view = Some(view.clone());
     m.closed = false;
     m.reported = None;
@@ -2131,6 +2161,12 @@ pub(crate) fn present(surface: &Rc<Surface>, view: &NshView) {
         }
     }
     nav.presenting.push(id);
+}
+
+/// Where the keyboard focus may go (Tab): the newest modal, else the whole
+/// surface.
+pub(crate) fn focus_scope(surface: &Surface) -> NshView {
+    surface.nav.borrow().focus_scope(surface)
 }
 
 /// A modal was removed: dismiss it.
