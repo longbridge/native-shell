@@ -74,12 +74,31 @@ The values below are the dark theme's.
   code share one palette. Never hand-colour a snippet.
 - Diagrams in `public/diagrams` come as a light and a dark file, each with
   `:root` tokens in its theme's palette; the page shows the one of its theme.
+- **Code blocks** are one card (radius 14, hairline, the card gradient and
+  top highlight, a soft outer shadow, no inner shadow): a header row naming
+  the language (`pre::before`, from `data-language`) with the copy button,
+  a hairline, the code on a faintly tinted surface. Syntax colours per
+  theme: keywords info, strings up green, numbers amber, functions citrus,
+  comments faint. Tables are clean cards (a faint header tint, 13px muted
+  labels, row hairlines). Inline code is a light-touch chip.
+- **A touch of liquid glass**, on floating and layered surfaces only: the nav
+  bar, the search panel, menus, segmented controls (a glassy track, the
+  selected item a lit glass pill), the copy buttons and badges get a
+  translucent fill (`--glass-fill`), a lit rim (`--glass-edge`: top light,
+  bottom dark) and backdrop blur where content passes under them, with an
+  opaque fallback. Cards and reading surfaces stay calm.
+- Diagrams are never upscaled (at most their 880px viewBox width, centred);
+  in docs they scroll inside `.diagram-scroll` rather than shrink below
+  640px.
 - Radii: cards 16px, insets 12px, controls 10px.
 - The logo is the app icon's mark (`public/logo.svg`, inline in
-  `Logo.astro`): a citrus arch holding a light dot (a dark one on the light
-  theme, `--logo-dot`). The favicon
-  (`favicon.svg`), `apple-touch-icon.png` and `icon-512.png` (og:image) are
-  the full icon on graphite.
+  `Logo.astro`): a citrus arch holding a light dot (on the light theme a
+  deeper citrus arch and a dark dot, `--logo-*`). The favicon
+  (`favicon.svg`) is the mark itself on a transparent background, its
+  colours switching with `prefers-color-scheme` inside the SVG;
+  `apple-touch-icon.png` and `icon-512.png` (og:image) are the light mark on
+  a plain `#f3f3ef` square. The graphite app icon is the gallery's, not
+  the site's.
 
 ## Typography
 
@@ -93,6 +112,9 @@ Chinese); `ui-monospace` / SF Mono for code. No webfonts. Base 15px.
   — not colour — mark structure (section kicker, sidebar group, "On this page").
 - Negative and wide tracking are for Latin only: `html[lang^="zh"]` resets
   them.
+- Chinese headings, titles and kickers never end with "。" (body sentences
+  keep it); English headlines keep their full stop where the component's
+  other headlines have one.
 
 ## Layout
 

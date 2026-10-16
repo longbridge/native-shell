@@ -17,7 +17,7 @@ const chatSrc = `${BASE}play/index.html?theme=dark#home-chat`;
 const copy = zh
   ? {
       eyebrow: '为 AI 生成界面而设计',
-      title: ['AI 生成的界面，', '原生地运行在你的应用里。'],
+      title: ['AI 生成的界面，', '原生地运行在你的应用里'],
       lead: 'Native Shell 嵌入 iOS 和 Android 应用，在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的 UIKit 与 Android 视图渲染。无需发版。',
       start: '阅读简介',
       try: '在线试用',
@@ -36,18 +36,18 @@ const copy = zh
       },
       replay: '重播',
       capKicker: 'AI 友好',
-      capTitle: '为模型编写、为宿主把关而设计。',
+      capTitle: '为模型编写、为宿主把关而设计',
       capLead: '生成的界面要好写、可验证、跑得安全，还要是真正的原生界面。nsh 的每一层都围绕这四点设计。',
       usesKicker: '三种用法',
-      usesTitle: '同一个模块，三种用法。',
+      usesTitle: '同一个模块，三种用法',
       usesLead: '首要用途是 AI 生成的界面；同一套机制也让原生应用可以扩展，或者直接组成一个独立应用。',
       howKicker: '工作原理',
-      howTitle: '在服务器上生成，在设备上被信任。',
+      howTitle: '在服务器上生成，在设备上被信任',
       howLead: '服务器负责生成、检查和签名；设备负责校验、隔离和渲染。信任边界清清楚楚。',
       platKicker: '平台',
-      platTitle: '先手机，再桌面。',
+      platTitle: '先手机，再桌面',
       principleKicker: '原则',
-      principle: ['模型负责编写界面。', '宿主决定它能做什么。'],
+      principle: ['模型负责编写界面，', '宿主决定它能做什么'],
       principleBody: '模块只能看到宿主授予的能力，只占用宿主允许的资源，只在签名校验通过后运行。剩下的——文本、输入、无障碍、动画——交给系统的原生视图。',
       principleCta: '在线试用',
     }
@@ -210,7 +210,7 @@ const icon = (name: string, size = 16) =>
           </div>
           <div class="device__screen">
             {player
-              ? <iframe data-chat src={chatSrc} title={copy.demo.frame} loading="eager"></iframe>
+              ? <iframe data-chat allow="clipboard-write" src={chatSrc} title={copy.demo.frame} loading="eager"></iframe>
               : <p class="device__pending">{copy.demo.pending}</p>}
           </div>
         </div>
@@ -445,10 +445,10 @@ const icon = (name: string, size = 16) =>
     width: var(--w); padding: 0 8px 8px; border: 1px solid var(--border); border-radius: 20px;
     background: var(--card) var(--finish-card-bg); box-shadow: var(--finish-card), var(--shadow-window);
   }
-  .device__bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px; }
+  .device__bar { display: flex; align-items: center; gap: 8px; height: 40px; margin: 0 -8px; padding: 0 14px; border-radius: 20px 20px 0 0; background: linear-gradient(180deg, color-mix(in srgb, var(--foreground) 3%, transparent), transparent); }
   .device__tile { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--finish-accent-bg); box-shadow: var(--finish-accent); color: var(--on-citrus); }
   .device__title { color: var(--muted-foreground); font: 0.75rem/1 var(--font-mono); }
-  .device__badge { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); font-size: 11px; font-weight: 600; }
+  .device__badge { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--success) 14%, transparent); box-shadow: inset 0 1px 0 var(--highlight), inset 0 0 0 1px color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); font-size: 11px; font-weight: 600; }
   .device__badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   .device__screen {
     position: relative; height: 600px; border-radius: 14px; overflow: hidden;
@@ -524,7 +524,8 @@ const icon = (name: string, size = 16) =>
 
   /* How it works */
   .diagram { padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius-surface); background: var(--finish-card-bg); box-shadow: var(--finish-card); }
-  .diagram img { display: block; width: 100%; height: auto; }
+  /* At its natural size at most (never upscaled), centred. */
+  .diagram img { display: block; width: 100%; max-width: 880px; height: auto; margin-inline: auto; }
   .diagram--dark { display: none !important; }
   :global(.dark) .diagram--light { display: none !important; }
   :global(.dark) .diagram--dark { display: block !important; }

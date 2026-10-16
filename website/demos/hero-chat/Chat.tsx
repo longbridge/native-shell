@@ -1,6 +1,6 @@
 import { batch, computed, effect, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { createNativeValue, LayoutAnimation } from "nsh/animated";
-import { Clipboard } from "./clipboard";
+import { Clipboard } from "nsh/clipboard";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "./icons";
@@ -33,7 +33,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /**
  * Copied from the gallery (examples/gallery/demos/Chat.tsx) for the
- * website's hero; only the imports, `autoplay` and the clipboard shim differ.
+ * website's hero; only the imports and `autoplay` differ.
  *
  * A simulated AI assistant: replies stream token by token (batched per
  * frame), think first, call tools, fail and recover; every scenario comes
@@ -581,8 +581,7 @@ export function Chat(props: { autoplay?: string } = {}) {
                 paddingHorizontal: 14,
                 borderRadius: radius.inset,
                 borderCurve: "continuous",
-                backgroundColor: colors.surface,
-                ...finish.card,
+                ...finish.menu,
                 borderWidth: 1,
                 borderColor: alpha(bannerKind() === "offline" ? colors.warn : colors.up, 0.35),
               }}
@@ -632,10 +631,8 @@ export function Chat(props: { autoplay?: string } = {}) {
               style={{
                 borderRadius: radius.card,
                 borderCurve: "continuous",
-                backgroundColor: colors.surface,
-                ...finish.card,
+                ...finish.menu,
                 borderWidth: 1,
-                borderColor: colors.border,
                 paddingVertical: 6,
                 maxHeight: 460,
                 overflow: "hidden",
@@ -651,7 +648,7 @@ export function Chat(props: { autoplay?: string } = {}) {
                         if (row().id === "attach") attachment.set({ image: photo, file: { name: "trip-notes.pdf", size: "2.4 MB" } });
                         else play(row().id);
                       }}
-                      underlayColor={colors.raised}
+                      underlayColor={alpha(colors.text, 0.06)}
                       accessibilityRole="button"
                       accessibilityLabel={row().label}
                       style={{ flexDirection: "row", alignItems: "center", gap: 12, height: 48, paddingHorizontal: 16 }}
@@ -679,10 +676,8 @@ export function Chat(props: { autoplay?: string } = {}) {
                         paddingHorizontal: 14,
                         borderRadius: 18,
                         justifyContent: "center",
-                        backgroundColor: colors.raised,
-                        ...finish.raised,
+                        ...finish.pill,
                         borderWidth: 1,
-                        borderColor: colors.border,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: "500", color: colors.text }}>{chip().label}</Text>
@@ -710,10 +705,10 @@ export function Chat(props: { autoplay?: string } = {}) {
             style={{
               borderRadius: 24,
               borderCurve: "continuous",
-              backgroundColor: colors.surface,
-              ...finish.card,
+              // Glass like the menu above it, without the blur: nothing scrolls under it.
+              ...finish.menu,
+              backdropFilter: undefined,
               borderWidth: 1,
-              borderColor: colors.border,
               padding: 6,
               gap: 4,
             }}

@@ -72,11 +72,11 @@
   --code-bg: #0c0d0f;
   --code-fg: #d6d9dd;
   --code-keyword: #7ea8ff;
-  --code-string: #b4dc6c;
-  --code-comment: #656a72;
-  --code-fn: #f2cd8a;
-  --code-type: #c3a6ff;
-  --code-constant: #ff9b8a;
+  --code-string: #45d49a;
+  --code-comment: #6b7078;
+  --code-fn: #c8f26d;
+  --code-type: #8fd3e8;
+  --code-constant: #ffb547;
   --code-number: var(--code-constant);
   --code-property: #8fd3e8;
   --code-variable: var(--code-keyword);
@@ -101,6 +101,16 @@
   --band-tinted: linear-gradient(180deg, #0d0e10, #0b0c0e);
   --logo-dot: #eef0f2;
   --logo-ring: transparent;
+  --code-surface: rgb(0 0 0 / 14%);
+  --code-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 22px rgb(0 0 0 / 22%);
+  --chip-bg: rgb(255 255 255 / 6.5%);
+  --chip-edge: rgb(255 255 255 / 5%);
+  /* Liquid glass, for floating and layered surfaces only: a translucent
+     fill, a lit rim (top light, bottom dark) and a gentle shadow. */
+  --glass-fill: rgb(30 32 36 / 55%);
+  --glass-thumb: linear-gradient(180deg, rgb(255 255 255 / 16%), rgb(255 255 255 / 5%));
+  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 12%), inset 0 -1px 0 rgb(0 0 0 / 25%), inset 0 0 0 1px rgb(255 255 255 / 6%), 0 2px 8px rgb(0 0 0 / 25%);
+  --glass-thumb-edge: inset 0 1px 0 rgb(255 255 255 / 22%), inset 0 -1px 0 rgb(0 0 0 / 20%), 0 1px 3px rgb(0 0 0 / 35%);
   --logo-top: #e2fb9f;
   --logo-bottom: #a9d63f;
   --accent-border: transparent;
@@ -176,12 +186,12 @@ html.light {
 
   --code-bg: #f0f0eb;
   --code-fg: #24262a;
-  --code-keyword: #2f55c4;
-  --code-string: #4a6a0a;
+  --code-keyword: #3d63d1;
+  --code-string: #0f8a55;
   --code-comment: #8c9097;
-  --code-fn: #925207;
-  --code-type: #6a46bd;
-  --code-constant: #b93c0c;
+  --code-fn: #4a6a0a;
+  --code-type: #0d6b84;
+  --code-constant: #b26a00;
   --code-property: #0d6b84;
 
   --grid-line: rgb(21 22 26 / 5%);
@@ -198,8 +208,16 @@ html.light {
   --page-light: rgb(255 255 255 / 70%);
   --highlight: #ffffff;
   --band-tinted: linear-gradient(180deg, #eeeee9, #ebebe5);
-  --logo-dot: #ffffff;
-  --logo-ring: rgb(21 22 26 / 30%);
+  --logo-dot: #15161a;
+  --logo-ring: transparent;
+  --code-surface: rgb(120 120 90 / 4%);
+  --code-shadow: 0 1px 2px rgb(20 20 10 / 5%), 0 6px 18px rgb(20 20 10 / 5%);
+  --chip-bg: rgb(21 22 26 / 5.5%);
+  --chip-edge: rgb(21 22 26 / 4%);
+  --glass-fill: rgb(255 255 255 / 62%);
+  --glass-thumb: linear-gradient(180deg, #ffffff, rgb(255 255 255 / 72%));
+  --glass-edge: inset 0 1px 0 rgb(255 255 255 / 95%), inset 0 -1px 0 rgb(0 0 0 / 5%), inset 0 0 0 1px rgb(0 0 0 / 6%), 0 2px 8px rgb(20 20 10 / 8%);
+  --glass-thumb-edge: inset 0 1px 0 #ffffff, inset 0 -1px 0 rgb(0 0 0 / 6%), 0 1px 3px rgb(20 20 10 / 14%);
   --logo-top: #b5df4d;
   --logo-bottom: #7ea51f;
   --nav-active: rgb(0 0 0 / 4.5%);
@@ -305,10 +323,13 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   z-index: 40;
   height: var(--nav-height);
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--background) 80%, transparent);
-  box-shadow: var(--nav-shadow);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--nav-shadow);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-nav { background: var(--background); }
 }
 
 .site-nav__inner {
@@ -463,11 +484,13 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   margin: 8vh auto auto;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-surface);
-  background: var(--popover) var(--finish-card-bg);
+  background: color-mix(in srgb, var(--popover) 80%, transparent);
   color: var(--foreground);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), var(--shadow-dialog);
+  box-shadow: var(--glass-edge), var(--shadow-dialog);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
 }
 #search-modal::backdrop { background: rgb(6 7 8 / 60%); backdrop-filter: blur(6px); }
 #search-ui { flex: 1; min-height: 0; overflow-y: auto; padding: 0.5rem; }
@@ -739,74 +762,111 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
 
   /* Diagrams (public/diagrams) come as a light and a dark file, as on
      gpui-kit.com: an SVG behind <img> cannot follow the page's theme class. */
-  img.diagram { display: block; width: 100%; margin-block: 1.75rem; border-radius: 0; }
+  /* Never upscaled; on narrow screens it scrolls inside its paragraph
+     rather than shrink its text below about 11 px. */
+  .diagram-scroll { margin-block: 1.75rem; overflow-x: auto; scrollbar-width: thin; }
+  img.diagram { display: block; width: 100%; max-width: 880px; min-width: 640px; margin-inline: auto; border-radius: 0; }
   img.diagram-dark { display: none; }
   :where(.dark) & img.diagram-light { display: none; }
   :where(.dark) & img.diagram-dark { display: block; }
 
+  /* Inline code: a light-touch chip, so a paragraph full of them stays calm. */
   :not(pre) > code {
-    padding: 0.1em 0.38em;
-    border: 1px solid var(--border);
+    padding: 0.08em 0.36em;
     border-radius: 6px;
-    background: var(--raised);
+    background: var(--chip-bg);
+    box-shadow: inset 0 0 0 1px var(--chip-edge);
     color: var(--foreground);
-    font-size: 0.85em;
+    font-size: 0.92em;
     line-height: 1.2;
     overflow-wrap: anywhere;
   }
+  :is(h2, h3, h4) code { font-size: 0.88em; }
 
+  /* Code blocks: one card (hairline, the card's light gradient and top
+     highlight, a soft outer shadow), a header row naming the language with
+     the copy button, a hairline, and the code on a faintly tinted surface. */
   pre {
     position: relative;
     overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-card);
-    background: var(--code-bg) !important;
-    box-shadow: var(--finish-inset);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--finish-card-bg) !important;
+    background-color: var(--card) !important;
+    box-shadow: inset 0 1px 0 var(--highlight), var(--code-shadow);
     font-size: 0.875rem;
   }
-  pre code { display: block; padding: 0.95rem 1.1rem; overflow-x: auto; font-size: 0.92em; line-height: 1.7; tab-size: 2; }
+  pre::before {
+    display: flex;
+    align-items: center;
+    height: 2.25rem;
+    padding: 0 0.9rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted-foreground);
+    font: 600 0.7rem/1 var(--font-mono);
+    letter-spacing: 0.04em;
+    content: attr(data-language);
+  }
+  pre[data-language="sh"]::before, pre[data-language="bash"]::before { content: "Shell"; }
+  pre[data-language="tsx"]::before { content: "TSX"; }
+  pre[data-language="ts"]::before { content: "TypeScript"; }
+  pre[data-language="js"]::before { content: "JavaScript"; }
+  pre[data-language="json"]::before { content: "JSON"; }
+  pre[data-language="swift"]::before { content: "Swift"; }
+  pre[data-language="kotlin"]::before { content: "Kotlin"; }
+  pre[data-language="java"]::before { content: "Java"; }
+  pre[data-language="rust"]::before { content: "Rust"; }
+  pre[data-language="toml"]::before { content: "TOML"; }
+  pre[data-language="diff"]::before { content: "Diff"; }
+  pre[data-language="xml"]::before { content: "XML"; }
+  pre[data-language="html"]::before { content: "HTML"; }
+  pre[data-language="yaml"]::before { content: "YAML"; }
+  pre[data-language="css"]::before { content: "CSS"; }
+  pre[data-language="plaintext"]::before, pre[data-language="txt"]::before, pre:not([data-language])::before { content: "Text"; }
+  pre code { display: block; padding: 0.9rem 1.1rem 1rem; overflow-x: auto; background: var(--code-surface); font-size: 0.92em; line-height: 1.7; tab-size: 2; }
 
+  /* The copy button sits in the header row: a small glass control. */
   .doc-code-copy {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.3rem;
+    right: 0.4rem;
     display: grid;
     place-items: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    border-radius: 7px;
-    background: var(--finish-raised-bg);
-    box-shadow: var(--finish-raised);
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 8px;
+    background: var(--glass-fill);
+    box-shadow: var(--glass-edge);
     color: var(--muted-foreground);
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 150ms ease, color 150ms ease, background 150ms ease;
+    opacity: 0.75;
+    transition: opacity 150ms ease, color 150ms ease;
   }
   pre:hover .doc-code-copy, pre:focus-within .doc-code-copy, .doc-code-copy[data-copied] { opacity: 1; }
   .doc-code-copy:hover, .doc-code-copy[data-copied] { color: var(--foreground); }
   .doc-code-copy[data-copied] { color: var(--success); }
   .doc-code-copy svg { width: 0.85rem; height: 0.85rem; }
-  @media (hover: none) { .doc-code-copy { opacity: 1; } }
 
+  /* Tables: a clean card, a faintly tinted header with small muted labels,
+     hairlines between rows. */
   table {
     display: block;
     width: max-content;
     max-width: 100%;
     overflow-x: auto;
     border: 1px solid var(--border);
-    border-radius: var(--radius-card);
+    border-radius: 12px;
     border-collapse: separate;
     border-spacing: 0;
-    background: var(--finish-card-bg);
-    box-shadow: var(--finish-flat);
+    background: var(--card);
+    box-shadow: var(--code-shadow);
     font-size: 0.85rem;
   }
-  thead tr { background: var(--inset); }
-  th { color: var(--muted-foreground); font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
-  th, td { padding: 0.45rem 0.75rem; line-height: 1.55; text-align: left; vertical-align: top; }
+  thead tr { background: color-mix(in srgb, var(--foreground) 3.5%, var(--card)); }
+  th { color: var(--muted-foreground); font-size: 0.8125rem; font-weight: 560; white-space: nowrap; }
+  th, td { padding: 0.55rem 0.85rem; line-height: 1.55; text-align: left; vertical-align: top; }
   thead th { border-bottom: 1px solid var(--line); }
   tbody tr + tr td { border-top: 1px solid var(--line); }
-  tbody tr:hover td { background: color-mix(in srgb, var(--foreground) 2%, transparent); }
   td:first-child code { white-space: nowrap; overflow-wrap: normal; }
 
   blockquote { padding: 0.1rem 0 0.1rem 1.1rem; border-left: 2px solid var(--citrus); color: var(--muted-foreground); }
@@ -838,7 +898,6 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   .callout > :first-child { margin-top: 0; }
   .callout > :last-child { margin-bottom: 0; }
   .callout p, .callout li { line-height: 1.65; }
-  .callout pre { background: var(--inset) !important; }
   .callout__title {
     display: flex;
     align-items: center;
@@ -955,6 +1014,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   border-radius: 999px;
   white-space: nowrap;
   background: color-mix(in srgb, var(--success) 14%, transparent);
+  box-shadow: inset 0 1px 0 var(--highlight), inset 0 0 0 1px color-mix(in srgb, var(--success) 18%, transparent);
   color: var(--success);
   font-size: 0.66rem;
   font-weight: 600;
@@ -1062,14 +1122,16 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
 }
 .demo__open:hover { background: var(--secondary); color: var(--foreground) !important; }
 
+/* Segmented controls: a glassy track, the selected item a lit glass pill. */
 .segmented {
   display: inline-flex;
   gap: 0.15rem;
   padding: 3px;
-  border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--inset);
-  box-shadow: var(--finish-inset);
+  background: var(--glass-fill);
+  box-shadow: var(--glass-edge);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
 }
 .segmented button {
   padding: 0.22rem 0.7rem;
@@ -1081,7 +1143,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   transition: background 140ms ease, color 140ms ease;
 }
 .segmented button:hover { color: var(--foreground); }
-.segmented button[aria-selected="true"] { background: var(--finish-raised-bg); color: var(--foreground); box-shadow: var(--finish-raised); }
+.segmented button[aria-selected="true"] { background: var(--glass-thumb); color: var(--foreground); box-shadow: var(--glass-thumb-edge); }
 
 .demo__stage {
   display: flex;
@@ -1099,7 +1161,8 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
 
 .demo__code { max-height: 42rem; overflow: auto; }
 .demo__body > [role="tabpanel"]:not([data-active]) { display: none; }
-.demo .demo__code pre { margin: 0; border: 0; border-radius: 0; }
+.demo .demo__code pre { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+.demo .demo__code pre::before { display: none; }
 .demo--source-only .demo__code { max-height: 32rem; }
 
 /* Wide enough for both: the phone and its source side by side, no switch.

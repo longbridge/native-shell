@@ -12,8 +12,10 @@ order: 3.2
 
 每个 `NshView` 都是一个独立的引擎，拥有自己的 JS VM；没有全局单例，所以可以同时运行多个。
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/host-app-light.svg" alt="一个宿主应用里有两个 nsh 视图（iOS 上是 NshAppView，Android 上是 NshView）：每个都是独立的引擎，有自己的线程、虚拟机、限制和能力；宿主授予能力、设置限制，并注册地图这样的原生组件。">
 <img class="diagram diagram-dark" src="/diagrams/host-app-dark.svg" alt="一个宿主应用里有两个 nsh 视图（iOS 上是 NshAppView，Android 上是 NshView）：每个都是独立的引擎，有自己的线程、虚拟机、限制和能力；宿主授予能力、设置限制，并注册地图这样的原生组件。">
+</div>
 
 ## 获取库
 

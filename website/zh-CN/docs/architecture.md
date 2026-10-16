@@ -11,8 +11,10 @@ order: 35
 
 ## 全局概览
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/architecture-light.svg" alt="nsh 应用如何运行：nsh CLI 把 App.tsx 构建为字节码；在引擎线程上，QuickJS 运行事件处理函数，nsh-js 的响应式图把操作排入队列，nsh-core 提交生成一个 MountBatch；它一次跳转到主线程，应用到 UIKit 或 Android 视图上；触摸作为事件传回引擎线程。原生动画在主线程运行，不经过 JavaScript。">
 <img class="diagram diagram-dark" src="/diagrams/architecture-dark.svg" alt="nsh 应用如何运行：nsh CLI 把 App.tsx 构建为字节码；在引擎线程上，QuickJS 运行事件处理函数，nsh-js 的响应式图把操作排入队列，nsh-core 提交生成一个 MountBatch；它一次跳转到主线程，应用到 UIKit 或 Android 视图上；触摸作为事件传回引擎线程。原生动画在主线程运行，不经过 JavaScript。">
+</div>
 
 ## 构建：只有你的代码会成为 JS
 

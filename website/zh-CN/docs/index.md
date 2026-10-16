@@ -21,8 +21,10 @@ Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 - **不可信也能安全运行。** 生成的代码就是不可信代码。每个模块运行在独立的 QuickJS 虚拟机里，受内存、调用时长和节点数限制，只能使用宿主授予的能力，并以签名包的形式到达、先经应用校验。
 - **原生，却无需写原生代码。** 产出的是真正的 UIKit 和 Android 视图，拥有系统的文本、输入和无障碍能力，但模型从不需要写 Swift、Kotlin 或 Java，应用也不需要发新版本。
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/ai-flow-light.svg" alt="从提示词到原生界面：模型写出 TSX 模块；服务器构建、检查并签名；跨过信任边界后，应用校验包，在设定了限制和能力的沙箱里运行，并显示 UIKit 或 Android 视图。">
 <img class="diagram diagram-dark" src="/diagrams/ai-flow-dark.svg" alt="从提示词到原生界面：模型写出 TSX 模块；服务器构建、检查并签名；跨过信任边界后，应用校验包，在设定了限制和能力的沙箱里运行，并显示 UIKit 或 Android 视图。">
+</div>
 
 **其次：扩展原生应用，动态下发界面。** 同一套机制适用于任何模块，不只是生成的模块。应用在需要显示模块的地方嵌入一个 `NshAppView`（iOS）或 `NshView`（Android），nsh 在其中运行模块：
 
@@ -116,8 +118,10 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 | Web（WebAssembly） | 仅用于演示 | 运行本站的示例，用 DOM 而不是原生视图绘制（[Web](./web.md)）；不是可发布的目标平台 |
 | 桌面（GPUI） | 开发中 | [GPUI](https://gpui-kit.com) 后端，届时可以用同样的模块和运行时开发专门的桌面客户端 |
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS（UIKit，已支持）、Android（Android 视图，已支持）、桌面（GPUI，开发中）和 Web（WebAssembly 渲染到 DOM，仅用于本站演示）。">
 <img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS（UIKit，已支持）、Android（Android 视图，已支持）、桌面（GPUI，开发中）和 Web（WebAssembly 渲染到 DOM，仅用于本站演示）。">
+</div>
 
 ## 与其他方案的比较
 

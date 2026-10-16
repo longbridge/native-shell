@@ -21,8 +21,10 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 - **Safe to run when it is not trusted.** Generated code is untrusted code. Each module runs in its own QuickJS VM with memory, call-time and node limits, reaches only the capabilities the host grants, and arrives as a signed package the app verifies first.
 - **Native without native code.** The output is real UIKit and Android views, with the system's text, input and accessibility, yet the model never writes Swift, Kotlin or Java, and the app never needs a new release.
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/ai-flow-light.svg" alt="From a prompt to native UI: a model writes a TSX module; your server builds, checks and signs it; across the trust boundary, the app verifies the package, runs it in a sandbox with the limits and capabilities it set, and shows UIKit or Android views.">
 <img class="diagram diagram-dark" src="/diagrams/ai-flow-dark.svg" alt="From a prompt to native UI: a model writes a TSX module; your server builds, checks and signs it; across the trust boundary, the app verifies the package, runs it in a sandbox with the limits and capabilities it set, and shows UIKit or Android views.">
+</div>
 
 **Second: extending native apps, and delivering UI dynamically.** The same mechanism serves any module, not only generated ones. The app embeds an `NshAppView` (iOS) or `NshView` (Android) wherever a module should appear, and nsh runs the module inside it:
 
@@ -116,8 +118,10 @@ Because JavaScript only describes the UI and handles events, the work done in th
 | Web (WebAssembly) | Demos only | Runs the examples on this site, drawn with the DOM rather than native views ([Web](./web.md)); not a target to ship to |
 | Desktop (GPUI) | In development | A [GPUI](https://gpui-kit.com) backend, so the same modules and runtime can build dedicated desktop clients |
 
+<div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS (UIKit, supported), Android (Android views, supported), desktop (GPUI, in development) and the web (WebAssembly to the DOM, for this site's demos only).">
 <img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS (UIKit, supported), Android (Android views, supported), desktop (GPUI, in development) and the web (WebAssembly to the DOM, for this site's demos only).">
+</div>
 
 ## How it compares
 
