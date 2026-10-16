@@ -100,7 +100,7 @@ pub(crate) fn init(vm: JavaVM) -> jni::errors::Result<()> {
         view_dev_error: env.get_method_id(
             view_class,
             "devError",
-            "(Ljava/lang/String;Ljava/lang/String;)V",
+            "(Ljava/lang/String;Ljava/lang/String;Z)V",
         )?,
         text,
         net,

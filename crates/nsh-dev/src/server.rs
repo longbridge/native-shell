@@ -445,9 +445,8 @@ impl Host {
     }
 }
 
-/// What a host that cannot run the app shows. Hosts show messages as
-/// they are (code frames keep their lines), so the prose is wrapped for a
-/// phone's width here.
+/// What a host that cannot run the app shows (as prose: hosts wrap it to
+/// their screen).
 fn cannot_run_message(missing: &[String], install: Option<&str>) -> String {
     let sets = match missing {
         [one] => one.clone(),
@@ -460,31 +459,11 @@ fn cannot_run_message(missing: &[String], install: Option<&str>) -> String {
     if install.is_some() {
         prose.push_str(" To install this app's host, run");
     }
-    let mut message = wrap(&prose, 38);
+    let mut message = prose;
     if let Some(install) = install {
         message.push_str(&format!("\n\n  {install}"));
     }
     message
-}
-
-/// `text` in lines of at most `width` characters (longer words keep
-/// theirs).
-fn wrap(text: &str, width: usize) -> String {
-    let mut out = String::new();
-    let mut line = 0;
-    for word in text.split(' ') {
-        let len = word.chars().count();
-        if line > 0 && line + 1 + len > width {
-            out.push('\n');
-            line = 0;
-        } else if line > 0 {
-            out.push(' ');
-            line += 1;
-        }
-        out.push_str(word);
-        line += len;
-    }
-    out
 }
 
 /// A host connected after its hello: counted and reported until its
@@ -617,18 +596,16 @@ async fn send_event(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn a_host_that_cannot_run_the_app_is_told_why_in_short_lines() {
+    fn a_host_that_cannot_run_the_app_is_told_why() {
         let message = super::cannot_run_message(
             &["gallery/native".to_owned()],
             Some("nsh run examples/gallery-rs --target android"),
         );
         assert_eq!(
             message,
-            "The app imports gallery/native, which\n\
-             this host does not have: it was built\n\
-             for another app. To install this app's\n\
-             host, run\n\
-             \n  nsh run examples/gallery-rs --target android"
+            "The app imports gallery/native, which this host does not have: it was built for \
+             another app. To install this app's host, run\n\n  nsh run examples/gallery-rs \
+             --target android"
         );
         let two = super::cannot_run_message(&["a/x".to_owned(), "b/y".to_owned()], None);
         assert!(

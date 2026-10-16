@@ -155,9 +155,11 @@ impl Host {
         });
     }
 
-    /// Shows (or with `None`, hides) the development error screen.
+    /// Shows (or with `None`, hides) the development error screen; `prose`
+    /// wraps the message, otherwise its lines are kept (code frames, stack
+    /// traces) and it scrolls sideways.
     #[cfg(feature = "dev")]
-    pub(crate) fn dev_error(&self, error: Option<(&str, &str)>) {
+    pub(crate) fn dev_error(&self, error: Option<(&str, &str)>, prose: bool) {
         with_env(|env| {
             let (title, message) = match error {
                 Some((t, m)) => (
@@ -175,6 +177,7 @@ impl Host {
                     &[
                         JValue::Object(&title).as_jni(),
                         JValue::Object(&message).as_jni(),
+                        JValue::Bool(prose.into()).as_jni(),
                     ],
                 )
             }

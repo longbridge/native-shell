@@ -89,7 +89,7 @@ impl DevSession {
     }
 
     pub(crate) fn show_error(&self, host: &Host, title: &str, message: &str) {
-        host.dev_error(Some((title, message)));
+        host.dev_error(Some((title, message)), false);
     }
 
     /// A hot update failed: loads the latest bundle from scratch (on its
@@ -114,10 +114,10 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
         DevEvent::Connected => host.dev_status(None),
         DevEvent::Disconnected => host.dev_status(Some("Dev server disconnected — reconnecting…")),
         DevEvent::Building => {}
-        DevEvent::BuildFailed(message) => host.dev_error(Some(("Build failed", &message))),
+        DevEvent::BuildFailed(message) => host.dev_error(Some(("Build failed", &message)), false),
         DevEvent::CannotRun { message, .. } => {
             host.dev_status(None);
-            host.dev_error(Some(("This host cannot run the app", &message)))
+            host.dev_error(Some(("This host cannot run the app", &message)), true)
         }
         DevEvent::Bundle {
             session,
@@ -136,10 +136,10 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
                 BundleFormat::Source => match String::from_utf8(bytes) {
                     Ok(code) => Bundle::source(code).with_policy(Policy::development()),
                     Err(_) => {
-                        return host.dev_error(Some((
-                            "Invalid bundle",
-                            "the dev server sent non-UTF-8 source",
-                        )));
+                        return host.dev_error(
+                            Some(("Invalid bundle", "the dev server sent non-UTF-8 source")),
+                            true,
+                        );
                     }
                 },
             };
@@ -148,7 +148,7 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
             }
             bundle = match bundle.with_capabilities_json(capabilities.as_deref()) {
                 Ok(bundle) => bundle,
-                Err(err) => return host.dev_error(Some(("Invalid capabilities", &err))),
+                Err(err) => return host.dev_error(Some(("Invalid capabilities", &err)), true),
             };
             host.dev_status(None);
             let running = {
@@ -161,7 +161,7 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
                 return;
             }
             log::info!("loading build {version}");
-            host.dev_error(None);
+            host.dev_error(None, false);
             host.load(bundle);
         }
         DevEvent::Patch {
@@ -183,7 +183,7 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
             if host.hot_update(update) {
                 log::info!("updating to build {version}");
                 state.running = Some((session, version));
-                host.dev_error(None);
+                host.dev_error(None, false);
             }
         }
     }

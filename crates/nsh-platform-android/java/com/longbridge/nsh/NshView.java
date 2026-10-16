@@ -613,8 +613,10 @@ public class NshView extends FrameLayout {
         });
     }
 
-    /** Development: the error screen (tap to dismiss), or none. */
-    void devError(String title, String message) {
+    /** Development: the error screen (tap to dismiss), or none. With {@code prose} the
+     * message wraps to the screen; otherwise its lines are kept (code frames, stack traces)
+     * and it scrolls sideways. */
+    void devError(String title, String message, boolean prose) {
         main.post(() -> {
             if (errorView != null) removeView(errorView);
             errorView = null;
@@ -626,15 +628,29 @@ public class NshView extends FrameLayout {
             text.setText(title + "\n\n" + message + "\n\n(tap to dismiss)");
             int pad = Math.round(16 * density);
             text.setPadding(pad, topInset() + pad, pad, pad);
-            HorizontalScrollView sideways = new HorizontalScrollView(getContext());
-            sideways.addView(text);
             ScrollView view = new ScrollView(getContext());
             view.setBackgroundColor(0xf78c1414);
-            view.addView(sideways);
-            view.setOnClickListener(v -> devError(null, null));
-            text.setOnClickListener(v -> devError(null, null));
+            if (prose) {
+                view.addView(text);
+            } else {
+                HorizontalScrollView sideways = new HorizontalScrollView(getContext());
+                sideways.addView(text);
+                view.addView(sideways);
+            }
+            // Clear of the status and navigation bars, also when the screen shows
+            // before the window has its insets.
+            view.setOnApplyWindowInsetsListener((v, insets) -> {
+                int[] at = new int[2];
+                getLocationInWindow(at);
+                int top = Math.max(0, insets.getSystemWindowInsetTop() - at[1]);
+                text.setPadding(pad, top + pad, pad, insets.getSystemWindowInsetBottom() + pad);
+                return insets;
+            });
+            view.setOnClickListener(v -> devError(null, null, false));
+            text.setOnClickListener(v -> devError(null, null, false));
             errorView = view;
             addView(view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            view.requestApplyInsets();
         });
     }
 }
