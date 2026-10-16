@@ -1,12 +1,11 @@
-//! The app's part of the TypeScript declarations of `.nsh/types` (the rest
-//! is nsh's modules', from `nsh_js::type_definitions`): the JSX namespace
-//! with the app's kebab-case components (`jsx-runtime.d.ts`) and the asset
-//! imports the bundler loads (`assets.d.ts`). Apps find them through their
-//! `tsconfig.json` ([`TSCONFIG`]) and need no `node_modules`.
+//! The bundler's part of the TypeScript declarations of `.nsh/types` (the
+//! rest is nsh's modules', from `nsh_js::type_definitions`): what the asset
+//! imports the bundler loads give (`assets.d.ts`). Apps find them through
+//! their `tsconfig.json` ([`TSCONFIG`]) and need no `node_modules`.
 
 /// `tsconfig.json` of a new app (`nsh init`): resolves `nsh` and the app's
 /// own native modules (`nsh.json` `"rust"`) to `.nsh/types` (other imports
-/// fall back to `node_modules`), and JSX to nsh's elements.
+/// fall back to `node_modules`), and JSX to nsh's (`nsh/jsx-runtime`).
 pub const TSCONFIG: &str = r#"{
   "compilerOptions": {
     "target": "ES2023",
@@ -30,13 +29,9 @@ pub const TSCONFIG: &str = r#"{
 }
 "#;
 
-/// The bundler's files of `.nsh/types`, with the components the app names
-/// in kebab case (`elements`, from its last build).
-pub fn type_definitions(elements: &[crate::AppElement]) -> Vec<(String, String)> {
-    vec![
-        ("nsh/jsx-runtime.d.ts".to_owned(), native_jsx(elements)),
-        ("nsh/assets.d.ts".to_owned(), assets()),
-    ]
+/// The bundler's files of `.nsh/types`.
+pub fn type_definitions() -> Vec<(String, String)> {
+    vec![("nsh/assets.d.ts".to_owned(), assets())]
 }
 
 /// `assets.d.ts`: what importing an image or a font gives (`plugin.rs`).
@@ -58,98 +53,8 @@ fn assets() -> String {
     out
 }
 
-/// The built-in elements and their props type.
-const NATIVE_ELEMENTS: &[(&str, &str)] = &[
-    ("view", "ViewProps"),
-    ("text", "TextProps"),
-    ("image", "ImageProps"),
-    ("scroll", "ScrollProps"),
-    ("input", "InputProps"),
-    ("canvas", "ControlProps"),
-    ("web-view", "ControlProps"),
-    ("video", "ControlProps"),
-    ("modal", "ControlProps"),
-    ("input-accessory", "ControlProps"),
-    ("list", "ListProps<any>"),
-];
-
-/// `nsh/jsx-runtime`: the built-in elements and the app's components named
-/// in kebab case (whose names win, as in the
-/// compiler).
-fn native_jsx(elements: &[crate::AppElement]) -> String {
-    let mut out = String::from(
-        "import type { ViewProps, TextProps, ImageProps, ScrollProps, InputProps, ControlProps, JSX as Base } from \"./types\";\n\
-         import type { ListProps } from \"./list\";\n\n\
-         type PropsOf<C> = C extends (props: infer P) => any ? P : Record<string, any>;\n\n\
-         export declare namespace JSX {\n\
-         \x20 /** What components return and children accept. */\n\
-         \x20 type Element = Base.Element;\n\
-         \x20 interface ElementChildrenAttribute {\n    children: {};\n  }\n\
-         \x20 interface IntrinsicElements {\n",
-    );
-    let quote = |s: &str| serde_json::to_string(s).expect("a string");
-    for (tag, props) in NATIVE_ELEMENTS {
-        if !elements.iter().any(|e| e.tag == *tag) {
-            out.push_str(&format!("    {}: {props};\n", quote(tag)));
-        }
-    }
-    if !elements.iter().any(|e| e.tag == "if") {
-        out.push_str(
-            "    /** Renders its children while `when` is truthy, else `else`. */\n\
-             \x20   if: { when: unknown; else?: Element; children?: Element };\n",
-        );
-    }
-    if !elements.iter().any(|e| e.tag == "each") {
-        out.push_str(
-            "    /** Renders `children(item, index)` for each item of `of`; rows are kept by `key` (default: the item). */\n\
-             \x20   each: { of: readonly any[] | null | undefined; key?: (item: any) => unknown; children: (item: () => any, index: () => number) => Element };\n",
-        );
-    }
-    for e in elements {
-        let ty = match &e.source {
-            // From `.nsh/types/nsh/`: the app directory is three levels up.
-            Some((module, export)) => {
-                let module = match module.strip_prefix("./") {
-                    Some(rel) => format!("../../../{rel}"),
-                    None => module.clone(),
-                };
-                format!(
-                    "PropsOf<typeof import({})[{}]>",
-                    quote(&module),
-                    quote(export)
-                )
-            }
-            None => "Record<string, any>".to_owned(),
-        };
-        out.push_str(&format!("    {}: {ty};\n", quote(&e.tag)));
-    }
-    out.push_str("  }\n}\n");
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn native_jsx_names_the_apps_components() {
-        let jsx = super::native_jsx(&[
-            crate::AppElement {
-                tag: "weather-panel".into(),
-                source: Some(("./demos/Weather".into(), "WeatherPanel".into())),
-            },
-            crate::AppElement {
-                tag: "text".into(),
-                source: None,
-            },
-        ]);
-        assert!(jsx.contains(
-            r#""weather-panel": PropsOf<typeof import("../../../demos/Weather")["WeatherPanel"]>;"#
-        ));
-        // The app's `Text` wins over the built-in `<text>`.
-        assert!(jsx.contains(r#""text": Record<string, any>;"#));
-        assert!(!jsx.contains("TextProps;"));
-        assert!(jsx.contains(r#""web-view": ControlProps;"#));
-    }
-
     #[test]
     fn asset_imports_are_declared() {
         let assets = super::assets();

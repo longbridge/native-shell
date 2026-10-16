@@ -15,18 +15,6 @@ use rolldown_common::Output;
 
 use crate::{compile, compile::strip_ansi, plugin};
 
-/// A component an app names in kebab case
-/// (`<weather-panel>`), for the editor's JSX types.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AppElement {
-    /// The tag.
-    pub tag: String,
-    /// Where its type is imported from: a module (`./App`, relative to the
-    /// app directory, or a package) and its export; `None` when the
-    /// component is not exported (its props are not checked).
-    pub source: Option<(String, String)>,
-}
-
 /// What to bundle and how.
 #[derive(Debug, Clone)]
 pub struct BundleOptions {
@@ -94,8 +82,6 @@ pub struct Bundle {
     /// What the app declares it may reach (`nsh.json` `capabilities`);
     /// `None` without a declaration.
     pub capabilities: Option<nsh_core::access::Capabilities>,
-    /// The components the app names in kebab case.
-    pub elements: Vec<AppElement>,
     /// Wall time spent bundling, in milliseconds.
     pub elapsed_ms: f64,
 }
@@ -172,7 +158,6 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     let capabilities = capabilities(&cwd)?;
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
-    let elements = Arc::new(Mutex::new(Vec::new()));
     let mut bundler = Bundler::with_plugins(
         BundlerOptions {
             input: Some(vec![InputItem {
@@ -200,7 +185,6 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             hot: false,
             tailwind,
             entry: entry.clone(),
-            elements: elements.clone(),
             natives: Arc::default(),
             modules: Arc::new(compile::NativeModules::new(&options.ui_sets)),
         })],
@@ -231,14 +215,11 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
         .collect();
     assets.sort();
     assets.dedup();
-    let mut elements = std::mem::take(&mut *elements.lock().expect("elements lock"));
-    elements.sort_by(|a, b| a.tag.cmp(&b.tag));
     Ok(Bundle {
         code,
         source_map,
         assets,
         capabilities,
-        elements,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
     })
 }
@@ -253,8 +234,6 @@ pub struct HotBundle {
     /// The native modules the app imports (the script imports their
     /// namespaces for the factories' `require`).
     natives: Vec<String>,
-    /// As in [`Bundle::elements`].
-    pub elements: Vec<AppElement>,
     /// Asset files the app imports (as in [`Bundle::assets`]).
     pub assets: Vec<PathBuf>,
     /// As in [`Bundle::capabilities`].
@@ -410,7 +389,6 @@ pub async fn bundle_hot_async(
         .parent()
         .ok_or_else(|| BundleError::other("entry has no parent directory"))?
         .to_path_buf();
-    let elements = Arc::new(Mutex::new(Vec::new()));
     let natives = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
@@ -444,7 +422,6 @@ pub async fn bundle_hot_async(
             hot: true,
             tailwind,
             entry: entry.clone(),
-            elements: elements.clone(),
             natives: natives.clone(),
             modules: Arc::new(compile::NativeModules::new(ui_sets)),
         })],
@@ -483,13 +460,10 @@ pub async fn bundle_hot_async(
         .collect();
     assets.sort();
     assets.dedup();
-    let mut elements = std::mem::take(&mut *elements.lock().expect("elements lock"));
-    elements.sort_by(|a, b| a.tag.cmp(&b.tag));
     let natives = std::mem::take(&mut *natives.lock().expect("natives lock"));
     Ok(HotBundle {
         modules,
         natives: natives.into_iter().collect(),
-        elements,
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
         assets,
         capabilities,

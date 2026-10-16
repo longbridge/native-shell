@@ -596,16 +596,16 @@ pub const INTERNAL_EVENTS: &[EventKind] = &[
 /// to: `HostProps` for every element, `TextHostProps` for `<text>`, ...
 const GROUPS: &[(u32, &str, &str)] = &[
     (on::ALL, "", "every element"),
-    (on::TEXT, "Text", "`<text>`"),
-    (on::IMAGE, "Image", "`<image>`"),
+    (on::TEXT, "Text", "`<Text>`"),
+    (on::IMAGE, "Image", "`<Image>`"),
     (
         on::SCROLLING,
         "Scrolling",
         "scroll views and lists (how they scroll)",
     ),
-    (on::SCROLL, "Scroll", "`<scroll>`"),
+    (on::SCROLL, "Scroll", "`<Scroll>`"),
     (on::LIST, "List", "lists"),
-    (on::INPUT, "Input", "`<input>`"),
+    (on::INPUT, "Input", "`<Input>`"),
     (on::SCREEN, "Screen", "the screens of a stack"),
     (on::MODAL, "Modal", "modals"),
     (on::WEBVIEW, "WebView", "web views"),

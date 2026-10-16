@@ -35,8 +35,6 @@ pub(crate) struct NshPlugin {
     pub(crate) tailwind: Arc<ThemeSetup>,
     /// The entry module (it sets up the themes).
     pub(crate) entry: PathBuf,
-    /// The components the app names in kebab case.
-    pub(crate) elements: Arc<Mutex<Vec<crate::AppElement>>>,
     /// The native modules the app imports.
     pub(crate) natives: Arc<Mutex<std::collections::BTreeSet<String>>>,
     /// The native modules there are.
@@ -264,7 +262,7 @@ impl Plugin for NshPlugin {
             }
         }
         let prologue = if entry { self.prologue() } else { None };
-        let (code, map, uses) = compile_native(
+        let (code, map) = compile_native(
             path,
             source_type,
             args.code,
@@ -273,59 +271,11 @@ impl Plugin for NshPlugin {
             &self.modules,
         )
         .map_err(|detail| self.fail(path, &detail))?;
-        let module = path
-            .strip_prefix(&self.root)
-            .unwrap_or(path)
-            .with_extension("");
-        let mut elements = self.elements.lock().expect("elements lock");
-        for u in uses {
-            elements.retain(|e| e.tag != u.tag);
-            elements.push(crate::AppElement {
-                tag: u.tag,
-                source: u.source.map(|(specifier, export)| {
-                    (type_module(&module, specifier.as_deref()), export)
-                }),
-            });
-        }
-        drop(elements);
         Ok(Some(HookTransformOutput {
             code: Some(code),
             map: map.into(),
             module_type: Some(ModuleType::Js),
             ..Default::default()
         }))
-    }
-}
-
-/// The module a component's type is imported from, as the app's types
-/// name it: `./`-relative to the app directory, or a package. `module` is
-/// the importing module (relative to the app, without extension);
-/// `specifier` what it imported (`None`: the module itself).
-fn type_module(module: &Path, specifier: Option<&str>) -> String {
-    let rel = |p: &Path| {
-        let mut parts: Vec<String> = Vec::new();
-        for c in p.components() {
-            match c {
-                std::path::Component::ParentDir => {
-                    parts.pop();
-                }
-                std::path::Component::Normal(n) => parts.push(n.to_string_lossy().into_owned()),
-                _ => {}
-            }
-        }
-        format!("./{}", parts.join("/"))
-    };
-    match specifier {
-        None => rel(module),
-        Some(spec) if spec.starts_with('.') => {
-            let dir = module.parent().unwrap_or(Path::new(""));
-            let target = dir.join(spec);
-            let target = match target.extension().and_then(|e| e.to_str()) {
-                Some("ts" | "tsx" | "js" | "jsx") => target.with_extension(""),
-                _ => target,
-            };
-            rel(&target)
-        }
-        Some(spec) => spec.to_owned(),
     }
 }

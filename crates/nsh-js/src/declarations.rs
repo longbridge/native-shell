@@ -47,12 +47,12 @@ export interface DesktopProps {}
 /** Android-only props of every element (`android={{…}}`). */
 export interface AndroidProps extends AndroidHostProps {}
 
-/** `<view>` */
+/** `<View>` */
 export interface ViewProps extends CommonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** `<text>`: nested `<text>` elements are spans of the same paragraph. */
+/** `<Text>`: nested `<Text>` elements are spans of the same paragraph. */
 export interface TextProps extends CommonProps, TextHostProps {
   style?: StyleProp<TextStyle>;
 }
@@ -64,31 +64,24 @@ export interface ImageAsset {
   height: number;
 }
 
-/** `<image>` */
+/** `<Image>` */
 export interface ImageProps extends CommonProps, ImageHostProps {
   style?: StyleProp<ImageStyle>;
 }
 
-/** `<scroll>` */
+/** `<Scroll>` */
 export interface ScrollProps extends CommonProps, ScrollingHostProps, ScrollHostProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** `<input>` */
+/** `<Input>` */
 export interface InputProps extends CommonProps, InputHostProps {
   style?: StyleProp<TextStyle>;
   ios?: IOSInputProps;
 }
 
-/** iOS-only props of `<input>`. */
+/** iOS-only props of `<Input>`. */
 export interface IOSInputProps extends IOSProps, IOSInputHostProps {}
-
-/** Host elements without components of their own take any prop the core
- * knows; their typed forms are the runtime's components (`WebView`, …). */
-export interface ControlProps extends CommonProps {
-  style?: StyleProp<ViewStyle>;
-  [prop: string]: any;
-}
 
 /** What JS sets on a Rust component's host itself: the app's classes
  * (appended to the component's own), its inline style, its test id, layout
@@ -112,6 +105,9 @@ export declare namespace JSX {
   interface ElementChildrenAttribute {
     children: {};
   }
+  /** None: every tag is a component in scope (`View` from "nsh", ...), or
+   * the global `If` / `Each`. */
+  interface IntrinsicElements {}
 }
 "#;
 
@@ -444,9 +440,9 @@ fn relative(from: &str, to: &str) -> String {
 
 /// The files of `.nsh/types` for apps whose hosts serve `ui_sets`
 /// (`nsh/ui/mobile`, ...), as (path relative to it, contents): one per
-/// module apps import, `nsh/types.d.ts` (the element types `nsh` exports)
-/// and `nsh/globals.d.ts`. The bundler adds `nsh/jsx-runtime.d.ts`, which
-/// names the app's own components.
+/// module apps import, `nsh/types.d.ts` (the element types `nsh` exports),
+/// `nsh/jsx-runtime.d.ts` (where TypeScript finds the JSX namespace:
+/// `jsxImportSource: "nsh"`) and `nsh/globals.d.ts`.
 pub fn type_definitions(ui_sets: &[Registry]) -> Vec<(String, String)> {
     let files = bodies(ui_sets);
     // Who declares each name.
@@ -492,6 +488,10 @@ pub fn type_definitions(ui_sets: &[Registry]) -> Vec<(String, String)> {
             (path.clone(), text)
         })
         .collect();
+    out.push((
+        "nsh/jsx-runtime.d.ts".to_owned(),
+        format!("{BANNER}export type {{ JSX }} from \"./types\";\n"),
+    ));
     out.push(("nsh/globals.d.ts".to_owned(), globals()));
     out
 }

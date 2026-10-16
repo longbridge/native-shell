@@ -148,18 +148,19 @@ mod tests {
     #[test]
     fn reports_unknown_static_classes() {
         let source = r#"
+import { Text, View } from "nsh";
 export function A(p: { on: boolean }) {
   return (
-    <view class="p-4 bg-blu-500">
-      <text class={p.on ? "text-white" : "txt-black"} classList={{ "opacity-50": p.on, nope: p.on }} />
-      <view class={`flex ${p.on ? "gap-2" : ""} wat bg-${p.on}-500 x${p.on}`} />
-    </view>
+    <View class="p-4 bg-blu-500">
+      <Text class={p.on ? "text-white" : "txt-black"} classList={{ "opacity-50": p.on, nope: p.on }} />
+      <View class={`flex ${p.on ? "gap-2" : ""} wat bg-${p.on}-500 x${p.on}`} />
+    </View>
   );
 }
 "#;
         let found = check(source, SourceType::tsx(), &Theme::default());
         let names: Vec<&str> = found.iter().map(|u| u.class.as_str()).collect();
         assert_eq!(names, ["bg-blu-500", "txt-black", "nope", "wat"]);
-        assert_eq!((found[0].line, found[0].column), (4, 22));
+        assert_eq!((found[0].line, found[0].column), (5, 22));
     }
 }

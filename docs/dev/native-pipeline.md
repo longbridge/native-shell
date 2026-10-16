@@ -6,21 +6,21 @@ natively. The reactive graph, the renderer and every API apps import are Rust; n
 import `solid-js` (the bundler refuses it, pointing to `nsh`'s `signal` / `computed` / `effect` / ...).
 
 ```tsx
-import { signal, computed, mount } from "nsh";
+import { computed, mount, signal, Text, View } from "nsh";
 
 function Counter(props: { label: string }) {
   const count = signal(0);
   return (
-    <view onPress={() => count.update((c) => c + 1)}>
-      <text>{props.label}: {count()}</text>
-      <if when={count() > 2} else={<text>keep going</text>}>
-        <text>done</text>
-      </if>
-    </view>
+    <View onPress={() => count.update((c) => c + 1)}>
+      <Text>{props.label}: {count()}</Text>
+      <If when={count() > 2} else={<Text>keep going</Text>}>
+        <Text>done</Text>
+      </If>
+    </View>
   );
 }
 
-mount(() => <counter label="Taps" />);
+mount(() => <Counter label="Taps" />);
 ```
 
 ## Modules
@@ -30,16 +30,18 @@ bundle (`plugin.rs`, an unknown `nsh/…` is an error), `nsh-js` serves them (`m
 loader). Where each one is implemented and declared: `js-modules.md`.
 
 - `nsh`: `signal` (`count()`, `count.set(v)`, `count.update(f)`), `computed`, `effect`, `batch`, `untracked`, `cleanup`,
-  `context` (`Theme()`, `<Theme.Provider value>`), `split(props, keys)` (`[picked, rest]`, keeping getters), `mount`.
+  `context` (`Theme()`, `<Theme.Provider value>`), `split(props, keys)` (`[picked, rest]`, keeping getters), `mount`;
+  the primitives `View`, `Text`, `Scroll`, `Input`.
 - `nsh:rt` (only compiled code imports it): `element`, `text`, `append`, `insert`, `prop`, `bindProp`, `spread`,
   `component`, `cond`, `each`, `merge`, `list`, `setup`, `font`.
 - `nsh/device` (`windowSize`, `colorScheme`, `fontScale`, `Platform`, `PixelRatio`, `I18nManager`) and
   `nsh/accessibility` (`reduceMotion`, `screenReaderEnabled`, `AccessibilityInfo`): the environment (`env.rs`), one
   signal per part written when the platform reports a change, read through read-only accessors.
-- `nsh/list`, `nsh/gesture`, `nsh/animated`, `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/native`, `nsh/ios` and the
-  hand-written part of `nsh/android` (below).
+- `nsh/list`, `nsh/gesture`, `nsh/animated`, `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/native`, `nsh/ios`,
+  `nsh/image` (`Image`: the image element's component with its registry's functions on it) and the hand-written part
+  of `nsh/android` (below).
 - The modules of registries (`Registry::specifier`): the UI sets a host serves (`HostOptions::ui_sets`,
-  `nsh/ui/mobile`) and the runtime's (`nsh/android`, `nsh/image`, the registry part of `nsh/accessibility`). Their
+  `nsh/ui/mobile`) and the runtime's (the registry parts of `nsh/android`, `nsh/accessibility` and `nsh/image`). Their
   components, modules and re-exports become exports (`components.rs`): a component is a host view naming it, with its
   props sent as `$name` by one render effect, events delivered to `on<Event>` handlers, children and slot holders; a
   module function sends a call to the core and, when it has a result, returns a promise settled by the core's
@@ -55,13 +57,18 @@ on first import.
 
 One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 
-- **Tags.** Lowercase tags are built-ins: the host elements of `jsx::ELEMENTS` (kebab names: `<web-view>`), `<list>`
-  and `<if when else>` / `<each of key>`, unless a capitalized binding in scope has that name in kebab case
-  (`WeatherPanel` is `<weather-panel>`, an imported `Button` is `<button>`): the app's bindings win over built-ins (an
-  imported `Modal` makes `<modal>` that component, a local `Text` makes `<text>` it). An object of functions imported
-  from one of nsh's modules is no component (`Image` from `nsh/image` leaves `<image>` the element: `plugin.rs`
-  `native_object`). Capitalized and member tags name bindings. Unknown tags are errors that name the import when a UI
-  set has the component. Props keep their camelCase names.
+- **Tags** are PascalCase and name bindings by normal scoping: every tag is imported or local, except `<If when else>`
+  and `<Each of key>`, globals (`dom.rs` `install_globals`) a binding of the same name shadows. A tag naming one of
+  `jsx::PRIMITIVES` imported from its module (alias-aware: `import { View as V } from "nsh"`) compiles to what it is,
+  with no component call: `View`, `Text`, `Scroll`, `Input` (`nsh`), `Image` (`nsh/image`), `WebView`, `Video` to
+  their host elements made in place, `List` to `nsh:rt`'s `list`, `If` / `Each` to `cond` / `each`; `Canvas`,
+  `Modal` and `InputAccessoryView` are native components that do more than make their element (the drawing,
+  `visible` and the insets, iOS only) and are called. The exports are callable components too (`dom.rs`
+  `host_component`; `If` and `Each` are real globals), so `const C = cond ? View : Text; <C />` works through the
+  component path. Lowercase tags are errors with the import to write (`<view>`: write `<View>` and `import { View }
+  from "nsh"`; for another, the closest binding, primitive or UI set component). Why: TypeScript checks a lowercase
+  tag against one global type per name, so generic components (`List`, `Each`) and local ones would lose their types.
+  Props keep their camelCase names.
 - **Host elements** become one arrow function making the element and its host children: static props and children
   are set once (`prop`, `append`), changing ones are functions the renderer follows natively (`bindProp`, `insert`).
   An expression changes when it calls something or reads a member outside nested functions (Solid's rule). Event
@@ -100,8 +107,8 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 
 ## Lists and node methods
 
-- `<list>` (`nsh/list`'s `List`) is a built-in the renderer implements (`list.rs`, compiled as a component call to
-  `nsh:rt`'s `list`). The core asks for rows (`Host::bind_list`), bound natively (`list::bind`); a recycled cell gets a
+- `List` (`nsh/list`) is the renderer's (`list.rs`; its tags compile to a component call of `nsh:rt`'s `list`, the
+  same function). The core asks for rows (`Host::bind_list`), bound natively (`list::bind`); a recycled cell gets a
   new index and its item accessor follows; header, footer, empty and separator cells, viewability tokens (with
   `minimumViewTime`), `initialScrollIndex`. Rust components with rows (`ListView`) get a list of the app's data as
   their items slot.
@@ -133,14 +140,14 @@ natively removes its route; screens and modals provide the insets they report to
 ## Types
 
 `.nsh/types` holds the declarations of everything nsh serves, made from its Rust sources (`nsh-js`
-`declarations.rs`, `tooling.md`), and the app's part (`crates/nsh-bundler/src/types.rs`): a JSX namespace with the
-built-ins and the app's kebab-case components (`nsh/jsx-runtime.d.ts`, rewritten after every build) and the asset
-imports (`nsh/assets.d.ts`): an exported or imported component's props come from
-its own type; one that is neither is not checked (TypeScript's intrinsic elements are global, so the compiler stays the
-reference for which tag names what). `<each>` items are not typed (intrinsic elements cannot be generic).
+`declarations.rs`, `tooling.md`), the same for every app: the JSX namespace (`nsh/jsx-runtime.d.ts`, `JSX` of
+`nsh/types.d.ts`) has no intrinsic elements, so TypeScript checks every tag as the value it names (a lowercase tag is
+an error, as in the compiler) and infers generic components (`<List each={rows}>{(row) => …}</List>`, `If` and `Each`
+declared as global functions in `nsh/globals.d.ts`). The bundler's part is only the asset imports
+(`nsh/assets.d.ts`, `crates/nsh-bundler/src/types.rs`).
 
-TypeScript's import elision runs after the JSX is compiled (`plugin.rs` `elide_unused_imports`): an import only a
-kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without `type`.
+TypeScript's import elision runs after the JSX is compiled (`plugin.rs` `elide_unused_imports`): an import only
+primitives' tags use (`View` for `<View>`, made in place) goes, as does one only types use (even without `type`).
 
 ## Hot module replacement
 

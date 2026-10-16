@@ -38,7 +38,7 @@ pub fn compile_module(
     let source_type = oxc::span::SourceType::from_path(path).map_err(|e| e.to_string())?;
     let modules = compile::NativeModules::new(ui_sets);
     compile::compile_native(path, source_type, source, None, None, &modules)
-        .map(|(code, _, _)| code)
+        .map(|(code, _)| code)
         .map_err(|e| compile::strip_ansi(&e))
 }
 
@@ -48,10 +48,10 @@ mod tests {
     fn compile_module_makes_a_runnable_module() {
         let code = super::compile_module(
             "App.tsx",
-            "import { mount, signal } from \"nsh\";\n\
+            "import { mount, signal, View } from \"nsh\";\n\
              import { Button } from \"nsh/ui/mobile\";\n\
              const n: number = 1;\n\
-             function App() { const c = signal(n); return <view><Button title=\"x\" onPress={() => c.set(2)} /></view>; }\n\
+             function App() { const c = signal(n); return <View><Button title=\"x\" onPress={() => c.set(2)} /></View>; }\n\
              mount(App);\n",
             &[nsh_ui_mobile::registry()],
         )
@@ -59,7 +59,7 @@ mod tests {
         assert!(code.contains("from \"nsh:rt\""), "{code}");
         assert!(code.contains("from \"nsh/ui/mobile\""), "{code}");
         assert!(!code.contains(": number"), "types are removed: {code}");
-        assert!(!code.contains("<view"), "JSX is compiled: {code}");
+        assert!(!code.contains("<View"), "JSX is compiled: {code}");
     }
 
     #[test]

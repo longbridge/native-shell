@@ -1080,7 +1080,7 @@ style_keys! {
     TextDecorationLine = "textDecorationLine": Text "\"none\" | \"underline\" | \"line-through\" | \"underline line-through\"",
     TextDecorationColor = "textDecorationColor": Text "ColorValue",
     WritingDirection = "writingDirection": Text "\"auto\" | \"ltr\" | \"rtl\"" "Base direction of the text; `auto` takes it from the content.",
-    TextAlignVertical = "textAlignVertical": Text "\"auto\" | \"top\" | \"center\" | \"bottom\"" "Where text shorter than its box sits (`<text>` with a height).",
+    TextAlignVertical = "textAlignVertical": Text "\"auto\" | \"top\" | \"center\" | \"bottom\"" "Where text shorter than its box sits (`<Text>` with a height).",
     FontVariant = "fontVariant": Text "(\"small-caps\" | \"oldstyle-nums\" | \"lining-nums\" | \"tabular-nums\" | \"proportional-nums\")[]" "OpenType number and letter forms.",
     TextShadowColor = "textShadowColor": Text "ColorValue",
     TextShadowRadius = "textShadowRadius": Text "number",

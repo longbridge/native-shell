@@ -78,14 +78,14 @@ impl Network for EchoNetwork {
 }
 
 const APP: &str = r#"
-import { mount, signal } from "nsh";
+import { mount, signal, Text } from "nsh";
 const text = signal("loading");
 const slow = new AbortController();
 fetch("https://example.com/slow", { signal: slow.signal }).catch((e) => console.log(e.name));
 fetch("https://example.com/echo", { method: "PUT", body: "hi" })
   .then((r) => r.text())
   .then((t) => { text.set(t); slow.abort(); });
-mount(() => <text>{text()}</text>);
+mount(() => <Text>{text()}</Text>);
 "#;
 
 fn texts(batch: &MountBatch) -> Vec<String> {
@@ -187,7 +187,7 @@ impl Network for RedirectNetwork {
 }
 
 const CHECKED_APP: &str = r#"
-import { mount, signal } from "nsh";
+import { mount, signal, Text } from "nsh";
 const text = signal("loading");
 const outcome = (p) => p.then((r) => r.text().then((t) => `${t}${r.redirected ? " (redirected)" : ""}`), (e) => e.message);
 Promise.all([
@@ -195,7 +195,7 @@ Promise.all([
   outcome(fetch("https://api.example.com/hop/https://api.example.com/final")),
   outcome(fetch("https://api.example.com/hop/https://evil.io/steal")),
 ]).then((r) => text.set(r.join(" | ")));
-mount(() => <text>{text()}</text>);
+mount(() => <Text>{text()}</Text>);
 "#;
 
 #[test]

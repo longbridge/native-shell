@@ -320,6 +320,29 @@ pub(crate) fn runtime_module(
     Some(self::module(ctx, &spec, registry.namespace()))
 }
 
+/// Puts the functions of module `module` of the runtime registry
+/// `specifier` on `obj` (`Image.getSize` on `nsh/image`'s component).
+pub(crate) fn add_runtime_functions(
+    ctx: *mut JsContext,
+    obj: JsValue,
+    specifier: &str,
+    module: &str,
+) {
+    let Some(registry) = nsh_core::runtime::registries()
+        .iter()
+        .find(|r| r.specifier() == Some(specifier))
+    else {
+        return;
+    };
+    if let Some(spec) = registry
+        .module_specs()
+        .into_iter()
+        .find(|m| m.name == module)
+    {
+        add_functions(ctx, obj, &spec, registry.namespace());
+    }
+}
+
 /// Function `function` of module `module` of the runtime registry
 /// `specifier` (owned), if there is one.
 pub(crate) fn runtime_function(

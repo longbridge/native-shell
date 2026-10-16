@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::ChannelSink;
 
-const APP: &str = r#"import { signal, mount } from "nsh";
+const APP: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { nativeComponent } from "nsh/native";
 
 const Map = nativeComponent<
@@ -25,7 +25,7 @@ function App() {
   const zoom = signal(3);
   let map: any;
   return (
-    <view>
+    <View>
       <Map
         ref={(n: any) => (map = n)}
         center={{ lat: 1.5, lng: 2 }}
@@ -36,8 +36,8 @@ function App() {
           map?.command("flyTo", { zoom: e.zoom, animated: true });
         }}
       />
-      <text>{`zoom ${zoom()}`}</text>
-    </view>
+      <Text>{`zoom ${zoom()}`}</Text>
+    </View>
   );
 }
 

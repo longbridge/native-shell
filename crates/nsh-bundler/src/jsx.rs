@@ -1,17 +1,16 @@
 //! nsh's JSX compiler: lowers JSX to calls of the native renderer
 //! (`nsh:rt`, `crates/nsh-js/src/dom.rs`).
 //!
-//! **Tags.** A lowercase tag is a built-in: the host elements of
-//! [`ELEMENTS`] (`<view>`, `<text>`, …, `<web-view>`) and the control flow
-//! `<if when else>` / `<each of key>`, unless a capitalized binding in scope
-//! has that name in kebab case: `WeatherPanel` is also `<weather-panel>`,
-//! an imported `Button` also `<button>`, and the app's own bindings win over
-//! built-ins (`Text` in scope makes `<text>` that component, an imported
-//! `Modal` makes `<modal>` it; an object of functions imported from one of
-//! nsh's modules is no component: `Image` from `nsh/image` leaves `<image>`
-//! the element). A capitalized
-//! or member tag (`<Theme.Provider>`) names a binding as usual. Props keep
-//! their camelCase names.
+//! **Tags** are PascalCase and name bindings by the usual scoping: every
+//! tag is imported or local, except `<If when else>` and `<Each of key>`,
+//! globals no binding of their name shadows. A tag naming one of the
+//! [`PRIMITIVES`] imported from its module (`import { View as V } from
+//! "nsh"` too) compiles to what it is: a host element made in place, the
+//! renderer's list, control flow; the import is then unused and goes.
+//! Every other tag is a component call. Lowercase tags are errors naming
+//! the import to write (TypeScript checks a lowercase tag against one
+//! global type per name, so generic and local components would lose their
+//! types). Props keep their camelCase names.
 //!
 //! **Host elements** become one function that makes the element, its props
 //! and its host children, and returns it. Static values are set once
@@ -50,23 +49,41 @@ use oxc::{
     syntax::scope::{ScopeFlags, ScopeId},
 };
 
-/// The built-in host elements apps write, and the core's tag for each.
-pub(crate) const ELEMENTS: &[(&str, &str)] = &[
-    ("view", "view"),
-    ("text", "text"),
-    ("image", "image"),
-    ("scroll", "scroll"),
-    ("input", "input"),
-    ("canvas", "canvas"),
-    ("web-view", "webview"),
-    ("video", "video"),
-    ("modal", "modal"),
-    ("input-accessory", "inputaccessory"),
+/// What the tag of a primitive compiles to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Compiled {
+    /// The host element of this core tag, made in place.
+    Host(&'static str),
+    /// The renderer's list (`nsh:rt`'s `list`).
+    List,
+    /// A call of the export, a native component rendering the host element
+    /// of this core tag with more to it (`Canvas`'s drawing, `Modal`'s
+    /// `visible`, `InputAccessoryView` only on iOS).
+    Component(&'static str),
+}
+
+/// nsh's primitives, by their one home (module, export), and what their
+/// tags compile to. Each host element apps can make is in here once.
+pub(crate) const PRIMITIVES: &[(&str, &str, Compiled)] = &[
+    ("nsh", "View", Compiled::Host("view")),
+    ("nsh", "Text", Compiled::Host("text")),
+    ("nsh", "Scroll", Compiled::Host("scroll")),
+    ("nsh", "Input", Compiled::Host("input")),
+    ("nsh/image", "Image", Compiled::Host("image")),
+    ("nsh/webview", "WebView", Compiled::Host("webview")),
+    ("nsh/video", "Video", Compiled::Host("video")),
+    ("nsh/list", "List", Compiled::List),
+    ("nsh/canvas", "Canvas", Compiled::Component("canvas")),
+    ("nsh/ui/mobile", "Modal", Compiled::Component("modal")),
+    (
+        "nsh/ios",
+        "InputAccessoryView",
+        Compiled::Component("inputaccessory"),
+    ),
 ];
 
-/// The built-ins that are the renderer's components, not host elements:
-/// called with props like a component.
-pub(crate) const RUNTIME_COMPONENTS: &[&str] = &["list"];
+/// The control flow tags, global unless a binding of the name shadows them.
+const GLOBALS: &[&str] = &["If", "Each"];
 
 /// The renderer's functions compiled code calls (imported as `_$<name>`).
 const HELPERS: &[&str] = &[
@@ -88,16 +105,6 @@ const HELPERS: &[&str] = &[
 /// Prefix of generated names; apps do not use it.
 const HOLE: &str = "__nsh_h";
 
-/// Where a module's top-level bindings come from, for the types of the
-/// components it names in kebab case.
-#[derive(Default)]
-struct Origins {
-    /// Local name -> (import source, imported name).
-    imports: HashMap<String, (String, String)>,
-    /// Local names the module exports -> their export names.
-    exports: HashMap<String, String>,
-}
-
 fn export_name(n: &ModuleExportName<'_>) -> String {
     match n {
         ModuleExportName::IdentifierName(n) => n.name.to_string(),
@@ -106,85 +113,33 @@ fn export_name(n: &ModuleExportName<'_>) -> String {
     }
 }
 
-impl Origins {
-    fn of(program: &Program<'_>) -> Origins {
-        use oxc::ast::ast::{BindingPattern, Declaration, ExportDefaultDeclarationKind as K};
-        let mut o = Origins::default();
-        for statement in &program.body {
-            match statement {
-                Statement::ImportDeclaration(i) => {
-                    for spec in i.specifiers.iter().flatten() {
-                        let (local, imported) = match spec {
-                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
-                                (s.local.name.to_string(), export_name(&s.imported))
-                            }
-                            ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
-                                (s.local.name.to_string(), "default".to_owned())
-                            }
-                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => continue,
-                        };
-                        o.imports
-                            .insert(local, (i.source.value.to_string(), imported));
-                    }
-                }
-                Statement::ExportDeclaration(e) => match &e.declaration {
-                    Declaration::FunctionDeclaration(f) => {
-                        if let Some(id) = &f.id {
-                            o.exports.insert(id.name.to_string(), id.name.to_string());
-                        }
-                    }
-                    Declaration::ClassDeclaration(c) => {
-                        if let Some(id) = &c.id {
-                            o.exports.insert(id.name.to_string(), id.name.to_string());
-                        }
-                    }
-                    Declaration::VariableDeclaration(v) => {
-                        for d in &v.declarations {
-                            if let BindingPattern::BindingIdentifier(id) = &d.id {
-                                o.exports.insert(id.name.to_string(), id.name.to_string());
-                            }
-                        }
-                    }
-                    _ => {}
-                },
-                Statement::ExportNamedDeclaration(e) => {
-                    for spec in &e.specifiers {
-                        o.exports
-                            .insert(export_name(&spec.local), export_name(&spec.exported));
-                    }
-                }
-                Statement::ExportDefaultDeclaration(e) => {
-                    let id = match &e.declaration {
-                        K::FunctionDeclaration(f) => f.id.as_ref(),
-                        K::ClassDeclaration(c) => c.id.as_ref(),
-                        _ => None,
-                    };
-                    if let Some(id) = id {
-                        o.exports.insert(id.name.to_string(), "default".to_owned());
-                    }
-                }
-                _ => {}
+/// The primitives `program` imports: local name -> what its tag compiles to.
+fn imported_primitives(program: &Program<'_>) -> HashMap<String, Compiled> {
+    let mut out = HashMap::new();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(i) = statement else {
+            continue;
+        };
+        let module = i.source.value.as_str();
+        for spec in i.specifiers.iter().flatten() {
+            let ImportDeclarationSpecifier::ImportSpecifier(s) = spec else {
+                continue;
+            };
+            let imported = export_name(&s.imported);
+            if let Some(&(.., compiled)) = PRIMITIVES
+                .iter()
+                .find(|(m, e, _)| *m == module && *e == imported)
+            {
+                out.insert(s.local.name.to_string(), compiled);
             }
         }
-        o
     }
-}
-
-/// A component a module names in kebab case, for the editor's JSX types.
-pub(crate) struct KebabUse {
-    pub(crate) tag: String,
-    /// Where its type can be imported from: (an import's specifier, or
-    /// `None` for this module; the export); `None` when it is neither
-    /// imported nor exported.
-    // Read by the bundle's `.nsh/types`.
-    #[cfg_attr(not(feature = "bundle"), allow(dead_code))]
-    pub(crate) source: Option<(Option<String>, String)>,
+    out
 }
 
 /// Compiles the JSX of `program` (TypeScript already removed; `scoping`
-/// its scopes). `prologue` is JS run first (the entry's setup). Returns the
-/// components named in kebab case. Errors come back rendered with a code
-/// frame of `source`.
+/// its scopes). `prologue` is JS run first (the entry's setup). Errors come
+/// back rendered with a code frame of `source`.
 pub(crate) fn transform<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
@@ -192,16 +147,7 @@ pub(crate) fn transform<'a>(
     source: &str,
     prologue: Option<&str>,
     modules: &crate::compile::NativeModules,
-) -> Result<Vec<KebabUse>, String> {
-    let components: Vec<&str> = modules.components.iter().map(String::as_str).collect();
-    let components = components.as_slice();
-    let origins = Origins::of(program);
-    let native_objects = origins
-        .imports
-        .iter()
-        .filter(|(_, (module, name))| modules.object(module, name))
-        .map(|(local, _)| local.clone())
-        .collect();
+) -> Result<(), String> {
     let mut compiler = Compiler {
         allocator,
         scoping,
@@ -209,30 +155,12 @@ pub(crate) fn transform<'a>(
         errors: Vec::new(),
         used: [false; HELPERS.len()],
         vars: Cell::new(0),
-        components,
-        kebab: Vec::new(),
-        native_objects,
+        components: &modules.components,
+        primitives: imported_primitives(program),
     };
     compiler.visit_program(program);
     if let Some(err) = compiler.errors.into_iter().next() {
         return Err(err.render_with_source_code(source.to_owned()));
-    }
-    let mut uses: Vec<KebabUse> = Vec::new();
-    for (tag, binding, top_level) in std::mem::take(&mut compiler.kebab) {
-        if uses.iter().any(|u| u.tag == tag) {
-            continue;
-        }
-        let source = if !top_level {
-            None
-        } else if let Some((module, imported)) = origins.imports.get(&binding) {
-            Some((Some(module.clone()), imported.clone()))
-        } else {
-            origins
-                .exports
-                .get(&binding)
-                .map(|exported| (None, exported.clone()))
-        };
-        uses.push(KebabUse { tag, source });
     }
     let mut head = String::new();
     if let Some(prologue) = prologue {
@@ -246,7 +174,7 @@ pub(crate) fn transform<'a>(
         .map(|(name, _)| format!("{name} as _${name}"))
         .collect();
     if imports.is_empty() {
-        return Ok(uses);
+        return Ok(());
     }
     let text = format!(
         "import {{ {} }} from \"nsh:rt\";\n{head}",
@@ -268,38 +196,43 @@ pub(crate) fn transform<'a>(
     let rest = program.body.take_in(&AstBuilder::new(allocator));
     body.extend(rest);
     program.body = body;
-    Ok(uses)
+    Ok(())
 }
 
 fn helper(name: &str) -> usize {
     HELPERS.iter().position(|h| *h == name).expect("a helper")
 }
 
-/// `WeatherPanel` -> `weather-panel`, `HTTPPanel` -> `http-panel`.
-/// Whether `tag` is a built-in (an element, `if`, `each`, `list`).
-fn is_built_in(tag: &str) -> bool {
-    matches!(tag, "if" | "each")
-        || ELEMENTS.iter().any(|(name, _)| *name == tag)
-        || RUNTIME_COMPONENTS.contains(&tag)
+/// `web-view` -> `WebView`: a lowercase tag as the PascalCase name it
+/// likely meant.
+fn pascal(tag: &str) -> String {
+    tag.split(['-', '_'])
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |c| {
+                c.to_ascii_uppercase().to_string() + chars.as_str()
+            })
+        })
+        .collect()
 }
 
-pub(crate) fn kebab(name: &str) -> String {
-    let chars: Vec<char> = name.chars().collect();
-    let mut out = String::with_capacity(name.len() + 4);
-    for (i, &c) in chars.iter().enumerate() {
-        if c.is_ascii_uppercase() && i > 0 {
-            let prev = chars[i - 1];
-            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_ascii_lowercase());
-            if prev.is_ascii_lowercase()
-                || prev.is_ascii_digit()
-                || (prev.is_ascii_uppercase() && next_lower)
-            {
-                out.push('-');
-            }
+/// The edit distance of `a` and `b`, ignoring case.
+fn distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().map(|c| c.to_ascii_lowercase()).collect();
+    let b: Vec<char> = b.chars().map(|c| c.to_ascii_lowercase()).collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let next = (prev + usize::from(ca != cb))
+                .min(row[j] + 1)
+                .min(row[j + 1] + 1);
+            prev = row[j + 1];
+            row[j + 1] = next;
         }
-        out.push(c.to_ascii_lowercase());
     }
-    out
+    row[b.len()]
 }
 
 /// A JS string literal.
@@ -457,7 +390,7 @@ fn is_event(name: &str) -> bool {
 
 /// What a tag names.
 enum Tag {
-    /// A built-in host element (the core's tag).
+    /// A host element, made in place (the core's tag).
     Host(&'static str),
     /// A component: the JS expression naming it.
     Component(String),
@@ -494,13 +427,10 @@ struct Compiler<'a, 's> {
     errors: Vec<OxcDiagnostic>,
     used: [bool; HELPERS.len()],
     vars: Cell<usize>,
-    /// Components of the UI sets apps import (`Button`), for hints.
-    components: &'s [&'s str],
-    /// Kebab tags that named bindings: (tag, binding, in the module scope).
-    kebab: Vec<(String, String, bool)>,
-    /// Objects of functions the module imports from nsh's modules: they do
-    /// not replace built-ins.
-    native_objects: std::collections::HashSet<String>,
+    /// The UI sets' components (export, module), for hints.
+    components: &'s [(String, String)],
+    /// The primitives the module imports, by local name.
+    primitives: HashMap<String, Compiled>,
 }
 
 impl<'a> VisitMut<'a> for Compiler<'a, '_> {
@@ -549,61 +479,54 @@ impl<'a> Compiler<'a, '_> {
         format!("{HOLE}v{n}")
     }
 
-    /// The capitalized binding in scope whose kebab-case name is `tag`, and
-    /// whether it is the module's.
-    fn kebab_binding(&self, tag: &str) -> Option<(String, bool)> {
-        let mut scope = self.scopes.last().copied();
-        while let Some(id) = scope {
-            for name in self.scoping.get_bindings(id).keys() {
-                let name = name.as_str();
-                if name.starts_with(|c: char| c.is_ascii_uppercase()) && kebab(name) == tag {
-                    let top = id == self.scoping.root_scope_id();
-                    if top && self.native_objects.contains(name) && is_built_in(tag) {
-                        return None;
-                    }
-                    return Some((name.to_owned(), top));
-                }
-            }
-            scope = self.scoping.scope_parent_id(id);
-        }
-        None
+    /// The binding `name` names here, if any: (whether it is the module's
+    /// own top-level binding).
+    fn binding(&self, name: &str) -> Option<bool> {
+        let scope = self
+            .scopes
+            .last()
+            .copied()
+            .unwrap_or_else(|| self.scoping.root_scope_id());
+        let symbol = self.scoping.find_binding(scope, name.into())?;
+        Some(self.scoping.symbol_scope_id(symbol) == self.scoping.root_scope_id())
     }
 
     fn tag(&mut self, name: &JSXElementName<'a>) -> Option<Tag> {
         match name {
             JSXElementName::Identifier(id) => {
                 let tag = id.name.as_str();
-                if let Some((binding, top)) = self.kebab_binding(tag) {
-                    self.kebab.push((tag.to_owned(), binding.clone(), top));
-                    return Some(Tag::Component(binding));
-                }
-                match tag {
-                    "if" => return Some(Tag::If),
-                    "each" => return Some(Tag::Each),
-                    _ => {}
-                }
-                if let Some(&(_, core)) = ELEMENTS.iter().find(|(name, _)| *name == tag) {
-                    return Some(Tag::Host(core));
-                }
-                if let Some(&name) = RUNTIME_COMPONENTS.iter().find(|n| **n == tag) {
-                    return Some(Tag::Component(self.use_helper(name)));
-                }
-                let hint = self
-                    .components
-                    .iter()
-                    .find(|c| kebab(c) == tag)
-                    .map(|c| format!(": import {{ {c} }} from \"nsh/ui/mobile\""))
-                    .unwrap_or_else(|| {
-                        let names: Vec<&str> = ELEMENTS.iter().map(|(n, _)| *n).collect();
-                        format!(
-                            " (built-in elements: {}; `if`, `each`; or a component in scope, by its name in kebab case)",
-                            names.join(", ")
-                        )
-                    });
-                self.error(format!("unknown element <{tag}>{hint}"), id.span);
+                let hint = self.hint(tag);
+                self.error(
+                    format!("lowercase tag <{tag}>: tags are PascalCase components{hint}"),
+                    id.span,
+                );
                 None
             }
-            JSXElementName::IdentifierReference(r) => Some(Tag::Component(r.name.to_string())),
+            JSXElementName::IdentifierReference(r) => {
+                let name = r.name.as_str();
+                match self.binding(name) {
+                    Some(true) => Some(match self.primitives.get(name) {
+                        Some(Compiled::Host(core)) => Tag::Host(core),
+                        Some(Compiled::List) => Tag::Component(self.use_helper("list")),
+                        Some(Compiled::Component(_)) | None => Tag::Component(name.to_owned()),
+                    }),
+                    Some(false) => Some(Tag::Component(name.to_owned())),
+                    None => match name {
+                        "If" => Some(Tag::If),
+                        "Each" => Some(Tag::Each),
+                        _ => {
+                            let hint = match self.module_of(name) {
+                                Some(module) => {
+                                    format!(": add `import {{ {name} }} from \"{module}\"`")
+                                }
+                                None => String::new(),
+                            };
+                            self.error(format!("<{name}> names nothing in scope{hint}"), r.span);
+                            None
+                        }
+                    },
+                }
+            }
             JSXElementName::MemberExpression(m) => Some(Tag::Component(member(m))),
             JSXElementName::NamespacedName(n) => {
                 self.error("namespaced tags are not supported", n.span);
@@ -614,6 +537,71 @@ impl<'a> Compiler<'a, '_> {
                 None
             }
         }
+    }
+
+    /// What a lowercase `tag` likely meant: the closest of the globals,
+    /// the bindings in scope, nsh's primitives and the UI sets' components.
+    fn hint(&self, tag: &str) -> String {
+        let wanted = pascal(tag);
+        let mut names: Vec<&str> = GLOBALS.to_vec();
+        let mut scope = self.scopes.last().copied();
+        while let Some(id) = scope {
+            names.extend(
+                self.scoping
+                    .get_bindings(id)
+                    .keys()
+                    .map(|n| n.as_str())
+                    .filter(|n| n.starts_with(|c: char| c.is_ascii_uppercase())),
+            );
+            scope = self.scoping.scope_parent_id(id);
+        }
+        names.extend(PRIMITIVES.iter().map(|(_, export, _)| *export));
+        names.extend(self.components.iter().map(|(export, _)| export.as_str()));
+        let best = names
+            .iter()
+            .find(|n| n.eq_ignore_ascii_case(&wanted))
+            .or_else(|| names.iter().find(|n| n.starts_with(wanted.as_str())))
+            .or_else(|| {
+                names
+                    .iter()
+                    .map(|n| (distance(n, &wanted), n))
+                    .filter(|(d, n)| *d <= 2.max(n.len() / 4))
+                    .min_by_key(|(d, _)| *d)
+                    .map(|(_, n)| n)
+            });
+        match best {
+            Some(name) => format!(": write <{name}>{}", self.import_hint(name)),
+            None => ": write the component's name (`<View>`, imported from \"nsh\")".to_owned(),
+        }
+    }
+
+    /// `` and `import { View } from "nsh"` `` for a name not in scope that
+    /// nsh or a UI set exports; nothing for one in scope or a global.
+    fn import_hint(&self, name: &str) -> String {
+        if self.binding(name).is_some() {
+            return String::new();
+        }
+        if GLOBALS.contains(&name) {
+            return " (a global: no import)".to_owned();
+        }
+        match self.module_of(name) {
+            Some(module) => format!(" and `import {{ {name} }} from \"{module}\"`"),
+            None => String::new(),
+        }
+    }
+
+    /// The module that exports primitive or UI set component `name`.
+    fn module_of(&self, name: &str) -> Option<&str> {
+        PRIMITIVES
+            .iter()
+            .find(|(_, export, _)| *export == name)
+            .map(|(module, ..)| *module)
+            .or_else(|| {
+                self.components
+                    .iter()
+                    .find(|(export, _)| export == name)
+                    .map(|(_, module)| module.as_str())
+            })
     }
 
     /// Parses generated code and moves the holes in.
@@ -1050,11 +1038,11 @@ impl<'a> Compiler<'a, '_> {
         out
     }
 
-    /// `<if when={c} else={…}>…</if>`.
+    /// `<If when={c} else={…}>…</If>`.
     fn if_(&mut self, el: JSXElement<'a>, g: &mut Gen<'a>) -> String {
         let span = el.span;
         let opening = el.opening_element.unbox();
-        let attrs = self.flow_attrs("if", opening.attributes, &["when", "else"], g);
+        let attrs = self.flow_attrs("If", opening.attributes, &["when", "else"], g);
         let get = |name: &str| {
             attrs
                 .iter()
@@ -1062,7 +1050,7 @@ impl<'a> Compiler<'a, '_> {
                 .map(|(_, v)| v.clone())
         };
         let Some(when) = get("when") else {
-            self.error("<if> needs `when`", span);
+            self.error("<If> needs `when`", span);
             return "undefined".to_owned();
         };
         let values = self.children(el.children, g, Mode::Value);
@@ -1080,11 +1068,11 @@ impl<'a> Compiler<'a, '_> {
         }
     }
 
-    /// `<each of={items} key={(item) => item.id}>{(item, index) => …}</each>`.
+    /// `<Each of={items} key={(item) => item.id}>{(item, index) => …}</Each>`.
     fn each(&mut self, el: JSXElement<'a>, g: &mut Gen<'a>) -> String {
         let span = el.span;
         let opening = el.opening_element.unbox();
-        let attrs = self.flow_attrs("each", opening.attributes, &["of", "key"], g);
+        let attrs = self.flow_attrs("Each", opening.attributes, &["of", "key"], g);
         let get = |name: &str| {
             attrs
                 .iter()
@@ -1092,7 +1080,7 @@ impl<'a> Compiler<'a, '_> {
                 .map(|(_, v)| v.clone())
         };
         let Some(of) = get("of") else {
-            self.error("<each> needs `of`", span);
+            self.error("<Each> needs `of`", span);
             return "undefined".to_owned();
         };
         let mut render = None;
@@ -1106,7 +1094,7 @@ impl<'a> Compiler<'a, '_> {
                 }
                 other => {
                     self.error(
-                        "<each> takes one child: a function rendering an item, `{(item, index) => …}`",
+                        "<Each> takes one child: a function rendering an item, `{(item, index) => …}`",
                         other.span(),
                     );
                     return "undefined".to_owned();
@@ -1115,7 +1103,7 @@ impl<'a> Compiler<'a, '_> {
         }
         let Some(render) = render else {
             self.error(
-                "<each> takes one child: a function rendering an item, `{(item, index) => …}`",
+                "<Each> takes one child: a function rendering an item, `{(item, index) => …}`",
                 span,
             );
             return "undefined".to_owned();
@@ -1177,7 +1165,20 @@ mod tests {
             None,
             &crate::compile::NativeModules::new(&[nsh_ui_mobile::registry()]),
         )
-        .map(|(code, ..)| code)
+        .map(|(code, _)| code)
+    }
+
+    /// A compile error's message on one line (the report wraps it).
+    fn error(source: &str) -> String {
+        let err = compile(source).unwrap_err();
+        err.lines()
+            .map(|l| {
+                l.trim_start()
+                    .trim_start_matches("| ")
+                    .trim_start_matches("x ")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// The code with whitespace collapsed, for comparisons.
@@ -1188,8 +1189,9 @@ mod tests {
     #[test]
     fn host_elements_static_and_dynamic_props() {
         let code = flat(&compile(
-            r#"const n = 1; let f = (x: number) => x;
-            export const a = <view testID="a" accessible pointerEvents={n} accessibilityLabel={f(n)} onPress={f} onLongPress={n > 0 ? f : undefined} />;"#,
+            r#"import { View } from "nsh";
+            const n = 1; let f = (x: number) => x;
+            export const a = <View testID="a" accessible pointerEvents={n} accessibilityLabel={f(n)} onPress={f} onLongPress={n > 0 ? f : undefined} />;"#,
         )
         .unwrap());
         assert!(
@@ -1213,38 +1215,55 @@ mod tests {
             code.contains(r#"bindProp(__nsh_hv0, "onLongPress", () => n > 0 ? f : undefined);"#),
             "{code}"
         );
+        // The import of a primitive compiled in place goes.
         assert!(code.starts_with(r#"import { element as _$element, prop as _$prop, bindProp as _$bindProp } from "nsh:rt";"#), "{code}");
+        assert!(!code.contains(r#"from "nsh";"#), "{code}");
     }
 
     #[test]
-    fn kebab_tags_name_components_in_scope() {
+    fn primitives_compile_in_place_by_their_imports() {
         let code = flat(
             &compile(
-                r#"function WeatherPanel(p: { city: string }) { return <view />; }
-            export const a = <weather-panel city="Oslo" />;
-            export const b = <WeatherPanel city="Bergen" />;"#,
+                r#"import { View as Box, Text } from "nsh";
+            import { Image } from "nsh/image";
+            import { WebView } from "nsh/webview";
+            import { List } from "nsh/list";
+            import { Canvas } from "nsh/canvas";
+            export const a = <Box><Text>t</Text><Image src="x" /><WebView source="about:blank" /></Box>;
+            export const b = <List each={[1]}>{(i) => <Text>{i()}</Text>}</List>;
+            export const c = <Canvas draw={() => {}} />;
+            Image.prefetch("x");"#,
             )
             .unwrap(),
         );
+        for tag in ["view", "text", "image", "webview"] {
+            assert!(code.contains(&format!(r#"_$element("{tag}")"#)), "{code}");
+        }
+        assert!(code.contains("_$component(_$list, {"), "{code}");
+        // `Canvas` is a native component of its own (the drawing).
+        assert!(code.contains("_$component(Canvas, {"), "{code}");
+        // Used as a value, `Image` stays imported.
         assert!(
-            code.contains(r#"_$component(WeatherPanel, { city: "Oslo" })"#),
+            code.contains(r#"import { Image } from "nsh/image";"#),
             "{code}"
         );
-        assert!(
-            code.contains(r#"_$component(WeatherPanel, { city: "Bergen" })"#),
-            "{code}"
-        );
+        assert!(!code.contains("nsh/webview"), "{code}");
+        assert!(!code.contains("nsh/list"), "{code}");
     }
 
     #[test]
-    fn bindings_in_scope_override_built_ins() {
+    fn bindings_in_scope_win_over_primitives_and_globals() {
         let code = flat(
             &compile(
-                r#"export function Outer() {
+                r#"import { View, Text } from "nsh";
+            export function Outer() {
                 const Text = (p: { children?: unknown }) => p.children;
-                return <view><text>mine</text></view>;
+                const If = (p: { when: boolean }) => p.when;
+                return <View><Text>mine</Text><If when /></View>;
             }
-            export const builtIn = <text>core</text>;"#,
+            export const primitive = <Text>core</Text>;
+            export const C = Math.random() > 0.5 ? View : Text;
+            export const d = <C />;"#,
             )
             .unwrap(),
         );
@@ -1252,50 +1271,99 @@ mod tests {
             code.contains(r#"_$component(Text, { get children() { return "mine"; } })"#),
             "{code}"
         );
+        assert!(code.contains("_$component(If, { when: true })"), "{code}");
         assert!(code.contains(r#"_$element("text")"#), "{code}");
+        // A primitive used as a value is a component.
+        assert!(code.contains("_$component(C, {})"), "{code}");
+        assert!(
+            code.contains(r#"import { View, Text } from "nsh";"#),
+            "{code}"
+        );
     }
 
     #[test]
-    fn nsh_modules_do_not_replace_built_ins() {
-        let code = flat(
-            &compile(
-                r#"import { Image } from "nsh/image";
-            import { Button } from "nsh/ui/mobile";
-            export const a = <view><image src="x" /><button title="b" /></view>;
-            Image.prefetch("x");"#,
-            )
-            .unwrap(),
+    fn lowercase_tags_say_what_to_write() {
+        let err = error("export const a = <view />;");
+        assert!(err.contains("lowercase tag <view>"), "{err}");
+        assert!(
+            err.contains(r#"write <View> and `import { View } from "nsh"`"#),
+            "{err}"
         );
-        assert!(code.contains(r#"_$element("image")"#), "{code}");
-        assert!(code.contains("_$component(Button"), "{code}");
-        // A component of nsh's replaces the built-in of its name.
-        let code = flat(
-            &compile(
-                r#"import { Modal } from "nsh/ui/mobile";
-            export const a = <modal visible={false}><text>m</text></modal>;"#,
-            )
-            .unwrap(),
+        let err = error("export const a = <web-view />;");
+        assert!(
+            err.contains(r#"write <WebView> and `import { WebView } from "nsh/webview"`"#),
+            "{err}"
         );
-        assert!(code.contains("_$component(Modal"), "{code}");
+        let err = error("export const a = <input-accessory />;");
+        assert!(err.contains("write <InputAccessoryView>"), "{err}");
+        let err = error("export const a = <each of={[]}>{() => null}</each>;");
+        assert!(err.contains("write <Each> (a global: no import)"), "{err}");
+        let err = error(r#"export const a = <button title="x" />;"#);
+        assert!(
+            err.contains(r#"write <Button> and `import { Button } from "nsh/ui/mobile"`"#),
+            "{err}"
+        );
+        let err = error(
+            r#"function WeatherPanel() { return null; }
+            export const a = <weather-panel />;"#,
+        );
+        assert!(err.contains("write <WeatherPanel>"), "{err}");
+        assert!(!err.contains("import"), "{err}");
+        let err = error("export const a = <scrol />;");
+        assert!(err.contains("write <Scroll>"), "{err}");
     }
 
     #[test]
     fn unknown_tags_say_what_to_import() {
-        let err = compile(r#"export const a = <button title="x" />;"#).unwrap_err();
-        assert!(err.contains("unknown element <button>"), "{err}");
+        let err = error("export const a = <Text>x</Text>;");
+        assert!(err.contains("<Text> names nothing in scope"), "{err}");
         assert!(
-            err.contains(r#"import { Button } from "nsh/ui/mobile""#),
+            err.contains(r#"<Text> names nothing in scope: add `import { Text } from "nsh"`"#),
             "{err}"
         );
-        let err = compile("export const a = <frobnicate />;").unwrap_err();
-        assert!(err.contains("built-in elements: view, text"), "{err}");
+        let err = error("export const a = <Frobnicate />;");
+        assert!(err.contains("<Frobnicate> names nothing in scope"), "{err}");
+    }
+
+    #[test]
+    fn every_host_element_has_one_home() {
+        for tag in [
+            "view",
+            "text",
+            "image",
+            "scroll",
+            "input",
+            "canvas",
+            "webview",
+            "video",
+            "modal",
+            "inputaccessory",
+        ] {
+            assert!(nsh_core::Tag::from_name(tag).is_some(), "{tag}");
+            let homes = PRIMITIVES
+                .iter()
+                .filter(
+                    |(.., c)| matches!(c, Compiled::Host(t) | Compiled::Component(t) if *t == tag),
+                )
+                .count();
+            assert_eq!(homes, 1, "<{tag}>");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for (module, export, _) in PRIMITIVES {
+            assert!(seen.insert(*export), "{export} twice");
+            assert!(
+                nsh_core::js::NATIVE_MODULES.contains(module) || *module == "nsh/ui/mobile",
+                "{module}"
+            );
+        }
     }
 
     #[test]
     fn component_props_children_and_spreads() {
         let code = flat(&compile(
-            r#"declare const Card: any, s: () => number, rest: object;
-            export const a = <Card title={s()} n={1} {...rest} footer={<text>f</text>}>one {s()}</Card>;"#,
+            r#"import { Text } from "nsh";
+            declare const Card: any, s: () => number, rest: object;
+            export const a = <Card title={s()} n={1} {...rest} footer={<Text>f</Text>}>one {s()}</Card>;"#,
         )
         .unwrap());
         assert!(
@@ -1312,7 +1380,8 @@ mod tests {
     #[test]
     fn refs_assign_variables_or_call_functions() {
         let code = flat(&compile(
-            r#"let el: unknown; export const a = <view ref={el} />; export const b = <view ref={(n) => (el = n)} />;"#,
+            r#"import { View } from "nsh";
+            let el: unknown; export const a = <View ref={el} />; export const b = <View ref={(n) => (el = n)} />;"#,
         )
         .unwrap());
         assert!(
@@ -1329,11 +1398,12 @@ mod tests {
     fn control_flow() {
         let code = flat(
             &compile(
-                r#"declare const on: () => boolean, items: () => { id: string }[];
-            export const a = <view>
-                <if when={on()} else={<text>off</text>}>on</if>
-                <each of={items()} key={(i) => i.id}>{(item) => <text>{item().id}</text>}</each>
-            </view>;"#,
+                r#"import { View, Text } from "nsh";
+            declare const on: () => boolean, items: () => { id: string }[];
+            export const a = <View>
+                <If when={on()} else={<Text>off</Text>}>on</If>
+                <Each of={items()} key={(i) => i.id}>{(item) => <Text>{item().id}</Text>}</Each>
+            </View>;"#,
             )
             .unwrap(),
         );
@@ -1346,19 +1416,22 @@ mod tests {
             "{code}"
         );
         assert!(code.contains("(i) => i.id)"), "{code}");
-        let err = compile("export const a = <each of={[]}><text /></each>;").unwrap_err();
-        assert!(err.contains("<each> takes one child"), "{err}");
-        let err = compile("export const a = <if>x</if>;").unwrap_err();
-        assert!(err.contains("<if> needs `when`"), "{err}");
+        let err = compile(
+            r#"import { Text } from "nsh"; export const a = <Each of={[]}><Text /></Each>;"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("<Each> takes one child"), "{err}");
+        let err = compile("export const a = <If>x</If>;").unwrap_err();
+        assert!(err.contains("<If> needs `when`"), "{err}");
     }
 
     #[test]
-    fn imports_only_kebab_tags_use_stay_and_type_only_ones_go() {
+    fn imports_tags_use_stay_and_type_only_ones_go() {
         let code = flat(
             &compile(
                 r#"import { Stepper, StepperRef, Card } from "nsh/ui/mobile";
             let r: StepperRef | undefined;
-            export const a = <stepper ref={r} />;"#,
+            export const a = <Stepper ref={r} />;"#,
             )
             .unwrap(),
         );
@@ -1375,12 +1448,12 @@ mod tests {
     }
 
     #[test]
-    fn kebab_names() {
-        assert_eq!(kebab("WeatherPanel"), "weather-panel");
-        assert_eq!(kebab("HTTPPanel"), "http-panel");
-        assert_eq!(kebab("WebView"), "web-view");
-        assert_eq!(kebab("Button"), "button");
-        assert_eq!(kebab("Panel2D"), "panel2-d");
+    fn names_of_lowercase_tags() {
+        assert_eq!(pascal("weather-panel"), "WeatherPanel");
+        assert_eq!(pascal("web-view"), "WebView");
+        assert_eq!(pascal("view"), "View");
+        assert_eq!(distance("Scrol", "Scroll"), 1);
+        assert_eq!(distance("view", "View"), 0);
     }
 
     #[test]

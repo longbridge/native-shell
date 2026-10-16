@@ -26,15 +26,15 @@ Things that were found the hard way. Read the section of the area you change bef
 
 ## Core and layout
 
-- **Text nodes outside `<text>`** (e.g. a string child of a `<view>`) create no native view and take no part in layout. A `<text>`
-  nested in `<text>` is a span without a native view; the whole block is merged into one `AttributedText`.
+- **Text nodes outside `<Text>`** (e.g. a string child of a `<View>`) create no native view and take no part in layout. A `<Text>`
+  nested in `<Text>` is a span without a native view; the whole block is merged into one `AttributedText`.
 - **`TextSpan` offsets are UTF-16**, like NSAttributedString / Android Spannable.
 - **Never re-insert a native child that is already in place.** `Insert` of a mounted view is a move: the platform takes it
   out of the window for a moment, which ends its touches and its focus (an Android input loses the keyboard). Child diffs
   (Rust components' `reconcile_children`) move only the children out of order, from the end, with `before` anchors.
 - **Taffy 0.15 custom measure callbacks must delegate to `taffy::compute_leaf_layout`** and only compute the content size. Returning the
   content size directly skips resolving the leaf's own style (width / height / padding / min / max), so leaves such as
-  `<image style={{width: 48}}>` end up with a zero size.
+  `<Image style={{width: 48}}>` end up with a zero size.
 - **List cells are independent Taffy roots** (not children of the list's Taffy node; their width follows the list's cross axis): scrolling only
   relays out dirty cells and only emits frames for relaid cell subtrees; when the main tree is clean, `compute_layout` and the frame walk of the
   main tree are skipped (Taffy runs a full rounding pass even over a clean root).

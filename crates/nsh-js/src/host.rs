@@ -702,6 +702,22 @@ declare function cancelAnimationFrame(id: number): void;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
+/** `<If when={…} else={…}>…</If>`: renders its children while `when` is
+ * truthy, else `else`. A global (no import), like `Each`. */
+declare function If(props: {
+  when: unknown;
+  else?: import("./types").JSX.Element;
+  children?: import("./types").JSX.Element;
+}): import("./types").JSX.Element;
+/** `<Each of={items} key={…}>{(item, index) => …}</Each>`: renders
+ * `children(item, index)` for each item of `of` (`item()` and `index()`
+ * follow the row); rows are kept by `key` (default: the item). A global. */
+declare function Each<T>(props: {
+  of: readonly T[] | null | undefined;
+  key?: (item: T) => unknown;
+  children: (item: () => T, index: () => number) => import("./types").JSX.Element;
+}): import("./types").JSX.Element;
+
 declare class DOMException extends Error {
   constructor(message?: string, name?: string);
   readonly name: string;
@@ -714,6 +730,7 @@ fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     console::install(ctx)?;
     web::install(ctx.as_raw().as_ptr())?;
+    crate::dom::install_globals(ctx.as_raw().as_ptr());
 
     for (name, repeat) in [("setTimeout", false), ("setInterval", true)] {
         let s = shared.clone();

@@ -21,11 +21,8 @@ use oxc_sourcemap::SourceMap;
 #[derive(Debug, Default)]
 pub(crate) struct NativeModules {
     specifiers: std::collections::BTreeSet<String>,
-    /// (specifier, export) of the objects of functions (`Image` of
-    /// `nsh/image`), which are no components.
-    objects: std::collections::BTreeSet<(String, String)>,
-    /// The UI sets' components, for hints about tags they would be.
-    pub(crate) components: Vec<String>,
+    /// The UI sets' components (export, module), for hints about tags.
+    pub(crate) components: Vec<(String, String)>,
 }
 
 impl NativeModules {
@@ -42,13 +39,16 @@ impl NativeModules {
                 continue;
             };
             out.specifiers.insert(spec.to_owned());
-            for m in r.module_specs().iter().filter(|m| !m.flat) {
-                out.objects.insert((spec.to_owned(), m.name.to_owned()));
-            }
         }
         for r in ui_sets {
-            out.components
-                .extend(r.specs().iter().map(|s| s.export.clone()));
+            let Some(spec) = r.specifier() else {
+                continue;
+            };
+            out.components.extend(
+                r.specs()
+                    .iter()
+                    .map(|s| (s.export.clone(), spec.to_owned())),
+            );
         }
         out
     }
@@ -58,18 +58,12 @@ impl NativeModules {
     pub(crate) fn contains(&self, spec: &str) -> bool {
         self.specifiers.contains(spec)
     }
-
-    /// Whether export `name` of `spec` is an object of functions, not a
-    /// component.
-    pub(crate) fn object(&self, spec: &str, name: &str) -> bool {
-        self.objects.contains(&(spec.to_owned(), name.to_owned()))
-    }
 }
 
 /// TSX -> JS with nsh's JSX compiler ([`crate::jsx`]), TypeScript removed
 /// in the same pass; `prologue` runs first; with `hot_key` the module's
-/// components are hot ([`crate::hot`]). Returns the components named in
-/// kebab case too. Errors are rendered with a code frame.
+/// components are hot ([`crate::hot`]). Errors are rendered with a code
+/// frame.
 pub(crate) fn compile_native(
     path: &Path,
     source_type: SourceType,
@@ -77,7 +71,7 @@ pub(crate) fn compile_native(
     prologue: Option<&str>,
     hot_key: Option<&str>,
     modules: &NativeModules,
-) -> Result<(String, SourceMap<'static>, Vec<crate::jsx::KebabUse>), String> {
+) -> Result<(String, SourceMap<'static>), String> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if let Some(err) = parsed.diagnostics.into_iter().next() {
@@ -90,8 +84,8 @@ pub(crate) fn compile_native(
         .into_scoping();
     let options = TransformOptions {
         jsx: JsxOptions::disable(),
-        // Imports only kebab tags use (`<card>` for `Card`) look unused to
-        // TypeScript: only type imports go.
+        // Imports are elided once the JSX is compiled
+        // (`elide_unused_imports`): only `import type` goes here.
         typescript: oxc::transformer::TypeScriptOptions {
             only_remove_type_imports: true,
             ..Default::default()
@@ -107,7 +101,7 @@ pub(crate) fn compile_native(
         // Before the JSX goes: components are the functions with JSX.
         crate::hot::transform(&allocator, &mut program, source, key);
     }
-    let uses = crate::jsx::transform(
+    crate::jsx::transform(
         &allocator,
         &mut program,
         &ret.scoping,
@@ -125,14 +119,13 @@ pub(crate) fn compile_native(
     Ok((
         out.code,
         out.map.expect("source map requested").into_owned(),
-        uses,
     ))
 }
 
-/// TypeScript's import elision, once the JSX is compiled (kebab tags now
-/// reference what they name): import specifiers nothing references go (an
-/// import of types only, without `type`), and declarations left without
-/// any.
+/// TypeScript's import elision, once the JSX is compiled (a primitive's
+/// tag made in place no longer references its import): import specifiers
+/// nothing references go (an import of types only, without `type`, or of a
+/// primitive only its tags use), and declarations left without any.
 fn elide_unused_imports(program: &mut oxc::ast::ast::Program<'_>) {
     use oxc::ast::ast::{ImportDeclarationSpecifier as S, Statement};
     let scoping = SemanticBuilder::new()

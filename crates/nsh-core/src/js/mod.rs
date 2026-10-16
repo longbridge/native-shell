@@ -15,7 +15,8 @@ use std::time::Duration;
 /// `nsh`, the API apps write against; `nsh:rt`, the renderer compiled JSX
 /// calls; `nsh/device` and `nsh/accessibility`, the environment; the
 /// platforms' and host elements' modules. Registries add theirs
-/// (`Registry::specifier`: `nsh/ui/mobile`, `nsh/image`, ...).
+/// (`Registry::specifier`: `nsh/ui/mobile`, ...) or the functions of
+/// nsh's own (`nsh/image`, `nsh/android`).
 pub const NATIVE_MODULES: &[&str] = &[
     "nsh",
     "nsh:rt",
@@ -30,6 +31,7 @@ pub const NATIVE_MODULES: &[&str] = &[
     "nsh/animated",
     "nsh/canvas",
     "nsh/list",
+    "nsh/image",
 ];
 
 /// Resource limits of one VM.

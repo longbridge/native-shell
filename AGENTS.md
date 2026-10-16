@@ -41,10 +41,10 @@ crates/
                        imports of the native modules stay imports (`plugin.rs`), so a bundle holds only the app's code;
                        the app's themes (nsh.json `tailwind` / `theme`, checked, handed to the renderer by the entry) and the
                        unknown-class check (`classes.rs`);
-                       development bundles with hot module replacement (`hot.rs`); the app's part of `.nsh/types` (`types.rs`:
-                       its kebab-case components' JSX types, asset imports); feature `bundle` (default off in the workspace;
-                       the CLI turns it on) is all of that, without it only `compile_module` (`compile.rs`: one module, no
-                       rolldown) is left, which also builds for WebAssembly (the website's playground)
+                       development bundles with hot module replacement (`hot.rs`); the bundler's part of `.nsh/types`
+                       (`types.rs`: asset imports); feature `bundle` (default off in the workspace; the CLI turns it on) is
+                       all of that, without it only `compile_module` (`compile.rs`: one module, no rolldown) is left, which
+                       also builds for WebAssembly (the website's playground)
   nsh-dev/             Dev tooling: dev server protocol, server (CLI, feature `server`), client (host, feature `client`)
   nsh-platform-ios/    UIKit backend (iOS / simulator / Mac Catalyst): native view mounting, CoreText text engine, input, AppView, standalone app;
                        feature `dev`: dev server client, log forwarding, error overlay; feature `embed`: the C ABI (`embed.rs`,
@@ -178,6 +178,12 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 ## Code conventions
 
 - Formatting: `cargo +nightly fmt --all`, configured in `.rustfmt.toml`.
+- TSX tags are PascalCase, everywhere (examples, docs, tests): every tag names a binding in scope, only `<If>` and
+  `<Each>` are globals that need no import. The primitives have one home each: `View`, `Text`, `Scroll`, `Input` from
+  `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas` from `nsh/canvas`, `WebView` from `nsh/webview`,
+  `Video` from `nsh/video`, `Modal` from `nsh/ui/mobile`, `InputAccessoryView` from `nsh/ios`; the compiler makes
+  their tags in place (`jsx::PRIMITIVES`). Lowercase tags are compile errors: TypeScript checks a lowercase tag
+  against one global type per name, so generic components (`List`, `Each`) and local ones would lose their types.
 - Workspace lints: `missing_docs = warn`, `unreachable_pub = deny`, `private_interfaces = deny`. New crates must set `[lints] workspace = true`.
   They cover nsh's own Rust crates only: not the Java / Swift / TS sources, and never the apps built with nsh.
   - Every public API has a doc comment.

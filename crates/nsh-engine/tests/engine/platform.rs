@@ -8,18 +8,18 @@ use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Os};
 
 use crate::ChannelSink;
 
-const APP: &str = r#"import { mount } from "nsh";
+const APP: &str = r#"import { mount, Text, View } from "nsh";
 import { Platform } from "nsh/device";
 
 mount(
   () => (
-    <view
+    <View
       ios={{ accessibilityLabel: "ios" }}
       android={{ accessibilityLabel: "android" }}
       desktop={{ accessibilityLabel: "desktop" }}
     >
-      <text>{`${Platform.OS} ${Platform.isDesktop} ${Platform.select({ ios: "i", mobile: "m", desktop: "d" })}`}</text>
-    </view>
+      <Text>{`${Platform.OS} ${Platform.isDesktop} ${Platform.select({ ios: "i", mobile: "m", desktop: "d" })}`}</Text>
+    </View>
   ),
 );
 "#;

@@ -24,25 +24,26 @@ impl MountSink for ChannelSink {
 }
 
 const APP: &str = r#"
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
+import { Image } from "nsh/image";
 import { Counter } from "./Counter";
 import dot from "./dot.png";
 
 function App() {
   const n = signal(0);
-  return <view><image src={dot} /><text onPress={() => n.set(n() + 1)}>app {n()}</text><Counter /></view>;
+  return <View><Image src={dot} /><Text onPress={() => n.set(n() + 1)}>app {n()}</Text><Counter /></View>;
 }
 
 mount(App);
 "#;
 
 const COUNTER: &str = r#"
-import { signal } from "nsh";
+import { signal, Text } from "nsh";
 import { greeting } from "./words";
 
 export function Counter() {
   const c = signal(0);
-  return <text onPress={() => c.set(c() + 1)}>{greeting} {c()}</text>;
+  return <Text onPress={() => c.set(c() + 1)}>{greeting} {c()}</Text>;
 }
 "#;
 

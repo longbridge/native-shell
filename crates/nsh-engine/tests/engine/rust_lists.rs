@@ -362,19 +362,19 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
     )
 }
 
-const APP_LIST_VIEW: &str = r#"import { mount, signal } from "nsh";
+const APP_LIST_VIEW: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 const ends = signal(0);
 const rows = Array.from({ length: 100 }, (_, i) => `row ${i}`);
 
 mount(() => (
-  <view style={{ flex: 1 }}>
-    <text>{`ends ${ends()}`}</text>
+  <View style={{ flex: 1 }}>
+    <Text>{`ends ${ends()}`}</Text>
     <ListView each={rows} onEndReached={() => ends.set(ends() + 1)}>
-      {(row) => <text>{row()}</text>}
+      {(row) => <Text>{row()}</Text>}
     </ListView>
-  </view>
+  </View>
 ));
 "#;
 

@@ -51,7 +51,7 @@ const INTERFACES: &[(StyleGroup, &str, &str)] = &[
     (
         StyleGroup::Text,
         "TextStyle extends ViewStyle",
-        "Styles of text (inherited by nested `<text>` spans) and inputs.",
+        "Styles of text (inherited by nested `<Text>` spans) and inputs.",
     ),
     (
         StyleGroup::Image,

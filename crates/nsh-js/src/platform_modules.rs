@@ -1,8 +1,8 @@
 //! The small runtime modules: `nsh/android`
 //! (`isAvailable`, `BackHandler`'s listeners over the registry's module),
 //! `nsh/ios` (`isAvailable`, `InputAccessoryView`), `nsh/webview` and
-//! `nsh/video` (their host elements as components; also the built-ins
-//! `<web-view>` / `<video>`), and `nsh/native` (`nativeComponent`: the
+//! `nsh/video` (their host elements as components, which the compiler
+//! makes in place for their tags), and `nsh/native` (`nativeComponent`: the
 //! JS face of components the embedding app registers natively).
 
 use std::{
@@ -78,93 +78,6 @@ fn native(ctx: *mut JsContext, f: DataFn, length: c_int, data: &mut [JsValue]) -
             data.len() as c_int,
             data.as_mut_ptr(),
         )
-    }
-}
-
-fn new_string(ctx: *mut JsContext, s: &str) -> JsValue {
-    // SAFETY: a new string.
-    unsafe { qjs::JS_NewStringLen(ctx, s.as_ptr().cast(), s.len() as _) }
-}
-
-// --- Host components ------------------------------------------------------------------
-
-/// A component rendering host element `tag` with its props (children too
-/// when `children`).
-fn host_component(ctx: *mut JsContext, tag: &str, children: bool) -> JsValue {
-    let name = new_string(ctx, tag);
-    let mut data = [name, boolean(children)];
-    let f = native(ctx, render_host, 1, &mut data);
-    // SAFETY: ours.
-    unsafe { qjs::JS_FreeValue(ctx, name) };
-    f
-}
-
-unsafe extern "C" fn render_host(
-    ctx: *mut JsContext,
-    _this: JsValue,
-    argc: c_int,
-    argv: *mut JsValue,
-    _magic: c_int,
-    data: *mut JsValue,
-) -> JsValue {
-    let props = arg(argc, argv, 0);
-    // SAFETY: two data values (`host_component`).
-    let (tag, children) = unsafe { (*data, qjs::JS_ToBool(ctx, *data.add(1)) == 1) };
-    let Some(tag) = dom::string_arg(ctx, tag).and_then(|t| Tag::from_name(&t)) else {
-        return UNDEFINED;
-    };
-    let node = match dom::create_element(ctx, tag) {
-        Ok(node) => node,
-        Err(e) => return e,
-    };
-    let skip: &[&str] = if children { &[] } else { &["children"] };
-    let r = dom::spread_except(ctx, node, props, skip).and_then(|()| {
-        if !children {
-            return Ok(());
-        }
-        let reader = reader(ctx, props, "children");
-        let r = dom::insert_value_at(ctx, node, reader, None);
-        // SAFETY: ours.
-        unsafe { qjs::JS_FreeValue(ctx, reader) };
-        r
-    });
-    match r {
-        Ok(()) => reactive::finish_value(ctx, node),
-        Err(e) => {
-            // SAFETY: ours.
-            unsafe { qjs::JS_FreeValue(ctx, node) };
-            e
-        }
-    }
-}
-
-/// A getter of `props[key]`.
-fn reader(ctx: *mut JsContext, props: JsValue, key: &str) -> JsValue {
-    let k = new_string(ctx, key);
-    let f = native(ctx, read_prop, 0, &mut [props, k]);
-    // SAFETY: ours.
-    unsafe { qjs::JS_FreeValue(ctx, k) };
-    f
-}
-
-unsafe extern "C" fn read_prop(
-    ctx: *mut JsContext,
-    _this: JsValue,
-    _argc: c_int,
-    _argv: *mut JsValue,
-    _magic: c_int,
-    data: *mut JsValue,
-) -> JsValue {
-    // SAFETY: two data values (props, key).
-    unsafe {
-        let Some(key) = dom::string_arg(ctx, *data.add(1)) else {
-            return qjs::JS_EXCEPTION;
-        };
-        let k = CString::new(key).unwrap_or_default();
-        if !qjs::JS_IsObject(*data) {
-            return UNDEFINED;
-        }
-        qjs::JS_GetPropertyStr(ctx, *data, k.as_ptr())
     }
 }
 
@@ -354,7 +267,7 @@ pub(crate) const IOS_EXPORTS: &[Item] = &[
         "InputAccessoryView",
         Export::Value(|ctx| {
             if os(ctx) == Os::Ios {
-                host_component(ctx, "inputaccessory", true)
+                dom::host_component(ctx, "inputaccessory", true)
             } else {
                 reactive::new_function(ctx, c"InputAccessoryView", nothing, 1)
             }
@@ -379,7 +292,7 @@ pub(crate) const IOS_TYPES: &str = r#"export interface InputAccessoryViewProps {
 /// `nsh/webview`.
 pub(crate) const WEBVIEW_EXPORTS: &[Item] = &[(
     "WebView",
-    Export::Value(|ctx| host_component(ctx, "webview", false)),
+    Export::Value(|ctx| dom::host_component(ctx, "webview", false)),
     Ts::Const(
         "A web page (WKWebView / android.webkit.WebView); its `ref` has\n`reload()`, `goBack()`, `goForward()`, `stopLoading()`,\n`injectJavaScript(script)` and `postMessage(data)`.",
         "(props: WebViewProps) => YNode",
@@ -398,7 +311,7 @@ export interface WebViewProps extends Omit<ViewProps, "children" | "ios">, WebVi
 /// `nsh/video`.
 pub(crate) const VIDEO_EXPORTS: &[Item] = &[(
     "Video",
-    Export::Value(|ctx| host_component(ctx, "video", false)),
+    Export::Value(|ctx| dom::host_component(ctx, "video", false)),
     Ts::Const(
         "A video player (AVPlayer / MediaPlayer); its `ref` has `seek(seconds)`.",
         "(props: VideoProps) => YNode",
@@ -484,7 +397,7 @@ unsafe extern "C" fn render_native(
         dom::spread_except(ctx, node, props, &skip_refs)?;
         // Its own props, as the component's (`$name`), followed.
         for key in &own {
-            let get = reader(ctx, props, key);
+            let get = dom::prop_reader(ctx, props, key);
             let wire = format!("${key}");
             let r = dom::bind_prop_with(ctx, node, &wire, get);
             // SAFETY: ours.

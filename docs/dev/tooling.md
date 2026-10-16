@@ -3,12 +3,13 @@
 ## TypeScript
 
 - Every command that builds an app writes `.nsh/types` next to its entry (only changed files; files nsh no longer writes
-  are removed). None of it is checked in: `nsh_js::type_definitions(ui_sets)` makes the declarations of everything nsh
-  serves (`nsh-js` `declarations.rs`), and `nsh_bundler::type_definitions(elements)` the app's part. The files:
-  `nsh/index.d.ts` (`nsh`), one per module (`nsh/list.d.ts`, `nsh/ui/mobile.d.ts`, ...), `nsh/types.d.ts` (the
-  styles, the elements' props and events, `YNode`, the JSX element type; `nsh` exports them), `nsh/globals.d.ts`
-  (console, timers, frames and the web APIs), and from the bundler `nsh/jsx-runtime.d.ts` (the built-in elements and
-  the app's kebab-case components, rewritten after every build: `native-pipeline.md`) and `nsh/assets.d.ts` (what
+  are removed). None of it is checked in, and nothing in it depends on the app's code: `nsh_js::type_definitions(ui_sets)`
+  makes the declarations of everything nsh serves (`nsh-js` `declarations.rs`), and `nsh_bundler::type_definitions()`
+  the asset imports. The files: `nsh/index.d.ts` (`nsh`), one per module (`nsh/list.d.ts`, `nsh/ui/mobile.d.ts`,
+  ...), `nsh/types.d.ts` (the styles, the elements' props and events, `YNode`, the JSX namespace; `nsh` exports them),
+  `nsh/jsx-runtime.d.ts` (where `jsxImportSource` finds `JSX`: no intrinsic elements, so every tag is checked as the
+  component it names and generic ones are inferred: `native-pipeline.md`), `nsh/globals.d.ts` (console, timers,
+  frames, the web APIs and the control flow components `If` / `Each`), and from the bundler `nsh/assets.d.ts` (what
   image and font imports give). Each file declares its own names; the `import type` lines between them are worked out
   from the names each uses. `nsh init` writes a `tsconfig.json` mapping `nsh` and `nsh/*` there (`jsxImportSource:
   "nsh"`, no DOM library), so editors type-check apps without `node_modules`.

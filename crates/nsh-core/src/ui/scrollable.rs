@@ -1,5 +1,5 @@
 //! How scroll views and lists scroll ([`Scrollable`]): the behavior props
-//! and scroll events `<scroll>` and `List` share in TS
+//! and scroll events `Scroll` and `List` share in TS
 //! (`ScrollingHostProps`).
 
 use super::{

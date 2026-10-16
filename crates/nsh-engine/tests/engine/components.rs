@@ -64,13 +64,13 @@ fn text_ids(batch: &MountBatch, wanted: &str) -> Option<u32> {
     })
 }
 
-const INSET: &str = r#"import { mount, signal } from "nsh";
+const INSET: &str = r#"import { mount, signal, Text } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
 const rows = signal(["A", "B", "C"]);
 setTimeout(() => rows.update((r) => [...r, "D"]), 0);
 
-mount(() => <ListView variant="inset" each={rows()}>{(row) => <text>{row()}</text>}</ListView>);
+mount(() => <ListView variant="inset" each={rows()}>{(row) => <Text>{row()}</Text>}</ListView>);
 "#;
 
 #[test]
@@ -379,18 +379,18 @@ fn a_sibling_coming_back_does_not_move_a_rust_input_on(
 
 // --- Through the native modules ------------------------------------------------
 
-const CARD: &str = r#"import { signal, mount } from "nsh";
+const CARD: &str = r#"import { mount, signal, Text } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";
 
 function App() {
   const titled = signal(true);
   return (
-    <card
-      header={<if when={titled()}><text>Title</text></if>}
-      footer={<button title="Hide title" onPress={() => titled.set(false)} />}
+    <Card
+      header={<If when={titled()}><Text>Title</Text></If>}
+      footer={<Button title="Hide title" onPress={() => titled.set(false)} />}
     >
-      <text>Body</text>
-    </card>
+      <Text>Body</Text>
+    </Card>
   );
 }
 
@@ -443,7 +443,7 @@ fn slots_children_and_events() {
     );
 }
 
-const METHODS: &str = r#"import { signal, mount } from "nsh";
+const METHODS: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { Stepper, type StepperRef } from "nsh/ui/mobile";
 
 const shown = signal("waiting");
@@ -455,10 +455,10 @@ setTimeout(async () => {
 }, 0);
 
 mount(() => (
-  <view>
-    <stepper ref={stepper} defaultValue={1} max={50} />
-    <text>{shown()}</text>
-  </view>
+  <View>
+    <Stepper ref={stepper} defaultValue={1} max={50} />
+    <Text>{shown()}</Text>
+  </View>
 ));
 "#;
 
@@ -480,7 +480,7 @@ fn calls_of_a_components_methods() {
     assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
 }
 
-const ALERT: &str = r#"import { signal, mount } from "nsh";
+const ALERT: &str = r#"import { mount, signal, Text } from "nsh";
 import { Alert } from "nsh/ui/mobile";
 
 const shown = signal("waiting");
@@ -492,7 +492,7 @@ setTimeout(async () => {
   shown.set(`answer ${i}`);
 }, 0);
 
-mount(() => <text>{shown()}</text>);
+mount(() => <Text>{shown()}</Text>);
 "#;
 
 #[test]
@@ -525,16 +525,16 @@ fn alert_resolves_with_the_button_pressed() {
     assert!(batches.iter().any(|b| shows(b, "answer 1")));
 }
 
-const SAFE_AREA: &str = r#"import { mount } from "nsh";
+const SAFE_AREA: &str = r#"import { mount, Text } from "nsh";
 import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/ui/mobile";
 
 mount(() => (
-  <keyboard-avoiding-view style={{ flex: 1 }}>
-    <safe-area-view style={{ flex: 1, padding: 4 }} edges={["top", "bottom"]}>
-      <text>inside</text>
-      <text>{`top ${safeArea().top}`}</text>
-    </safe-area-view>
-  </keyboard-avoiding-view>
+  <KeyboardAvoidingView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, padding: 4 }} edges={["top", "bottom"]}>
+      <Text>inside</Text>
+      <Text>{`top ${safeArea().top}`}</Text>
+    </SafeAreaView>
+  </KeyboardAvoidingView>
 ));
 "#;
 
@@ -584,7 +584,7 @@ fn safe_area_and_keyboard_avoiding_views() {
     );
 }
 
-const RUNTIME_MODULES: &str = r#"import { signal, mount } from "nsh";
+const RUNTIME_MODULES: &str = r#"import { mount, signal, Text } from "nsh";
 import { AccessibilityInfo } from "nsh/accessibility";
 import { Platform } from "nsh/device";
 import { Toast } from "nsh/android";
@@ -605,7 +605,7 @@ setTimeout(async () => {
   shown.set(`${size.width}x${size.height} ${failed} ${Platform.OS} ${await AccessibilityInfo.isReduceMotionEnabled()}`);
 }, 0);
 
-mount(() => <text ref={note}>{shown()}</text>);
+mount(() => <Text ref={note}>{shown()}</Text>);
 "#;
 
 #[test]
@@ -663,23 +663,23 @@ fn runtime_modules() {
     assert_eq!(focused, Some(note));
 }
 
-const ROWS: &str = r#"import { mount } from "nsh";
+const ROWS: &str = r#"import { mount, Text } from "nsh";
 import { Group, ListView } from "nsh/ui/mobile";
 
 const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
 
 mount(() => (
-  <list-view
+  <ListView
     each={rows}
     ListHeaderComponent={() => (
-      <group>
-        <text>First</text>
-        <text>Second</text>
-      </group>
+      <Group>
+        <Text>First</Text>
+        <Text>Second</Text>
+      </Group>
     )}
   >
-    {(row) => <text>{row().label}</text>}
-  </list-view>
+    {(row) => <Text>{row().label}</Text>}
+  </ListView>
 ));
 "#;
 
@@ -721,15 +721,15 @@ fn components_place_the_apps_children_and_rows() {
     assert!(text_ids(&first, "Row 99").is_none());
 }
 
-const STEPPER: &str = r#"import { signal, mount } from "nsh";
+const STEPPER: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { Stepper } from "nsh/ui/mobile";
 
 const changes = signal(0);
 mount(() => (
-  <view>
-    <stepper defaultValue={5} min={0} max={100} onChange={() => changes.update((c) => c + 1)} />
-    <text>{`changes ${changes()}`}</text>
-  </view>
+  <View>
+    <Stepper defaultValue={5} min={0} max={100} onChange={() => changes.update((c) => c + 1)} />
+    <Text>{`changes ${changes()}`}</Text>
+  </View>
 ));
 "#;
 
@@ -744,13 +744,13 @@ setTimeout(() => StatusBar.setHidden(true), 50);
 setTimeout(() => rendered.set(false), 100);
 
 mount(() => (
-  <if when={rendered()}>
-    <status-bar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
-  </if>
+  <If when={rendered()}>
+    <StatusBar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
+  </If>
 ));
 "##;
 
-const BACK: &str = r#"import { signal, mount } from "nsh";
+const BACK: &str = r#"import { mount, signal, Text } from "nsh";
 import { BackHandler } from "nsh/android";
 
 const presses = signal(0);
@@ -760,17 +760,17 @@ BackHandler.addEventListener("hardwareBackPress", () => {
   return presses() === 1;
 });
 
-mount(() => <text>{`presses ${presses()}`}</text>);
+mount(() => <Text>{`presses ${presses()}`}</Text>);
 "#;
 
-const FIELD: &str = r#"import { signal, mount } from "nsh";
+const FIELD: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { TextField } from "nsh/ui/mobile";
 
 const name = signal("Ada");
 mount(() => (
-  <view>
-    <text-field value={name()} onChange={(v: string) => name.set(v)} />
-    <text>{`name ${name()}`}</text>
-  </view>
+  <View>
+    <TextField value={name()} onChange={(v: string) => name.set(v)} />
+    <Text>{`name ${name()}`}</Text>
+  </View>
 ));
 "#;

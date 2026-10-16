@@ -17,21 +17,24 @@ Declarations: each export of a module of nsh's own carries its TypeScript declar
 and modules are declared from their specs (`nsh_core::ui::declarations`, `docs/dev/components.md`), the styles, the
 host elements' props and events, the easings and the canvas methods from the core's tables. `nsh-js`'s
 `declarations.rs` assembles one file per module (`nsh/list.d.ts`, `nsh/ui/mobile.d.ts`), `nsh/types.d.ts` (the
-element and JSX types `nsh` exports) and `nsh/globals.d.ts`, and tests check every module's exports against its
-declarations; the CLI writes them into `.nsh/types` (`tooling.md`).
-`nsh` itself only has the reactive API, `mount` and the types; there is no catch-all module, and moved APIs get no
-compatibility re-exports.
+element and JSX types `nsh` exports), `nsh/jsx-runtime.d.ts` and `nsh/globals.d.ts`, and tests check every module's
+exports against its declarations; the CLI writes them into `.nsh/types` (`tooling.md`).
+`nsh` itself only has the reactive API, `mount`, the primitives every UI is made of (`View`, `Text`, `Scroll`,
+`Input`) and the types; there is no catch-all module, and moved APIs get no compatibility re-exports. Each primitive
+has one home, which is where apps import its tag from (`native-pipeline.md`): the table below. `If` and `Each` are
+globals.
 
 | Module | Exports | Implemented in (`crates/nsh-js/src`) |
 |---|---|---|
-| `nsh` | `signal`, `computed`, `effect`, `batch`, `untracked`, `cleanup`, `context`, `split`, `mount`; `YNode`, `Accessor`, `Signal`, `Context`, `Component`, the types of styles, element props, events and `JSX` | `reactive.rs`, `dom.rs` |
+| `nsh` | `signal`, `computed`, `effect`, `batch`, `untracked`, `cleanup`, `context`, `split`, `mount`; `View`, `Text`, `Scroll`, `Input` (host elements as components: `dom::host_component`); `YNode`, `Accessor`, `Signal`, `Context`, `Component`, the types of styles, element props, events and `JSX` | `reactive.rs`, `dom.rs` |
 | `nsh:rt` | what compiled JSX calls (`element`, `insert`, `spread`, `cond`, `each`, `list`, `font`, ...); apps never import it | `dom.rs`, `list.rs` |
+| (globals) | `If`, `Each` (control flow; their tags compile to `cond` / `each`) | `dom.rs` |
 | `nsh/animated` | `createNativeValue`, `NativeValue`, `NativeNode`, `Animated`, `Easing`, `LayoutAnimation` | `animated.rs` |
 | `nsh/device` | `windowSize()`, `colorScheme()`, `fontScale()`, `Platform`, `PixelRatio`, `I18nManager` | `env.rs` |
 | `nsh/accessibility` | `AccessibilityInfo`, `screenReaderEnabled()`, `reduceMotion()` | `env.rs` + its registry (`nsh_core::runtime`) |
 | `nsh/list` | `List` | `list.rs` |
 | `nsh/canvas` | `Canvas`, `Path2D`, `CanvasRenderingContext2D`, `CanvasGradient` | `canvas.rs` |
-| `nsh/image` | `Image.getSize`, `Image.prefetch` (promises the core resolves from the root's `ImageInfo` event) | its registry (`components.rs`) |
+| `nsh/image` | `Image`: the image element's component, with `Image.getSize`, `Image.prefetch` (promises the core resolves from the root's `ImageInfo` event) | `modules.rs` + its registry (`components.rs`) |
 | `nsh/gesture` | `PanResponder` | `touch.rs` |
 | `nsh/webview`, `nsh/video` | `WebView`, `Video` | `platform_modules.rs` |
 | `nsh/native` | `nativeComponent(name, { props, events })`: a component for a native component the embedding app registered | `platform_modules.rs` |

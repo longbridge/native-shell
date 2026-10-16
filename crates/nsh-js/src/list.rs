@@ -1,4 +1,4 @@
-//! The virtualized, recycling list: `<list>` (the `list` of `nsh:rt`) and
+//! The virtualized, recycling list: `<List>` (the `list` of `nsh:rt`) and
 //! the rows of Rust components that lay out the app's items (`ListView`).
 //!
 //! Only rows near the viewport exist: the core decides which and asks for
@@ -1017,8 +1017,8 @@ fn report(ctx: *mut JsContext, id: NodeId) -> JsValue {
     }
 }
 
-/// `nsh/list`: `List`, the component `<list>` is (for apps that import it
-/// by name).
+/// `nsh/list`: `List` (its tags compile to `nsh:rt`'s `list`, the same
+/// function).
 pub(crate) const EXPORTS: &[crate::modules::Item] = &[(
     "List",
     crate::modules::Export::Function(list, 1),

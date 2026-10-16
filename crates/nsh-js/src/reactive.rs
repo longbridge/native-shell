@@ -65,7 +65,7 @@ enum Equals {
     Never,
     /// `equals(previous, next)`.
     Custom(JsValue),
-    /// The same truthiness (a condition: `<if when>`).
+    /// The same truthiness (a condition: `<If when>`).
     Truthiness,
 }
 

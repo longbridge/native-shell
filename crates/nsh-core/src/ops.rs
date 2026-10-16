@@ -60,7 +60,7 @@ pub enum Tag {
 }
 
 impl Tag {
-    /// Parses a JSX intrinsic element name.
+    /// Parses a host element's name (what `nsh:rt`'s `element` takes).
     #[inline]
     pub fn from_name(name: &str) -> Option<Tag> {
         Some(match name {

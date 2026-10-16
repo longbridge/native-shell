@@ -300,9 +300,9 @@ pub(crate) const NODE_METHODS: &[(&str, c_int, &str, &str)] = &[
         "focus",
         0,
         "(): void",
-        "Focuses an `<input>` (shows the keyboard).",
+        "Focuses an `<Input>` (shows the keyboard).",
     ),
-    ("blur", 0, "(): void", "Unfocuses an `<input>`."),
+    ("blur", 0, "(): void", "Unfocuses an `<Input>`."),
     (
         "setSelection",
         2,
@@ -319,13 +319,13 @@ pub(crate) const NODE_METHODS: &[(&str, c_int, &str, &str)] = &[
         "scrollTo",
         1,
         "(options: { x?: number; y?: number; animated?: boolean }): void",
-        "Scrolls a `<scroll>` or `List` to an offset.",
+        "Scrolls a `<Scroll>` or `List` to an offset.",
     ),
     (
         "zoomTo",
         1,
         "(options: { scale: number; x?: number; y?: number; animated?: boolean }): void",
-        "A zoomable `<scroll>` (`maximumZoomScale` above `minimumZoomScale`): zooms to `scale` (clamped to the limits), with the content point (`x`, `y`) (unzoomed points) in the middle of the viewport, or around the middle. E.g. double tap to zoom in on the tapped point.",
+        "A zoomable `<Scroll>` (`maximumZoomScale` above `minimumZoomScale`): zooms to `scale` (clamped to the limits), with the content point (`x`, `y`) (unzoomed points) in the middle of the viewport, or around the middle. E.g. double tap to zoom in on the tapped point.",
     ),
     (
         "scrollToOffset",
@@ -2543,6 +2543,172 @@ pub(crate) fn handler(ctx: *mut JsContext, id: NodeId, event: EventKind) -> Opti
         .map(|&(_, h)| unsafe { qjs::JS_DupValue(ctx, h) })
 }
 
+// --- The primitives as components -----------------------------------------------------
+
+/// A component rendering host element `tag` with its props (children too
+/// when `children`): what `nsh`'s `View`, `nsh/webview`'s `WebView`, ...
+/// are as values. Their tags are made in place by the compiler; this is
+/// the path of `<C />` where `C` holds one.
+pub(crate) fn host_component(ctx: *mut JsContext, tag: &str, children: bool) -> JsValue {
+    let name = new_string(ctx, tag);
+    let mut data = [
+        name,
+        if children {
+            qjs::JS_TRUE
+        } else {
+            qjs::JS_FALSE
+        },
+    ];
+    // SAFETY: the function keeps dups of `data`; ours is freed.
+    unsafe {
+        let f = qjs::JS_NewCFunctionData(ctx, Some(render_host), 1, 0, 2, data.as_mut_ptr());
+        qjs::JS_FreeValue(ctx, name);
+        f
+    }
+}
+
+fn new_string(ctx: *mut JsContext, s: &str) -> JsValue {
+    // SAFETY: a new string.
+    unsafe { qjs::JS_NewStringLen(ctx, s.as_ptr().cast(), s.len() as _) }
+}
+
+unsafe extern "C" fn render_host(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+    _magic: c_int,
+    data: *mut JsValue,
+) -> JsValue {
+    let props = arg(argc, argv, 0);
+    // SAFETY: two data values (`host_component`).
+    let (tag, children) = unsafe { (*data, qjs::JS_ToBool(ctx, *data.add(1)) == 1) };
+    let Some(tag) = string_arg(ctx, tag).and_then(|t| Tag::from_name(&t)) else {
+        return UNDEFINED;
+    };
+    let node = match create_element(ctx, tag) {
+        Ok(node) => node,
+        Err(e) => return e,
+    };
+    let skip: &[&str] = if children { &[] } else { &["children"] };
+    let r = spread_except(ctx, node, props, skip).and_then(|()| {
+        if !children {
+            return Ok(());
+        }
+        let reader = prop_reader(ctx, props, "children");
+        let r = insert_value_at(ctx, node, reader, None);
+        // SAFETY: ours.
+        unsafe { qjs::JS_FreeValue(ctx, reader) };
+        r
+    });
+    match r {
+        Ok(()) => reactive::finish_value(ctx, node),
+        Err(e) => {
+            // SAFETY: ours.
+            unsafe { qjs::JS_FreeValue(ctx, node) };
+            e
+        }
+    }
+}
+
+/// A function returning `props[key]` when called (owned).
+pub(crate) fn prop_reader(ctx: *mut JsContext, props: JsValue, key: &str) -> JsValue {
+    let k = new_string(ctx, key);
+    let mut data = [props, k];
+    // SAFETY: the function keeps dups of `data`; ours is freed.
+    unsafe {
+        let f = qjs::JS_NewCFunctionData(ctx, Some(read_prop), 0, 0, 2, data.as_mut_ptr());
+        qjs::JS_FreeValue(ctx, k);
+        f
+    }
+}
+
+unsafe extern "C" fn read_prop(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+    _magic: c_int,
+    data: *mut JsValue,
+) -> JsValue {
+    // SAFETY: two data values (props, key); the atom is freed.
+    unsafe {
+        if !qjs::JS_IsObject(*data) {
+            return UNDEFINED;
+        }
+        let key = qjs::JS_ValueToAtom(ctx, *data.add(1));
+        let v = qjs::JS_GetProperty(ctx, *data, key);
+        qjs::JS_FreeAtom(ctx, key);
+        v
+    }
+}
+
+/// The global `If` (`<If when else>` called as a component: the compiler
+/// compiles the tag itself to `cond`).
+unsafe extern "C" fn if_component(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let props = arg(argc, argv, 0);
+    let mut args = [
+        prop_reader(ctx, props, "when"),
+        prop_reader(ctx, props, "children"),
+        prop_reader(ctx, props, "else"),
+    ];
+    // SAFETY: `cond` keeps dups of what it uses; ours are freed.
+    unsafe {
+        let r = cond(ctx, UNDEFINED, 3, args.as_mut_ptr());
+        for v in args {
+            qjs::JS_FreeValue(ctx, v);
+        }
+        r
+    }
+}
+
+/// The global `Each` (`<Each of key>` called as a component: the compiler
+/// compiles the tag itself to `each`).
+unsafe extern "C" fn each_component(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let props = arg(argc, argv, 0);
+    // SAFETY: values got are owned; `each` keeps dups of what it uses.
+    unsafe {
+        let mut args = [
+            prop_reader(ctx, props, "of"),
+            qjs::JS_GetPropertyStr(ctx, props, c"children".as_ptr()),
+            qjs::JS_GetPropertyStr(ctx, props, c"key".as_ptr()),
+        ];
+        let r = if args[1..].iter().any(|v| qjs::JS_IsException(*v)) {
+            qjs::JS_EXCEPTION
+        } else {
+            each(ctx, UNDEFINED, 3, args.as_mut_ptr())
+        };
+        for v in args {
+            qjs::JS_FreeValue(ctx, v);
+        }
+        r
+    }
+}
+
+/// The globals of the renderer: `If` and `Each`, the control flow tags no
+/// app imports.
+pub(crate) fn install_globals(ctx: *mut JsContext) {
+    // SAFETY: the global object is ours to free; it takes the functions.
+    unsafe {
+        let global = qjs::JS_GetGlobalObject(ctx);
+        let f = reactive::new_function(ctx, c"If", if_component, 1);
+        qjs::JS_SetPropertyStr(ctx, global, c"If".as_ptr(), f);
+        let f = reactive::new_function(ctx, c"Each", each_component, 1);
+        qjs::JS_SetPropertyStr(ctx, global, c"Each".as_ptr(), f);
+        qjs::JS_FreeValue(ctx, global);
+    }
+}
+
 /// The exports of `nsh:rt`.
 pub(crate) const RT_EXPORTS: &[crate::modules::Item] = &[
     ("element", Export::Function(element, 1), Ts::Internal),
@@ -2763,6 +2929,48 @@ mod tests {
                 "set text 8 \"a1\"",
             ]
         );
+    }
+
+    /// The primitives and the globals `If` / `Each` as values: what
+    /// `<C />` calls when `C` holds one.
+    #[test]
+    fn primitives_and_control_flow_are_components() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { mount, signal, View, Text } from "nsh";
+            import { Image } from "nsh/image";
+            import { component } from "nsh:rt";
+            const show = signal(true);
+            globalThis.toggle = () => show.update((s) => !s);
+            if (typeof Image.getSize !== "function" || typeof Image.prefetch !== "function") {
+                throw new Error("Image carries its functions");
+            }
+            mount(() => component(View, {
+                testID: "box",
+                get children() {
+                    return [
+                        component(If, {
+                            get when() { return show(); },
+                            get children() { return component(Text, { children: "on" }); },
+                            get else() { return component(Image, { src: "x" }); },
+                        }),
+                        component(Each, { of: ["a", "b"], children: (item) => component(Text, { get children() { return item(); } }) }),
+                    ];
+                },
+            }));
+            "#,
+        )
+        .unwrap();
+        let first = ops(&host, false);
+        for line in ["create 2 View", "create 4 Text", "text 6 \"on\""] {
+            assert!(first.contains(&line.to_owned()), "{line}: {first:?}");
+        }
+        assert!(first.iter().any(|l| l.contains("TestId")), "{first:?}");
+        assert!(first.iter().any(|l| l.contains("\"b\"")), "{first:?}");
+        host.eval_script("toggle.js", "toggle()").unwrap();
+        let toggled = ops(&host, false);
+        assert!(toggled.iter().any(|l| l.ends_with("Image")), "{toggled:?}");
     }
 
     #[test]

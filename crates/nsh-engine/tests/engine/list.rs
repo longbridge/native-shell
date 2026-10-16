@@ -14,16 +14,17 @@ impl MountSink for Sink {
     }
 }
 
-/// `<list>`, the built-in.
+/// `List` (`nsh/list`), made in place by the compiler.
 const APP: &str = r#"
-import { signal, mount } from "nsh";
+import { mount, signal, Text, View } from "nsh";
+import { List } from "nsh/list";
 const rows = signal(Array.from({ length: 100 }, (_, i) => i));
 function App() {
   return (
-    <list each={rows()} estimatedItemSize={50} style={{ flex: 1 }}
+    <List each={rows()} estimatedItemSize={50} style={{ flex: 1 }}
           onEndReached={() => rows.update((r) => [...r, ...Array.from({ length: 100 }, (_, i) => r.length + i)])}>
-      {(row) => <view style={{ height: 50 }}><text>{`row ${row()}`}</text></view>}
-    </list>
+      {(row) => <View style={{ height: 50 }}><Text>{`row ${row()}`}</Text></View>}
+    </List>
   );
 }
 mount(App);
@@ -62,17 +63,18 @@ fn list_scrolls_with_recycled_cells() {
     scrolls_with_recycled_cells(APP);
 }
 
-/// `List` imported from `nsh/list` is the same component as `<list>`.
+/// `List` as a value (`const L = List; <L>`) is the same component as the
+/// tag the compiler makes in place.
 #[test]
-fn imported_list_scrolls_with_recycled_cells() {
+fn list_as_a_value_scrolls_with_recycled_cells() {
     let app = APP
-        .replace("<list ", "<List ")
-        .replace("</list>", "</List>")
+        .replace("<List ", "<Rows ")
+        .replace("</List>", "</Rows>")
         .replace(
-            "import { signal, mount } from \"nsh\";",
-            "import { signal, mount } from \"nsh\";\nimport { List } from \"nsh/list\";",
+            "import { List } from \"nsh/list\";",
+            "import { List } from \"nsh/list\";\nconst Rows = List;",
         );
-    assert!(app.contains("<List "));
+    assert!(app.contains("<Rows "));
     scrolls_with_recycled_cells(&app);
 }
 

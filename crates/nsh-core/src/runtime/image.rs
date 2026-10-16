@@ -1,5 +1,5 @@
-//! `nsh/image`: image information and loading ahead (`<image>` itself is
-//! an element).
+//! `nsh/image`: image information and loading ahead, the functions of
+//! `Image` (`nsh-js` makes it the image element's component).
 
 use crate::{
     JsonValue,

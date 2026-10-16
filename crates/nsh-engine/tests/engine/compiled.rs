@@ -10,30 +10,30 @@ use nsh_engine::{Bundle, Engine, EngineConfig};
 
 use crate::ChannelSink;
 
-const APP: &str = r#"import { signal, computed, mount } from "nsh";
+const APP: &str = r#"import { computed, mount, signal, Text, View } from "nsh";
 
 function Counter(props: { label: string }) {
   const count = signal(0);
   const double = computed(() => count() * 2);
   return (
-    <view testID="counter" onPress={() => count.update((c) => c + 1)}>
-      <text>{props.label}: {count()} / {double()}</text>
-      <if when={count() > 1} else={<text>few</text>}>
-        <text>many</text>
-      </if>
-    </view>
+    <View testID="counter" onPress={() => count.update((c) => c + 1)}>
+      <Text>{props.label}: {count()} / {double()}</Text>
+      <If when={count() > 1} else={<Text>few</Text>}>
+        <Text>many</Text>
+      </If>
+    </View>
   );
 }
 
 function App() {
   const items = signal([{ id: "a" }, { id: "b" }]);
   return (
-    <view>
-      <counter label="Taps" />
-      <view testID="rotate" onPress={() => items.update((i) => [...i.slice(1), i[0]])}>
-        <each of={items()} key={(i) => i.id}>{(item, index) => <text>{index()}{item().id}</text>}</each>
-      </view>
-    </view>
+    <View>
+      <Counter label="Taps" />
+      <View testID="rotate" onPress={() => items.update((i) => [...i.slice(1), i[0]])}>
+        <Each of={items()} key={(i) => i.id}>{(item, index) => <Text>{index()}{item().id}</Text>}</Each>
+      </View>
+    </View>
   );
 }
 
@@ -139,7 +139,7 @@ fn a_single_file_app_on_the_native_modules() {
     assert_eq!(t, ["0b", "1a"]);
 }
 
-const NAVIGATION: &str = r#"import { signal, mount } from "nsh";
+const NAVIGATION: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { Modal, Screen, Stack, createNavigator, useSafeAreaInsets } from "nsh/ui/mobile";
 
 type Route = { name: string };
@@ -148,25 +148,25 @@ const open = signal(false);
 
 function Insets() {
   const insets = useSafeAreaInsets();
-  return <text>{`inset ${insets().top}`}</text>;
+  return <Text>{`inset ${insets().top}`}</Text>;
 }
 
 mount(() => (
-  <view style={{ flex: 1 }}>
-    <stack navigator={nav} style={{ flex: 1 }}>
+  <View style={{ flex: 1 }}>
+    <Stack navigator={nav} style={{ flex: 1 }}>
       {(route) => (
-        <screen title={route.name} headerRight={<text onPress={() => open.set(true)}>open</text>}>
-          <view>
-            <text onPress={() => nav.push({ name: `page${nav.routes().length}` })}>push {route.name}</text>
-            <insets />
-          </view>
-        </screen>
+        <Screen title={route.name} headerRight={<Text onPress={() => open.set(true)}>open</Text>}>
+          <View>
+            <Text onPress={() => nav.push({ name: `page${nav.routes().length}` })}>push {route.name}</Text>
+            <Insets />
+          </View>
+        </Screen>
       )}
-    </stack>
-    <modal visible={open()} onRequestClose={() => open.set(false)}>
-      <text>in modal</text>
-    </modal>
-  </view>
+    </Stack>
+    <Modal visible={open()} onRequestClose={() => open.set(false)}>
+      <Text>in modal</Text>
+    </Modal>
+  </View>
 ));
 "#;
 

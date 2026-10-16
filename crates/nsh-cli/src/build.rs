@@ -108,9 +108,6 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         .canonicalize()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
-    if let Some(dir) = &dir {
-        crate::init::write_types_with(dir, &bundle.elements);
-    }
     let start = Instant::now();
     let bytecode = nsh_js::compile_bytecode_with(&bundle.code, release, crate::ui_sets())?;
     log::info!(
@@ -138,9 +135,6 @@ pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle
         .canonicalize()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
-    if let Some(dir) = &dir {
-        crate::init::write_types_with(dir, &hot.elements);
-    }
     let (code, source_map) = hot.script();
     let start = Instant::now();
     let bytecode = nsh_js::compile_bytecode_with(&code, false, crate::ui_sets())?;

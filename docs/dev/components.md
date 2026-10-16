@@ -70,14 +70,14 @@ impl Component for Button {
     places it (the closure styles the slot's own node).
   - `children: Children`: `.child(props.children)` puts them all at one place among the render's own children;
     `.children_each(props.children, |child, at| view().py_3().child(child))` wraps each one (it runs again when
-    the children change; `at` is a `Position`: `index`, `count`, `is_first()`, `is_last()`, what an `<each>` row knows
+    the children change; `at` is a `Position`: `index`, `count`, `is_first()`, `is_last()`, what an `<Each>` row knows
     from its index and the data).
   - `items: Items`: virtualized rows. In JS the component takes `List`'s data props (`each`, the row renderer as
     children, `keyExtractor`, `onEndReached`, `ListHeaderComponent`, ... : `ListItemsProps<T>`, so the component is
     generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
     view().px_4().when(at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
     row; only rows near the viewport exist and cells are recycled as with `List`.
-- **Elements** are `view()`, `text(..)` (its `.child(..)`ren are spans, as nested `<text>`s: texts with styles and
+- **Elements** are `view()`, `text(..)` (its `.child(..)`ren are spans, as nested `<Text>`s: texts with styles and
   presses of their own, strings, inline views and images; the core merges them into one paragraph), `image(..)`, the
   other host elements (`input()`, `scroll()`, `stack()` of
   `screen()`s, `modal()`,
@@ -138,7 +138,7 @@ impl Component for Button {
   | a ref to a component, `await stepper.value()`, `stepper.setValue(5)` | `cx.component_ref::<Stepper>()` (in `setup`, kept in a field), `Stepper::element(..).component_ref(&self.field)`, `self.field.update(\|s, cx\| s.set_value(5.0, cx))`: its `#[methods]` called directly, right after the listener; await the `Updated` for the result |
   | `<List ListHeaderComponent ListFooterComponent ListEmptyComponent ItemSeparatorComponent stickyHeaderIndices viewabilityConfig onViewableItemsChanged onEndReachedThreshold initialScrollIndex>` | `virtual_list(n, row).header(..).footer(..).empty(..).separator(\|\| ..).sticky_header_indices(..).viewability(..).minimum_view_time(..).on_viewable_items_changed(..).end_reached_threshold(..).initial_scroll_index(..)`: the header, footer and empty view are part of the render (the component's state and handlers), never recycled |
   | `<ListView each={rows} keyExtractor ListHeaderComponent={Header}>{row}</ListView>` | `ListView::element(props).items(virtual_list(n, row).keys(ids).header(..))` |
-  | `<text>a <text style={link} onPress={f}>b</text> <view/></text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
+  | `<Text>a <Text style={link} onPress={f}>b</Text> <View/></Text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
   | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no render) |
   | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
 
@@ -286,7 +286,7 @@ sends it to the root (`uiTheme`) before anything renders; a new theme renders ev
 
 ## The host node and ids
 
-In JS a component is a `<view>` with a `component` prop naming it (`nsh.button`): its **host**. `Core::apply` sees the
+In JS a component is a view (the host element `view`) with a `component` prop naming it (`nsh.button`): its **host**. `Core::apply` sees the
 prop, creates an instance and from then on intercepts the ops on the host (`intercept`): the host is the root of the
 component's expansion, the elements its render returns below the root become nodes the core creates itself. Apps
 without components pay one check per op.

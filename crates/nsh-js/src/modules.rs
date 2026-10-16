@@ -136,19 +136,48 @@ const NSH: &[Item] = &[
         "split",
         Export::Function(dom::split, 2),
         Ts::Function(
-            "`[picked, rest]`: the props named in `keys` and the others, both still\nfollowing what they read (a component passing the rest on: `<input {...rest} />`).",
+            "`[picked, rest]`: the props named in `keys` and the others, both still\nfollowing what they read (a component passing the rest on: `<Input {...rest} />`).",
             &[
                 "<T extends object, K extends readonly (keyof T)[]>(props: T, keys: K): [Pick<T, K[number]>, Omit<T, K[number]>]",
             ],
         ),
     ),
+    (
+        "View",
+        Export::Value(|ctx| dom::host_component(ctx, "view", true)),
+        Ts::Function(
+            "A view: the box layout, styles, touches and accessibility work on\n(UIView / ViewGroup).",
+            &["(props: ViewProps): YNode"],
+        ),
+    ),
+    (
+        "Text",
+        Export::Value(|ctx| dom::host_component(ctx, "text", true)),
+        Ts::Function(
+            "A paragraph of text; a `<Text>` in it is a span of the same paragraph, other\nelements are inline attachments.",
+            &["(props: TextProps): YNode"],
+        ),
+    ),
+    (
+        "Scroll",
+        Export::Value(|ctx| dom::host_component(ctx, "scroll", true)),
+        Ts::Function(
+            "A native scroll view (UIScrollView / ScrollView), zoomable; for long\nlists, `List` (`nsh/list`).",
+            &["(props: ScrollProps): YNode"],
+        ),
+    ),
+    (
+        "Input",
+        Export::Value(|ctx| dom::host_component(ctx, "input", true)),
+        Ts::Function(
+            "A native text input (UITextField / UITextView, EditText); `ref` has\n`focus()`, `blur()` and `setSelection(start, end)`.",
+            &["(props: InputProps): YNode"],
+        ),
+    ),
 ];
 
-/// `nsh`'s types; its element and style types are `types.d.ts`'s, and `JSX`
-/// the app's (`jsx-runtime.d.ts`, with its kebab-case components).
-const NSH_TYPES: &str = r#"import type { JSX } from "./jsx-runtime";
-export type { JSX };
-export type * from "./types";
+/// `nsh`'s types; its element and style types and `JSX` are `types.d.ts`'s.
+const NSH_TYPES: &str = r#"export type * from "./types";
 
 /** A value that changes over time, read by calling it (tracked). */
 export interface Accessor<T> {
@@ -241,7 +270,27 @@ pub(crate) const MODULES: &[NativeModule] = &[
         exports: list::EXPORTS,
         types: list::TYPES,
     },
+    NativeModule {
+        name: "nsh/image",
+        exports: IMAGE_EXPORTS,
+        types: "",
+    },
 ];
+
+/// `nsh/image`: `Image`, the image element as a component carrying the
+/// functions of the runtime's module (`getSize`, `prefetch`).
+const IMAGE_EXPORTS: &[Item] = &[(
+    "Image",
+    Export::Value(|ctx| {
+        let image = dom::host_component(ctx, "image", true);
+        components::add_runtime_functions(ctx, image, "nsh/image", "Image");
+        image
+    }),
+    Ts::Const(
+        "An image (a URL or `import logo from \"./logo.png\"`), decoded and cached\nnatively; `Image.getSize(uri)` and `Image.prefetch(uri)` ask about one\nwithout showing it.",
+        "((props: ImageProps) => YNode) & ImageModule",
+    ),
+)];
 
 /// One export of a module, as it is made.
 enum Made {
