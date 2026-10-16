@@ -84,6 +84,11 @@ impl Live {
             && self.presence.is_none()
             && self.keyframes.is_none()
     }
+
+    /// True while the view animates out after its removal.
+    pub(crate) fn dying(&self) -> bool {
+        false
+    }
 }
 
 /// A rotation, scale and vertical shift (a fraction of the height)

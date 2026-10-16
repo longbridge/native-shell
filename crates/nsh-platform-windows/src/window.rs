@@ -720,6 +720,11 @@ fn lines_per_notch() -> f32 {
 pub(crate) fn set_cursor(cursor: crate::input::Cursor) {
     use crate::input::Cursor;
     let id = match cursor {
+        Cursor::Hidden => {
+            // SAFETY: plain call; no cursor is shown over the window.
+            unsafe { SetCursor(None) };
+            return;
+        }
         Cursor::Arrow => IDC_ARROW,
         Cursor::Hand => IDC_HAND,
         Cursor::Text => IDC_IBEAM,

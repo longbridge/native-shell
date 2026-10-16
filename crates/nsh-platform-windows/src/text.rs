@@ -3373,3 +3373,9 @@ mod tests {
         assert_eq!(l.caret_at(-5.0, 2.0), 9);
     }
 }
+
+/// A press anywhere in the window at `(x, y)` (root coordinates), before
+/// the views get it: clears a selection the press is not on.
+pub(crate) fn window_pressed(surface: &crate::surface::Surface, x: f32, y: f32) {
+    let _ = (surface, x, y);
+}
