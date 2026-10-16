@@ -22,6 +22,7 @@ use crate::{
 /// The id of the icon group resource the runner's window class loads
 /// (`LoadIconW(hinstance, 1)` in `nsh-platform-windows`), which Explorer
 /// and the taskbar show too (the executable's first icon group).
+#[cfg(windows)]
 const ICON_ID: u16 = 1;
 
 /// The sizes of the icon's images: the small and large icons at 100% to
@@ -111,7 +112,9 @@ fn file_stem(name: &str) -> String {
 }
 
 /// One image of an icon: its size and its data as an `RT_ICON` resource
-/// holds it (a DIB, or a PNG for 256 pixels).
+/// holds it (a DIB, or a PNG for 256 pixels). Only written on Windows:
+/// elsewhere the images are made and dropped.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
 struct IconImage {
     size: u32,
     data: Vec<u8>,
@@ -170,6 +173,7 @@ fn dib(rgba: &image::RgbaImage) -> Vec<u8> {
 
 /// The `RT_GROUP_ICON` resource of `images`, whose `RT_ICON` resources
 /// have ids 1, 2, ...: a `GRPICONDIR` and a `GRPICONDIRENTRY` per image.
+#[cfg(any(windows, test))]
 fn icon_group(images: &[IconImage]) -> Vec<u8> {
     let mut group = Vec::with_capacity(6 + 14 * images.len());
     group.extend_from_slice(&0u16.to_le_bytes());
