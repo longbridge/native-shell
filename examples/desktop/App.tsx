@@ -103,8 +103,6 @@ function App() {
           alignItems: "center",
           gap: 2,
           backgroundColor: dark() ? "#1b1e25" : "#e8eaef",
-          borderBottomWidth: 1,
-          borderColor: dark() ? "#2a2e37" : "#d5d8de",
         }}
       >
         <Text style={{ fontSize: 13, fontWeight: "600", color: dark() ? "#e6e8ec" : "#1f2328", marginRight: 8 }}>
@@ -140,6 +138,8 @@ function App() {
           }}
         />
       </View>
+      {/* Below the bar, so that the whole height the controls are centered in is the bar's. */}
+      <View style={{ height: 1, backgroundColor: dark() ? "#2a2e37" : "#d5d8de" }} />
       <View style={{ flex: 1, padding: 24, gap: 12 }}>
         <Text style={{ fontSize: 22, fontWeight: "bold", color: dark() ? "#e6e8ec" : "#1f2328" }}>
           A title bar of the app's own
