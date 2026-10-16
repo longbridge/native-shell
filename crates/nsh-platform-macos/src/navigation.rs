@@ -22,8 +22,8 @@
 //! titles). Each screen also gets an opaque background under its content.
 //!
 //! Going back (the back button, Escape, Option+Left, Command+[, the
-//! mouse's back button; Escape in a focused text field only leaves it)
-//! pops natively, then sends `onDismiss`, which removes the route in JS;
+//! mouse's back button; Escape in a focused text field or web view only
+//! leaves it) pops natively, then sends `onDismiss`, which removes the route in JS;
 //! until the app removes the screen it is `popped` and ignored. With
 //! `preventBack` the screen gets `onBackRequest` instead. The newest modal
 //! comes first: a stack inside it pops, else it gets `onRequestClose`
@@ -1822,9 +1822,9 @@ fn focused_field(surface: &Surface) -> bool {
 }
 
 /// A key nothing in the window used: Escape, Option+Left and Command+[ go
-/// back. Whether it was taken. Escape in a focused text field only leaves
-/// the field (a desktop convention: it never navigates away from what is
-/// being typed); Option+Left and Command+[ still go back.
+/// back. Whether it was taken. Escape in a focused text field or web view
+/// only leaves it (a desktop convention: it never navigates away from what
+/// is being typed); Option+Left and Command+[ still go back.
 pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &NSEvent) -> bool {
     const ESCAPE: u16 = 53;
     const LEFT: u16 = 123;
@@ -1839,7 +1839,12 @@ pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &NSEvent) -> bool {
     let back = escape
         || (code == LEFT && mods == NSEventModifierFlags::Option)
         || (mods == NSEventModifierFlags::Command && bracket());
-    if escape && focused_field(surface) {
+    // A page's Escape reaches here only when the page let it go (WebKit
+    // sends the keys a page does not use up the responder chain): it
+    // hands the keyboard back to the app, as a field's does, rather than
+    // closing the screen under a form being filled in. Option+Left and
+    // Command+[ a page does not use still go back.
+    if escape && (focused_field(surface) || crate::native::web_focused(surface)) {
         if let Some(window) = surface.root.ns().window() {
             window.makeFirstResponder(Some(surface.root.ns()));
         }

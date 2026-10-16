@@ -113,7 +113,8 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 深色模式实时跟随系统外观。见[设备与环境](./device-and-environment.md)。
 
 输入是桌面输入：鼠标、触控板（带惯性的滚动、捏合和旋转）和键盘。`selectable` 文本通过拖动、双击和三击选择，用 Cmd+C 复制。
-Escape、Option+Left、Cmd+[ 和鼠标的后退键会在栈中返回，或请求模态视图关闭；`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗。
+Escape、Option+Left、Cmd+[ 和鼠标的后退键会在栈中返回，或请求模态视图关闭（焦点在输入框或网页中时，Escape 只会离开它；
+网页先收到这些按键，它自己用掉的不会触发返回）；`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗。
 点击 `Input` 的任意位置（包括内边距）都会把光标放到最近的位置。
 `Alert` 和 `ActionSheet` 以 `NSAlert` 表单的形式显示在窗口上：不超过两个按钮的提示框按钮排成一行（取消按钮在最左边，最后一个普通按钮是
 Return 的默认按钮）；更多按钮以及操作表的选项按顺序竖排，取消按钮在最后，没有默认按钮；Escape 按下取消按钮。

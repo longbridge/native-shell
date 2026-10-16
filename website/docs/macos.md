@@ -125,7 +125,8 @@ The environment is a desktop's: the safe area and the keyboard height are 0, `Pl
 
 Input is a desktop's: the mouse, the trackpad (scrolling with momentum, pinch and rotation) and the keyboard.
 `selectable` text is selected by dragging, double- and triple-clicking, and copied with Cmd+C. Escape, Option+Left,
-Cmd+[ and the mouse's back button go back in a stack or ask a modal to close; page and form sheets are cards centered
+Cmd+[ and the mouse's back button go back in a stack or ask a modal to close (Escape in a focused field or web page
+only leaves it; a page gets these keys first, and keeps those it uses); page and form sheets are cards centered
 in the window over a dimmed backdrop. A click anywhere in an `Input`, its padding too, puts the caret at the nearest
 point. `Alert` and `ActionSheet` show an `NSAlert` sheet on the window: up to two alert buttons in a row (the cancel
 button leftmost, the last regular one the default for Return), more buttons and an action sheet's options stacked in

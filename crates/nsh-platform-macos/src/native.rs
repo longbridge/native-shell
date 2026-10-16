@@ -405,6 +405,27 @@ pub(crate) fn passes_wheel(surface: &Surface, native: &NSView) -> bool {
     })
 }
 
+/// Whether the keyboard focus is in one of the surface's web views (the
+/// page has it).
+pub(crate) fn web_focused(surface: &Surface) -> bool {
+    let Some(responder) = surface.root.ns().window().and_then(|w| w.firstResponder()) else {
+        return false;
+    };
+    let Some(focused) = responder.downcast_ref::<NSView>() else {
+        return false;
+    };
+    let Ok(hosts) = surface.native.hosts.try_borrow() else {
+        return false;
+    };
+    hosts.values().any(|host| match host {
+        Host::Web(WebHost { web: Some(web), .. }) => {
+            // SAFETY: a WKWebView is an NSView.
+            focused.isDescendantOf(unsafe { as_view(web) })
+        }
+        _ => false,
+    })
+}
+
 define_class!(
     /// Holds a web view or video lent to the image of a screen or modal
     /// that leaves ([`lend`]), clipped where its ancestors clipped it.
