@@ -80,6 +80,9 @@ pub(crate) fn run(
                     .args(["-ApplePersistenceIgnoreState", "YES"]),
             )
             .with_context(|| format!("launch {}", exe.display()))?;
+            // A host left running would open a second window next time:
+            // Ctrl-C and SIGTERM close it too.
+            let stoppable = ui::Stoppable::new();
             let result = session.watch(|| match child.try_wait()? {
                 Some(status) if status.success() => Ok(true),
                 Some(status) => Err(ui::failure(
@@ -89,6 +92,8 @@ pub(crate) fn run(
                 None => Ok(false),
             });
             let _ = child.kill();
+            let _ = child.wait();
+            drop(stoppable);
             result
         }
         Target::Ios => {
