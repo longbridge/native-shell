@@ -19,9 +19,10 @@ See [Web view and video](../docs/web-view-and-video.md) for the guide and [`<Web
 ```ts
 const WebView: (props: WebViewProps) => YNode;
 
-interface WebViewProps extends Omit<ViewProps, "children" | "ios">, WebViewHostProps {
+interface WebViewProps extends Omit<ViewProps, "children" | "ios" | "desktop">, WebViewHostProps {
   source: string | { uri: string } | { html: string; baseUrl?: string };
   ios?: IOSWebViewHostProps;
+  desktop?: DesktopWebViewHostProps;
 }
 ```
 
@@ -60,6 +61,7 @@ mount(Browser);
 | `scrollEnabled` | `boolean` | `true` | The user can scroll the page. |
 | `javaScriptEnabled` | `boolean` | `true` | Pages run scripts. |
 | `ios` | `{ allowsBackForwardNavigationGestures?: boolean }` | | iOS only: swipe from the edges to go back and forward. |
+| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | macOS only: two-finger trackpad swipes go back and forward. |
 
 ## Events
 

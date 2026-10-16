@@ -164,6 +164,10 @@ mod tests {
                 "  presentationStyle?: ModalPresentation;",
             ),
             ("DesktopScreenHostProps", "  headerBackTitle?: string;"),
+            (
+                "DesktopWebViewHostProps",
+                "  allowsBackForwardNavigationGestures?: boolean;",
+            ),
             ("ModalHostProps", "  onRequestClose?: () => void;"),
         ] {
             let at = elements

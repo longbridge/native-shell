@@ -49,6 +49,10 @@ function Browser() {
 |---|---|---|
 | `allowsBackForwardNavigationGestures` | `boolean` | Swipe from the edges to go back and forward. |
 
+| `desktop` key | Type | Description |
+|---|---|---|
+| `allowsBackForwardNavigationGestures` | `boolean` | macOS: swipe with two fingers on the trackpad to go back and forward (ignored on Windows and Linux). |
+
 ## Events
 
 | Event | Payload | When |

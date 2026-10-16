@@ -1418,9 +1418,13 @@ pub enum NativeProp {
     /// `javaScriptEnabled` (web views): pages run scripts (default true).
     #[prop(js = "javaScriptEnabled", default = true, on = WEBVIEW)]
     JavaScriptEnabled(bool),
-    /// `allowsBackForwardNavigationGestures` (iOS web views): swipe back and
-    /// forward.
-    #[prop(ios = "allowsBackForwardNavigationGestures", on = WEBVIEW)]
+    /// `allowsBackForwardNavigationGestures` (iOS web views; desktop ones on
+    /// macOS, with two-finger trackpad swipes): swipe back and forward.
+    #[prop(
+        ios = "allowsBackForwardNavigationGestures",
+        desktop = "allowsBackForwardNavigationGestures",
+        on = WEBVIEW
+    )]
     BackForwardGestures(bool),
     /// `paused` (videos): playback is paused.
     #[prop(js = "paused", on = VIDEO)]
