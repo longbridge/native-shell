@@ -1,4 +1,4 @@
-import { signal, type YNode } from "nsh";
+import { Scroll, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 import { Button, colors, Section } from "../ui";
@@ -21,14 +21,14 @@ export function Media() {
   let site!: YNode;
   let video!: YNode;
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <Section title="Web view">
           <WebView ref={web} source={{ html: page }} style={{ height: 200, borderRadius: 8, overflow: "hidden" }} onMessage={(e) => message.set(e.data)} />
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <Button label="Post to the page" onPress={() => web.postMessage(`hi #${Math.round(performance.now()) % 1000}`)} />
-            <text style={{ flex: 1, color: colors.muted }}>{message()}</text>
-          </view>
+            <Text style={{ flex: 1, color: colors.muted }}>{message()}</Text>
+          </View>
         </Section>
         <Section title="A web site">
           <WebView
@@ -37,14 +37,14 @@ export function Media() {
             style={{ height: 320, borderRadius: 8, overflow: "hidden" }}
             onNavigationStateChange={(v) => state.set(v)}
           />
-          <text numberOfLines={1} style={{ color: colors.muted, fontSize: 13 }}>
+          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13 }}>
             {state() ? `${state()!.loading ? "Loading " : ""}${state()!.title || state()!.url}` : "…"}
-          </text>
-          <view style={{ flexDirection: "row", gap: 8 }}>
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
             <Button label="Back" color={state()?.canGoBack ? colors.accent : "#8c959f"} onPress={() => site.goBack()} />
             <Button label="Forward" color={state()?.canGoForward ? colors.accent : "#8c959f"} onPress={() => site.goForward()} />
             <Button label="Reload" color="#57606a" onPress={() => site.reload()} />
-          </view>
+          </View>
         </Section>
         <Section title="Video">
           <Video
@@ -57,14 +57,14 @@ export function Media() {
             style={{ height: 200, backgroundColor: "#000000", borderRadius: 8, overflow: "hidden" }}
             onProgress={(e) => progress.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
           />
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <Button label={paused() ? "Play" : "Pause"} onPress={() => paused.set(!paused())} />
             <Button label="Restart" color="#57606a" onPress={() => video.seek(0)} />
             <Button label={controls() ? "Own controls" : "System controls"} color="#8250df" onPress={() => controls.set(!controls())} />
-            <text style={{ color: colors.muted }}>{progress()}</text>
-          </view>
+            <Text style={{ color: colors.muted }}>{progress()}</Text>
+          </View>
         </Section>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }

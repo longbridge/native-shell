@@ -1,6 +1,7 @@
-import { type GestureResponderEvent, signal } from "nsh";
+import { type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { PanResponder } from "nsh/gesture";
+import { Image } from "nsh/image";
 import { Button, colors, Section } from "../ui";
 
 /** Drag, pinch and rotate one card at the same time, all on the UI thread. */
@@ -16,9 +17,9 @@ function Card() {
     angle.spring(0);
   };
   return (
-    <view style={{ gap: 12, alignItems: "center" }}>
-      <view style={{ height: 220, alignSelf: "stretch", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-        <view
+    <View style={{ gap: 12, alignItems: "center" }}>
+      <View style={{ height: 220, alignSelf: "stretch", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <View
           pan={{ x, y }}
           pinch={{ scale }}
           rotation={{ angle }}
@@ -30,12 +31,12 @@ function Card() {
             transform: [{ translateX: x }, { translateY: y }, { scale }, { rotate: angle }],
           }}
         >
-          <image src="https://picsum.photos/seed/nsh-card/400/300" style={{ flex: 1 }} />
-        </view>
-      </view>
-      <text style={{ color: colors.muted, fontSize: 13 }}>Drag with one finger; pinch and rotate with two (Option-drag in the simulator).</text>
+          <Image src="https://picsum.photos/seed/nsh-card/400/300" style={{ flex: 1 }} />
+        </View>
+      </View>
+      <Text style={{ color: colors.muted, fontSize: 13 }}>Drag with one finger; pinch and rotate with two (Option-drag in the simulator).</Text>
       <Button label="Reset" color="#57606a" onPress={reset} />
-    </view>
+    </View>
   );
 }
 
@@ -56,9 +57,9 @@ function Ball() {
     onPanResponderTerminate: () => state.set("taken over"),
   });
   return (
-    <view style={{ gap: 8 }}>
-      <view style={{ height: 180, borderRadius: 10, backgroundColor: "#f6f8fa", overflow: "hidden" }}>
-        <view
+    <View style={{ gap: 8 }}>
+      <View style={{ height: 180, borderRadius: 10, backgroundColor: "#f6f8fa", overflow: "hidden" }}>
+        <View
           {...pan.panHandlers}
           style={{
             position: "absolute",
@@ -71,10 +72,10 @@ function Ball() {
             transform: [{ translateX: pos().x }, { translateY: pos().y }],
           }}
         />
-      </view>
-      <text style={{ color: colors.muted, fontSize: 13 }}>{state()}</text>
+      </View>
+      <Text style={{ color: colors.muted, fontSize: 13 }}>{state()}</Text>
       <Button label="Reset" color="#57606a" onPress={() => pos.set({ x: 0, y: 0 })} />
-    </view>
+    </View>
   );
 }
 
@@ -89,18 +90,18 @@ function TouchLog() {
       ].slice(0, 4),
     );
   return (
-    <view style={{ gap: 8 }}>
-      <view
+    <View style={{ gap: 8 }}>
+      <View
         onTouchStart={note("start")}
         onTouchMove={note("move")}
         onTouchEnd={note("end")}
         onTouchCancel={note("cancel")}
         style={{ height: 100, borderRadius: 10, backgroundColor: "#ddf4ff", alignItems: "center", justifyContent: "center" }}
       >
-        <text style={{ color: colors.accent }}>Touch here (try two fingers)</text>
-      </view>
-      <text style={{ color: colors.muted, fontSize: 13 }}>{log().join("\n") || "No touches yet"}</text>
-    </view>
+        <Text style={{ color: colors.accent }}>Touch here (try two fingers)</Text>
+      </View>
+      <Text style={{ color: colors.muted, fontSize: 13 }}>{log().join("\n") || "No touches yet"}</Text>
+    </View>
   );
 }
 
@@ -110,8 +111,8 @@ export function Gestures() {
   const slop = signal(0);
   const through = signal(0);
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <Section title="Pan, pinch and rotation">
           <Card />
         </Section>
@@ -122,7 +123,7 @@ export function Gestures() {
           <TouchLog />
         </Section>
         <Section title="Press events">
-          <view
+          <View
             onPressIn={() => add("pressIn")}
             onPressOut={() => add("pressOut")}
             onPress={() => add("press")}
@@ -130,60 +131,60 @@ export function Gestures() {
             activeOpacity={0.5}
             style={{ padding: 18, borderRadius: 10, backgroundColor: "#ddf4ff", alignItems: "center" }}
           >
-            <text style={{ fontWeight: "600" }}>Tap, hold, or slide off</text>
-          </view>
-          <text style={{ color: colors.muted }}>{log().join(" · ") || "No events yet"}</text>
-          <view style={{ flexDirection: "row", gap: 10 }}>
-            <view
+            <Text style={{ fontWeight: "600" }}>Tap, hold, or slide off</Text>
+          </View>
+          <Text style={{ color: colors.muted }}>{log().join(" · ") || "No events yet"}</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <View
               onPress={() => add("ripple")}
               onLongPress={() => add("fast long press")}
               delayLongPress={250}
               android={{ ripple: { color: "rgba(9,105,218,0.3)" } }}
               style={{ flex: 1, padding: 14, borderRadius: 10, backgroundColor: "#f6f8fa", alignItems: "center" }}
             >
-              <text>Ripple, long press 250 ms</text>
-            </view>
-            <view
+              <Text>Ripple, long press 250 ms</Text>
+            </View>
+            <View
               onPress={() => add("borderless")}
               android={{ ripple: { borderless: true, radius: 40 } }}
               style={{ width: 56, height: 56, alignItems: "center", justifyContent: "center" }}
             >
-              <text style={{ fontSize: 22 }}>★</text>
-            </view>
-          </view>
-          <text onPress={() => add("text")} activeOpacity={0.3} style={{ color: colors.accent }}>
+              <Text style={{ fontSize: 22 }}>★</Text>
+            </View>
+          </View>
+          <Text onPress={() => add("text")} activeOpacity={0.3} style={{ color: colors.accent }}>
             Text with activeOpacity
-          </text>
+          </Text>
         </Section>
         <Section title="Hit slop">
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-            <view
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+            <View
               hitSlop={30}
               onPress={() => slop.set(slop() + 1)}
               style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#cf222e", margin: 20 }}
             />
-            <text style={{ flex: 1 }}>The dot takes taps 30 pt around it: {slop()}</text>
-          </view>
+            <Text style={{ flex: 1 }}>The dot takes taps 30 pt around it: {slop()}</Text>
+          </View>
         </Section>
         <Section title="Pointer events">
-          <view style={{ height: 70 }}>
-            <view
+          <View style={{ height: 70 }}>
+            <View
               onPress={() => through.set(through() + 1)}
               style={{ flex: 1, borderRadius: 10, backgroundColor: "#1a7f37", alignItems: "center", justifyContent: "center" }}
             >
-              <text style={{ color: "#ffffff" }}>Button under an overlay: {through()}</text>
-            </view>
-            <view
+              <Text style={{ color: "#ffffff" }}>Button under an overlay: {through()}</Text>
+            </View>
+            <View
               pointerEvents="none"
               style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, borderWidth: 3, borderColor: "#bf8700", borderStyle: "dashed" }}
             />
-          </view>
-          <text style={{ color: colors.muted, fontSize: 13 }}>The dashed overlay has pointerEvents="none": taps reach the button.</text>
+          </View>
+          <Text style={{ color: colors.muted, fontSize: 13 }}>The dashed overlay has pointerEvents="none": taps reach the button.</Text>
         </Section>
         <Section title="Accessibility">
-          <each of={[{ label: "Play", hint: "Starts the song" }, { label: "Like", hint: "Adds to favorites" }]}>
+          <Each of={[{ label: "Play", hint: "Starts the song" }, { label: "Like", hint: "Adds to favorites" }]}>
             {(item) => (
-              <view
+              <View
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel={item().label}
@@ -191,12 +192,12 @@ export function Gestures() {
                 onPress={() => add(item().label)}
                 style={{ padding: 12, borderRadius: 10, backgroundColor: "#eaeef2" }}
               >
-                <text>{`${item().label} (labelled for VoiceOver / TalkBack)`}</text>
-              </view>
+                <Text>{`${item().label} (labelled for VoiceOver / TalkBack)`}</Text>
+              </View>
             )}
-          </each>
+          </Each>
         </Section>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }

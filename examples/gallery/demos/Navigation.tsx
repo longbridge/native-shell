@@ -1,4 +1,4 @@
-import { cleanup, type JSX, signal } from "nsh";
+import { cleanup, Input, type JSX, Scroll, signal, Text, View } from "nsh";
 import { BackHandler } from "nsh/android";
 import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
 import { nav } from "../nav";
@@ -8,32 +8,32 @@ import { Button, colors, Section } from "../ui";
 function Insets() {
   const insets = useSafeAreaInsets();
   return (
-    <text style={{ color: colors.muted, fontSize: 13 }}>
+    <Text style={{ color: colors.muted, fontSize: 13 }}>
       {`insets: top ${Math.round(insets().top)}, bottom ${Math.round(insets().bottom)}, left ${Math.round(insets().left)}, right ${Math.round(insets().right)}`}
-    </text>
+    </Text>
   );
 }
 
 function Filler(props: { count: number }) {
   return (
-    <each of={Array.from({ length: props.count }, (_, i) => i + 1)}>
+    <Each of={Array.from({ length: props.count }, (_, i) => i + 1)}>
       {(i) => (
-        <view style={{ padding: 14, backgroundColor: colors.surface, borderRadius: 10 }}>
-          <text>Row {i()}</text>
-        </view>
+        <View style={{ padding: 14, backgroundColor: colors.surface, borderRadius: 10 }}>
+          <Text>Row {i()}</Text>
+        </View>
       )}
-    </each>
+    </Each>
   );
 }
 
 function Page(props: { children: JSX.Element }) {
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 10 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 10 }}>
         <Insets />
         {props.children}
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }
 
@@ -41,7 +41,7 @@ function LargeTitle() {
   return (
     <Screen title="Large title" ios={{ headerLargeTitle: true }}>
       <Page>
-        <text style={{ color: colors.muted }}>iOS: the title shrinks into the bar as the content scrolls.</text>
+        <Text style={{ color: colors.muted }}>iOS: the title shrinks into the bar as the content scrolls.</Text>
         <Filler count={20} />
       </Page>
     </Screen>
@@ -51,10 +51,10 @@ function LargeTitle() {
 function Transparent() {
   return (
     <Screen title="Transparent" headerTransparent headerTintColor="#ffffff" headerTitleColor="#ffffff">
-      <view style={{ flex: 1, backgroundColor: "#8250df", padding: 24, justifyContent: "center", gap: 12 }}>
-        <text style={{ color: "#ffffff", fontSize: 22, fontWeight: "700" }}>Content under the header</text>
+      <View style={{ flex: 1, backgroundColor: "#8250df", padding: 24, justifyContent: "center", gap: 12 }}>
+        <Text style={{ color: "#ffffff", fontSize: 22, fontWeight: "700" }}>Content under the header</Text>
         <Insets />
-      </view>
+      </View>
     </Screen>
   );
 }
@@ -69,24 +69,24 @@ function CustomHeader() {
       headerTitleColor="#ffffff"
       headerBackVisible={false}
       headerLeft={
-        <text onPress={() => nav.pop()} style={{ color: "#ffffff", fontSize: 17 }}>
+        <Text onPress={() => nav.pop()} style={{ color: "#ffffff", fontSize: 17 }}>
           Close
-        </text>
+        </Text>
       }
       headerTitle={
-        <view style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <view style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#ffffff" }} />
-          <text style={{ color: "#ffffff", fontSize: 17, fontWeight: "700" }}>Custom title</text>
-        </view>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#ffffff" }} />
+          <Text style={{ color: "#ffffff", fontSize: 17, fontWeight: "700" }}>Custom title</Text>
+        </View>
       }
       headerRight={
-        <text onPress={() => likes.set(likes() + 1)} style={{ color: "#ffffff", fontSize: 17 }}>
+        <Text onPress={() => likes.set(likes() + 1)} style={{ color: "#ffffff", fontSize: 17 }}>
           ♥ {likes()}
-        </text>
+        </Text>
       }
     >
       <Page>
-        <text>Header items are views: the ♥ button updates the header ({likes()}).</text>
+        <Text>Header items are views: the ♥ button updates the header ({likes()}).</Text>
       </Page>
     </Screen>
   );
@@ -96,7 +96,7 @@ function Locked() {
   return (
     <Screen title="No swipe back" gestureEnabled={false}>
       <Page>
-        <text>The back gesture is off on this screen (no swipe on iOS, no predictive animation on Android); the back buttons still work.</text>
+        <Text>The back gesture is off on this screen (no swipe on iOS, no predictive animation on Android); the back buttons still work.</Text>
       </Page>
     </Screen>
   );
@@ -115,14 +115,14 @@ function Unsaved() {
   return (
     <Screen title="Unsaved changes" preventBack={text().length > 0} onBackRequest={confirm}>
       <Page>
-        <text>Type something, then go back (header button, swipe, Android back): the screen asks first.</text>
-        <input
+        <Text>Type something, then go back (header button, swipe, Android back): the screen asks first.</Text>
+        <Input
           value={text()}
           onChangeText={(v) => text.set(v)}
           placeholder="A draft"
           style={{ borderWidth: 1, borderColor: "#d0d7de", borderRadius: 8, padding: 10, fontSize: 16 }}
         />
-        <text style={{ color: "#57606a" }}>{text().length > 0 ? "preventBack is on" : "Nothing to lose: back pops"}</text>
+        <Text style={{ color: "#57606a" }}>{text().length > 0 ? "preventBack is on" : "Nothing to lose: back pops"}</Text>
       </Page>
     </Screen>
   );
@@ -132,7 +132,7 @@ function Faded() {
   return (
     <Screen title="Fade" animation="fade">
       <Page>
-        <text>This screen faded in, and fades out.</text>
+        <Text>This screen faded in, and fades out.</Text>
       </Page>
     </Screen>
   );
@@ -142,7 +142,7 @@ function Instant() {
   return (
     <Screen title="No animation" animation="none">
       <Page>
-        <text>Shown without a transition.</text>
+        <Text>Shown without a transition.</Text>
       </Page>
     </Screen>
   );
@@ -152,7 +152,7 @@ function Headerless() {
   return (
     <Screen headerShown={false}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#fff8c5", padding: 16, gap: 12 }}>
-        <text style={{ fontSize: 24, fontWeight: "700" }}>No header</text>
+        <Text style={{ fontSize: 24, fontWeight: "700" }}>No header</Text>
         <Insets />
         <Button label="Back" onPress={() => nav.pop()} />
       </SafeAreaView>
@@ -187,8 +187,8 @@ export function Navigation() {
   const push = (page: () => JSX.Element) => () => nav.push({ name: "page", page });
 
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <Section title="Screens">
           <Insets />
           <Button label="Large title" onPress={push(LargeTitle)} />
@@ -210,12 +210,12 @@ export function Navigation() {
           <Button label="Dismissible sheet (swipe / back closes)" color="#8250df" onPress={() => sheet.set("dismissible")} />
         </Section>
         <Section title="Back button (Android)">
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <text style={{ flex: 1 }}>{intercept() ? `Intercepted ${backs()} times` : "Back pops this screen"}</text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Text style={{ flex: 1 }}>{intercept() ? `Intercepted ${backs()} times` : "Back pops this screen"}</Text>
             <Button label={intercept() ? "Release" : "Intercept"} color="#57606a" onPress={() => intercept.set(!intercept())} />
-          </view>
+          </View>
         </Section>
-      </view>
+      </View>
 
       <Modal
         visible={sheet() === "fullScreen" || sheet() === "pageSheet" || sheet() === "formSheet" || sheet() === "fade"}
@@ -224,28 +224,28 @@ export function Navigation() {
         onRequestClose={close}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 24, fontWeight: "700" }}>{sheet()}</text>
+          <Text style={{ fontSize: 24, fontWeight: "700" }}>{sheet()}</Text>
           <Insets />
-          <text style={{ color: colors.muted }}>Close with the button, the back button (Android) or a swipe down (iOS sheets).</text>
+          <Text style={{ color: colors.muted }}>Close with the button, the back button (Android) or a swipe down (iOS sheets).</Text>
           <Button label="Close" onPress={close} />
         </SafeAreaView>
       </Modal>
       <Modal visible={sheet() === "dismissible"} dismissible ios={{ presentationStyle: "pageSheet" }} onRequestClose={close}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface, padding: 20, gap: 12 }}>
-          <text style={{ fontSize: 24, fontWeight: "700" }}>Dismissible</text>
-          <text style={{ color: colors.muted }}>Swipe it down (iOS) or press back (Android): it closes natively, then tells the app.</text>
+          <Text style={{ fontSize: 24, fontWeight: "700" }}>Dismissible</Text>
+          <Text style={{ color: colors.muted }}>Swipe it down (iOS) or press back (Android): it closes natively, then tells the app.</Text>
           <Button label="Close" onPress={close} />
         </SafeAreaView>
       </Modal>
       <Modal visible={sheet() === "dialog"} transparent animationType="fade" onRequestClose={close}>
-        <view style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
-          <view style={{ alignSelf: "stretch", backgroundColor: colors.surface, borderRadius: 14, padding: 20, gap: 12 }}>
-            <text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</text>
-            <text style={{ color: colors.muted }}>A transparent modal shows what is behind it.</text>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <View style={{ alignSelf: "stretch", backgroundColor: colors.surface, borderRadius: 14, padding: 20, gap: 12 }}>
+            <Text style={{ fontSize: 20, fontWeight: "700" }}>A dialog</Text>
+            <Text style={{ color: colors.muted }}>A transparent modal shows what is behind it.</Text>
             <Button label="OK" onPress={close} />
-          </view>
-        </view>
+          </View>
+        </View>
       </Modal>
-    </scroll>
+    </Scroll>
   );
 }

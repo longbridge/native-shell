@@ -1,4 +1,4 @@
-import { signal, type YNode } from "nsh";
+import { Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 import { colors } from "../ui";
@@ -23,20 +23,20 @@ function Grid() {
         visible.set(viewableItems.length ? `${viewableItems[0].index}–${viewableItems[viewableItems.length - 1].index}` : "")
       }
       ListHeaderComponent={
-        <view style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }}>
-          <text style={{ flex: 1, color: colors.muted }}>Visible {visible()}</text>
-          <text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })} style={{ color: colors.accent }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }}>
+          <Text style={{ flex: 1, color: colors.muted }}>Visible {visible()}</Text>
+          <Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })} style={{ color: colors.accent }}>
             Item 60
-          </text>
-          <text onPress={() => list.scrollToEnd()} style={{ color: colors.accent }}>
+          </Text>
+          <Text onPress={() => list.scrollToEnd()} style={{ color: colors.accent }}>
             End
-          </text>
-        </view>
+          </Text>
+        </View>
       }
-      ListFooterComponent={<text style={{ textAlign: "center", color: colors.muted, padding: 12 }}>— the end —</text>}
+      ListFooterComponent={<Text style={{ textAlign: "center", color: colors.muted, padding: 12 }}>— the end —</Text>}
     >
       {(item) => (
-        <view
+        <View
           style={{
             height: item().height,
             borderRadius: 10,
@@ -45,8 +45,8 @@ function Grid() {
             justifyContent: "center",
           }}
         >
-          <text style={{ fontSize: 17, fontWeight: "600" }}>{item().id}</text>
-        </view>
+          <Text style={{ fontSize: 17, fontWeight: "600" }}>{item().id}</Text>
+        </View>
       )}
     </List>
   );
@@ -71,10 +71,10 @@ function Contacts() {
         const header = () => row() as { header: string };
         const contact = () => row() as { name: string; last: boolean };
         return (
-          <if
+          <If
             when={"header" in row()}
             else={
-              <view
+              <View
                 style={{
                   paddingHorizontal: 16,
                   paddingVertical: 12,
@@ -82,14 +82,14 @@ function Contacts() {
                   borderBottomColor: "#eaeef2",
                 }}
               >
-                <text style={{ fontSize: 17 }}>{contact().name}</text>
-              </view>
+                <Text style={{ fontSize: 17 }}>{contact().name}</Text>
+              </View>
             }
           >
-            <view style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
-              <text style={{ fontWeight: "700", color: colors.muted }}>{header().header}</text>
-            </view>
-          </if>
+            <View style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
+              <Text style={{ fontWeight: "700", color: colors.muted }}>{header().header}</Text>
+            </View>
+          </If>
         );
       }}
     </List>
@@ -129,7 +129,7 @@ function Chat() {
         onEndReachedThreshold={0.5}
       >
         {(m) => (
-          <view
+          <View
             style={{
               alignSelf: m().mine ? "flex-end" : "flex-start",
               maxWidth: "75%",
@@ -139,11 +139,11 @@ function Chat() {
               backgroundColor: m().mine ? colors.accent : colors.surface,
             }}
           >
-            <text style={{ color: m().mine ? "#ffffff" : colors.text, fontSize: 16 }}>{m().text}</text>
-          </view>
+            <Text style={{ color: m().mine ? "#ffffff" : colors.text, fontSize: 16 }}>{m().text}</Text>
+          </View>
         )}
       </List>
-      <view
+      <View
         style={{
           flexDirection: "row",
           gap: 8,
@@ -152,7 +152,7 @@ function Chat() {
           backgroundColor: colors.surface,
         }}
       >
-        <input
+        <Input
           value={draft()}
           onChangeText={(v) => draft.set(v)}
           onSubmitEditing={send}
@@ -161,10 +161,10 @@ function Chat() {
           returnKeyType="send"
           style={{ flex: 1, fontSize: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 }}
         />
-        <text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
+        <Text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
           Send
-        </text>
-      </view>
+        </Text>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -183,49 +183,49 @@ function More() {
   };
   const cards = Array.from({ length: 1000 }, (_, i) => i);
   return (
-    <scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={refresh}>
-      <view style={{ paddingVertical: 12, gap: 16 }}>
-        <text style={{ marginHorizontal: 12, color: colors.muted }}>Pull down to refresh (refreshed {refreshed()} times)</text>
-        <text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal scroll view</text>
-        <scroll horizontal showsIndicator={false}>
-          <view style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12 }}>
-            <each of={["Today", "Yesterday", "This week", "This month", "This year", "All time", "Custom"]}>
+    <Scroll style={{ flex: 1 }} refreshing={refreshing()} onRefresh={refresh}>
+      <View style={{ paddingVertical: 12, gap: 16 }}>
+        <Text style={{ marginHorizontal: 12, color: colors.muted }}>Pull down to refresh (refreshed {refreshed()} times)</Text>
+        <Text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal scroll view</Text>
+        <Scroll horizontal showsIndicator={false}>
+          <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12 }}>
+            <Each of={["Today", "Yesterday", "This week", "This month", "This year", "All time", "Custom"]}>
               {(label) => (
-                <text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: colors.surface }}>
+                <Text style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: colors.surface }}>
                   {label()}
-                </text>
+                </Text>
               )}
-            </each>
-          </view>
-        </scroll>
-        <text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal list of 1000 recycled cards</text>
+            </Each>
+          </View>
+        </Scroll>
+        <Text style={{ marginHorizontal: 12, fontWeight: "600" }}>A horizontal list of 1000 recycled cards</Text>
         <List each={cards} horizontal estimatedItemSize={130} style={{ height: 120 }} contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}>
           {(i) => (
-            <view style={{ width: 120, height: 120, borderRadius: 12, backgroundColor: tints[i() % tints.length], alignItems: "center", justifyContent: "center" }}>
-              <text style={{ fontSize: 20, fontWeight: "700" }}>{i()}</text>
-            </view>
+            <View style={{ width: 120, height: 120, borderRadius: 12, backgroundColor: tints[i() % tints.length], alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 20, fontWeight: "700" }}>{i()}</Text>
+            </View>
           )}
         </List>
-        <view style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 12 }}>
-          <text style={{ flex: 1, fontWeight: "600" }}>An empty list ({items().length} items)</text>
-          <text onPress={() => items.set([...items(), items().length + 1])} style={{ color: colors.accent, marginRight: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 12 }}>
+          <Text style={{ flex: 1, fontWeight: "600" }}>An empty list ({items().length} items)</Text>
+          <Text onPress={() => items.set([...items(), items().length + 1])} style={{ color: colors.accent, marginRight: 16 }}>
             Add
-          </text>
-          <text onPress={() => items.set([])} style={{ color: colors.accent }}>
+          </Text>
+          <Text onPress={() => items.set([])} style={{ color: colors.accent }}>
             Clear
-          </text>
-        </view>
+          </Text>
+        </View>
         <List
           each={items()}
           estimatedItemSize={44}
           style={{ height: 180, marginHorizontal: 12, borderRadius: 10, backgroundColor: colors.surface }}
-          ListEmptyComponent={<text style={{ padding: 24, textAlign: "center", color: colors.muted }}>Nothing here yet: tap Add</text>}
-          ItemSeparatorComponent={() => <view style={{ height: 1, backgroundColor: "#eaeef2" }} />}
+          ListEmptyComponent={<Text style={{ padding: 24, textAlign: "center", color: colors.muted }}>Nothing here yet: tap Add</Text>}
+          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: "#eaeef2" }} />}
         >
-          {(n) => <text style={{ padding: 12 }}>Item {n()}</text>}
+          {(n) => <Text style={{ padding: 12 }}>Item {n()}</Text>}
         </List>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }
 
@@ -234,7 +234,7 @@ type Tab = "grid" | "sections" | "chat" | "more";
 export function Lists() {
   const tab = signal<Tab>("grid");
   const tabButton = (id: Tab, label: string) => (
-    <text
+    <Text
       onPress={() => tab.set(id)}
       style={{
         flex: 1,
@@ -247,16 +247,16 @@ export function Lists() {
       }}
     >
       {label}
-    </text>
+    </Text>
   );
   return (
-    <view style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ flexDirection: "row", margin: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flexDirection: "row", margin: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
         {tabButton("grid", "Grid")}
         {tabButton("sections", "Sections")}
         {tabButton("chat", "Chat")}
         {tabButton("more", "More")}
-      </view>
+      </View>
       {(() => {
         switch (tab()) {
           case "grid":
@@ -269,6 +269,6 @@ export function Lists() {
             return <More />;
         }
       })()}
-    </view>
+    </View>
   );
 }

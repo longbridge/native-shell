@@ -3,6 +3,7 @@
 // one with the default theme: the baseline of the component benchmarks.
 
 import type { JSX, StyleProp, ViewStyle } from "nsh";
+import { Text, View } from "nsh";
 
 export interface ButtonProps {
   /** The label. */
@@ -36,7 +37,7 @@ const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
  * the label inherits the button's text classes. */
 export function Button(props: ButtonProps): JSX.Element {
   return (
-    <view
+    <View
       onPress={() => props.onPress?.()}
       disabled={props.disabled}
       accessibilityRole="button"
@@ -46,7 +47,7 @@ export function Button(props: ButtonProps): JSX.Element {
       class={`${base} ${variants[props.variant ?? "primary"]} ${props.class ?? ""}`}
       style={props.style}
     >
-      <text class="text-[16px] font-semibold">{props.title}</text>
-    </view>
+      <Text class="text-[16px] font-semibold">{props.title}</Text>
+    </View>
   );
 }

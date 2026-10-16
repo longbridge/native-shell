@@ -1,5 +1,6 @@
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
+import { Image } from "nsh/image";
 import { List } from "nsh/list";
 import logo from "../logo@2x.png";
 
@@ -14,16 +15,16 @@ function makePhotos(from: number, count: number): Photo[] {
 
 function Row(props: { photo: Photo }) {
   return (
-    <view style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 8 }}>
-      <image
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 8 }}>
+      <Image
         src={`https://picsum.photos/seed/${props.photo.id}/96/96`}
         style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: "#e1e4e8" }}
       />
-      <view style={{ flex: 1, gap: 2 }}>
-        <text style={{ fontSize: 16, fontWeight: "600", color: "#1f2328" }}>{props.photo.title}</text>
-        <text style={{ fontSize: 13, color: "#6e7781" }}>by {props.photo.author}</text>
-      </view>
-    </view>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 16, fontWeight: "600", color: "#1f2328" }}>{props.photo.title}</Text>
+        <Text style={{ fontSize: 13, color: "#6e7781" }}>by {props.photo.author}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -47,8 +48,8 @@ export function Photos() {
   };
 
   return (
-    <view style={{ flex: 1 }}>
-      <view
+    <View style={{ flex: 1 }}>
+      <View
         style={{
           paddingHorizontal: 16,
           paddingVertical: 10,
@@ -59,9 +60,9 @@ export function Photos() {
           transform: [{ translateY: scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, -6] }) }],
         }}
       >
-        <image src={logo} />
-        <text style={{ fontSize: 22, fontWeight: "bold", color: "#1f2328" }}>{photos().length} photos</text>
-      </view>
+        <Image src={logo} />
+        <Text style={{ fontSize: 22, fontWeight: "bold", color: "#1f2328" }}>{photos().length} photos</Text>
+      </View>
       <List
         each={photos()}
         estimatedItemSize={64}
@@ -73,6 +74,6 @@ export function Photos() {
       >
         {(photo) => <Row photo={photo()} />}
       </List>
-    </view>
+    </View>
   );
 }

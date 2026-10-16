@@ -1,4 +1,4 @@
-import { mount } from "nsh";
+import { mount, Scroll, Text, View } from "nsh";
 import { Screen, Stack } from "nsh/ui/mobile";
 import { Animations } from "./demos/Animations";
 import { CanvasDemo } from "./demos/CanvasDemo";
@@ -43,11 +43,11 @@ const demos: DemoEntry[] = [
 function Home() {
   return (
     <Screen title="Gallery">
-      <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-        <view style={{ margin: 16, borderRadius: 12, backgroundColor: colors.surface, overflow: "hidden" }}>
-          <each of={demos}>
+      <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={{ margin: 16, borderRadius: 12, backgroundColor: colors.surface, overflow: "hidden" }}>
+          <Each of={demos}>
             {(demo, i) => (
-              <view
+              <View
                 onPress={() => nav.push({ name: "demo", demo: demo() })}
                 activeOpacity={0.5}
                 accessibilityRole="button"
@@ -59,13 +59,13 @@ function Home() {
                   borderTopColor: "#eaeef2",
                 }}
               >
-                <text style={{ fontSize: 17, color: colors.text }}>{demo().name}</text>
-                <text style={{ fontSize: 13, color: colors.muted }}>{demo().detail}</text>
-              </view>
+                <Text style={{ fontSize: 17, color: colors.text }}>{demo().name}</Text>
+                <Text style={{ fontSize: 13, color: colors.muted }}>{demo().detail}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </scroll>
+          </Each>
+        </View>
+      </Scroll>
     </Screen>
   );
 }

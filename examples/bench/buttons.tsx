@@ -1,7 +1,7 @@
 // The two benchmark screens, parameterized by the Button under test, so the
 // Rust component (`nsh/ui/mobile`) and a TSX composition (`TsButton.tsx`) run
 // the same app.
-import { signal, type Component } from "nsh";
+import { type Component, Scroll, signal, Text, View } from "nsh";
 import { List } from "nsh/list";
 
 /** The props both Buttons take. */
@@ -19,16 +19,16 @@ export function Grid(props: { Button: Component<BenchButtonProps> }) {
   const count = signal(0);
   const Button = props.Button;
   return (
-    <scroll style={{ flex: 1 }}>
-      <view style={{ padding: 16, gap: 8 }}>
-        <view onPress={() => count.update((c) => c + 1)} style={{ padding: 12 }}>
-          <text>Bump</text>
-        </view>
-        <each of={rows}>
+    <Scroll style={{ flex: 1 }}>
+      <View style={{ padding: 16, gap: 8 }}>
+        <View onPress={() => count.update((c) => c + 1)} style={{ padding: 12 }}>
+          <Text>Bump</Text>
+        </View>
+        <Each of={rows}>
           {(i) => <Button title={`Row ${i()} · ${count()}`} variant={i() % 3 === 0 ? "primary" : i() % 3 === 1 ? "secondary" : "plain"} />}
-        </each>
-      </view>
-    </scroll>
+        </Each>
+      </View>
+    </Scroll>
   );
 }
 
@@ -40,10 +40,10 @@ export function Rows(props: { Button: Component<BenchButtonProps> }) {
   return (
     <List each={items} estimatedItemSize={64} style={{ flex: 1 }}>
       {(i) => (
-        <view style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8, gap: 12 }}>
-          <text style={{ flex: 1 }}>{`Item ${i()}`}</text>
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8, gap: 12 }}>
+          <Text style={{ flex: 1 }}>{`Item ${i()}`}</Text>
           <Button title={`Open ${i()}`} variant={i() % 2 === 0 ? "primary" : "secondary"} />
-        </view>
+        </View>
       )}
     </List>
   );

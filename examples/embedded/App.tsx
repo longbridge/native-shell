@@ -2,7 +2,7 @@
 // run. The badge is a native view of the host app, registered as
 // `embed.badge` (`NshAppView.register(component:)`, `NshView.registerComponent`).
 
-import { mount, signal, type YNode } from "nsh";
+import { mount, signal, Text, type YNode } from "nsh";
 import { nativeComponent } from "nsh/native";
 import { SafeAreaView } from "nsh/ui/mobile";
 
@@ -19,10 +19,10 @@ function App() {
   let badge: YNode | undefined;
   return (
     <SafeAreaView style={{ flex: 1, padding: 20, gap: 16, backgroundColor: "#f6f8fa" }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</text>
-      <text style={{ color: "#57606a" }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Rendered by nsh</Text>
+      <Text style={{ color: "#57606a" }}>
         The badge below is a native view of the host app: nsh lays it out, sends it props and gets its events.
-      </text>
+      </Text>
       <Badge
         ref={(node) => (badge = node)}
         text={taps() === 0 ? "Tap the native badge" : `Tapped ${taps()}×`}
@@ -33,7 +33,7 @@ function App() {
         }}
         style={{ alignSelf: "flex-start", borderRadius: 8, overflow: "hidden" }}
       />
-      <text>{`JS saw ${taps()} taps`}</text>
+      <Text>{`JS saw ${taps()} taps`}</Text>
     </SafeAreaView>
   );
 }

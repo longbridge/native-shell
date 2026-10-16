@@ -1,6 +1,7 @@
-import { signal } from "nsh";
+import { Scroll, signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { I18nManager } from "nsh/device";
+import { Image } from "nsh/image";
 import { List } from "nsh/list";
 
 const card = {
@@ -12,7 +13,7 @@ const card = {
 } as const;
 
 function Label(props: { children: string }) {
-  return <text style={{ fontSize: 13, fontWeight: "600", color: "#1f2328" }}>{props.children}</text>;
+  return <Text style={{ fontSize: 13, fontWeight: "600", color: "#1f2328" }}>{props.children}</Text>;
 }
 
 /** Two faces back to back: each hides while turned away. */
@@ -25,11 +26,11 @@ function FlipCard() {
   };
   const face = { ...card, position: "absolute", left: 0, top: 0, borderRadius: 14, backfaceVisibility: "hidden" } as const;
   return (
-    <view onPress={flip} style={{ width: 150, height: 110 }}>
-      <view style={{ ...face, backgroundColor: "#ddf4ff", transform: [{ perspective: 600 }, { rotateY: angle }] }}>
+    <View onPress={flip} style={{ width: 150, height: 110 }}>
+      <View style={{ ...face, backgroundColor: "#ddf4ff", transform: [{ perspective: 600 }, { rotateY: angle }] }}>
         <Label>Front (tap)</Label>
-      </view>
-      <view
+      </View>
+      <View
         style={{
           ...face,
           backgroundColor: "#fff8c5",
@@ -37,28 +38,28 @@ function FlipCard() {
         }}
       >
         <Label>Back: backfaceVisibility</Label>
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
 /** Rows, `marginStart` and text under a right-to-left layout. */
 function RightToLeft() {
   return (
-    <view style={{ width: "100%", gap: 10, padding: 14, backgroundColor: "#ffffff", borderRadius: 12 }}>
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <text style={{ flex: 1, fontWeight: "600" }}>{I18nManager.isRTL ? "Right to left" : "Left to right"}</text>
-        <text
+    <View style={{ width: "100%", gap: 10, padding: 14, backgroundColor: "#ffffff", borderRadius: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ flex: 1, fontWeight: "600" }}>{I18nManager.isRTL ? "Right to left" : "Left to right"}</Text>
+        <Text
           onPress={() => I18nManager.forceRTL(!I18nManager.isRTL)}
           style={{ color: "#ffffff", backgroundColor: "#0969da", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, overflow: "hidden" }}
         >
           Flip
-        </text>
-      </view>
-      <view style={{ flexDirection: "row", gap: 8 }}>
-        <each of={["1", "2", "3"]}>
+        </Text>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Each of={["1", "2", "3"]}>
           {(n, i) => (
-            <view
+            <View
               style={{
                 width: 44,
                 height: 44,
@@ -70,34 +71,34 @@ function RightToLeft() {
                 borderTopStartRadius: 22,
               }}
             >
-              <text style={{ color: "#ffffff", fontWeight: "700" }}>{n()}</text>
-            </view>
+              <Text style={{ color: "#ffffff", fontWeight: "700" }}>{n()}</Text>
+            </View>
           )}
-        </each>
-      </view>
-      <text>Text aligns to the start side; the first box has marginStart 16 and a round top-start corner.</text>
-      <text style={{ fontSize: 13, color: "#6e7781" }}>A horizontal scroll view and a horizontal list start at the start side:</text>
-      <scroll horizontal showsIndicator={false} style={{ height: 40 }}>
-        <view style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
-          <each of={Array.from({ length: 12 }, (_, i) => i + 1)}>
+        </Each>
+      </View>
+      <Text>Text aligns to the start side; the first box has marginStart 16 and a round top-start corner.</Text>
+      <Text style={{ fontSize: 13, color: "#6e7781" }}>A horizontal scroll view and a horizontal list start at the start side:</Text>
+      <Scroll horizontal showsIndicator={false} style={{ height: 40 }}>
+        <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
+          <Each of={Array.from({ length: 12 }, (_, i) => i + 1)}>
             {(n) => (
-              <view style={{ width: 40, height: 40, borderRadius: 6, backgroundColor: "#ddf4ff", alignItems: "center", justifyContent: "center" }}>
-                <text>{String(n())}</text>
-              </view>
+              <View style={{ width: 40, height: 40, borderRadius: 6, backgroundColor: "#ddf4ff", alignItems: "center", justifyContent: "center" }}>
+                <Text>{String(n())}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </scroll>
+          </Each>
+        </View>
+      </Scroll>
       <List each={Array.from({ length: 30 }, (_, i) => i + 1)} horizontal estimatedItemSize={46} showsIndicator={false} style={{ height: 40 }}>
         {(n) => (
-          <view style={{ width: 40, height: 40, marginEnd: 6, borderRadius: 6, backgroundColor: "#fff8c5", alignItems: "center", justifyContent: "center" }}>
-            <text>{String(n())}</text>
-          </view>
+          <View style={{ width: 40, height: 40, marginEnd: 6, borderRadius: 6, backgroundColor: "#fff8c5", alignItems: "center", justifyContent: "center" }}>
+            <Text>{String(n())}</Text>
+          </View>
         )}
       </List>
-      <text style={{ textAlign: "left", color: "#6e7781" }}>textAlign left (the start side right to left)</text>
-      <text style={{ writingDirection: "rtl", color: "#6e7781" }}>مرحبا بالعالم — writingDirection rtl</text>
-    </view>
+      <Text style={{ textAlign: "left", color: "#6e7781" }}>textAlign left (the start side right to left)</Text>
+      <Text style={{ writingDirection: "rtl", color: "#6e7781" }}>مرحبا بالعالم — writingDirection rtl</Text>
+    </View>
   );
 }
 
@@ -105,12 +106,12 @@ export function Styles() {
   const clip = signal(true);
   const front = signal(0);
   return (
-    <scroll style={{ flex: 1 }}>
-    <view style={{ flexDirection: "row", flexWrap: "wrap", gap: 24, padding: 24, justifyContent: "center" }}>
-      <view style={{ ...card, borderRadius: 16, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }}>
+    <Scroll style={{ flex: 1 }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 24, padding: 24, justifyContent: "center" }}>
+      <View style={{ ...card, borderRadius: 16, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }}>
         <Label>Shadow</Label>
-      </view>
-      <view
+      </View>
+      <View
         style={{
           ...card,
           borderTopLeftRadius: 28,
@@ -120,8 +121,8 @@ export function Styles() {
         }}
       >
         <Label>Top corners</Label>
-      </view>
-      <view
+      </View>
+      <View
         style={{
           ...card,
           backgroundColor: "#ddf4ff",
@@ -137,8 +138,8 @@ export function Styles() {
         }}
       >
         <Label>Mixed radii</Label>
-      </view>
-      <view
+      </View>
+      <View
         onPress={() => clip.set(!clip())}
         style={{
           ...card,
@@ -152,10 +153,10 @@ export function Styles() {
           shadowOffset: { width: 0, height: 4 },
         }}
       >
-        <view style={{ position: "absolute", left: -30, top: -30, width: 90, height: 90, borderRadius: 45, backgroundColor: "#bf3989" }} />
+        <View style={{ position: "absolute", left: -30, top: -30, width: 90, height: 90, borderRadius: 45, backgroundColor: "#bf3989" }} />
         <Label>{clip() ? "Clipped (tap)" : "Visible (tap)"}</Label>
-      </view>
-      <image
+      </View>
+      <Image
         src="https://picsum.photos/seed/nsh/300/220"
         style={{
           width: 150,
@@ -168,11 +169,11 @@ export function Styles() {
           shadowOffset: { width: 0, height: 6 },
         }}
       />
-      <view style={{ ...card, backgroundColor: "transparent", shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 2, height: 2 } }}>
-        <text style={{ fontSize: 22, fontWeight: "bold", color: "#1f2328" }}>Text shadow</text>
-      </view>
-      <view style={{ width: 150, alignItems: "center" }}>
-        <text
+      <View style={{ ...card, backgroundColor: "transparent", shadowOpacity: 0.5, shadowRadius: 3, shadowOffset: { width: 2, height: 2 } }}>
+        <Text style={{ fontSize: 22, fontWeight: "bold", color: "#1f2328" }}>Text shadow</Text>
+      </View>
+      <View style={{ width: 150, alignItems: "center" }}>
+        <Text
           style={{
             fontSize: 15,
             color: "#ffffff",
@@ -184,9 +185,9 @@ export function Styles() {
           }}
         >
           Text corners
-        </text>
-      </view>
-      <view
+        </Text>
+      </View>
+      <View
         style={{
           ...card,
           borderTopWidth: 6,
@@ -200,27 +201,27 @@ export function Styles() {
         }}
       >
         <Label>Per-side borders</Label>
-      </view>
-      <view style={{ ...card, gap: 8 }}>
-        <view style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 2, borderColor: "#0969da", borderStyle: "dashed" }} />
-        <view style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 3, borderColor: "#bf3989", borderStyle: "dotted" }} />
+      </View>
+      <View style={{ ...card, gap: 8 }}>
+        <View style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 2, borderColor: "#0969da", borderStyle: "dashed" }} />
+        <View style={{ width: 120, height: 30, borderRadius: 8, borderWidth: 3, borderColor: "#bf3989", borderStyle: "dotted" }} />
         <Label>Dashed / dotted</Label>
-      </view>
-      <view style={{ ...card, width: 324, gap: 8 }}>
-        <view style={{ flexDirection: "row", gap: 12 }}>
-          <view style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "#8250df" }} />
-          <view style={{ width: 64, height: 64, borderRadius: 20, borderCurve: "continuous", backgroundColor: "#8250df" }} />
-          <view
+      </View>
+      <View style={{ ...card, width: 324, gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: "#8250df" }} />
+          <View style={{ width: 64, height: 64, borderRadius: 20, borderCurve: "continuous", backgroundColor: "#8250df" }} />
+          <View
             style={{ width: 64, height: 64, borderRadius: 20, borderCurve: "continuous", borderWidth: 3, borderColor: "#0969da", borderTopLeftRadius: 4 }}
           />
-          <view style={{ width: 64, height: 30, borderRadius: 15, borderCurve: "continuous", backgroundColor: "#1a7f37" }} />
-        </view>
+          <View style={{ width: 64, height: 30, borderRadius: 15, borderCurve: "continuous", backgroundColor: "#1a7f37" }} />
+        </View>
         <Label>Circular / continuous corners</Label>
-      </view>
-      <view onPress={() => front.set((front() + 1) % 3)} style={{ ...card, backgroundColor: "transparent" }}>
-        <each of={["#fd8c73", "#54aeff", "#4ac26b"]}>
+      </View>
+      <View onPress={() => front.set((front() + 1) % 3)} style={{ ...card, backgroundColor: "transparent" }}>
+        <Each of={["#fd8c73", "#54aeff", "#4ac26b"]}>
           {(color, i) => (
-            <view
+            <View
               style={{
                 position: "absolute",
                 left: 20 + i() * 30,
@@ -236,29 +237,29 @@ export function Styles() {
               }}
             />
           )}
-        </each>
-        <view style={{ position: "absolute", bottom: -18 }}>
+        </Each>
+        <View style={{ position: "absolute", bottom: -18 }}>
           <Label>zIndex (tap)</Label>
-        </view>
-      </view>
-      <view style={{ ...card, backgroundColor: "#ddf4ff", transform: [{ perspective: 400 }, { rotateY: "35deg" }] }}>
+        </View>
+      </View>
+      <View style={{ ...card, backgroundColor: "#ddf4ff", transform: [{ perspective: 400 }, { rotateY: "35deg" }] }}>
         <Label>rotateY + perspective</Label>
-      </view>
-      <view style={{ ...card, backgroundColor: "#fbefff", transform: [{ perspective: 400 }, { rotateX: "40deg" }] }}>
+      </View>
+      <View style={{ ...card, backgroundColor: "#fbefff", transform: [{ perspective: 400 }, { rotateX: "40deg" }] }}>
         <Label>rotateX</Label>
-      </view>
-      <view style={{ ...card, backgroundColor: "#fff1e5", transform: [{ skewX: "-12deg" }] }}>
+      </View>
+      <View style={{ ...card, backgroundColor: "#fff1e5", transform: [{ skewX: "-12deg" }] }}>
         <Label>skewX (iOS)</Label>
-      </view>
-      <view style={{ ...card, backgroundColor: "#1f2328", opacity: 0.45 }}>
-        <text style={{ color: "#ffffff", fontWeight: "600" }}>opacity 0.45</text>
-      </view>
-      <view android={{ elevation: 10 }} style={{ ...card, borderRadius: 16 }}>
+      </View>
+      <View style={{ ...card, backgroundColor: "#1f2328", opacity: 0.45 }}>
+        <Text style={{ color: "#ffffff", fontWeight: "600" }}>opacity 0.45</Text>
+      </View>
+      <View android={{ elevation: 10 }} style={{ ...card, borderRadius: 16 }}>
         <Label>elevation 10 (Android)</Label>
-      </view>
-      <view style={{ ...card, backgroundColor: "transparent" }}>
-        <view style={{ width: 60, height: 60, borderWidth: 1, borderColor: "#d0d7de", borderStyle: "dashed", position: "absolute", left: 45, top: 15 }} />
-        <view
+      </View>
+      <View style={{ ...card, backgroundColor: "transparent" }}>
+        <View style={{ width: 60, height: 60, borderWidth: 1, borderColor: "#d0d7de", borderStyle: "dashed", position: "absolute", left: 45, top: 15 }} />
+        <View
           style={{
             width: 60,
             height: 60,
@@ -270,24 +271,24 @@ export function Styles() {
             transform: [{ rotate: "30deg" }],
           }}
         />
-        <view style={{ position: "absolute", bottom: -18 }}>
+        <View style={{ position: "absolute", bottom: -18 }}>
           <Label>transformOrigin top left</Label>
-        </view>
-      </view>
+        </View>
+      </View>
       <FlipCard />
-      <view style={{ ...card, alignItems: "flex-start", paddingHorizontal: 16, gap: 2 }}>
-        <text style={{ fontSize: 13, color: "#6e7781" }}>Proportional / tabular</text>
-        <text style={{ fontSize: 18 }}>1,111.11</text>
-        <text style={{ fontSize: 18 }}>8,888.88</text>
-        <text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>1,111.11</text>
-        <text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>8,888.88</text>
-      </view>
-      <view style={{ ...card }}>
-        <text style={{ fontSize: 18, fontVariant: ["small-caps"] }}>Small Caps</text>
-        <text style={{ fontSize: 18, fontVariant: ["oldstyle-nums"] }}>Oldstyle 1234567890</text>
-      </view>
+      <View style={{ ...card, alignItems: "flex-start", paddingHorizontal: 16, gap: 2 }}>
+        <Text style={{ fontSize: 13, color: "#6e7781" }}>Proportional / tabular</Text>
+        <Text style={{ fontSize: 18 }}>1,111.11</Text>
+        <Text style={{ fontSize: 18 }}>8,888.88</Text>
+        <Text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>1,111.11</Text>
+        <Text style={{ fontSize: 18, fontVariant: ["tabular-nums"] }}>8,888.88</Text>
+      </View>
+      <View style={{ ...card }}>
+        <Text style={{ fontSize: 18, fontVariant: ["small-caps"] }}>Small Caps</Text>
+        <Text style={{ fontSize: 18, fontVariant: ["oldstyle-nums"] }}>Oldstyle 1234567890</Text>
+      </View>
       <RightToLeft />
-    </view>
-    </scroll>
+    </View>
+    </Scroll>
   );
 }

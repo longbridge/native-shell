@@ -1,4 +1,4 @@
-import { type InputProps, signal, split, type YNode } from "nsh";
+import { Input, type InputProps, Scroll, signal, split, Text, View, type YNode } from "nsh";
 import { Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
 import { nav } from "../nav";
 import { Button, colors, Section } from "../ui";
@@ -18,15 +18,15 @@ const field = {
 function Field(props: InputProps & { label: string; next?: () => YNode | undefined }) {
   const [own, input] = split(props, ["label", "next"]);
   return (
-    <view style={{ gap: 4 }}>
-      <text style={{ fontSize: 13, color: colors.muted }}>{own.label}</text>
-      <input
+    <View style={{ gap: 4 }}>
+      <Text style={{ fontSize: 13, color: colors.muted }}>{own.label}</Text>
+      <Input
         style={field}
         returnKeyType={own.next ? "next" : "done"}
         onSubmitEditing={() => own.next?.()?.focus()}
         {...input}
       />
-    </view>
+    </View>
   );
 }
 
@@ -51,13 +51,13 @@ export function Form() {
   const ref = (i: number) => (node: YNode) => (refs[i] = node);
 
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode={mode()}>
-      <view style={{ padding: 16, gap: 20 }}>
-        <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <text style={{ flex: 1, color: colors.muted }}>Keyboard {Math.round(keyboard().height)} pt</text>
-          <each of={["none", "on-drag", "interactive"] as Mode[]}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode={mode()}>
+      <View style={{ padding: 16, gap: 20 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ flex: 1, color: colors.muted }}>Keyboard {Math.round(keyboard().height)} pt</Text>
+          <Each of={["none", "on-drag", "interactive"] as Mode[]}>
             {(m) => (
-              <text
+              <Text
                 onPress={() => mode.set(m())}
                 style={{
                   fontSize: 13,
@@ -70,10 +70,10 @@ export function Form() {
                 }}
               >
                 {m()}
-              </text>
+              </Text>
             )}
-          </each>
-        </view>
+          </Each>
+        </View>
 
         <Section title="Account">
           <Field ref={ref(0)} next={next(0)} label="Name" value={name()} onChangeText={(v) => name.set(v)} autoCapitalize="words" autoComplete="name" placeholder="Ada Lovelace" />
@@ -135,9 +135,9 @@ export function Form() {
             placeholderTextColor="#8250df"
             selectionColor="#bf3989"
           />
-          <view style={{ gap: 4 }}>
-            <text style={{ fontSize: 13, color: colors.muted }}>Notes (multiline, grows, 280 max)</text>
-            <input
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>Notes (multiline, grows, 280 max)</Text>
+            <Input
               ref={ref(14)}
               style={{ ...field, minHeight: 100 }}
               multiline
@@ -146,18 +146,18 @@ export function Form() {
               onChangeText={(v) => notes.set(v)}
               placeholder="Return adds a line"
             />
-            <text style={{ fontSize: 12, color: colors.muted, textAlign: "right" }}>{`${notes().length}/280`}</text>
-          </view>
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: "right" }}>{`${notes().length}/280`}</Text>
+          </View>
           <AutoGrow />
-          <view style={{ gap: 4 }}>
-            <text style={{ fontSize: 13, color: colors.muted }}>caretHidden</text>
-            <input style={field} caretHidden defaultValue="No caret here" />
-          </view>
+          <View style={{ gap: 4 }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>caretHidden</Text>
+            <Input style={field} caretHidden defaultValue="No caret here" />
+          </View>
         </Section>
 
-        <view style={{ gap: 10 }}>
+        <View style={{ gap: 10 }}>
           <Button label="Submit" onPress={() => submitted.set(`${name() || "Nobody"} <${email() || "no e-mail"}>`)} />
-          <text style={{ color: "#1a7f37" }}>{submitted()}</text>
+          <Text style={{ color: "#1a7f37" }}>{submitted()}</Text>
           <Button label="Hide the keyboard" color="#57606a" onPress={() => Keyboard.dismiss()} />
           <Button label="Inputs in a sheet" color="#8250df" onPress={() => sheet.set(true)} />
           <Button
@@ -165,23 +165,23 @@ export function Form() {
             color="#1a7f37"
             onPress={() => nav.push({ name: "page", page: MessageBar })}
           />
-        </view>
-      </view>
+        </View>
+      </View>
 
       <Modal visible={sheet()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => sheet.set(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-          <scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
-            <view style={{ padding: 16, gap: 12 }}>
-              <text style={{ fontSize: 22, fontWeight: "700" }}>A sheet</text>
+          <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
+            <View style={{ padding: 16, gap: 12 }}>
+              <Text style={{ fontSize: 22, fontWeight: "700" }}>A sheet</Text>
               <Button label="Close" onPress={() => sheet.set(false)} />
-              <each of={["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"]}>
+              <Each of={["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"]}>
                 {(label) => <Field label={label()} placeholder={`${label()} field`} />}
-              </each>
-            </view>
-          </scroll>
+              </Each>
+            </View>
+          </Scroll>
         </SafeAreaView>
       </Modal>
-    </scroll>
+    </Scroll>
   );
 }
 
@@ -191,9 +191,9 @@ function AutoGrow() {
   const height = signal(0);
   const size = signal("");
   return (
-    <view style={{ gap: 4 }}>
-      <text style={{ fontSize: 13, color: colors.muted }}>Grows with its text (onContentSizeChange): {size()}</text>
-      <input
+    <View style={{ gap: 4 }}>
+      <Text style={{ fontSize: 13, color: colors.muted }}>Grows with its text (onContentSizeChange): {size()}</Text>
+      <Input
         multiline
         placeholder="Type several lines"
         onContentSizeChange={(e) => {
@@ -202,7 +202,7 @@ function AutoGrow() {
         }}
         style={{ ...field, height: Math.max(height(), 20) + 20 }}
       />
-    </view>
+    </View>
   );
 }
 
@@ -218,14 +218,14 @@ function MessageBar() {
   return (
     <Screen title="Message bar">
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }}>
-      <scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
-        <view style={{ padding: 16, gap: 8 }}>
-          <text style={{ color: colors.muted }}>
+      <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
+        <View style={{ padding: 16, gap: 8 }}>
+          <Text style={{ color: colors.muted }}>
             The bar below sits outside the scroll view; KeyboardAvoidingView lifts it with the keyboard.
-          </text>
-          <each of={messages()}>
+          </Text>
+          <Each of={messages()}>
             {(m) => (
-              <text
+              <Text
                 style={{
                   alignSelf: "flex-end",
                   color: "#ffffff",
@@ -237,12 +237,12 @@ function MessageBar() {
                 }}
               >
                 {m()}
-              </text>
+              </Text>
             )}
-          </each>
-        </view>
-      </scroll>
-      <view
+          </Each>
+        </View>
+      </Scroll>
+      <View
         style={{
           flexDirection: "row",
           gap: 8,
@@ -252,7 +252,7 @@ function MessageBar() {
           backgroundColor: colors.surface,
         }}
       >
-        <input
+        <Input
           value={draft()}
           onChangeText={(v) => draft.set(v)}
           onSubmitEditing={send}
@@ -261,10 +261,10 @@ function MessageBar() {
           returnKeyType="send"
           style={{ ...field, flex: 1, borderRadius: 18, paddingVertical: 8 }}
         />
-        <text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
+        <Text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
           Send
-        </text>
-      </view>
+        </Text>
+      </View>
     </KeyboardAvoidingView>
     </Screen>
   );
@@ -278,8 +278,8 @@ function SelectionDemo() {
   const selection = signal<{ start: number; end?: number } | undefined>(undefined);
   let input: YNode | undefined;
   return (
-    <view style={{ gap: 8 }}>
-      <input
+    <View style={{ gap: 8 }}>
+      <Input
         ref={(node) => (input = node)}
         value={text()}
         onChangeText={(v) => text.set(v)}
@@ -289,19 +289,19 @@ function SelectionDemo() {
         autoComplete="off"
         style={field}
       />
-      <text style={{ fontSize: 13, color: colors.muted }}>
+      <Text style={{ fontSize: 13, color: colors.muted }}>
         {`Selection ${range().start}–${range().end}: "${text().slice(range().start, range().end)}"`}
-      </text>
-      <text style={{ fontSize: 13, color: colors.muted }}>{`Keys: ${keys().join(" ") || "–"}`}</text>
-      <view style={{ flexDirection: "row", gap: 8 }}>
-        <view style={{ flex: 1 }}>
+      </Text>
+      <Text style={{ fontSize: 13, color: colors.muted }}>{`Keys: ${keys().join(" ") || "–"}`}</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
           <Button label="Select all" onPress={() => selection.set({ start: 0, end: text().length })} />
-        </view>
-        <view style={{ flex: 1 }}>
+        </View>
+        <View style={{ flex: 1 }}>
           <Button label="Caret to start" color="#57606a" onPress={() => input?.setSelection(0)} />
-        </view>
-      </view>
+        </View>
+      </View>
       <Field label="One-time code (autofill from messages)" keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} />
-    </view>
+    </View>
   );
 }

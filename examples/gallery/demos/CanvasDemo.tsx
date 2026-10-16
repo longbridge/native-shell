@@ -1,4 +1,4 @@
-import { type GestureResponderEvent, signal } from "nsh";
+import { type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas, Path2D } from "nsh/canvas";
 import logo from "../logo@2x.png";
@@ -16,7 +16,7 @@ function ProgressRing() {
   };
   return (
     <Section title="Native animation (progress ring)">
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
         <Canvas
           style={{ width: 120, height: 120 }}
           draw={(ctx, { width, height }) => {
@@ -42,11 +42,11 @@ function ProgressRing() {
             ctx.fillText(`${Math.round(target() * 100)}%`, cx, cy);
           }}
         />
-        <view style={{ gap: 8 }}>
+        <View style={{ gap: 8 }}>
           <Button label="Random" onPress={() => go(Math.round(Math.random() * 100) / 100)} />
           <Button label="Full" color="#1a7f37" onPress={() => go(1)} />
-        </view>
-      </view>
+        </View>
+      </View>
     </Section>
   );
 }
@@ -191,13 +191,13 @@ const icons: [string, string][] = [
 function Icons() {
   return (
     <Section title="Path2D (SVG path data)">
-      <view style={{ flexDirection: "row", gap: 16 }}>
-        <each of={icons}>
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Each of={icons}>
           {(icon, i) => {
             const [name, d] = icon();
             const path = new Path2D(d);
             return (
-              <view style={{ alignItems: "center", gap: 4 }}>
+              <View style={{ alignItems: "center", gap: 4 }}>
                 <Canvas
                   style={{ width: 40, height: 40 }}
                   draw={(ctx) => {
@@ -215,12 +215,12 @@ function Icons() {
                     }
                   }}
                 />
-                <text style={{ fontSize: 12, color: colors.muted }}>{name}</text>
-              </view>
+                <Text style={{ fontSize: 12, color: colors.muted }}>{name}</Text>
+              </View>
             );
           }}
-        </each>
-      </view>
+        </Each>
+      </View>
     </Section>
   );
 }
@@ -311,15 +311,15 @@ function Sketch() {
 
 export function CanvasDemo() {
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <ProgressRing />
         <Chart />
         <Clock />
         <Icons />
         <Compositing />
         <Sketch />
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }

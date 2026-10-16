@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { Scroll, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
 import { Button, colors, Section } from "../ui";
 
@@ -27,13 +27,13 @@ function Curves() {
     ).start();
   };
   return (
-    <view style={{ gap: 6 }}>
-      <each of={curves}>
+    <View style={{ gap: 6 }}>
+      <Each of={curves}>
         {(c, i) => (
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <text style={{ width: 84, fontSize: 12, color: colors.muted }}>{c()[0]}</text>
-            <view style={{ width: TRACK + 14, height: 14, borderRadius: 7, backgroundColor: "#f6f8fa" }}>
-              <view
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ width: 84, fontSize: 12, color: colors.muted }}>{c()[0]}</Text>
+            <View style={{ width: TRACK + 14, height: 14, borderRadius: 7, backgroundColor: "#f6f8fa" }}>
+              <View
                 style={{
                   width: 14,
                   height: 14,
@@ -42,12 +42,12 @@ function Curves() {
                   transform: [{ translateX: dots[i()] }],
                 }}
               />
-            </view>
-          </view>
+            </View>
+          </View>
         )}
-      </each>
+      </Each>
       <Button label="Play" onPress={play} />
-    </view>
+    </View>
   );
 }
 
@@ -90,11 +90,11 @@ function Composition() {
     a.start().then(report(name));
   };
   return (
-    <view style={{ gap: 12 }}>
-      <view style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 10, height: 80 }}>
-        <each of={palette}>
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 10, height: 80 }}>
+        <Each of={palette}>
           {(color, i) => (
-            <view
+            <View
               style={{
                 width: 34,
                 height: 34,
@@ -108,23 +108,23 @@ function Composition() {
               }}
             />
           )}
-        </each>
-      </view>
-      <text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>{state()}</text>
-      <view style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        </Each>
+      </View>
+      <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>{state()}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         <Chip label="Stagger" onPress={run("stagger", stagger)} />
         <Chip label="Sequence" onPress={run("sequence", sequence)} />
         <Chip label="Loop" onPress={run("loop", pulse)} />
         <Chip label="Stop" onPress={() => [stagger, sequence, pulse].forEach((a) => a.stop())} />
         <Chip label="Reset" onPress={() => [stagger, sequence, pulse].forEach((a) => a.reset())} />
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
 function Chip(props: { label: string; onPress: () => void }) {
   return (
-    <text
+    <Text
       onPress={props.onPress}
       style={{
         paddingHorizontal: 12,
@@ -137,7 +137,7 @@ function Chip(props: { label: string; onPress: () => void }) {
       }}
     >
       {props.label}
-    </text>
+    </Text>
   );
 }
 
@@ -155,21 +155,21 @@ function Springs() {
     Animated.parallel(xs.map((x, i) => Animated.spring(x, { toValue: there ? TRACK : 0, ...settings[i] }))).start();
   };
   return (
-    <view style={{ gap: 6 }}>
-      <each of={settings}>
+    <View style={{ gap: 6 }}>
+      <Each of={settings}>
         {(s, i) => (
-          <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <text style={{ width: 84, fontSize: 12, color: colors.muted }}>{s().label}</text>
-            <view style={{ width: TRACK + 20, height: 20 }}>
-              <view
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ width: 84, fontSize: 12, color: colors.muted }}>{s().label}</Text>
+            <View style={{ width: TRACK + 20, height: 20 }}>
+              <View
                 style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: "#8250df", transform: [{ translateX: xs[i()] }] }}
               />
-            </view>
-          </view>
+            </View>
+          </View>
         )}
-      </each>
+      </Each>
       <Button label="Release" color="#8250df" onPress={play} />
-    </view>
+    </View>
   );
 }
 
@@ -179,19 +179,19 @@ function HidingHeader() {
   const scroll = createNativeValue(0);
   const header = scroll.diffClamp(0, 44);
   return (
-    <view style={{ height: 260, borderRadius: 10, overflow: "hidden", backgroundColor: "#f6f8fa" }}>
-      <scroll style={{ flex: 1 }} scrollValue={scroll}>
-        <view style={{ paddingTop: 52, paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
-          <each of={Array.from({ length: 30 }, (_, i) => i + 1)}>
+    <View style={{ height: 260, borderRadius: 10, overflow: "hidden", backgroundColor: "#f6f8fa" }}>
+      <Scroll style={{ flex: 1 }} scrollValue={scroll}>
+        <View style={{ paddingTop: 52, paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
+          <Each of={Array.from({ length: 30 }, (_, i) => i + 1)}>
             {(n) => (
-              <view style={{ padding: 10, borderRadius: 8, backgroundColor: colors.surface }}>
-                <text>Row {n()}</text>
-              </view>
+              <View style={{ padding: 10, borderRadius: 8, backgroundColor: colors.surface }}>
+                <Text>Row {n()}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </scroll>
-      <view
+          </Each>
+        </View>
+      </Scroll>
+      <View
         style={{
           position: "absolute",
           left: 0,
@@ -205,9 +205,9 @@ function HidingHeader() {
           opacity: header.interpolate({ inputRange: [0, 44], outputRange: [1, 0], easing: Easing.in(Easing.quad) }),
         }}
       >
-        <text style={{ color: "#ffffff", fontWeight: "700" }}>Scroll up to hide me</text>
-      </view>
-    </view>
+        <Text style={{ color: "#ffffff", fontWeight: "700" }}>Scroll up to hide me</Text>
+      </View>
+    </View>
   );
 }
 
@@ -221,9 +221,9 @@ function Interpolations() {
     t.timing(to, { duration: 700, easing: Easing.inOut(Easing.cubic) });
   };
   return (
-    <view style={{ gap: 10 }}>
-      <view style={{ flexDirection: "row", justifyContent: "center", gap: 24, height: 90, alignItems: "center" }}>
-        <view
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: "row", justifyContent: "center", gap: 24, height: 90, alignItems: "center" }}>
+        <View
           style={{
             width: 60,
             height: 60,
@@ -232,7 +232,7 @@ function Interpolations() {
             transform: [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"], extrapolateRight: "extend" }) }],
           }}
         />
-        <view
+        <View
           style={{
             width: 60,
             height: 60,
@@ -241,16 +241,16 @@ function Interpolations() {
             transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.2], extrapolate: "clamp" }) }],
           }}
         />
-      </view>
-      <view style={{ flexDirection: "row", gap: 8 }}>
-        <each of={[0, 1, 2]}>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Each of={[0, 1, 2]}>
           {(n) => <Chip label={`t = ${n()}${at() === n() ? " ●" : ""}`} onPress={() => go(n())} />}
-        </each>
-      </view>
-      <text style={{ fontSize: 12, color: colors.muted }}>
+        </Each>
+      </View>
+      <Text style={{ fontSize: 12, color: colors.muted }}>
         Color through three stops; rotation extends past 1 (to 360° at 2); scale clamps at 1.2.
-      </text>
-    </view>
+      </Text>
+    </View>
   );
 }
 
@@ -258,12 +258,12 @@ function Interpolations() {
 function Layout() {
   const open = signal(false);
   return (
-    <view style={{ gap: 10 }}>
-      <view style={{ flexDirection: open() ? "column" : "row", gap: 8 }}>
-        <each of={palette}>
-          {(color) => <view style={{ height: open() ? 24 : 44, flex: open() ? undefined : 1, borderRadius: 8, backgroundColor: color() }} />}
-        </each>
-      </view>
+    <View style={{ gap: 10 }}>
+      <View style={{ flexDirection: open() ? "column" : "row", gap: 8 }}>
+        <Each of={palette}>
+          {(color) => <View style={{ height: open() ? 24 : 44, flex: open() ? undefined : 1, borderRadius: 8, backgroundColor: color() }} />}
+        </Each>
+      </View>
       <Button
         label={open() ? "Row" : "Column"}
         color="#57606a"
@@ -272,14 +272,14 @@ function Layout() {
           open.set(!open());
         }}
       />
-    </view>
+    </View>
   );
 }
 
 export function Animations() {
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <Section title="Easing curves">
           <Curves />
         </Section>
@@ -298,7 +298,7 @@ export function Animations() {
         <Section title="Layout animation">
           <Layout />
         </Section>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }

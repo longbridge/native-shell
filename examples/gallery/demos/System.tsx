@@ -1,4 +1,4 @@
-import { cleanup, signal } from "nsh";
+import { cleanup, Scroll, signal, Text, View } from "nsh";
 import { Toast } from "nsh/android";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
 import { ActionSheet, Alert, keyboard, safeArea, StatusBar } from "nsh/ui/mobile";
@@ -6,10 +6,10 @@ import { Button, colors, Section } from "../ui";
 
 function Row(props: { label: string; value: string }) {
   return (
-    <view style={{ flexDirection: "row" }}>
-      <text style={{ flex: 1, color: colors.muted }}>{props.label}</text>
-      <text>{props.value}</text>
-    </view>
+    <View style={{ flexDirection: "row" }}>
+      <Text style={{ flex: 1, color: colors.muted }}>{props.label}</Text>
+      <Text>{props.value}</Text>
+    </View>
   );
 }
 
@@ -66,8 +66,8 @@ export function System() {
   };
 
   return (
-    <scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <view style={{ padding: 16, gap: 20 }}>
+    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ padding: 16, gap: 20 }}>
         <Section title="Environment (reactive)">
           <Row label="Window" value={`${Math.round(windowSize().width)} × ${Math.round(windowSize().height)}`} />
           <Row label="Safe area" value={`${Math.round(safeArea().top)} / ${Math.round(safeArea().right)} / ${Math.round(safeArea().bottom)} / ${Math.round(safeArea().left)}`} />
@@ -78,14 +78,14 @@ export function System() {
         <Section title="Status bar">
           <StatusBar barStyle={barStyle()} hidden={barHidden()} animated />
           <Row label="Style" value={barStyle()} />
-          <view style={{ flexDirection: "row", gap: 8 }}>
-            <view style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
               <Button label="Next style" onPress={() => barStyle.set(barStyle() === "default" ? "light-content" : barStyle() === "light-content" ? "dark-content" : "default")} />
-            </view>
-            <view style={{ flex: 1 }}>
+            </View>
+            <View style={{ flex: 1 }}>
               <Button label={barHidden() ? "Show" : "Hide"} color="#57606a" onPress={() => barHidden.set(!barHidden())} />
-            </view>
-          </view>
+            </View>
+          </View>
         </Section>
         <Section title="Alerts">
           <Button
@@ -143,18 +143,18 @@ export function System() {
         </Section>
         <Section title="Network and logs">
           <Button label="fetch() three posts" onPress={load} />
-          <text style={{ color: colors.muted }}>{status()}</text>
-          <each of={posts()}>
+          <Text style={{ color: colors.muted }}>{status()}</Text>
+          <Each of={posts()}>
             {(post) => (
-              <text numberOfLines={1}>
-                <text style={{ fontWeight: "bold" }}>{`#${post().id} `}</text>
+              <Text numberOfLines={1}>
+                <Text style={{ fontWeight: "bold" }}>{`#${post().id} `}</Text>
                 {post().title}
-              </text>
+              </Text>
             )}
-          </each>
+          </Each>
           <Button label="console.log (shown by nsh run)" color="#57606a" onPress={() => console.log("hello from the gallery", { at: new Date().toISOString() })} />
         </Section>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }

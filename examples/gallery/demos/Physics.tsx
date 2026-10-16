@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 
 export function Physics() {
@@ -18,9 +18,9 @@ export function Physics() {
   };
 
   return (
-    <view style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 24 }}>
-      <text style={{ fontSize: 15, color: "#6e7781" }}>Drag the card, tap it to pulse, long-press to reset</text>
-      <view
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 24 }}>
+      <Text style={{ fontSize: 15, color: "#6e7781" }}>Drag the card, tap it to pulse, long-press to reset</Text>
+      <View
         pan={{ x, y }}
         onPanEnd={release}
         onPress={pulse}
@@ -40,9 +40,9 @@ export function Physics() {
           ],
         }}
       >
-        <text style={{ color: "#ffffff", fontSize: 20, fontWeight: "bold" }}>Drag me</text>
-      </view>
-      <text style={{ fontSize: 13, color: "#6e7781" }}>Released {releases()} times</text>
-    </view>
+        <Text style={{ color: "#ffffff", fontSize: 20, fontWeight: "bold" }}>Drag me</Text>
+      </View>
+      <Text style={{ fontSize: 13, color: "#6e7781" }}>Released {releases()} times</Text>
+    </View>
   );
 }
