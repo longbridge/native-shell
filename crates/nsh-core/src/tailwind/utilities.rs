@@ -113,6 +113,9 @@ pub(crate) enum Decl {
     /// One value in light appearance, another in dark (a theme color of a
     /// Rust component): one declaration, so a later plain one still wins.
     Adaptive(StyleKey, [PatchValue; 2]),
+    /// [`Decl::Adaptive`] for a part (a shadow's, ring's or gradient
+    /// stop's theme color).
+    AdaptivePart(Box<[Part; 2]>),
 }
 
 impl Decl {
@@ -149,6 +152,7 @@ impl Decl {
             Decl::Adaptive(key, values) => {
                 let _ = style.set_key(*key, values[usize::from(dark)].as_value());
             }
+            Decl::AdaptivePart(pair) => parts.push(pair[usize::from(dark)].clone()),
         }
     }
 
@@ -167,7 +171,7 @@ impl Decl {
                 (if *w != 0.0 { deps::WIDTH } else { 0 })
                     | (if *h != 0.0 { deps::HEIGHT } else { 0 })
             }
-            Decl::Adaptive(..) => deps::DARK,
+            Decl::Adaptive(..) | Decl::AdaptivePart(_) => deps::DARK,
             _ => 0,
         }
     }

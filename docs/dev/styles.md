@@ -13,7 +13,8 @@
   `odd:` / `even:` / `only:`, `placeholder:`, `!` (important). `disabled` (any element) applies `disabled:` and drops
   the node's press listeners from what is mounted, so it shows no press feedback either. The theme is Tailwind 4's
   extended by `nsh.json` `"tailwind"` (`colors`, `spacing`, `breakpoints`, `fontSize`, `radius`, `shadow`, ...; unknown
-  keys are build errors). Rust components do not use classes: their typed styles lower into the same rules and their
+  keys are build errors). Rust components do not use classes: their typed styles (`ui/style.rs`, every utility group has its
+  methods, tested against the classes) lower into the same rules and their
   colors come from the component theme, `nsh.json` `"theme"` (`docs/dev/components.md`); the Tailwind theme only
   shapes the app's own classes. `nsh build` / `nsh dev` warn about unknown static classes in app code (`file:line:col:
   unknown class '...'`, target `nsh::build`); the core logs each unknown class once at run time. Class-only settings

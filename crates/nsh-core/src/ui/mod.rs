@@ -34,6 +34,7 @@ pub(crate) mod env;
 mod events;
 pub(crate) mod host;
 mod module;
+pub mod palette;
 pub(crate) mod status_bar;
 mod style;
 pub(crate) mod task;
@@ -74,7 +75,10 @@ pub use self::{
         ModuleSpec,
     },
     status_bar::StatusBarEntry,
-    style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
+    style::{
+        AdaptiveColor, BorderCurve, FontWeight, Length, StyleRefinement, Styled, WritingDirection,
+        px, relative, rgb, rgba,
+    },
     task::{Answer, AsyncCx, DialogAnswer, ImageSize, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
     value::{JsValue, NodeRef, PropError, SharedString, TsType, TsTypes},
@@ -87,12 +91,13 @@ pub(crate) use self::{
     task::{Action, AnswerSlot, Executor},
 };
 pub use crate::{
-    AccessibilityRole, AccessibilityState, AutoCapitalize, AutoFill, Dialog, DialogButton,
-    DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload, KeyboardDismissMode,
-    KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
-    ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation,
-    SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind,
-    style::Color,
+    AccessibilityRole, AccessibilityState, AutoCapitalize, AutoFill, BlendMode, BoxShadow, Dialog,
+    DialogButton, DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload,
+    KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty,
+    LayoutTransition, ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType,
+    ScreenAnimation, SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent,
+    TransformKind, TransformOrigin,
+    style::{Color, OriginLen},
 };
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
@@ -110,6 +115,9 @@ pub mod prelude {
         // Host elements and their settings.
         AutoCapitalize,
         BackSubscription,
+        BlendMode,
+        BorderCurve,
+        BoxShadow,
         CanvasView,
         Child,
         Children,
@@ -189,6 +197,7 @@ pub mod prelude {
         WeakComponent,
         WebNavigation,
         WebView,
+        WritingDirection,
         canvas,
         image,
         input,

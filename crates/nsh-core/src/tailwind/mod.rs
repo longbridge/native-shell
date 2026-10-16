@@ -22,7 +22,7 @@
 //! by `nsh.json` `"tailwind"`, compiled into the bundle as
 //! `nsh:tailwind-theme` and pushed as a root prop at startup.
 
-mod palette;
+pub(crate) mod palette;
 mod theme;
 mod utilities;
 
@@ -218,9 +218,12 @@ pub(crate) struct Rule {
 /// Ranks of the variants Rust components use (Tailwind's order, as
 /// [`variant`] gives them).
 pub(crate) mod rank {
+    pub(crate) const GROUP: u16 = 20;
     pub(crate) const HOVER: u16 = 31;
     pub(crate) const FOCUS: u16 = 32;
     pub(crate) const ACTIVE: u16 = 33;
+    pub(crate) const DISABLED: u16 = 35;
+    pub(crate) const DARK: u16 = 80;
 }
 
 impl Rule {
@@ -236,6 +239,21 @@ impl Rule {
             rank,
             important: false,
         }
+    }
+
+    /// [`Rule::new`], also requiring the nearest ancestor group `group`
+    /// (`""`: unnamed) in its states, and dark appearance when `dark`.
+    pub(crate) fn with(
+        states: u8,
+        group: Option<(&str, u8)>,
+        dark: bool,
+        rank: u16,
+        decls: Vec<Decl>,
+    ) -> Self {
+        let mut rule = Self::new(states, rank, decls);
+        rule.cond.group = group.map(|(name, states)| (name.into(), states));
+        rule.cond.dark = dark.then_some(true);
+        rule
     }
 }
 
@@ -371,11 +389,16 @@ impl ClassList {
 }
 
 impl ClassList {
-    /// The rules of a Rust component's styles (already in order).
-    pub(crate) fn from_rules(rules: Vec<Rule>) -> Self {
+    /// The rules of a Rust component's styles (already in order), on a
+    /// view that is the groups `groups` (`""`: unnamed).
+    pub(crate) fn from_rules(rules: Vec<Rule>, groups: Vec<Box<str>>) -> Self {
         let mut list = ClassList::default();
         for rule in rules {
             list.add(rule);
+        }
+        if !groups.is_empty() {
+            list.tracked |= state::PRESSED | state::HOVERED | state::FOCUS_WITHIN;
+            list.groups = groups;
         }
         list.rules.sort_by_key(|r| (r.important, r.rank));
         list

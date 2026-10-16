@@ -117,6 +117,8 @@ impl Component for Button {
   | an error boundary (TS has none) | `fn catch_error(&mut self, error, cx) -> bool`: the nearest component above one whose code panicked (render, listener, method, task) handles it, typically keeping `error`, rendering a fallback and clearing it to try again; the failed one renders nothing until it renders again; unhandled errors are logged (`js` target) |
   | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
+  | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no render) |
+  | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
 - **Platform services** are on `Context` (setup, listeners, updates, methods), `ModuleCx` and `AsyncCx`:
@@ -200,7 +202,18 @@ like); when the environment changes, only the components that read a changed par
 
 `Styled` methods are named as in GPUI and Tailwind (`.flex_row()`, `.items_center()`, `.p_4()` = 16pt, `.gap(px(6.0))`,
 `.rounded_xl()`, `.border_1()`, `.shadow_md()`, `.text_sm()`, `.font_weight(FontWeight::SEMIBOLD)`, ...); spacing steps
-follow Tailwind's default scale, independent of the app's Tailwind theme. A render records declarations
+follow Tailwind's default scale, independent of the app's Tailwind theme. They cover what classes and styles do:
+per-side borders and colors (`.border_t(6.0).border_t_color(..)`), `.border_dashed()`, per-corner and start / end
+radii (`.rounded_tl(..)`, `.rounded_ss(..)`), `.border_curve(BorderCurve::Continuous)`; shadows of their own
+(`.shadow([BoxShadow { .. }])`, React Native's `.shadow_opacity(..).shadow_radius(..).shadow_offset(..)`,
+`.shadow_color(..)` for both and the presets), `.inset_shadow_sm()`, rings, outlines, text shadows; 3D transforms and
+skews, `.transform_origin(..)` / `.origin_top_left()`, `.backface_hidden()`; decorations (`.underline().line_through()`
+draw both, `.text_decoration_wavy()`, `.text_decoration_color(..)`), `.uppercase()`, `.tabular_nums()`,
+`.writing_direction(..)`; gradients (`.bg_linear_to_br().gradient_from(..).gradient_via(..).gradient_to(..)`,
+`.bg_radial()`, `.bg_conic(..)`), filters and backdrop filters (`.grayscale(1.0)`, `.backdrop_blur(12.0)`),
+`.mix_blend_mode(..)`, transitions (`.transition_colors().duration(150.0).ease_out()`), keyframes (`.animate_spin()`),
+grids (`.grid_cols(3)`, `.col_span(2)`), `.flex_grow(n)`. Tailwind's palette is typed too
+(`ui::palette::SKY.shade(500)`). A render records declarations
 (`StyleRefinement`); the core lowers them into the same rules Tailwind classes compile to (`ClassList`), cached and
 shared between elements with the same styles, and only when an element's styles changed. There is no string to
 parse and no `.class()`.
@@ -208,8 +221,10 @@ parse and no `.class()`.
 - Theme colors are `AdaptiveColor`s (a light and a dark value) and lower into one declaration that picks by
   appearance (`Decl::Adaptive`): the platform's appearance switch restyles natively, without a render, and the app's
   plain classes still win over it.
-- `.active(|s| ..)`, `.hover(..)`, `.focus(..)` lower into rules on the view's interaction states (Tailwind's ranks):
-  press feedback is native.
+- `.active(|s| ..)`, `.hover(..)`, `.focus(..)`, `.disabled_style(..)` lower into rules on the view's interaction
+  states (Tailwind's ranks): press feedback is native. `.group()` makes a view a group and `.group_active(|s| ..)`
+  (`_hover`, `_focus_within`, `_named` for `group/name`) styles what is inside it by the group's states;
+  `.dark(|s| ..)` styles what is not a color in dark appearance. Nested variants all have to hold.
 - What a render knows (a variant, `disabled`) is plain Rust: `.when(props.disabled, |v| v.opacity(0.5))`.
 - The app's `class` / `classList` on a component (Tailwind) is merged after the root's rules; at equal rank it wins.
   The styles of a nested component element merge the same way.

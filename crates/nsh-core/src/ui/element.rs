@@ -1179,21 +1179,28 @@ pub trait Interactive: Element {
     /// Styles while pressed (native: no render).
     fn active(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         let s = f(StyleRefinement::default());
-        self.style().extend_as(Variant::Active, s);
+        self.style().extend_as(Variant::ACTIVE, s);
         self
     }
 
     /// Styles while a pointer hovers it (iPad, Mac, mice).
     fn hover(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         let s = f(StyleRefinement::default());
-        self.style().extend_as(Variant::Hover, s);
+        self.style().extend_as(Variant::HOVER, s);
         self
     }
 
     /// Styles while focused.
     fn focus(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         let s = f(StyleRefinement::default());
-        self.style().extend_as(Variant::Focus, s);
+        self.style().extend_as(Variant::FOCUS, s);
+        self
+    }
+
+    /// Styles while [`Interactive::disabled`] (Tailwind's `disabled:`).
+    fn disabled_style(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+        let s = f(StyleRefinement::default());
+        self.style().extend_as(Variant::DISABLED, s);
         self
     }
 
@@ -1297,6 +1304,20 @@ impl Text {
         super::host::set(&mut self.0, Prop::MinimumFontScale(min_scale));
         self
     }
+
+    /// Whether its fonts follow the system's text size (true by default;
+    /// TS: `allowFontScaling`).
+    pub fn allow_font_scaling(mut self, allow: bool) -> Self {
+        super::host::set(&mut self.0, Prop::AllowFontScaling(allow));
+        self
+    }
+
+    /// At most this multiple of its fonts' sizes with the system's text
+    /// size (TS: `maxFontSizeMultiplier`; 0: no limit).
+    pub fn max_font_size_multiplier(mut self, multiplier: f32) -> Self {
+        super::host::set(&mut self.0, Prop::MaxFontSizeMultiplier(multiplier));
+        self
+    }
 }
 
 impl Image {
@@ -1315,6 +1336,13 @@ impl Image {
                 size: None,
             }))),
         );
+        self
+    }
+
+    /// Draws its opaque pixels in `color` (a template image, an icon).
+    pub fn tint_color(mut self, color: impl Into<super::AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[crate::StyleKey::TintColor], color.into());
         self
     }
 

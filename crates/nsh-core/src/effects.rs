@@ -353,6 +353,30 @@ pub enum BlendMode {
 }
 
 impl BlendMode {
+    /// The CSS name ([`BlendMode::parse`]'s input).
+    pub fn name(self) -> &'static str {
+        match self {
+            BlendMode::Normal => "normal",
+            BlendMode::Multiply => "multiply",
+            BlendMode::Screen => "screen",
+            BlendMode::Overlay => "overlay",
+            BlendMode::Darken => "darken",
+            BlendMode::Lighten => "lighten",
+            BlendMode::ColorDodge => "color-dodge",
+            BlendMode::ColorBurn => "color-burn",
+            BlendMode::HardLight => "hard-light",
+            BlendMode::SoftLight => "soft-light",
+            BlendMode::Difference => "difference",
+            BlendMode::Exclusion => "exclusion",
+            BlendMode::Hue => "hue",
+            BlendMode::Saturation => "saturation",
+            BlendMode::Color => "color",
+            BlendMode::Luminosity => "luminosity",
+            BlendMode::PlusDarker => "plus-darker",
+            BlendMode::PlusLighter => "plus-lighter",
+        }
+    }
+
     /// Parses a CSS blend mode name.
     pub fn parse(s: &str) -> Option<BlendMode> {
         Some(match s {

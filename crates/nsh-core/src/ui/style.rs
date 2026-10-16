@@ -17,8 +17,11 @@ use std::{
 
 use super::SharedString;
 use crate::{
-    style::{Color, PatchValue, StyleKey},
+    BlendMode, BoxShadow, FontVariant, TransformOrigin, TransitionProps,
+    effects::{Filter, GradientKind, GradientSize, Keyframes},
+    style::{Color, OriginLen, PatchValue, StyleDecl, StyleKey},
     tailwind::{self, ClassList, Decl, Part, Rule, rank, state},
+    transform::TransformKind,
 };
 
 /// A length: points, a fraction of the parent, or automatic.
@@ -159,14 +162,212 @@ impl Hash for Bits {
     }
 }
 
-/// When a declaration applies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Variant {
-    Base,
-    Hover,
-    Focus,
-    Active,
+/// When a declaration applies: always, or while the element (or an
+/// ancestor group) is in some states, or in dark appearance. Nested
+/// variants (`.dark(|s| s.group_active(..))`) all have to hold. Small:
+/// every declaration has one (a named group's name is in its
+/// [`StyleRefinement`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) struct Variant {
+    /// [`state`] bits of the element itself.
+    states: u8,
+    /// [`state`] bits of the nearest ancestor group (none: no group
+    /// condition).
+    group_states: u8,
+    /// That group's name: 0 unnamed, else 1 + its index in
+    /// [`StyleRefinement::names`].
+    group: u8,
+    dark: bool,
 }
+
+impl Variant {
+    /// While hovered.
+    pub(crate) const HOVER: Self = Self::states(state::HOVERED);
+    /// While focused.
+    pub(crate) const FOCUS: Self = Self::states(state::FOCUSED);
+    /// While pressed.
+    pub(crate) const ACTIVE: Self = Self::states(state::PRESSED);
+    /// While disabled.
+    pub(crate) const DISABLED: Self = Self::states(state::DISABLED);
+    /// In dark appearance.
+    const DARK: Self = Self {
+        states: 0,
+        group_states: 0,
+        group: 0,
+        dark: true,
+    };
+
+    const fn states(states: u8) -> Self {
+        Self {
+            states,
+            group_states: 0,
+            group: 0,
+            dark: false,
+        }
+    }
+
+    /// `self` inside `outer`: both must hold.
+    fn within(self, outer: Variant) -> Variant {
+        let (group, group_states) = match (outer.group_states, self.group_states) {
+            (0, _) => (self.group, self.group_states),
+            (o, i) if i != 0 && outer.group == self.group => (outer.group, o | i),
+            (o, _) => (outer.group, o),
+        };
+        Variant {
+            states: self.states | outer.states,
+            group_states,
+            group,
+            dark: self.dark || outer.dark,
+        }
+    }
+
+    /// Tailwind's variant order: the highest of its parts.
+    fn rank(self) -> u16 {
+        let mut r = 0;
+        if self.group_states != 0 {
+            r = rank::GROUP;
+        }
+        for (bit, rank) in [
+            (state::HOVERED, rank::HOVER),
+            (state::FOCUSED, rank::FOCUS),
+            (state::PRESSED, rank::ACTIVE),
+            (state::DISABLED, rank::DISABLED),
+        ] {
+            if self.states & bit != 0 {
+                r = r.max(rank);
+            }
+        }
+        if self.dark {
+            r = r.max(rank::DARK);
+        }
+        r
+    }
+}
+
+/// A color of a property several declarations build (a shadow's, a
+/// ring's, a gradient stop's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ColorPart {
+    Shadow,
+    InsetShadow,
+    TextShadow,
+    Ring,
+    RingOffset,
+    InsetRing,
+    From,
+    Via,
+    To,
+}
+
+impl ColorPart {
+    fn part(self, c: Color) -> Part {
+        // A color with its own alpha replaces the layers' alpha (as
+        // Tailwind's `shadow-black/50`); an opaque one keeps theirs.
+        let own = c.0 & 0xff != 0xff;
+        match self {
+            ColorPart::Shadow => Part::ShadowColor(c, own),
+            ColorPart::InsetShadow => Part::InsetShadowColor(c, own),
+            ColorPart::TextShadow => Part::TextShadowColor(c, own),
+            ColorPart::Ring => Part::RingColor(c),
+            ColorPart::RingOffset => Part::RingOffsetColor(c),
+            ColorPart::InsetRing => Part::InsetRingColor(c),
+            ColorPart::From => Part::From(c),
+            ColorPart::Via => Part::Via(c),
+            ColorPart::To => Part::To(c),
+        }
+    }
+}
+
+/// A gradient's geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum GradientShape {
+    /// Along a line at an angle (degrees, 0 up, 90 right).
+    Linear(Bits),
+    /// Towards a corner.
+    Corner { right: bool, bottom: bool },
+    /// An ellipse from the center to the farthest corner.
+    Radial,
+    /// Around the center, from an angle (degrees, 0 up).
+    Conic(Bits),
+}
+
+/// A filter function (`Opacity` only of backdrops: a view's own opacity
+/// is [`Styled::opacity`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum FilterFn {
+    Blur,
+    Brightness,
+    Contrast,
+    Grayscale,
+    HueRotate,
+    Invert,
+    Opacity,
+    Saturate,
+    Sepia,
+}
+
+impl FilterFn {
+    /// Its slot in the composed list (CSS's order, as Tailwind's
+    /// utilities), and the filter.
+    fn part(self, backdrop: bool, amount: f32) -> Part {
+        let (slot, filter) = match self {
+            FilterFn::Blur => (0, Filter::Blur(amount)),
+            FilterFn::Brightness => (1, Filter::Brightness(amount)),
+            FilterFn::Contrast => (2, Filter::Contrast(amount)),
+            FilterFn::Grayscale => (3, Filter::Grayscale(amount)),
+            FilterFn::HueRotate => (4, Filter::HueRotate(amount)),
+            FilterFn::Invert => (5, Filter::Invert(amount)),
+            FilterFn::Opacity => (6, Filter::Opacity(amount)),
+            FilterFn::Saturate => (6 + u8::from(backdrop), Filter::Saturate(amount)),
+            FilterFn::Sepia => (7 + u8::from(backdrop), Filter::Sepia(amount)),
+        };
+        Part::Filter {
+            backdrop,
+            slot,
+            filter: Some(filter),
+        }
+    }
+}
+
+/// Layers of [`BoxShadow`]s, compared and hashed by their bits.
+#[derive(Debug, Clone)]
+pub(crate) struct Layers(Arc<[BoxShadow]>);
+
+impl Layers {
+    fn bits(&self) -> impl Iterator<Item = (u32, u32, u32, u32, u32, bool)> + '_ {
+        self.0.iter().map(|l| {
+            (
+                l.offset_x.to_bits(),
+                l.offset_y.to_bits(),
+                l.blur.to_bits(),
+                l.spread.to_bits(),
+                l.color.0,
+                l.inset,
+            )
+        })
+    }
+}
+
+impl PartialEq for Layers {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len() && self.bits().eq(other.bits())
+    }
+}
+
+impl Eq for Layers {}
+
+impl Hash for Layers {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for l in self.bits() {
+            l.hash(state);
+        }
+    }
+}
+
+/// `underline` in [`Declaration::Decoration`].
+const UNDERLINE: u8 = 1;
+/// `line-through` in [`Declaration::Decoration`].
+const LINE_THROUGH: u8 = 2;
 
 /// One typed declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -180,10 +381,56 @@ pub(crate) enum Declaration {
     TextPreset(&'static str),
     /// Tailwind's `shadow-*` (`"none"` removes it).
     Shadow(&'static str),
-    Scale(Bits),
-    TranslateX(Bits),
-    TranslateY(Bits),
-    Rotate(Bits),
+    /// Tailwind's `inset-shadow-*` (`"none"` removes it).
+    InsetShadow(&'static str),
+    /// Tailwind's `text-shadow-*` (`"none"` removes it).
+    TextShadow(&'static str),
+    /// Box shadows of the element's own.
+    Shadows(Layers),
+    PartColor(ColorPart, AdaptiveColor),
+    Ring(Bits),
+    RingOffset(Bits),
+    RingInset,
+    InsetRing(Bits),
+    /// `shadowOffset` (React Native's shadow).
+    ShadowOffset(Bits, Bits),
+    TextShadowOffset(Bits, Bits),
+    /// One step of the transform the styles compose (CSS's order:
+    /// translate, rotate, scale, then the 3D rotations and skews).
+    Transform(TransformKind, Bits),
+    TransformNone,
+    /// `transformOrigin` at points or fractions (`true`) of the size.
+    Origin([(bool, Bits); 2]),
+    Gradient(GradientShape),
+    GradientNone,
+    /// The position of the gradient's `from` (0), `via` (1) or `to` (2)
+    /// color, a fraction of its length.
+    StopPosition(u8, Bits),
+    Filter(bool, FilterFn, Bits),
+    FilterNone(bool),
+    FontVariant {
+        set: u8,
+        clear: u8,
+    },
+    /// [`UNDERLINE`] and [`LINE_THROUGH`] add up; 0 removes both.
+    Decoration(u8),
+    /// [`TransitionProps`] bits.
+    Transition(u8),
+    TransitionNone,
+    Duration(Bits),
+    Delay(Bits),
+    Ease([Bits; 4]),
+    /// Tailwind's `ease-*`.
+    EasePreset(&'static str),
+    /// A keyframe animation (`None`: none).
+    Animate(Option<u8>),
+    /// `repeat(n, minmax(0, 1fr))` tracks.
+    Tracks(StyleKey, u16),
+    /// `span n / span n`.
+    Span(StyleKey, u16),
+    /// The element is a group (`""`: unnamed): `group_*` styles inside
+    /// follow its states.
+    Group(&'static str),
 }
 
 /// Tailwind's default theme: the presets typed styles name.
@@ -193,8 +440,21 @@ fn color_patch(c: Color) -> PatchValue {
     PatchValue::Str(format!("#{:08x}", c.0).into())
 }
 
+fn shadow_preset(layers: Option<&Vec<BoxShadow>>) -> Arc<[BoxShadow]> {
+    layers.map_or_else(|| Arc::from([]), |l| Arc::from(l.as_slice()))
+}
+
+/// The keyframes of [`Declaration::Animate`].
+const KEYFRAMES: [Keyframes; 4] = [
+    Keyframes::Spin,
+    Keyframes::Ping,
+    Keyframes::Pulse,
+    Keyframes::Bounce,
+];
+
 impl Declaration {
     fn lower(&self, out: &mut Vec<Decl>) {
+        let part = |out: &mut Vec<Decl>, p: Part| out.push(Decl::Part(p));
         match self {
             Declaration::Number(key, n) => out.push(Decl::Set(*key, PatchValue::Number(n.0))),
             Declaration::Length(key, l) => out.push(Decl::Set(*key, l.patch())),
@@ -219,20 +479,150 @@ impl Declaration {
                 }
             }
             Declaration::Shadow(name) => {
-                let layers = PRESETS.shadows.get(*name).cloned().unwrap_or_default();
-                out.push(Decl::Part(Part::Shadow(Arc::from(layers))));
+                part(out, Part::Shadow(shadow_preset(PRESETS.shadows.get(*name))))
             }
-            Declaration::Scale(s) => {
-                out.push(Decl::Part(Part::ScaleX(s.0)));
-                out.push(Decl::Part(Part::ScaleY(s.0)));
+            Declaration::InsetShadow(name) => part(
+                out,
+                Part::InsetShadow(shadow_preset(PRESETS.inset_shadows.get(*name))),
+            ),
+            Declaration::TextShadow(name) => {
+                let layers = PRESETS.text_shadows.get(*name);
+                part(
+                    out,
+                    Part::TextShadow(
+                        layers.map_or_else(|| Arc::from([]), |l| Arc::from(l.as_slice())),
+                    ),
+                )
             }
-            Declaration::TranslateX(p) => {
-                out.push(Decl::Part(Part::TranslateX(tailwind::Len::Points(p.0))))
+            Declaration::Shadows(layers) => part(out, Part::Shadow(layers.0.clone())),
+            Declaration::PartColor(which, c) => out.push(if c.light == c.dark {
+                Decl::Part(which.part(c.light))
+            } else {
+                Decl::AdaptivePart(Box::new([which.part(c.light), which.part(c.dark)]))
+            }),
+            Declaration::Ring(w) => part(out, Part::Ring(w.0)),
+            Declaration::RingOffset(w) => part(out, Part::RingOffset(w.0)),
+            Declaration::RingInset => part(out, Part::RingInset),
+            Declaration::InsetRing(w) => part(out, Part::InsetRing(w.0)),
+            Declaration::ShadowOffset(x, y) => {
+                out.push(Decl::Style(StyleDecl::ShadowOffset(Some((x.0, y.0)))))
             }
-            Declaration::TranslateY(p) => {
-                out.push(Decl::Part(Part::TranslateY(tailwind::Len::Points(p.0))))
+            Declaration::TextShadowOffset(x, y) => {
+                out.push(Decl::Style(StyleDecl::TextShadowOffset(Some((x.0, y.0)))))
             }
-            Declaration::Rotate(d) => out.push(Decl::Part(Part::Rotate(d.0))),
+            Declaration::Transform(kind, v) => {
+                let v = v.0;
+                let parts: &[Part] = match kind {
+                    TransformKind::Scale => &[Part::ScaleX(v), Part::ScaleY(v)],
+                    TransformKind::ScaleX => &[Part::ScaleX(v)],
+                    TransformKind::ScaleY => &[Part::ScaleY(v)],
+                    TransformKind::TranslateX => &[Part::TranslateX(tailwind::Len::Points(v))],
+                    TransformKind::TranslateY => &[Part::TranslateY(tailwind::Len::Points(v))],
+                    TransformKind::TranslateXFraction => {
+                        &[Part::TranslateX(tailwind::Len::Fraction(v))]
+                    }
+                    TransformKind::TranslateYFraction => {
+                        &[Part::TranslateY(tailwind::Len::Fraction(v))]
+                    }
+                    TransformKind::Rotate => &[Part::Rotate(v)],
+                    TransformKind::RotateX => &[Part::RotateX(v)],
+                    TransformKind::RotateY => &[Part::RotateY(v)],
+                    TransformKind::SkewX => &[Part::SkewX(v)],
+                    TransformKind::SkewY => &[Part::SkewY(v)],
+                    TransformKind::Perspective => &[Part::Perspective(v)],
+                };
+                out.extend(parts.iter().cloned().map(Decl::Part));
+            }
+            Declaration::TransformNone => part(out, Part::TransformNone),
+            Declaration::Origin(axes) => {
+                let [x, y] = axes.map(|(fraction, v)| {
+                    if fraction {
+                        format!("{}%", v.0 * 100.0)
+                    } else {
+                        format!("{}px", v.0)
+                    }
+                });
+                out.push(Decl::Set(
+                    StyleKey::TransformOrigin,
+                    PatchValue::Str(format!("{x} {y}").into()),
+                ));
+            }
+            Declaration::Gradient(shape) => part(
+                out,
+                Part::Gradient(match *shape {
+                    GradientShape::Linear(angle) => GradientKind::Linear { angle: angle.0 },
+                    GradientShape::Corner { right, bottom } => {
+                        GradientKind::LinearCorner { right, bottom }
+                    }
+                    GradientShape::Radial => GradientKind::Radial {
+                        circle: false,
+                        size: GradientSize::FarthestCorner,
+                        x: 0.5,
+                        y: 0.5,
+                    },
+                    GradientShape::Conic(from) => GradientKind::Conic {
+                        from: from.0,
+                        x: 0.5,
+                        y: 0.5,
+                    },
+                }),
+            ),
+            Declaration::GradientNone => part(out, Part::GradientNone),
+            Declaration::StopPosition(i, at) => part(
+                out,
+                match i {
+                    0 => Part::FromPos(at.0),
+                    1 => Part::ViaPos(at.0),
+                    _ => Part::ToPos(at.0),
+                },
+            ),
+            Declaration::Filter(backdrop, f, amount) => part(out, f.part(*backdrop, amount.0)),
+            Declaration::FilterNone(backdrop) => part(
+                out,
+                Part::FilterNone {
+                    backdrop: *backdrop,
+                },
+            ),
+            Declaration::FontVariant { set, clear } => part(
+                out,
+                Part::FontVariant {
+                    set: *set,
+                    clear: *clear,
+                },
+            ),
+            Declaration::Decoration(bits) => out.push(Decl::Set(
+                StyleKey::TextDecorationLine,
+                PatchValue::Str(
+                    match *bits {
+                        0 => "none",
+                        UNDERLINE => "underline",
+                        LINE_THROUGH => "line-through",
+                        _ => "underline line-through",
+                    }
+                    .into(),
+                ),
+            )),
+            Declaration::Transition(props) => part(out, Part::TransitionProps(*props)),
+            Declaration::TransitionNone => part(out, Part::TransitionNone),
+            Declaration::Duration(ms) => part(out, Part::Duration(ms.0)),
+            Declaration::Delay(ms) => part(out, Part::Delay(ms.0)),
+            Declaration::Ease(curve) => part(out, Part::Ease(curve.map(|b| b.0))),
+            Declaration::EasePreset(name) => {
+                if let Some(curve) = PRESETS.ease.get(*name) {
+                    part(out, Part::Ease(*curve));
+                }
+            }
+            Declaration::Animate(k) => part(out, Part::Animate(k.map(|i| KEYFRAMES[i as usize]))),
+            Declaration::Tracks(key, n) => out.push(Decl::Set(
+                *key,
+                PatchValue::Str(format!("repeat({n}, minmax(0, 1fr))").into()),
+            )),
+            Declaration::Span(key, n) => out.push(Decl::Set(
+                *key,
+                PatchValue::Str(format!("span {n} / span {n}").into()),
+            )),
+            // A property of the class list, not a declaration.
+            Declaration::Group(_) => {}
         }
     }
 }
@@ -245,6 +635,8 @@ type Entries = Vec<(Variant, Declaration)>;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct StyleRefinement {
     entries: Entries,
+    /// The names of the groups its variants follow ([`Variant::group`]).
+    names: Vec<&'static str>,
 }
 
 impl StyleRefinement {
@@ -253,7 +645,7 @@ impl StyleRefinement {
         if self.entries.capacity() == 0 {
             self.entries.reserve(8);
         }
-        self.entries.push((Variant::Base, decl));
+        self.entries.push((Variant::default(), decl));
     }
 
     pub(crate) fn lengths(&mut self, keys: &[StyleKey], length: Length) {
@@ -266,6 +658,12 @@ impl StyleRefinement {
         self.push(Declaration::Number(key, Bits(n)));
     }
 
+    pub(crate) fn numbers(&mut self, keys: &[StyleKey], n: f32) {
+        for key in keys {
+            self.number(*key, n);
+        }
+    }
+
     pub(crate) fn keyword(&mut self, key: StyleKey, k: &'static str) {
         self.push(Declaration::Keyword(key, k));
     }
@@ -276,10 +674,30 @@ impl StyleRefinement {
         }
     }
 
-    /// `other`'s declarations, applying while in `variant`.
+    /// `other`'s declarations, applying while in `variant` (and in their
+    /// own).
     pub(crate) fn extend_as(&mut self, variant: Variant, other: StyleRefinement) {
-        self.entries
-            .extend(other.entries.into_iter().map(|(_, d)| (variant, d)));
+        for (mut v, d) in other.entries {
+            if v.group != 0 {
+                v.group = self.name(other.names[v.group as usize - 1]);
+            }
+            self.entries.push((v.within(variant), d));
+        }
+    }
+
+    /// [`Variant::group`] of the group `name`.
+    fn name(&mut self, name: &'static str) -> u8 {
+        if name.is_empty() {
+            return 0;
+        }
+        let at = match self.names.iter().position(|n| *n == name) {
+            Some(at) => at,
+            None => {
+                self.names.push(name);
+                self.names.len() - 1
+            }
+        };
+        u8::try_from(at + 1).expect("fewer than 255 group names")
     }
 
     /// No declarations.
@@ -287,27 +705,84 @@ impl StyleRefinement {
         self.entries.is_empty()
     }
 
-    /// The rules, as Tailwind classes compile to.
+    /// The rules, as Tailwind classes compile to: one per variant, in
+    /// Tailwind's variant order.
     pub(crate) fn lower(&self) -> ClassList {
-        let mut rules = Vec::new();
-        for (variant, states, rank) in [
-            (Variant::Base, 0, 0),
-            (Variant::Hover, state::HOVERED, rank::HOVER),
-            (Variant::Focus, state::FOCUSED, rank::FOCUS),
-            (Variant::Active, state::PRESSED, rank::ACTIVE),
-        ] {
+        let mut variants: Vec<Variant> = Vec::new();
+        let mut groups: Vec<Box<str>> = Vec::new();
+        for (v, d) in &self.entries {
+            if let Declaration::Group(name) = d {
+                if !groups.iter().any(|g| **g == **name) {
+                    groups.push((*name).into());
+                }
+            } else if !variants.contains(v) {
+                variants.push(*v);
+            }
+        }
+        let mut rules = Vec::with_capacity(variants.len());
+        for variant in variants {
             let mut decls = Vec::new();
+            // Decorations add up within a variant (`.underline()
+            // .line_through()` draws both).
+            let mut decoration = 0;
             for (v, d) in &self.entries {
-                if *v == variant {
+                if *v != variant {
+                    continue;
+                }
+                if let Declaration::Decoration(bits) = d {
+                    decoration = if *bits == 0 { 0 } else { decoration | bits };
+                    Declaration::Decoration(decoration).lower(&mut decls);
+                } else {
                     d.lower(&mut decls);
                 }
             }
             if !decls.is_empty() {
-                rules.push(Rule::new(states, rank, decls));
+                let group = (variant.group_states != 0).then(|| {
+                    let name = match variant.group {
+                        0 => "",
+                        g => self.names[g as usize - 1],
+                    };
+                    (name, variant.group_states)
+                });
+                rules.push(Rule::with(
+                    variant.states,
+                    group,
+                    variant.dark,
+                    variant.rank(),
+                    decls,
+                ));
             }
         }
-        ClassList::from_rules(rules)
+        ClassList::from_rules(rules, groups)
     }
+}
+
+/// `s` with number / letter forms `set` on and `clear` off.
+fn font_variant<S: Styled>(mut s: S, set: u8, clear: u8) -> S {
+    s.style().push(Declaration::FontVariant { set, clear });
+    s
+}
+
+/// A text's base direction (`writingDirection`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum WritingDirection {
+    /// From the content (the default).
+    #[default]
+    Auto,
+    /// Left to right.
+    Ltr,
+    /// Right to left.
+    Rtl,
+}
+
+/// The shape of rounded corners (`borderCurve`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum BorderCurve {
+    /// Quarter circles (the default).
+    #[default]
+    Circular,
+    /// Curvature easing into the edges (iOS app icons); pills stay pills.
+    Continuous,
 }
 
 /// Styling methods, named as in GPUI and Tailwind. Implemented by the
@@ -401,6 +876,102 @@ pub trait Styled: Sized {
         self
     }
 
+    /// `count` equal grid columns (Tailwind's `grid-cols-3`).
+    fn grid_cols(mut self, count: u16) -> Self {
+        self.style()
+            .push(Declaration::Tracks(StyleKey::GridTemplateColumns, count));
+        self
+    }
+
+    /// `count` equal grid rows.
+    fn grid_rows(mut self, count: u16) -> Self {
+        self.style()
+            .push(Declaration::Tracks(StyleKey::GridTemplateRows, count));
+        self
+    }
+
+    /// The grid's columns as CSS tracks (`"200px 1fr"`, `"repeat(auto-fill,
+    /// minmax(80px, 1fr))"`, line names).
+    fn grid_template_columns(mut self, tracks: impl Into<SharedString>) -> Self {
+        self.style().push(Declaration::Str(
+            StyleKey::GridTemplateColumns,
+            tracks.into(),
+        ));
+        self
+    }
+
+    /// The grid's rows as CSS tracks.
+    fn grid_template_rows(mut self, tracks: impl Into<SharedString>) -> Self {
+        self.style()
+            .push(Declaration::Str(StyleKey::GridTemplateRows, tracks.into()));
+        self
+    }
+
+    /// Items fill the grid column by column.
+    fn grid_flow_col(mut self) -> Self {
+        self.style().keyword(StyleKey::GridAutoFlow, "column");
+        self
+    }
+
+    /// Items fill the grid's holes left by larger ones.
+    fn grid_flow_dense(mut self) -> Self {
+        self.style().keyword(StyleKey::GridAutoFlow, "row dense");
+        self
+    }
+
+    /// In the grid, `count` columns wide.
+    fn col_span(mut self, count: u16) -> Self {
+        self.style()
+            .push(Declaration::Span(StyleKey::GridColumn, count));
+        self
+    }
+
+    /// In the grid, `count` rows high.
+    fn row_span(mut self, count: u16) -> Self {
+        self.style()
+            .push(Declaration::Span(StyleKey::GridRow, count));
+        self
+    }
+
+    /// Across every column of the grid.
+    fn col_span_full(mut self) -> Self {
+        self.style().keyword(StyleKey::GridColumn, "1 / -1");
+        self
+    }
+
+    /// Across every row of the grid.
+    fn row_span_full(mut self) -> Self {
+        self.style().keyword(StyleKey::GridRow, "1 / -1");
+        self
+    }
+
+    /// Starts at column line `line` (1 is the first; negative from the
+    /// end).
+    fn col_start(mut self, line: i16) -> Self {
+        self.style()
+            .number(StyleKey::GridColumnStart, f32::from(line));
+        self
+    }
+
+    /// Ends at column line `line`.
+    fn col_end(mut self, line: i16) -> Self {
+        self.style()
+            .number(StyleKey::GridColumnEnd, f32::from(line));
+        self
+    }
+
+    /// Starts at row line `line`.
+    fn row_start(mut self, line: i16) -> Self {
+        self.style().number(StyleKey::GridRowStart, f32::from(line));
+        self
+    }
+
+    /// Ends at row line `line`.
+    fn row_end(mut self, line: i16) -> Self {
+        self.style().number(StyleKey::GridRowEnd, f32::from(line));
+        self
+    }
+
     /// Not laid out nor shown.
     fn hidden(mut self) -> Self {
         self.style().keyword(StyleKey::Display, "none");
@@ -464,9 +1035,17 @@ pub trait Styled: Sized {
         self
     }
 
-    /// Takes free space.
-    fn flex_grow(mut self) -> Self {
-        self.style().number(StyleKey::FlexGrow, 1.0);
+    /// Takes free space, `factor` times as much as a sibling growing by 1
+    /// (`flex-grow`; Tailwind's `grow-*`).
+    fn flex_grow(mut self, factor: f32) -> Self {
+        self.style().number(StyleKey::FlexGrow, factor);
+        self
+    }
+
+    /// Gives up space when there is too little, `factor` times as much as
+    /// a sibling shrinking by 1 (`flex-shrink`).
+    fn flex_shrink(mut self, factor: f32) -> Self {
+        self.style().number(StyleKey::FlexShrink, factor);
         self
     }
 
@@ -757,6 +1336,294 @@ pub trait Styled: Sized {
         self
     }
 
+    /// The top border's width.
+    fn border_t(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderTopWidth, width);
+        self
+    }
+
+    /// The right border's width.
+    fn border_r(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderRightWidth, width);
+        self
+    }
+
+    /// The bottom border's width.
+    fn border_b(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderBottomWidth, width);
+        self
+    }
+
+    /// The left border's width.
+    fn border_l(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderLeftWidth, width);
+        self
+    }
+
+    /// The left and right borders' width.
+    fn border_x(mut self, width: f32) -> Self {
+        self.style().numbers(
+            &[StyleKey::BorderLeftWidth, StyleKey::BorderRightWidth],
+            width,
+        );
+        self
+    }
+
+    /// The top and bottom borders' width.
+    fn border_y(mut self, width: f32) -> Self {
+        self.style().numbers(
+            &[StyleKey::BorderTopWidth, StyleKey::BorderBottomWidth],
+            width,
+        );
+        self
+    }
+
+    /// The leading border's width (left in left-to-right layouts).
+    fn border_s(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderStartWidth, width);
+        self
+    }
+
+    /// The trailing border's width.
+    fn border_e(mut self, width: f32) -> Self {
+        self.style().number(StyleKey::BorderEndWidth, width);
+        self
+    }
+
+    /// The top border's color.
+    fn border_t_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderTopColor], color.into());
+        self
+    }
+
+    /// The right border's color.
+    fn border_r_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderRightColor], color.into());
+        self
+    }
+
+    /// The bottom border's color.
+    fn border_b_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderBottomColor], color.into());
+        self
+    }
+
+    /// The left border's color.
+    fn border_l_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderLeftColor], color.into());
+        self
+    }
+
+    /// The left and right borders' color.
+    fn border_x_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style().color(
+            &[StyleKey::BorderLeftColor, StyleKey::BorderRightColor],
+            color.into(),
+        );
+        self
+    }
+
+    /// The top and bottom borders' color.
+    fn border_y_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style().color(
+            &[StyleKey::BorderTopColor, StyleKey::BorderBottomColor],
+            color.into(),
+        );
+        self
+    }
+
+    /// The leading border's color.
+    fn border_s_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderStartColor], color.into());
+        self
+    }
+
+    /// The trailing border's color.
+    fn border_e_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .color(&[StyleKey::BorderEndColor], color.into());
+        self
+    }
+
+    /// Solid borders (the default).
+    fn border_solid(mut self) -> Self {
+        self.style().keyword(StyleKey::BorderStyle, "solid");
+        self
+    }
+
+    /// Dashed borders.
+    fn border_dashed(mut self) -> Self {
+        self.style().keyword(StyleKey::BorderStyle, "dashed");
+        self
+    }
+
+    /// Dotted borders.
+    fn border_dotted(mut self) -> Self {
+        self.style().keyword(StyleKey::BorderStyle, "dotted");
+        self
+    }
+
+    /// The shape of its rounded corners.
+    fn border_curve(mut self, curve: BorderCurve) -> Self {
+        self.style().keyword(
+            StyleKey::BorderCurve,
+            match curve {
+                BorderCurve::Circular => "circular",
+                BorderCurve::Continuous => "continuous",
+            },
+        );
+        self
+    }
+
+    /// The top left corner's radius.
+    fn rounded_tl(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderTopLeftRadius], radius.into());
+        self
+    }
+
+    /// The top right corner's radius.
+    fn rounded_tr(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderTopRightRadius], radius.into());
+        self
+    }
+
+    /// The bottom right corner's radius.
+    fn rounded_br(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderBottomRightRadius], radius.into());
+        self
+    }
+
+    /// The bottom left corner's radius.
+    fn rounded_bl(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderBottomLeftRadius], radius.into());
+        self
+    }
+
+    /// The left corners' radius.
+    fn rounded_l(mut self, radius: impl Into<Length>) -> Self {
+        self.style().lengths(
+            &[
+                StyleKey::BorderTopLeftRadius,
+                StyleKey::BorderBottomLeftRadius,
+            ],
+            radius.into(),
+        );
+        self
+    }
+
+    /// The right corners' radius.
+    fn rounded_r(mut self, radius: impl Into<Length>) -> Self {
+        self.style().lengths(
+            &[
+                StyleKey::BorderTopRightRadius,
+                StyleKey::BorderBottomRightRadius,
+            ],
+            radius.into(),
+        );
+        self
+    }
+
+    /// The top leading corner's radius (top left in left-to-right
+    /// layouts; Tailwind's `rounded-ss`).
+    fn rounded_ss(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderTopStartRadius], radius.into());
+        self
+    }
+
+    /// The top trailing corner's radius (`rounded-se`).
+    fn rounded_se(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderTopEndRadius], radius.into());
+        self
+    }
+
+    /// The bottom trailing corner's radius (`rounded-ee`).
+    fn rounded_ee(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderBottomEndRadius], radius.into());
+        self
+    }
+
+    /// The bottom leading corner's radius (`rounded-es`).
+    fn rounded_es(mut self, radius: impl Into<Length>) -> Self {
+        self.style()
+            .lengths(&[StyleKey::BorderBottomStartRadius], radius.into());
+        self
+    }
+
+    /// The leading corners' radius.
+    fn rounded_s(mut self, radius: impl Into<Length>) -> Self {
+        self.style().lengths(
+            &[
+                StyleKey::BorderTopStartRadius,
+                StyleKey::BorderBottomStartRadius,
+            ],
+            radius.into(),
+        );
+        self
+    }
+
+    /// The trailing corners' radius.
+    fn rounded_e(mut self, radius: impl Into<Length>) -> Self {
+        self.style().lengths(
+            &[
+                StyleKey::BorderTopEndRadius,
+                StyleKey::BorderBottomEndRadius,
+            ],
+            radius.into(),
+        );
+        self
+    }
+
+    /// An outline `width` points wide, outside the border; it takes no
+    /// space.
+    fn outline(mut self, width: f32) -> Self {
+        let s = self.style();
+        s.number(StyleKey::OutlineWidth, width);
+        s.keyword(StyleKey::OutlineStyle, "solid");
+        self
+    }
+
+    /// The outline's color.
+    fn outline_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style().color(&[StyleKey::OutlineColor], color.into());
+        self
+    }
+
+    /// The outline's distance from the border (negative: inside it).
+    fn outline_offset(mut self, points: f32) -> Self {
+        self.style().number(StyleKey::OutlineOffset, points);
+        self
+    }
+
+    /// A dashed outline.
+    fn outline_dashed(mut self) -> Self {
+        self.style().keyword(StyleKey::OutlineStyle, "dashed");
+        self
+    }
+
+    /// A dotted outline.
+    fn outline_dotted(mut self) -> Self {
+        self.style().keyword(StyleKey::OutlineStyle, "dotted");
+        self
+    }
+
+    /// No outline.
+    fn outline_none(mut self) -> Self {
+        self.style().keyword(StyleKey::OutlineStyle, "none");
+        self
+    }
+
     /// No shadow.
     fn shadow_none(mut self) -> Self {
         self.style().push(Declaration::Shadow("none"));
@@ -805,27 +1672,627 @@ pub trait Styled: Sized {
         self
     }
 
-    /// Scales from the center (1 is the natural size).
-    fn scale(mut self, scale: f32) -> Self {
-        self.style().push(Declaration::Scale(Bits(scale)));
+    /// Box shadows of its own (CSS's `box-shadow`: offsets, blur, spread,
+    /// color, `inset`), instead of a preset's.
+    fn shadow(mut self, layers: impl IntoIterator<Item = BoxShadow>) -> Self {
+        let layers: Arc<[BoxShadow]> = layers.into_iter().collect();
+        self.style().push(Declaration::Shadows(Layers(layers)));
         self
+    }
+
+    /// The shadow's color: of the presets' layers (an opaque color keeps
+    /// their alpha, Tailwind's `shadow-sky-500`; one with an alpha sets it,
+    /// `shadow-sky-500/50`), or of the shadow set with
+    /// [`Styled::shadow_opacity`], [`Styled::shadow_radius`] and
+    /// [`Styled::shadow_offset`].
+    fn shadow_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        let color = color.into();
+        let s = self.style();
+        s.color(&[StyleKey::ShadowColor], color);
+        s.push(Declaration::PartColor(ColorPart::Shadow, color));
+        self
+    }
+
+    /// A shadow of this opacity (0 by default: none), with
+    /// [`Styled::shadow_color`] (black by default), [`Styled::shadow_radius`]
+    /// and [`Styled::shadow_offset`].
+    fn shadow_opacity(mut self, opacity: f32) -> Self {
+        self.style()
+            .number(StyleKey::ShadowOpacity, opacity.clamp(0.0, 1.0));
+        self
+    }
+
+    /// The shadow's blur radius, in points (3 by default).
+    fn shadow_radius(mut self, radius: f32) -> Self {
+        self.style().number(StyleKey::ShadowRadius, radius);
+        self
+    }
+
+    /// The shadow's offset, in points (right and down; `(0, -3)` by
+    /// default).
+    fn shadow_offset(mut self, x: f32, y: f32) -> Self {
+        self.style()
+            .push(Declaration::ShadowOffset(Bits(x), Bits(y)));
+        self
+    }
+
+    /// Tailwind's `inset-shadow-2xs`.
+    fn inset_shadow_2xs(mut self) -> Self {
+        self.style().push(Declaration::InsetShadow("2xs"));
+        self
+    }
+
+    /// Tailwind's `inset-shadow-xs`.
+    fn inset_shadow_xs(mut self) -> Self {
+        self.style().push(Declaration::InsetShadow("xs"));
+        self
+    }
+
+    /// Tailwind's `inset-shadow-sm`.
+    fn inset_shadow_sm(mut self) -> Self {
+        self.style().push(Declaration::InsetShadow("sm"));
+        self
+    }
+
+    /// No inset shadow.
+    fn inset_shadow_none(mut self) -> Self {
+        self.style().push(Declaration::InsetShadow("none"));
+        self
+    }
+
+    /// The inset shadow's color (as [`Styled::shadow_color`] for the
+    /// presets).
+    fn inset_shadow_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::InsetShadow, color.into()));
+        self
+    }
+
+    /// A ring `width` points wide around the border (a solid shadow; it
+    /// takes no space), in the text color unless [`Styled::ring_color`].
+    fn ring(mut self, width: f32) -> Self {
+        self.style().push(Declaration::Ring(Bits(width)));
+        self
+    }
+
+    /// The ring's color.
+    fn ring_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::Ring, color.into()));
+        self
+    }
+
+    /// A gap of `width` points between the border and the ring.
+    fn ring_offset(mut self, width: f32) -> Self {
+        self.style().push(Declaration::RingOffset(Bits(width)));
+        self
+    }
+
+    /// The gap's color (white by default).
+    fn ring_offset_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::RingOffset, color.into()));
+        self
+    }
+
+    /// The ring inside the border instead.
+    fn ring_inset(mut self) -> Self {
+        self.style().push(Declaration::RingInset);
+        self
+    }
+
+    /// A second ring `width` points wide, inside the border.
+    fn inset_ring(mut self, width: f32) -> Self {
+        self.style().push(Declaration::InsetRing(Bits(width)));
+        self
+    }
+
+    /// The inside ring's color.
+    fn inset_ring_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::InsetRing, color.into()));
+        self
+    }
+
+    /// A linear gradient over the background, along `degrees` (0 up, 90
+    /// right), from [`Styled::gradient_from`] through
+    /// [`Styled::gradient_via`] to [`Styled::gradient_to`].
+    fn bg_linear(mut self, degrees: f32) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Linear(Bits(degrees))));
+        self
+    }
+
+    /// A linear gradient towards the top.
+    fn bg_linear_to_t(self) -> Self {
+        self.bg_linear(0.0)
+    }
+
+    /// A linear gradient towards the right.
+    fn bg_linear_to_r(self) -> Self {
+        self.bg_linear(90.0)
+    }
+
+    /// A linear gradient towards the bottom.
+    fn bg_linear_to_b(self) -> Self {
+        self.bg_linear(180.0)
+    }
+
+    /// A linear gradient towards the left.
+    fn bg_linear_to_l(self) -> Self {
+        self.bg_linear(270.0)
+    }
+
+    /// A linear gradient towards the top right corner.
+    fn bg_linear_to_tr(mut self) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Corner {
+                right: true,
+                bottom: false,
+            }));
+        self
+    }
+
+    /// A linear gradient towards the bottom right corner.
+    fn bg_linear_to_br(mut self) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Corner {
+                right: true,
+                bottom: true,
+            }));
+        self
+    }
+
+    /// A linear gradient towards the bottom left corner.
+    fn bg_linear_to_bl(mut self) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Corner {
+                right: false,
+                bottom: true,
+            }));
+        self
+    }
+
+    /// A linear gradient towards the top left corner.
+    fn bg_linear_to_tl(mut self) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Corner {
+                right: false,
+                bottom: false,
+            }));
+        self
+    }
+
+    /// A radial gradient from the center to the farthest corner.
+    fn bg_radial(mut self) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Radial));
+        self
+    }
+
+    /// A conic gradient around the center, starting at `degrees` (0 up).
+    fn bg_conic(mut self, degrees: f32) -> Self {
+        self.style()
+            .push(Declaration::Gradient(GradientShape::Conic(Bits(degrees))));
+        self
+    }
+
+    /// No gradient.
+    fn bg_gradient_none(mut self) -> Self {
+        self.style().push(Declaration::GradientNone);
+        self
+    }
+
+    /// The gradient's first color (transparent by default).
+    fn gradient_from(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::From, color.into()));
+        self
+    }
+
+    /// A color in the middle of the gradient.
+    fn gradient_via(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::Via, color.into()));
+        self
+    }
+
+    /// The gradient's last color (transparent by default).
+    fn gradient_to(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        self.style()
+            .push(Declaration::PartColor(ColorPart::To, color.into()));
+        self
+    }
+
+    /// Where the first color is, a fraction of the gradient (0 by
+    /// default).
+    fn gradient_from_position(mut self, at: f32) -> Self {
+        self.style().push(Declaration::StopPosition(0, Bits(at)));
+        self
+    }
+
+    /// Where the middle color is (0.5 by default).
+    fn gradient_via_position(mut self, at: f32) -> Self {
+        self.style().push(Declaration::StopPosition(1, Bits(at)));
+        self
+    }
+
+    /// Where the last color is (1 by default).
+    fn gradient_to_position(mut self, at: f32) -> Self {
+        self.style().push(Declaration::StopPosition(2, Bits(at)));
+        self
+    }
+
+    /// Blurs it and its content by `radius` points (Tailwind's `blur-sm`
+    /// is 8).
+    fn blur(self, radius: f32) -> Self {
+        filter(self, false, FilterFn::Blur, radius)
+    }
+
+    /// Brightens (> 1) or darkens (< 1) it.
+    fn brightness(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Brightness, amount)
+    }
+
+    /// Raises (> 1) or lowers (< 1) its contrast.
+    fn contrast(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Contrast, amount)
+    }
+
+    /// Turns it gray (1: fully).
+    fn grayscale(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Grayscale, amount)
+    }
+
+    /// Turns its hues by `degrees`.
+    fn hue_rotate(self, degrees: f32) -> Self {
+        filter(self, false, FilterFn::HueRotate, degrees)
+    }
+
+    /// Inverts its colors (1: fully).
+    fn invert(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Invert, amount)
+    }
+
+    /// Saturates (> 1) or desaturates (< 1) it.
+    fn saturate(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Saturate, amount)
+    }
+
+    /// Tones it sepia (1: fully).
+    fn sepia(self, amount: f32) -> Self {
+        filter(self, false, FilterFn::Sepia, amount)
+    }
+
+    /// No filters.
+    fn filter_none(mut self) -> Self {
+        self.style().push(Declaration::FilterNone(false));
+        self
+    }
+
+    /// Blurs what is behind it by `radius` points (frosted glass; give it a
+    /// translucent background).
+    fn backdrop_blur(self, radius: f32) -> Self {
+        filter(self, true, FilterFn::Blur, radius)
+    }
+
+    /// Brightens or darkens what is behind it.
+    fn backdrop_brightness(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Brightness, amount)
+    }
+
+    /// Changes the contrast of what is behind it.
+    fn backdrop_contrast(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Contrast, amount)
+    }
+
+    /// Turns what is behind it gray.
+    fn backdrop_grayscale(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Grayscale, amount)
+    }
+
+    /// Turns the hues of what is behind it.
+    fn backdrop_hue_rotate(self, degrees: f32) -> Self {
+        filter(self, true, FilterFn::HueRotate, degrees)
+    }
+
+    /// Inverts what is behind it.
+    fn backdrop_invert(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Invert, amount)
+    }
+
+    /// Fades what is behind it.
+    fn backdrop_opacity(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Opacity, amount)
+    }
+
+    /// Saturates what is behind it.
+    fn backdrop_saturate(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Saturate, amount)
+    }
+
+    /// Tones what is behind it sepia.
+    fn backdrop_sepia(self, amount: f32) -> Self {
+        filter(self, true, FilterFn::Sepia, amount)
+    }
+
+    /// No backdrop filters.
+    fn backdrop_filter_none(mut self) -> Self {
+        self.style().push(Declaration::FilterNone(true));
+        self
+    }
+
+    /// How it blends with what is behind it.
+    fn mix_blend_mode(mut self, mode: BlendMode) -> Self {
+        self.style().keyword(StyleKey::MixBlendMode, mode.name());
+        self
+    }
+
+    /// Changes of colors, opacity, shadows and transforms animate
+    /// (Tailwind's `transition`: 150ms, ease-in-out by default).
+    fn transition(self) -> Self {
+        transition(
+            self,
+            TransitionProps::COLORS
+                | TransitionProps::OPACITY
+                | TransitionProps::SHADOW
+                | TransitionProps::TRANSFORM,
+        )
+    }
+
+    /// Changes of everything that can animate do.
+    fn transition_all(self) -> Self {
+        transition(self, TransitionProps::ALL)
+    }
+
+    /// Changes of colors animate.
+    fn transition_colors(self) -> Self {
+        transition(self, TransitionProps::COLORS)
+    }
+
+    /// Changes of opacity animate.
+    fn transition_opacity(self) -> Self {
+        transition(self, TransitionProps::OPACITY)
+    }
+
+    /// Changes of shadows animate.
+    fn transition_shadow(self) -> Self {
+        transition(self, TransitionProps::SHADOW)
+    }
+
+    /// Changes of the transform animate.
+    fn transition_transform(self) -> Self {
+        transition(self, TransitionProps::TRANSFORM)
+    }
+
+    /// Changes jump.
+    fn transition_none(mut self) -> Self {
+        self.style().push(Declaration::TransitionNone);
+        self
+    }
+
+    /// Transitions last `ms` milliseconds.
+    fn duration(mut self, ms: f32) -> Self {
+        self.style().push(Declaration::Duration(Bits(ms)));
+        self
+    }
+
+    /// Transitions start after `ms` milliseconds.
+    fn delay(mut self, ms: f32) -> Self {
+        self.style().push(Declaration::Delay(Bits(ms)));
+        self
+    }
+
+    /// Transitions at a constant pace.
+    fn ease_linear(mut self) -> Self {
+        self.style().push(Declaration::EasePreset("linear"));
+        self
+    }
+
+    /// Transitions that start slowly.
+    fn ease_in(mut self) -> Self {
+        self.style().push(Declaration::EasePreset("in"));
+        self
+    }
+
+    /// Transitions that end slowly.
+    fn ease_out(mut self) -> Self {
+        self.style().push(Declaration::EasePreset("out"));
+        self
+    }
+
+    /// Transitions that start and end slowly.
+    fn ease_in_out(mut self) -> Self {
+        self.style().push(Declaration::EasePreset("in-out"));
+        self
+    }
+
+    /// Transitions along the cubic Bézier curve `x1, y1, x2, y2`.
+    fn ease_bezier(mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> Self {
+        self.style()
+            .push(Declaration::Ease([x1, y1, x2, y2].map(Bits)));
+        self
+    }
+
+    /// Turns around, forever (Tailwind's `animate-spin`: a loader).
+    fn animate_spin(mut self) -> Self {
+        self.style().push(Declaration::Animate(Some(0)));
+        self
+    }
+
+    /// Scales up and fades out, forever (`animate-ping`: a badge's pulse).
+    fn animate_ping(mut self) -> Self {
+        self.style().push(Declaration::Animate(Some(1)));
+        self
+    }
+
+    /// Fades to half and back, forever (`animate-pulse`: a skeleton).
+    fn animate_pulse(mut self) -> Self {
+        self.style().push(Declaration::Animate(Some(2)));
+        self
+    }
+
+    /// Jumps and lands, forever (`animate-bounce`).
+    fn animate_bounce(mut self) -> Self {
+        self.style().push(Declaration::Animate(Some(3)));
+        self
+    }
+
+    /// No keyframe animation.
+    fn animate_none(mut self) -> Self {
+        self.style().push(Declaration::Animate(None));
+        self
+    }
+
+    /// Scales from the center (1 is the natural size).
+    fn scale(self, scale: f32) -> Self {
+        self.transform_step(TransformKind::Scale, scale)
+    }
+
+    /// Scales horizontally.
+    fn scale_x(self, scale: f32) -> Self {
+        self.transform_step(TransformKind::ScaleX, scale)
+    }
+
+    /// Scales vertically.
+    fn scale_y(self, scale: f32) -> Self {
+        self.transform_step(TransformKind::ScaleY, scale)
     }
 
     /// Moves horizontally by `points` (after layout).
-    fn translate_x(mut self, points: f32) -> Self {
-        self.style().push(Declaration::TranslateX(Bits(points)));
-        self
+    fn translate_x(self, points: f32) -> Self {
+        self.transform_step(TransformKind::TranslateX, points)
     }
 
     /// Moves vertically by `points` (after layout).
-    fn translate_y(mut self, points: f32) -> Self {
-        self.style().push(Declaration::TranslateY(Bits(points)));
-        self
+    fn translate_y(self, points: f32) -> Self {
+        self.transform_step(TransformKind::TranslateY, points)
     }
 
     /// Rotates by `degrees`, clockwise.
-    fn rotate(mut self, degrees: f32) -> Self {
-        self.style().push(Declaration::Rotate(Bits(degrees)));
+    fn rotate(self, degrees: f32) -> Self {
+        self.transform_step(TransformKind::Rotate, degrees)
+    }
+
+    /// Rotates by `degrees` around the horizontal axis (3D; with
+    /// [`Styled::perspective`] it tilts towards the viewer).
+    fn rotate_x(self, degrees: f32) -> Self {
+        self.transform_step(TransformKind::RotateX, degrees)
+    }
+
+    /// Rotates by `degrees` around the vertical axis (3D).
+    fn rotate_y(self, degrees: f32) -> Self {
+        self.transform_step(TransformKind::RotateY, degrees)
+    }
+
+    /// Slants vertical edges by `degrees` (iOS; Android has no skew).
+    fn skew_x(self, degrees: f32) -> Self {
+        self.transform_step(TransformKind::SkewX, degrees)
+    }
+
+    /// Slants horizontal edges by `degrees` (iOS).
+    fn skew_y(self, degrees: f32) -> Self {
+        self.transform_step(TransformKind::SkewY, degrees)
+    }
+
+    /// Looks at its 3D rotations from `points` away (smaller: stronger).
+    fn perspective(self, points: f32) -> Self {
+        self.transform_step(TransformKind::Perspective, points)
+    }
+
+    /// The step `kind` of its transform, by `amount`. The steps compose in
+    /// CSS's order, whatever the order of the calls: perspective,
+    /// translate, rotate, scale, then the 3D rotations and the skews.
+    fn transform_step(mut self, kind: TransformKind, amount: f32) -> Self {
+        self.style()
+            .push(Declaration::Transform(kind, Bits(amount)));
+        self
+    }
+
+    /// No transform (also none of the steps set before).
+    fn transform_none(mut self) -> Self {
+        self.style().push(Declaration::TransformNone);
+        self
+    }
+
+    /// The point its transform turns and scales around (the center by
+    /// default).
+    fn transform_origin(mut self, origin: TransformOrigin) -> Self {
+        let axis = |l: OriginLen| match l {
+            OriginLen::Px(p) => (false, Bits(p)),
+            OriginLen::Fraction(f) => (true, Bits(f)),
+        };
+        self.style()
+            .push(Declaration::Origin([axis(origin.x), axis(origin.y)]));
+        self
+    }
+
+    /// Transforms around its top left corner.
+    fn origin_top_left(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "top left");
+        self
+    }
+
+    /// Transforms around the middle of its top edge.
+    fn origin_top(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "top");
+        self
+    }
+
+    /// Transforms around its top right corner.
+    fn origin_top_right(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "top right");
+        self
+    }
+
+    /// Transforms around the middle of its left edge.
+    fn origin_left(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "left");
+        self
+    }
+
+    /// Transforms around its center (the default).
+    fn origin_center(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "center");
+        self
+    }
+
+    /// Transforms around the middle of its right edge.
+    fn origin_right(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "right");
+        self
+    }
+
+    /// Transforms around its bottom left corner.
+    fn origin_bottom_left(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::TransformOrigin, "bottom left");
+        self
+    }
+
+    /// Transforms around the middle of its bottom edge.
+    fn origin_bottom(mut self) -> Self {
+        self.style().keyword(StyleKey::TransformOrigin, "bottom");
+        self
+    }
+
+    /// Transforms around its bottom right corner.
+    fn origin_bottom_right(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::TransformOrigin, "bottom right");
+        self
+    }
+
+    /// Invisible while its 3D rotations turn it away (a card's back).
+    fn backface_hidden(mut self) -> Self {
+        self.style().keyword(StyleKey::BackfaceVisibility, "hidden");
+        self
+    }
+
+    /// Visible from behind too (the default).
+    fn backface_visible(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::BackfaceVisibility, "visible");
         self
     }
 
@@ -946,17 +2413,216 @@ pub trait Styled: Sized {
         self
     }
 
-    /// Underlined text.
+    /// Underlined text (with [`Styled::line_through`], both lines).
     fn underline(mut self) -> Self {
-        self.style()
-            .keyword(StyleKey::TextDecorationLine, "underline");
+        self.style().push(Declaration::Decoration(UNDERLINE));
         self
     }
 
-    /// Struck-through text.
+    /// Struck-through text (with [`Styled::underline`], both lines).
     fn line_through(mut self) -> Self {
+        self.style().push(Declaration::Decoration(LINE_THROUGH));
+        self
+    }
+
+    /// No underline nor strike-through.
+    fn no_underline(mut self) -> Self {
+        self.style().push(Declaration::Decoration(0));
+        self
+    }
+
+    /// The color of the underline and strike-through (the text's by
+    /// default).
+    fn text_decoration_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
         self.style()
-            .keyword(StyleKey::TextDecorationLine, "line-through");
+            .color(&[StyleKey::TextDecorationColor], color.into());
+        self
+    }
+
+    /// Solid decoration lines (the default).
+    fn text_decoration_solid(mut self) -> Self {
+        self.style().keyword(StyleKey::TextDecorationStyle, "solid");
+        self
+    }
+
+    /// Double decoration lines.
+    fn text_decoration_double(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::TextDecorationStyle, "double");
+        self
+    }
+
+    /// Dotted decoration lines.
+    fn text_decoration_dotted(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::TextDecorationStyle, "dotted");
+        self
+    }
+
+    /// Dashed decoration lines.
+    fn text_decoration_dashed(mut self) -> Self {
+        self.style()
+            .keyword(StyleKey::TextDecorationStyle, "dashed");
+        self
+    }
+
+    /// Wavy decoration lines (spelling marks).
+    fn text_decoration_wavy(mut self) -> Self {
+        self.style().keyword(StyleKey::TextDecorationStyle, "wavy");
+        self
+    }
+
+    /// The decoration lines' thickness, in points.
+    fn text_decoration_thickness(mut self, points: f32) -> Self {
+        self.style()
+            .number(StyleKey::TextDecorationThickness, points);
+        self
+    }
+
+    /// The underline's distance below the baseline, in points.
+    fn underline_offset(mut self, points: f32) -> Self {
+        self.style().number(StyleKey::TextUnderlineOffset, points);
+        self
+    }
+
+    /// Shown in capitals (the content stays as it is).
+    fn uppercase(mut self) -> Self {
+        self.style().keyword(StyleKey::TextTransform, "uppercase");
+        self
+    }
+
+    /// Shown in small letters.
+    fn lowercase(mut self) -> Self {
+        self.style().keyword(StyleKey::TextTransform, "lowercase");
+        self
+    }
+
+    /// Each word shown with a capital first letter.
+    fn capitalize(mut self) -> Self {
+        self.style().keyword(StyleKey::TextTransform, "capitalize");
+        self
+    }
+
+    /// Shown as written (undoes an inherited case).
+    fn normal_case(mut self) -> Self {
+        self.style().keyword(StyleKey::TextTransform, "none");
+        self
+    }
+
+    /// Digits of one width, for columns of numbers.
+    fn tabular_nums(self) -> Self {
+        font_variant(
+            self,
+            FontVariant::TABULAR_NUMS,
+            FontVariant::PROPORTIONAL_NUMS,
+        )
+    }
+
+    /// Digits of their own widths (the default).
+    fn proportional_nums(self) -> Self {
+        font_variant(
+            self,
+            FontVariant::PROPORTIONAL_NUMS,
+            FontVariant::TABULAR_NUMS,
+        )
+    }
+
+    /// Old-style digits, with ascenders and descenders.
+    fn oldstyle_nums(self) -> Self {
+        font_variant(self, FontVariant::OLDSTYLE_NUMS, FontVariant::LINING_NUMS)
+    }
+
+    /// Lining digits, all of capital height.
+    fn lining_nums(self) -> Self {
+        font_variant(self, FontVariant::LINING_NUMS, FontVariant::OLDSTYLE_NUMS)
+    }
+
+    /// Small capitals for lower-case letters.
+    fn small_caps(self) -> Self {
+        font_variant(self, FontVariant::SMALL_CAPS, 0)
+    }
+
+    /// No number or letter forms (undoes the ones set before).
+    fn normal_nums(self) -> Self {
+        font_variant(self, 0, 0xff)
+    }
+
+    /// The text's base direction (by default its content's).
+    fn writing_direction(mut self, direction: WritingDirection) -> Self {
+        self.style().keyword(
+            StyleKey::WritingDirection,
+            match direction {
+                WritingDirection::Auto => "auto",
+                WritingDirection::Ltr => "ltr",
+                WritingDirection::Rtl => "rtl",
+            },
+        );
+        self
+    }
+
+    /// Lines stretched to both edges.
+    fn text_justify(mut self) -> Self {
+        self.style().keyword(StyleKey::TextAlign, "justify");
+        self
+    }
+
+    /// Tailwind's `text-shadow-2xs`.
+    fn text_shadow_2xs(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("2xs"));
+        self
+    }
+
+    /// Tailwind's `text-shadow-xs`.
+    fn text_shadow_xs(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("xs"));
+        self
+    }
+
+    /// Tailwind's `text-shadow-sm`.
+    fn text_shadow_sm(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("sm"));
+        self
+    }
+
+    /// Tailwind's `text-shadow-md`.
+    fn text_shadow_md(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("md"));
+        self
+    }
+
+    /// Tailwind's `text-shadow-lg`.
+    fn text_shadow_lg(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("lg"));
+        self
+    }
+
+    /// No text shadow from the presets.
+    fn text_shadow_none(mut self) -> Self {
+        self.style().push(Declaration::TextShadow("none"));
+        self
+    }
+
+    /// The text shadow's color: of a preset (an opaque color keeps the
+    /// preset's alpha), or of the shadow set with
+    /// [`Styled::text_shadow_radius`] and [`Styled::text_shadow_offset`].
+    fn text_shadow_color(mut self, color: impl Into<AdaptiveColor>) -> Self {
+        let color = color.into();
+        let s = self.style();
+        s.color(&[StyleKey::TextShadowColor], color);
+        s.push(Declaration::PartColor(ColorPart::TextShadow, color));
+        self
+    }
+
+    /// The text shadow's blur radius, in points.
+    fn text_shadow_radius(mut self, radius: f32) -> Self {
+        self.style().number(StyleKey::TextShadowRadius, radius);
+        self
+    }
+
+    /// The text shadow's offset, in points (right and down).
+    fn text_shadow_offset(mut self, x: f32, y: f32) -> Self {
+        self.style()
+            .push(Declaration::TextShadowOffset(Bits(x), Bits(y)));
         self
     }
 
@@ -983,10 +2649,484 @@ pub trait Styled: Sized {
         self.style().number(StyleKey::LetterSpacing, points);
         self
     }
+
+    // Variants (native: no render).
+
+    /// Styles in dark appearance (Tailwind's `dark:`), for what is not a
+    /// color: theme colors switch by themselves.
+    fn dark(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+        let s = f(StyleRefinement::default());
+        self.style().extend_as(Variant::DARK, s);
+        self
+    }
+
+    /// Makes it a group: the `group_*` styles of the elements inside follow
+    /// its press, hover and focus (Tailwind's `group`).
+    fn group(mut self) -> Self {
+        self.style().push(Declaration::Group(""));
+        self
+    }
+
+    /// Makes it the group `name` (`group/name`), for `group_*_named`
+    /// styles inside it that skip nearer groups.
+    fn group_named(mut self, name: &'static str) -> Self {
+        self.style().push(Declaration::Group(name));
+        self
+    }
+
+    /// Styles while the nearest [`Styled::group`] around it is pressed
+    /// (`group-active:`).
+    fn group_active(self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+        in_group(self, "", state::PRESSED, f)
+    }
+
+    /// Styles while the nearest group around it is hovered.
+    fn group_hover(self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+        in_group(self, "", state::HOVERED, f)
+    }
+
+    /// Styles while an input in the nearest group around it has focus
+    /// (`group-focus-within:`).
+    fn group_focus_within(self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
+        in_group(self, "", state::FOCUS_WITHIN, f)
+    }
+
+    /// Styles while the group `name` around it is pressed
+    /// (`group-active/name:`).
+    fn group_active_named(
+        self,
+        name: &'static str,
+        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+    ) -> Self {
+        in_group(self, name, state::PRESSED, f)
+    }
+
+    /// Styles while the group `name` around it is hovered.
+    fn group_hover_named(
+        self,
+        name: &'static str,
+        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+    ) -> Self {
+        in_group(self, name, state::HOVERED, f)
+    }
+
+    /// Styles while an input in the group `name` around it has focus.
+    fn group_focus_within_named(
+        self,
+        name: &'static str,
+        f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+    ) -> Self {
+        in_group(self, name, state::FOCUS_WITHIN, f)
+    }
+}
+
+/// `s` with filter `f` by `amount` (of what is behind it when `backdrop`).
+fn filter<S: Styled>(mut s: S, backdrop: bool, f: FilterFn, amount: f32) -> S {
+    s.style()
+        .push(Declaration::Filter(backdrop, f, Bits(amount)));
+    s
+}
+
+/// `s` with transitions of the [`TransitionProps`] `props`.
+fn transition<S: Styled>(mut s: S, props: u8) -> S {
+    s.style().push(Declaration::Transition(props));
+    s
+}
+
+/// `s` with `f`'s styles while the group `name` is in `states`.
+fn in_group<S: Styled>(
+    mut s: S,
+    name: &'static str,
+    states: u8,
+    f: impl FnOnce(StyleRefinement) -> StyleRefinement,
+) -> S {
+    let styles = f(StyleRefinement::default());
+    let style = s.style();
+    let group = style.name(name);
+    style.extend_as(
+        Variant {
+            group_states: states,
+            group,
+            ..Variant::default()
+        },
+        styles,
+    );
+    s
 }
 
 impl Styled for StyleRefinement {
     fn style(&mut self) -> &mut StyleRefinement {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        Style,
+        tailwind::{ClassEnvironment, ClassProps, Context},
+        ui::palette::{EMERALD, PINK, RED, SKY, VIOLET},
+    };
+
+    /// What `list` resolves to in `dark` appearance, in [`state`] `states`,
+    /// inside a group in `group` (as text, to compare).
+    fn resolve(list: &ClassList, dark: bool, states: u8, group: u8) -> String {
+        resolve_with(list, dark, states, group, &|_| {})
+    }
+
+    /// [`resolve`], then `inline` on the style.
+    fn resolve_with(
+        list: &ClassList,
+        dark: bool,
+        states: u8,
+        group: u8,
+        inline: &dyn Fn(&mut Style),
+    ) -> String {
+        let cx = Context {
+            env: ClassEnvironment {
+                dark,
+                ..Default::default()
+            },
+            window: (390.0, 844.0),
+            rtl: false,
+            states,
+            position: 0,
+            group: &|_| group,
+        };
+        let mut style = Style::default();
+        let mut props = ClassProps::default();
+        list.apply(&cx, &PRESETS, &mut style, &mut props, inline);
+        format!("{style:?} {props:?}")
+    }
+
+    /// `typed` styles an element as Tailwind's `classes` do, in both
+    /// appearances and in every state.
+    #[track_caller]
+    fn same(typed: StyleRefinement, classes: &str) {
+        same_with(typed, classes, &|_| {});
+    }
+
+    /// [`same`], `classes` then `inline` (what classes cannot say).
+    #[track_caller]
+    fn same_with(typed: StyleRefinement, classes: &str, inline: &dyn Fn(&mut Style)) {
+        let typed = typed.lower();
+        let parsed = tailwind::parse(&PRESETS, classes);
+        assert!(parsed.unknown().is_empty(), "{:?}", parsed.unknown());
+        assert_eq!(typed.deps(), parsed.deps(), "{classes}: deps");
+        assert_eq!(typed.groups(), parsed.groups(), "{classes}: groups");
+        for dark in [false, true] {
+            for states in [0, state::PRESSED, state::DISABLED] {
+                for group in [0, state::PRESSED, state::HOVERED] {
+                    assert_eq!(
+                        resolve(&typed, dark, states, group),
+                        resolve_with(&parsed, dark, states, group, inline),
+                        "{classes} (dark {dark}, states {states}, group {group})"
+                    );
+                }
+            }
+        }
+    }
+
+    fn s() -> StyleRefinement {
+        StyleRefinement::default()
+    }
+
+    #[test]
+    fn borders_and_corners_are_tailwinds() {
+        same(
+            s().border_t(6.0)
+                .border_t_color(RED.shade(600))
+                .border_r(2.0)
+                .border_b(4.0)
+                .border_l(1.0)
+                .border_x_color(SKY.shade(500)),
+            "border-t-6 border-t-red-600 border-r-2 border-b-4 border-l border-x-sky-500",
+        );
+        same(
+            s().border_y(3.0)
+                .border_s(1.0)
+                .border_e(2.0)
+                .border_dashed(),
+            "border-y-3 border-s border-e-2 border-dashed",
+        );
+        same(s().border(3.0).border_dotted(), "border-3 border-dotted");
+        same(
+            s().rounded_tl(px(44.0))
+                .rounded_tr(px(6.0))
+                .rounded_br(px(28.0))
+                .rounded_bl(px(2.0)),
+            "rounded-tl-[44px] rounded-tr-[6px] rounded-br-[28px] rounded-bl-[2px]",
+        );
+        same(
+            s().rounded_ss(px(22.0))
+                .rounded_ee(px(8.0))
+                .rounded_l(px(4.0)),
+            "rounded-ss-[22px] rounded-ee-[8px] rounded-l-[4px]",
+        );
+        same(
+            s().outline(2.0)
+                .outline_offset(2.0)
+                .outline_dashed()
+                .outline_color(PINK.shade(500)),
+            "outline-2 outline-offset-2 outline-dashed outline-pink-500",
+        );
+        let curved = s().border_curve(BorderCurve::Continuous).lower();
+        let mut style = Style::default();
+        let _ = style.set_key(StyleKey::BorderCurve, crate::StyleValue::Str("continuous"));
+        assert_eq!(
+            resolve(&curved, false, 0, 0),
+            format!("{style:?} {:?}", ClassProps::default())
+        );
+    }
+
+    #[test]
+    fn shadows_and_rings_are_tailwinds() {
+        // The color is React Native's shadow's too (invisible at its
+        // default opacity 0).
+        let emerald = EMERALD.shade(500).with_alpha(0.5);
+        same_with(
+            s().shadow_lg().shadow_color(emerald),
+            "shadow-lg shadow-emerald-500/50",
+            &|s| s.view.shadow.color = emerald,
+        );
+        same_with(
+            s().shadow_xl().shadow_color(SKY.shade(500)),
+            "shadow-xl shadow-sky-500",
+            &|s| s.view.shadow.color = SKY.shade(500),
+        );
+        same(s().inset_shadow_sm(), "inset-shadow-sm");
+        same(
+            s().ring(2.0).ring_color(SKY.shade(500)).ring_offset(2.0),
+            "ring-2 ring-sky-500 ring-offset-2",
+        );
+        same(
+            s().ring(1.0).ring_color(rgba(0x0000_000d)).ring_inset(),
+            "ring-1 ring-black/5 ring-inset",
+        );
+        same(s().text_shadow_md(), "text-shadow-md");
+        // A theme color of the shadow switches with the appearance.
+        let adaptive = s()
+            .shadow_md()
+            .shadow_color(AdaptiveColor::new(SKY.shade(500), PINK.shade(500)))
+            .lower();
+        assert_eq!(adaptive.deps(), tailwind::deps::DARK);
+        for (dark, hue) in [(false, SKY), (true, PINK)] {
+            let classes = format!("shadow-md shadow-{}-500", hue.name());
+            assert_eq!(
+                resolve(&adaptive, dark, 0, 0),
+                resolve_with(&tailwind::parse(&PRESETS, &classes), dark, 0, 0, &|s| {
+                    s.view.shadow.color = hue.shade(500)
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn custom_shadows_set_react_natives_and_box_shadows() {
+        let list = s()
+            .shadow_color(rgb(0x0969da))
+            .shadow_opacity(0.35)
+            .shadow_radius(10.0)
+            .shadow_offset(4.0, 8.0)
+            .text_shadow_color(rgba(0x0000_0099))
+            .text_shadow_radius(4.0)
+            .text_shadow_offset(2.0, 2.0)
+            .lower();
+        let mut style = Style::default();
+        list.apply(
+            &Context {
+                env: ClassEnvironment::default(),
+                window: (390.0, 844.0),
+                rtl: false,
+                states: 0,
+                position: 0,
+                group: &|_| 0,
+            },
+            &PRESETS,
+            &mut style,
+            &mut ClassProps::default(),
+            |_| {},
+        );
+        assert_eq!(style.view.shadow.color, rgb(0x0969da));
+        assert_eq!(style.view.shadow.opacity, 0.35);
+        assert_eq!(style.view.shadow.radius, 10.0);
+        assert_eq!(
+            (style.view.shadow.offset_x, style.view.shadow.offset_y),
+            (4.0, 8.0)
+        );
+        assert_eq!(style.text.shadow_color, Some(rgba(0x0000_0099)));
+        assert_eq!(style.text.shadow_radius, Some(4.0));
+        assert_eq!(style.text.shadow_offset, Some((2.0, 2.0)));
+        let layer = BoxShadow {
+            offset_x: 0.0,
+            offset_y: 2.0,
+            blur: 4.0,
+            spread: 0.0,
+            color: rgba(0x0000_000d),
+            inset: true,
+        };
+        same(
+            s().shadow([layer]),
+            "shadow-[inset_0_2px_4px_rgb(0_0_0/0.05)]",
+        );
+    }
+
+    #[test]
+    fn effects_are_tailwinds() {
+        same(
+            s().bg_linear_to_br()
+                .gradient_from(VIOLET.shade(500))
+                .gradient_via(PINK.shade(500))
+                .gradient_to(RED.shade(400)),
+            "bg-linear-to-br from-violet-500 via-pink-500 to-red-400",
+        );
+        same(
+            s().bg_linear(45.0)
+                .gradient_from(SKY.shade(400))
+                .gradient_to(VIOLET.shade(600))
+                .gradient_to_position(0.8),
+            "bg-linear-45 from-sky-400 to-violet-600 to-80%",
+        );
+        same(
+            s().bg_radial().gradient_from(SKY.shade(200)),
+            "bg-radial from-sky-200",
+        );
+        same(
+            s().bg_conic(0.0).gradient_from(RED.shade(500)),
+            "bg-conic from-red-500",
+        );
+        same(s().grayscale(1.0).sepia(1.0), "grayscale sepia");
+        same(s().blur(8.0).brightness(0.5), "blur-sm brightness-50");
+        same(
+            s().saturate(1.5).hue_rotate(90.0),
+            "saturate-150 hue-rotate-90",
+        );
+        same(
+            s().backdrop_blur(12.0)
+                .backdrop_saturate(1.5)
+                .backdrop_sepia(1.0),
+            "backdrop-blur-md backdrop-saturate-150 backdrop-sepia",
+        );
+        same(
+            s().mix_blend_mode(BlendMode::Multiply),
+            "mix-blend-multiply",
+        );
+        same(s().transition(), "transition");
+        same(
+            s().transition_colors()
+                .duration(150.0)
+                .ease_in_out()
+                .delay(75.0),
+            "transition-colors duration-150 ease-in-out delay-75",
+        );
+        same(
+            s().transition_transform().duration(200.0),
+            "transition-transform duration-200",
+        );
+        for (typed, classes) in [
+            (s().animate_spin(), "animate-spin"),
+            (s().animate_ping(), "animate-ping"),
+            (s().animate_pulse(), "animate-pulse"),
+            (s().animate_bounce(), "animate-bounce"),
+        ] {
+            same(typed, classes);
+        }
+    }
+
+    #[test]
+    fn transforms_are_tailwinds() {
+        same(
+            s().rotate(12.0).skew_x(6.0).scale(0.9),
+            "rotate-12 skew-x-6 scale-90",
+        );
+        same(
+            s().perspective(400.0).rotate_y(35.0).rotate_x(40.0),
+            "perspective-[400px] rotate-y-35 rotate-x-40",
+        );
+        same(s().scale_x(1.5).skew_y(-3.0), "scale-x-150 -skew-y-3");
+        same(
+            s().origin_top_left().backface_hidden(),
+            "origin-top-left backface-hidden",
+        );
+        same(
+            s().transform_origin(TransformOrigin {
+                x: OriginLen::Px(10.0),
+                y: OriginLen::Fraction(0.25),
+                z: 0.0,
+            }),
+            "origin-[10px_25%]",
+        );
+    }
+
+    #[test]
+    fn text_is_tailwinds() {
+        same(
+            s().underline()
+                .text_decoration_wavy()
+                .text_decoration_color(RED.shade(500))
+                .text_decoration_thickness(2.0)
+                .underline_offset(4.0),
+            "underline decoration-wavy decoration-red-500 decoration-2 underline-offset-4",
+        );
+        same(s().uppercase().tabular_nums(), "uppercase tabular-nums");
+        same(s().small_caps().oldstyle_nums(), "small-caps oldstyle-nums");
+        same(s().capitalize().text_justify(), "capitalize text-justify");
+        // Unlike classes, the two lines add up.
+        let both = s().underline().line_through().lower();
+        let mut style = Style::default();
+        let _ = style.set_key(
+            StyleKey::TextDecorationLine,
+            crate::StyleValue::Str("underline line-through"),
+        );
+        assert_eq!(
+            resolve(&both, false, 0, 0),
+            format!("{style:?} {:?}", ClassProps::default())
+        );
+        same(
+            s().underline().line_through().no_underline(),
+            "no-underline",
+        );
+        let rtl = s().writing_direction(WritingDirection::Rtl).lower();
+        let mut style = Style::default();
+        let _ = style.set_key(StyleKey::WritingDirection, crate::StyleValue::Str("rtl"));
+        assert_eq!(
+            resolve(&rtl, false, 0, 0),
+            format!("{style:?} {:?}", ClassProps::default())
+        );
+    }
+
+    #[test]
+    fn layout_is_tailwinds() {
+        same(s().grid().grid_cols(3).gap_2(), "grid grid-cols-3 gap-2");
+        same(s().col_span(2).row_span(2), "col-span-2 row-span-2");
+        same(s().col_start(2).col_end(-1), "col-start-2 col-end-[-1]");
+        same(s().flex_grow(2.0).flex_shrink(0.0), "grow-2 shrink-0");
+        same(
+            s().grid_rows(2).grid_flow_col(),
+            "grid-rows-2 grid-flow-col",
+        );
+    }
+
+    #[test]
+    fn variants_are_tailwinds() {
+        same(
+            s().group_active(|s| s.text_color(VIOLET.shade(600)).translate_x(4.0)),
+            "group-active:text-violet-600 group-active:translate-x-1",
+        );
+        same(s().group(), "group");
+        same(
+            s().group_named("item")
+                .group_hover_named("item", |s| s.opacity(0.5)),
+            "group/item group-hover/item:opacity-50",
+        );
+        same(s().dark(|s| s.shadow_none()), "dark:shadow-none");
+        let mut disabled = s();
+        disabled.extend_as(Variant::DISABLED, s().opacity(0.4));
+        same(disabled, "disabled:opacity-40");
+        // Nested variants: both hold.
+        let mut nested = s();
+        nested.extend_as(Variant::ACTIVE, s().dark(|s| s.opacity(0.5)));
+        same(nested, "dark:active:opacity-50");
     }
 }
