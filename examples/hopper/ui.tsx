@@ -1,4 +1,4 @@
-import { effect, type GestureResponderEvent, type JSX, signal } from "nsh";
+import { effect, type GestureResponderEvent, type JSX, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Icon, type IconName } from "./icons";
 import { color, mono, radius } from "./theme";
@@ -34,7 +34,7 @@ export function Panel(props: {
   children: JSX.Element;
 }) {
   return (
-    <view
+    <View
       style={{
         backgroundColor: color.card,
         borderRadius: radius.card,
@@ -48,21 +48,21 @@ export function Panel(props: {
         shadowOffset: { width: 0, height: 8 },
       }}
     >
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 11, paddingTop: 11, paddingBottom: 13 }}>
-        <view style={tile}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 11, paddingTop: 11, paddingBottom: 13 }}>
+        <View style={tile}>
           <Icon name={props.icon} size={19} tint={color.accent} />
-        </view>
-        <view style={{ flex: 1, gap: 2 }}>
-          <text style={{ color: color.text, fontSize: 17, fontWeight: "600", letterSpacing: -0.2 }}>{props.title}</text>
-          <text style={{ color: color.muted, fontSize: 13 }} numberOfLines={1}>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: color.text, fontSize: 17, fontWeight: "600", letterSpacing: -0.2 }}>{props.title}</Text>
+          <Text style={{ color: color.muted, fontSize: 13 }} numberOfLines={1}>
             {props.status}
-          </text>
-        </view>
-        <if when={props.tag}>
+          </Text>
+        </View>
+        <If when={props.tag}>
           <Pill label={props.tag ?? ""} />
-        </if>
-        <if when={props.onOpen}>
-          <view
+        </If>
+        <If when={props.onOpen}>
+          <View
             onPress={props.onOpen}
             activeOpacity={0.5}
             hitSlop={6}
@@ -71,10 +71,10 @@ export function Panel(props: {
             style={tile}
           >
             <Icon name="chevron" size={18} tint={color.text} />
-          </view>
-        </if>
-      </view>
-      <view
+          </View>
+        </If>
+      </View>
+      <View
         style={{
           backgroundColor: color.inset,
           borderRadius: radius.card - 5,
@@ -86,8 +86,8 @@ export function Panel(props: {
         }}
       >
         {props.children}
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
@@ -110,7 +110,7 @@ export function Pill(props: { label: string; tone?: "neutral" | "accent" | "caut
   const ink = () => ({ neutral: color.muted, accent: color.accent, caution: color.caution, alert: color.alert })[tone()];
   const fill = () => ({ neutral: color.raised, accent: color.accentDim, caution: color.cautionDim, alert: color.alertDim })[tone()];
   return (
-    <text
+    <Text
       style={{
         fontFamily: mono,
         fontSize: 11,
@@ -129,19 +129,19 @@ export function Pill(props: { label: string; tone?: "neutral" | "accent" | "caut
       }}
     >
       {props.label}
-    </text>
+    </Text>
   );
 }
 
 /** A label and a value on one line. */
 export function Caption(props: { label: JSX.Element; value?: JSX.Element; tint?: string }) {
   return (
-    <view style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-      <text style={{ fontSize: 14, color: color.muted }}>{props.label}</text>
-      <if when={props.value !== undefined}>
-        <text style={{ fontFamily: mono, fontSize: 14, color: props.tint ?? color.text }}>{props.value}</text>
-      </if>
-    </view>
+    <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+      <Text style={{ fontSize: 14, color: color.muted }}>{props.label}</Text>
+      <If when={props.value !== undefined}>
+        <Text style={{ fontFamily: mono, fontSize: 14, color: props.tint ?? color.text }}>{props.value}</Text>
+      </If>
+    </View>
   );
 }
 
@@ -153,8 +153,8 @@ export function Gauge(props: { value: number; warnAbove?: number }) {
     fill.timing(props.value, { duration: 650, easing: Easing.out(Easing.cubic) });
   });
   return (
-    <view style={{ height: 8, borderRadius: 4, overflow: "hidden", backgroundColor: color.raised }}>
-      <view
+    <View style={{ height: 8, borderRadius: 4, overflow: "hidden", backgroundColor: color.raised }}>
+      <View
         style={{
           flex: 1,
           borderRadius: 4,
@@ -163,14 +163,14 @@ export function Gauge(props: { value: number; warnAbove?: number }) {
           transform: [{ scaleX: fill }],
         }}
       />
-    </view>
+    </View>
   );
 }
 
 /** A tinted inset box for summaries. */
 export function Inset(props: { children: JSX.Element }) {
   return (
-    <view
+    <View
       style={{
         backgroundColor: color.card,
         borderRadius: radius.control + 2,
@@ -182,14 +182,14 @@ export function Inset(props: { children: JSX.Element }) {
       }}
     >
       {props.children}
-    </view>
+    </View>
   );
 }
 
 /** A list row with a hairline above all but the first. */
 export function Line(props: { first?: boolean; selected?: boolean; children: JSX.Element }) {
   return (
-    <view
+    <View
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -204,7 +204,7 @@ export function Line(props: { first?: boolean; selected?: boolean; children: JSX
       }}
     >
       {props.children}
-    </view>
+    </View>
   );
 }
 
@@ -215,7 +215,7 @@ export function Switch(props: { value: boolean; onChange: (v: boolean) => void; 
     on.spring(props.value ? 1 : 0, { stiffness: 380, damping: 28 });
   });
   return (
-    <view
+    <View
       onPress={() => props.onChange(!props.value)}
       disabled={props.disabled}
       hitSlop={8}
@@ -231,7 +231,7 @@ export function Switch(props: { value: boolean; onChange: (v: boolean) => void; 
         backgroundColor: on.interpolate({ inputRange: [0, 1], outputRange: [color.lineStrong, color.accent] }),
       }}
     >
-      <view
+      <View
         style={{
           width: 22,
           height: 22,
@@ -240,14 +240,14 @@ export function Switch(props: { value: boolean; onChange: (v: boolean) => void; 
           transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, 18] }) }],
         }}
       />
-    </view>
+    </View>
   );
 }
 
 /** A segmented control on a bordered track. */
 export function Tabs<T extends string>(props: { options: readonly T[]; value: T; onChange: (v: T) => void }) {
   return (
-    <view
+    <View
       style={{
         flexDirection: "row",
         padding: 3,
@@ -258,11 +258,11 @@ export function Tabs<T extends string>(props: { options: readonly T[]; value: T;
         backgroundColor: color.card,
       }}
     >
-      <each of={props.options}>
-        {(option: () => T) => {
+      <Each of={props.options}>
+        {(option) => {
           const on = () => props.value === option();
           return (
-            <view
+            <View
               onPress={() => props.onChange(option())}
               accessibilityRole="tab"
               accessibilityState={{ selected: on() }}
@@ -276,12 +276,12 @@ export function Tabs<T extends string>(props: { options: readonly T[]; value: T;
                 backgroundColor: on() ? color.raised : "transparent",
               }}
             >
-              <text style={{ fontSize: 14, fontWeight: on() ? "600" : "400", color: on() ? color.text : color.muted }}>{option()}</text>
-            </view>
+              <Text style={{ fontSize: 14, fontWeight: on() ? "600" : "400", color: on() ? color.text : color.muted }}>{option()}</Text>
+            </View>
           );
         }}
-      </each>
-    </view>
+      </Each>
+    </View>
   );
 }
 
@@ -303,7 +303,7 @@ export function Counter(props: {
     repeat = undefined;
   };
   const button = (d: number, glyph: string, name: string) => (
-    <view
+    <View
       onPress={() => nudge(d)}
       onLongPress={() => {
         stop();
@@ -324,11 +324,11 @@ export function Counter(props: {
         justifyContent: "center",
       }}
     >
-      <text style={{ color: color.text, fontSize: 19, fontWeight: "300" }}>{glyph}</text>
-    </view>
+      <Text style={{ color: color.text, fontSize: 19, fontWeight: "300" }}>{glyph}</Text>
+    </View>
   );
   return (
-    <view
+    <View
       accessibilityLabel={props.label}
       accessibilityValue={{ text: props.format(props.value) }}
       style={{
@@ -343,11 +343,11 @@ export function Counter(props: {
       }}
     >
       {button(-1, "−", "Decrease")}
-      <text style={{ minWidth: 62, textAlign: "center", fontFamily: mono, fontSize: 15, color: color.text }}>
+      <Text style={{ minWidth: 62, textAlign: "center", fontFamily: mono, fontSize: 15, color: color.text }}>
         {props.format(props.value)}
-      </text>
+      </Text>
       {button(1, "+", "Increase")}
-    </view>
+    </View>
   );
 }
 
@@ -375,7 +375,7 @@ export function Slider(props: {
   // Children ignore touches: positions (locationX) are then relative to
   // the slider, not to the knob the finger went down on.
   return (
-    <view
+    <View
       onLayout={(e) => width.set(e.width)}
       {...track((x) => pick(x))}
       accessibilityRole="adjustable"
@@ -387,7 +387,7 @@ export function Slider(props: {
       }
       style={{ height: 52 }}
     >
-      <view
+      <View
         pointerEvents="none"
         style={{
           position: "absolute",
@@ -399,7 +399,7 @@ export function Slider(props: {
           backgroundColor: color.raised,
         }}
       />
-      <view
+      <View
         pointerEvents="none"
         style={{
           position: "absolute",
@@ -411,8 +411,8 @@ export function Slider(props: {
           backgroundColor: low() ? color.caution : color.accent,
         }}
       />
-      <view pointerEvents="none" style={{ position: "absolute", top: 3, left: at(props.floor) - 1, width: 2, height: 16, borderRadius: 1, backgroundColor: color.caution }} />
-      <view
+      <View pointerEvents="none" style={{ position: "absolute", top: 3, left: at(props.floor) - 1, width: 2, height: 16, borderRadius: 1, backgroundColor: color.caution }} />
+      <View
         pointerEvents="none"
         style={{
           position: "absolute",
@@ -426,11 +426,11 @@ export function Slider(props: {
           backgroundColor: color.ink,
         }}
       />
-      <text pointerEvents="none" style={{ position: "absolute", top: 32, left: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
+      <Text pointerEvents="none" style={{ position: "absolute", top: 32, left: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
         {props.min}
         {props.unit}
-      </text>
-      <text
+      </Text>
+      <Text
         pointerEvents="none"
         style={{
           position: "absolute",
@@ -445,19 +445,19 @@ export function Slider(props: {
       >
         hover {props.floor}
         {props.unit}
-      </text>
-      <text pointerEvents="none" style={{ position: "absolute", top: 32, right: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
+      </Text>
+      <Text pointerEvents="none" style={{ position: "absolute", top: 32, right: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
         {props.max}
         {props.unit}
-      </text>
-    </view>
+      </Text>
+    </View>
   );
 }
 
 /** A full-width button; `primary` is filled with the accent. */
 export function Action(props: { label: string; primary?: boolean; disabled?: boolean; onPress: () => void }) {
   return (
-    <view
+    <View
       onPress={props.onPress}
       disabled={props.disabled}
       activeOpacity={0.7}
@@ -476,7 +476,7 @@ export function Action(props: { label: string; primary?: boolean; disabled?: boo
         opacity: props.disabled ? 0.5 : 1,
       }}
     >
-      <text style={{ fontSize: 16, fontWeight: "600", color: props.primary ? color.ink : color.text }}>{props.label}</text>
-    </view>
+      <Text style={{ fontSize: 16, fontWeight: "600", color: props.primary ? color.ink : color.text }}>{props.label}</Text>
+    </View>
   );
 }

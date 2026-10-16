@@ -1,4 +1,4 @@
-import { computed, signal } from "nsh";
+import { computed, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 import { gimbalCommands, HOP_LENGTH, tiltAt, tiltLimit } from "../store";
 import { color, mono } from "../theme";
@@ -135,22 +135,22 @@ export function Tilt() {
   };
   return (
     <Panel icon="tilt" title="Tilt" status={`Hop 40 replay · 0–${HOP_LENGTH} s`}>
-      <view style={{ flexDirection: "row", alignItems: "flex-end", gap: 16 }}>
-        <view style={{ flex: 1, gap: 2 }}>
-          <text style={{ fontSize: 12, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6 }}>at cursor</text>
-          <text style={{ fontSize: 30, fontWeight: "600", color: Math.abs(tiltAt(cursor())) > tiltLimit ? color.alert : color.text }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 16 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 12, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6 }}>at cursor</Text>
+          <Text style={{ fontSize: 30, fontWeight: "600", color: Math.abs(tiltAt(cursor())) > tiltLimit ? color.alert : color.text }}>
             {tiltAt(cursor()) >= 0 ? "+" : ""}
             {tiltAt(cursor()).toFixed(1)}°
-            <text style={{ fontSize: 15, fontWeight: "400", color: color.muted }}> T+{cursor().toFixed(1)} s</text>
-          </text>
-        </view>
-        <view style={{ alignItems: "flex-end", gap: 2 }}>
-          <text style={{ fontFamily: mono, fontSize: 13, color: color.alert }}>peak {peak.deg.toFixed(1)}°</text>
-          <text style={{ fontSize: 12, color: color.muted }}>
+            <Text style={{ fontSize: 15, fontWeight: "400", color: color.muted }}> T+{cursor().toFixed(1)} s</Text>
+          </Text>
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          <Text style={{ fontFamily: mono, fontSize: 13, color: color.alert }}>peak {peak.deg.toFixed(1)}°</Text>
+          <Text style={{ fontSize: 12, color: color.muted }}>
             {excursions()} excursion{excursions() === 1 ? "" : "s"} past ±{tiltLimit}°
-          </text>
-        </view>
-      </view>
+          </Text>
+        </View>
+      </View>
       <Chart cursor={cursor()} onScrub={(t) => cursor.set(t)} />
       <Caption label="Gimbal commands" value={commandText()} />
       <Commands picked={picked()} onPick={(i) => picked.set(i)} />

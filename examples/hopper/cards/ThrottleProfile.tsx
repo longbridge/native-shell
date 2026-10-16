@@ -1,4 +1,4 @@
-import { computed, signal } from "nsh";
+import { computed, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { Icon } from "../icons";
@@ -159,16 +159,16 @@ function Timeline() {
   const x = (at: number) => 10 + (at / end()) * (width() - 20);
   const label = 72;
   return (
-    <view style={{ height: 64 }} onLayout={(e) => width.set(e.width)}>
-      <view style={{ position: "absolute", left: 10, right: 10, top: 31, height: 2, borderRadius: 1, backgroundColor: color.lineStrong }} />
-      <each of={phases()} key={(p: Phase) => p.id}>
-        {(phase: () => Phase, i: () => number) => {
+    <View style={{ height: 64 }} onLayout={(e) => width.set(e.width)}>
+      <View style={{ position: "absolute", left: 10, right: 10, top: 31, height: 2, borderRadius: 1, backgroundColor: color.lineStrong }} />
+      <Each of={phases()} key={(p) => p.id}>
+        {(phase, i) => {
           const on = () => phase().id === selectedPhase();
           const above = () => i() % 2 === 1;
           const left = () => Math.min(width() - label, Math.max(0, x(phase().at) - label / 2));
           const align = () => (left() === 0 ? "left" : left() === width() - label ? "right" : "center");
           return (
-            <view
+            <View
               onPress={() => selectedPhase.set(phase().id)}
               hitSlop={6}
               accessibilityRole="tab"
@@ -176,7 +176,7 @@ function Timeline() {
               accessibilityState={{ selected: on() }}
               style={{ position: "absolute", top: 0, bottom: 0, left: left(), width: label }}
             >
-              <view
+              <View
                 pointerEvents="none"
                 style={{
                   position: "absolute",
@@ -190,7 +190,7 @@ function Timeline() {
                   borderColor: on() ? color.accent : color.muted,
                 }}
               />
-              <text
+              <Text
                 pointerEvents="none"
                 numberOfLines={1}
                 style={{
@@ -204,19 +204,19 @@ function Timeline() {
                 }}
               >
                 {phase().name}
-              </text>
-            </view>
+              </Text>
+            </View>
           );
         }}
-      </each>
-    </view>
+      </Each>
+    </View>
   );
 }
 
 /** The easing choices, dropped under the picker. */
 function Choices(props: { value: EasingName; onPick: (e: EasingName) => void }) {
   return (
-    <view
+    <View
       accessibilityRole="menu"
       style={{
         position: "absolute",
@@ -235,25 +235,25 @@ function Choices(props: { value: EasingName; onPick: (e: EasingName) => void }) 
         shadowOffset: { width: 0, height: 6 },
       }}
     >
-      <each of={easings}>
-        {(option: () => (typeof easings)[number]) => (
-          <view
+      <Each of={easings}>
+        {(option) => (
+          <View
             onPress={() => props.onPick(option().name)}
             underlayColor={color.lineStrong}
             accessibilityRole="menuitem"
             accessibilityState={{ checked: props.value === option().name }}
             style={{ flexDirection: "row", alignItems: "center", height: 40, paddingHorizontal: 14, gap: 8 }}
           >
-            <text style={{ flex: 1, fontSize: 14, color: props.value === option().name ? color.accent : color.text }}>
+            <Text style={{ flex: 1, fontSize: 14, color: props.value === option().name ? color.accent : color.text }}>
               {option().label}
-            </text>
-            <if when={props.value === option().name}>
+            </Text>
+            <If when={props.value === option().name}>
               <Icon name="check" size={16} tint={color.accent} />
-            </if>
-          </view>
+            </If>
+          </View>
         )}
-      </each>
-    </view>
+      </Each>
+    </View>
   );
 }
 
@@ -290,15 +290,15 @@ export function ThrottleProfile() {
       <Timeline />
       {/* The menu lives in a box around both the picker and the curve:
           UIKit only hit-tests a view inside its parent's bounds. */}
-      <view style={{ gap: 16 }}>
-        <view style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <view style={{ flex: 1, gap: 2 }}>
-            <text style={{ fontSize: 17, fontWeight: "600", color: color.text }}>{phase().name}</text>
-            <text style={{ fontSize: 13, color: color.muted }}>
-              from {previous().name} · <text style={{ fontFamily: mono }}>T+{phase().at.toFixed(1)} s</text>
-            </text>
-          </view>
-          <view
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ fontSize: 17, fontWeight: "600", color: color.text }}>{phase().name}</Text>
+            <Text style={{ fontSize: 13, color: color.muted }}>
+              from {previous().name} · <Text style={{ fontFamily: mono }}>T+{phase().at.toFixed(1)} s</Text>
+            </Text>
+          </View>
+          <View
             onPress={() => open.set(!open())}
             accessibilityRole="button"
             accessibilityLabel={`Easing: ${easingLabel(phase().easing)}`}
@@ -315,13 +315,13 @@ export function ThrottleProfile() {
               borderColor: open() ? color.accent : color.lineStrong,
             }}
           >
-            <text style={{ fontSize: 14, color: color.text }}>{easingLabel(phase().easing)}</text>
+            <Text style={{ fontSize: 14, color: color.text }}>{easingLabel(phase().easing)}</Text>
             <Icon name="caret" size={16} tint={color.muted} flip={open()} />
-          </view>
-        </view>
+          </View>
+        </View>
         <Curve phase={phase()} onBezier={(b) => setBezier(phase().id, b)} time={time} value={value} />
-        <if when={open()}>
-          <view onPress={() => open.set(false)} style={{ position: "absolute", left: 0, right: 0, top: 48, bottom: 0 }} />
+        <If when={open()}>
+          <View onPress={() => open.set(false)} style={{ position: "absolute", left: 0, right: 0, top: 48, bottom: 0 }} />
           <Choices
             value={phase().easing}
             onPick={(e) => {
@@ -329,12 +329,12 @@ export function ThrottleProfile() {
               open.set(false);
             }}
           />
-        </if>
-      </view>
-      <view style={{ flexDirection: "row", gap: 10 }}>
+        </If>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10 }}>
         <Action label="Add phase" onPress={addPhase} />
         <Action label={playing() ? "Playing…" : "Preview"} primary disabled={playing()} onPress={preview} />
-      </view>
+      </View>
     </Panel>
   );
 }

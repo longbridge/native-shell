@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { Input, signal, Text, View } from "nsh";
 import { ceiling, flyHop, flying, type Hop, hoverThrottle, plan, resetPlan, segments } from "../store";
 import { color, mono, radius } from "../theme";
 import { Action, Caption, Counter, Line, Panel, Slider, Switch, Tabs } from "../ui";
@@ -11,9 +11,9 @@ function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
   const focused = signal(false);
   const over = () => props.axis === "z" && Number(plan.target().z) > ceiling;
   return (
-    <view style={{ flex: 1, gap: 6 }}>
-      <text style={{ fontSize: 12, color: over() ? color.alert : color.muted }}>{props.label}</text>
-      <view
+    <View style={{ flex: 1, gap: 6 }}>
+      <Text style={{ fontSize: 12, color: over() ? color.alert : color.muted }}>{props.label}</Text>
+      <View
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -25,7 +25,7 @@ function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
           backgroundColor: color.inset,
         }}
       >
-        <input
+        <Input
           value={plan.target()[props.axis]}
           onChangeText={(text) => {
             const minus = props.signed && text.startsWith("-") ? "-" : "";
@@ -44,12 +44,12 @@ function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
           accessibilityLabel={`${props.label}, meters`}
           style={{ flex: 1, fontFamily: mono, fontSize: 15, color: color.text, paddingVertical: 6 }}
         />
-        <if
+        <If
           when={props.signed}
-          else={<text style={{ fontFamily: mono, fontSize: 13, color: color.faint }}>m</text>}
+          else={<Text style={{ fontFamily: mono, fontSize: 13, color: color.faint }}>m</Text>}
         >
           {/* The number pad has no minus key: this flips the sign. */}
-          <text
+          <Text
             onPress={() => {
               const v = plan.target()[props.axis];
               plan.target.set({ ...plan.target(), [props.axis]: v.startsWith("-") ? v.slice(1) : `-${v}` });
@@ -60,20 +60,20 @@ function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
             style={{ fontFamily: mono, fontSize: 15, color: color.accent }}
           >
             ±
-          </text>
-        </if>
-      </view>
-    </view>
+          </Text>
+        </If>
+      </View>
+    </View>
   );
 }
 
 function Option(props: { title: string; detail: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean; first?: boolean }) {
   return (
     <Line first={props.first}>
-      <view style={{ flex: 1, gap: 2, paddingVertical: 10, opacity: props.disabled ? 0.5 : 1 }}>
-        <text style={{ fontSize: 15, color: color.text }}>{props.title}</text>
-        <text style={{ fontSize: 12, color: color.muted }}>{props.detail}</text>
-      </view>
+      <View style={{ flex: 1, gap: 2, paddingVertical: 10, opacity: props.disabled ? 0.5 : 1 }}>
+        <Text style={{ fontSize: 15, color: color.text }}>{props.title}</Text>
+        <Text style={{ fontSize: 12, color: color.muted }}>{props.detail}</Text>
+      </View>
       <Switch value={props.value} onChange={props.onChange} disabled={props.disabled} label={props.title} />
     </Line>
   );
@@ -95,7 +95,7 @@ export function FlightPlan() {
     <Panel icon="plan" title="Flight plan" status="Hop profile · pad B">
       <Tabs options={segments} value={plan.segment()} onChange={(s) => plan.segment.set(s)} />
 
-      <view style={{ gap: 10 }}>
+      <View style={{ gap: 10 }}>
         <Caption
           label="Throttle"
           value={`${plan.throttle()}%`}
@@ -110,11 +110,11 @@ export function FlightPlan() {
           label="Throttle, percent"
           onChange={(v) => plan.throttle.set(v)}
         />
-      </view>
+      </View>
 
-      <view>
+      <View>
         <Line first>
-          <text style={{ flex: 1, fontSize: 15, color: color.text }}>Gimbal limit</text>
+          <Text style={{ flex: 1, fontSize: 15, color: color.text }}>Gimbal limit</Text>
           <Counter
             label="Gimbal limit"
             value={plan.gimbal()}
@@ -126,7 +126,7 @@ export function FlightPlan() {
           />
         </Line>
         <Line>
-          <text style={{ flex: 1, fontSize: 15, color: color.text }}>Hover time</text>
+          <Text style={{ flex: 1, fontSize: 15, color: color.text }}>Hover time</Text>
           <Counter
             label="Hover time"
             value={plan.hoverTime()}
@@ -137,21 +137,21 @@ export function FlightPlan() {
             onChange={(v) => plan.hoverTime.set(v)}
           />
         </Line>
-      </view>
+      </View>
 
-      <view style={{ gap: 8 }}>
-        <text style={{ fontSize: 14, color: color.muted }}>Target</text>
-        <view style={{ flexDirection: "row", gap: 10 }}>
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontSize: 14, color: color.muted }}>Target</Text>
+        <View style={{ flexDirection: "row", gap: 10 }}>
           <Coordinate axis="x" label="East" signed />
           <Coordinate axis="y" label="North" signed />
           <Coordinate axis="z" label="Apogee" />
-        </view>
-        <if when={Number(plan.target().z) > ceiling}>
-          <text style={{ fontSize: 12, color: color.alert }}>The range's ceiling is {ceiling} m.</text>
-        </if>
-      </view>
+        </View>
+        <If when={Number(plan.target().z) > ceiling}>
+          <Text style={{ fontSize: 12, color: color.alert }}>The range's ceiling is {ceiling} m.</Text>
+        </If>
+      </View>
 
-      <view>
+      <View>
         <Option
           first
           title="Terrain-relative navigation"
@@ -167,21 +167,21 @@ export function FlightPlan() {
           onChange={(v) => plan.autoAbort.set(v)}
           disabled
         />
-      </view>
+      </View>
 
-      <view style={{ gap: 10 }}>
-        <view style={{ flexDirection: "row", gap: 10 }}>
+      <View style={{ gap: 10 }}>
+        <View style={{ flexDirection: "row", gap: 10 }}>
           <Action label="Defaults" disabled={flying()} onPress={resetPlan} />
           <Action label={flying() ? "Flying…" : "Fly hop"} primary disabled={flying()} onPress={fly} />
-        </view>
-        <if when={last()}>
-          <text style={{ fontSize: 13, color: color.muted, textAlign: "center" }}>
+        </View>
+        <If when={last()}>
+          <Text style={{ fontSize: 13, color: color.muted, textAlign: "center" }}>
             Hop {last()?.id}:{" "}
-            <text style={{ color: results[last()?.outcome ?? "nominal"].tint }}>{results[last()?.outcome ?? "nominal"].label}</text> ·{" "}
+            <Text style={{ color: results[last()?.outcome ?? "nominal"].tint }}>{results[last()?.outcome ?? "nominal"].label}</Text> ·{" "}
             {last()?.note}
-          </text>
-        </if>
-      </view>
+          </Text>
+        </If>
+      </View>
     </Panel>
   );
 }

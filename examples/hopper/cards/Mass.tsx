@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 import { cgHeight, load, vehicle, wetMass } from "../store";
 import { color, mono } from "../theme";
@@ -149,44 +149,44 @@ export function Mass() {
   ];
   return (
     <Panel icon="mass" title="Mass" status="Lander L-3 · aluminium tank · rev C">
-      <view style={{ flexDirection: "row", gap: 16 }}>
+      <View style={{ flexDirection: "row", gap: 16 }}>
         <Section />
-        <view style={{ flex: 1, gap: 12 }}>
-          <view style={{ gap: 2 }}>
-            <text style={{ fontSize: 30, fontWeight: "600", color: color.text, fontVariant: ["tabular-nums"] }}>
+        <View style={{ flex: 1, gap: 12 }}>
+          <View style={{ gap: 2 }}>
+            <Text style={{ fontSize: 30, fontWeight: "600", color: color.text, fontVariant: ["tabular-nums"] }}>
               {wetMass()}
-              <text style={{ fontSize: 16, color: color.muted, fontWeight: "400" }}> kg wet</text>
-            </text>
-            <text style={{ fontSize: 13, color: color.muted }}>Drag the propellant level</text>
-          </view>
-          <view>
-            <each of={rows()}>
-              {(row: () => { label: string; value: string; tint?: string }, i: () => number) => (
+              <Text style={{ fontSize: 16, color: color.muted, fontWeight: "400" }}> kg wet</Text>
+            </Text>
+            <Text style={{ fontSize: 13, color: color.muted }}>Drag the propellant level</Text>
+          </View>
+          <View>
+            <Each of={rows()}>
+              {(row, i) => (
                 <Line first={i() === 0}>
-                  <text style={{ flex: 1, fontSize: 13, color: color.muted }}>{row().label}</text>
-                  <text style={{ fontFamily: mono, fontSize: 13, color: row().tint ?? color.text }}>{row().value}</text>
+                  <Text style={{ flex: 1, fontSize: 13, color: color.muted }}>{row().label}</Text>
+                  <Text style={{ fontFamily: mono, fontSize: 13, color: row().tint ?? color.text }}>{row().value}</Text>
                 </Line>
               )}
-            </each>
-          </view>
-        </view>
-      </view>
+            </Each>
+          </View>
+        </View>
+      </View>
       <Inset>
         <Caption
           label={
-            <text>
-              <text style={{ color: color.text }}>Takeoff mass</text> · {Math.round(margin() * 100)}%
-            </text>
+            <Text>
+              <Text style={{ color: color.text }}>Takeoff mass</Text> · {Math.round(margin() * 100)}%
+            </Text>
           }
           value={`${vehicle.maxTakeoff - wetMass()} kg margin`}
           tint={margin() > 0.92 ? color.caution : color.muted}
         />
         <Gauge value={margin()} warnAbove={0.92} />
-        <text style={{ fontSize: 13, color: color.muted }}>
+        <Text style={{ fontSize: 13, color: color.muted }}>
           Thrust to weight{" "}
-          <text style={{ fontFamily: mono, color: tw() < 1.3 ? color.caution : color.text }}>{tw().toFixed(2)}</text> at full
+          <Text style={{ fontFamily: mono, color: tw() < 1.3 ? color.caution : color.text }}>{tw().toFixed(2)}</Text> at full
           throttle
-        </text>
+        </Text>
       </Inset>
     </Panel>
   );

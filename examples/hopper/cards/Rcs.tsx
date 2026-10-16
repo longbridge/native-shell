@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 import { nitrogenTank, quads } from "../store";
 import { color, mono } from "../theme";
@@ -118,36 +118,36 @@ export function Rcs() {
   return (
     <Panel icon="rcs" title="RCS" status="Cold nitrogen · 4 quads · hop 40">
       <Plan selected={selected()} onPick={(id) => selected.set(id)} />
-      <view>
-        <each of={quads}>
-          {(q: () => (typeof quads)[number], i: () => number) => (
-            <view
+      <View>
+        <Each of={quads}>
+          {(q, i) => (
+            <View
               onPress={() => selected.set(selected() === q().id ? null : q().id)}
               accessibilityRole="button"
               accessibilityState={{ selected: selected() === q().id }}
             >
               <Line first={i() === 0} selected={selected() === q().id}>
                 <Pill label={q().id} tone={q().delta < 0 ? "alert" : selected() === q().id ? "accent" : "neutral"} width={44} />
-                <text style={{ flex: 1, fontSize: 15, color: color.text }}>{q().name}</text>
-                <if when={q().delta < 0}>
-                  <text style={{ fontFamily: mono, fontSize: 13, color: color.alert }}>{q().delta}%</text>
-                </if>
-                <text style={{ fontFamily: mono, fontSize: 13, color: color.text }}>{q().used.toFixed(1)} N·s</text>
+                <Text style={{ flex: 1, fontSize: 15, color: color.text }}>{q().name}</Text>
+                <If when={q().delta < 0}>
+                  <Text style={{ fontFamily: mono, fontSize: 13, color: color.alert }}>{q().delta}%</Text>
+                </If>
+                <Text style={{ fontFamily: mono, fontSize: 13, color: color.text }}>{q().used.toFixed(1)} N·s</Text>
               </Line>
-            </view>
+            </View>
           )}
-        </each>
-      </view>
+        </Each>
+      </View>
       <Inset>
-        <view style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-          <text style={{ fontSize: 14, color: color.text }}>Nitrogen bottle</text>
-          <text style={{ fontFamily: mono, fontSize: 13, color: color.muted }}>{percent}%</text>
-        </view>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
+          <Text style={{ fontSize: 14, color: color.text }}>Nitrogen bottle</Text>
+          <Text style={{ fontFamily: mono, fontSize: 13, color: color.muted }}>{percent}%</Text>
+        </View>
         <Gauge value={nitrogenTank.pressure / nitrogenTank.capacity} />
-        <text style={{ fontSize: 13, color: color.muted }}>
-          <text style={{ fontFamily: mono, color: color.text }}>{nitrogenTank.pressure}</text> of {nitrogenTank.capacity} bar · about{" "}
+        <Text style={{ fontSize: 13, color: color.muted }}>
+          <Text style={{ fontFamily: mono, color: color.text }}>{nitrogenTank.pressure}</Text> of {nitrogenTank.capacity} bar · about{" "}
           {nitrogenTank.hopsLeft} hops left
-        </text>
+        </Text>
       </Inset>
     </Panel>
   );

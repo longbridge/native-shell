@@ -1,4 +1,4 @@
-import { computed, signal } from "nsh";
+import { computed, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 import { ago, dispersion, type Hop, hops, now, type Outcome, touchdowns } from "../store";
 import { color, mono } from "../theme";
@@ -16,7 +16,7 @@ function Apogees() {
   const hop = () => last()[index()];
   const top = 160;
   return (
-    <view style={{ gap: 8 }}>
+    <View style={{ gap: 8 }}>
       <Canvas
         style={{ height: 72 }}
         onLayout={(e) => width.set(e.width)}
@@ -54,17 +54,17 @@ function Apogees() {
           });
         }}
       />
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <text style={{ flex: 1, fontSize: 13, color: color.muted }} numberOfLines={1}>
-          Hop {hop().id} · <text style={{ fontFamily: mono, color: color.text }}>{Math.round(hop().apogee)} m</text> · {hop().note}
-        </text>
-        <if when={picked() !== null}>
-          <text onPress={() => picked.set(null)} hitSlop={8} accessibilityRole="button" style={{ fontSize: 13, color: color.accent }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 13, color: color.muted }} numberOfLines={1}>
+          Hop {hop().id} · <Text style={{ fontFamily: mono, color: color.text }}>{Math.round(hop().apogee)} m</Text> · {hop().note}
+        </Text>
+        <If when={picked() !== null}>
+          <Text onPress={() => picked.set(null)} hitSlop={8} accessibilityRole="button" style={{ fontSize: 13, color: color.accent }}>
             Latest
-          </text>
-        </if>
-      </view>
-    </view>
+          </Text>
+        </If>
+      </View>
+    </View>
   );
 }
 
@@ -81,7 +81,7 @@ function Dispersion() {
     return Math.round((all.filter((p) => Math.hypot(p.x, p.y) <= zone()).length / all.length) * 100);
   });
   return (
-    <view style={{ gap: 8 }}>
+    <View style={{ gap: 8 }}>
       <Canvas
         style={{ aspectRatio: 1.25, borderRadius: 14, backgroundColor: color.inset }}
         onLayout={(e) => size.set(Math.min(e.width, e.width / 1.25))}
@@ -143,11 +143,11 @@ function Dispersion() {
           ctx.strokeRect(cx - 4, cy - 4, 8, 8);
         }}
       />
-      <view style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <text style={{ fontFamily: mono, fontSize: 13, color: color.accent }}>zone {zone().toFixed(1)} m</text>
-        <text style={{ fontFamily: mono, fontSize: 13, color: color.muted }}>{inside()}% inside</text>
-      </view>
-    </view>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ fontFamily: mono, fontSize: 13, color: color.accent }}>zone {zone().toFixed(1)} m</Text>
+        <Text style={{ fontFamily: mono, fontSize: 13, color: color.muted }}>{inside()}% inside</Text>
+      </View>
+    </View>
   );
 }
 
@@ -160,28 +160,28 @@ export function HopLog(props: { onOpen?: () => void; rows?: number }) {
       title="Hop tests"
       onOpen={props.onOpen}
       status={
-        <text>
-          {hops().length} flown · <text style={{ color: issues() > 0 ? color.caution : color.accent }}>{issues()} off-nominal</text> in the last 40
-        </text>
+        <Text>
+          {hops().length} flown · <Text style={{ color: issues() > 0 ? color.caution : color.accent }}>{issues()} off-nominal</Text> in the last 40
+        </Text>
       }
     >
       <Apogees />
-      <view>
-        <each of={recent()} key={(h: Hop) => h.id}>
-          {(hop: () => Hop, i: () => number) => (
+      <View>
+        <Each of={recent()} key={(h) => h.id}>
+          {(hop, i) => (
             <Line first={i() === 0}>
-              <view style={{ flex: 1, gap: 2, paddingVertical: 8 }}>
-                <text style={{ fontSize: 15, color: color.text }}>Hop {hop().id}</text>
-                <text style={{ fontSize: 13, color: color.muted }}>
+              <View style={{ flex: 1, gap: 2, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 15, color: color.text }}>Hop {hop().id}</Text>
+                <Text style={{ fontSize: 13, color: color.muted }}>
                   {hop().note} · {ago(hop().at, now())}
-                </text>
-              </view>
-              <text style={{ fontFamily: mono, fontSize: 14, color: color.text }}>{Math.round(hop().apogee)} m</text>
+                </Text>
+              </View>
+              <Text style={{ fontFamily: mono, fontSize: 14, color: color.text }}>{Math.round(hop().apogee)} m</Text>
               <Pill label={hop().outcome} tone={tones[hop().outcome]} width={78} />
             </Line>
           )}
-        </each>
-      </view>
+        </Each>
+      </View>
       <Caption label="Touchdown dispersion" value={`rms ${dispersion().toFixed(2)} m`} />
       <Dispersion />
     </Panel>
