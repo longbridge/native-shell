@@ -7,7 +7,10 @@ use std::hash::{BuildHasher, RandomState};
 
 use nsh_core::{
     JsonValue,
-    ui::{AnyElement, KeyboardDismissMode, LayoutAnimation, Style, Text, View, prelude::*},
+    ui::{
+        AnyElement, Idiom, KeyboardDismissMode, LayoutAnimation, Orientation, Os, Style, Text,
+        View, prelude::*,
+    },
 };
 use nsh_ui_mobile::{
     AvoidBehavior, Button, ButtonEvent, ButtonProps, ButtonVariant, Card, CardProps, CardVariant,
@@ -19,23 +22,23 @@ use crate::{
     ui::{button, colors, page, section},
 };
 
-/// The width of hairlines. TS draws them one device pixel thin
-/// (`1 / PixelRatio.get()`); a Rust component cannot read the pixel ratio,
-/// so they are a point.
-const HAIRLINE: f32 = 1.0;
-
 /// A row of controls.
 fn row() -> View {
     view().flex_row().items_center().gap_3()
 }
 
+/// One device pixel, in points (TS: `1 / PixelRatio.get()`).
+fn hairline<C: Component>(cx: &RenderCx<'_, C>) -> f32 {
+    1.0 / cx.pixel_ratio()
+}
+
 /// A bordered card taking presses.
-fn card() -> View {
+fn card(hairline: f32) -> View {
     view()
         .bg(rgb(0xffffff))
         .rounded(px(10.0))
         .p_3()
-        .border(HAIRLINE)
+        .border(hairline)
         .border_color(colors::border())
 }
 
@@ -154,6 +157,7 @@ impl Component for PressFeedback {
         };
         // The underlay's default children opacity (`underlayOpacity`).
         let underlay_opacity = 0.85;
+        let card = || card(hairline(cx));
         section(
             "Press feedback",
             [
@@ -343,9 +347,7 @@ impl Component for LayoutAnimations {
     }
 }
 
-/// An input with a bar of its own. TS shows the bar over the keyboard
-/// (`InputAccessoryView`, iOS); Rust has no element for an input accessory,
-/// so the bar shows under the input.
+/// An input with a bar over the keyboard (iOS's input accessory).
 #[derive(Debug, Default)]
 struct Accessory {
     text: String,
@@ -363,62 +365,60 @@ impl Component for Accessory {
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let input_ref = self.input.as_ref().expect("set up");
-        section(
-            "InputAccessoryView",
-            [
-                input()
-                    .element_ref(input_ref)
-                    .value(self.text.clone())
-                    .on_change_text(cx.listener(|this: &mut Self, v: &str, cx| {
-                        this.text = v.to_owned();
-                        cx.notify();
-                    }))
-                    .placeholder("Focus me")
-                    .border_1()
-                    .border_color(colors::border())
-                    .rounded(px(8.0))
-                    .px(px(10.0))
-                    .py(px(8.0))
-                    .text_size(px(16.0))
-                    .into_element(),
-                muted(if cfg!(target_os = "android") {
-                    "Android has no input accessories."
-                } else {
-                    "Rust cannot render an input accessory yet: the bar is under the input instead of over the keyboard."
-                })
+        let mut content = vec![
+            input()
+                .element_ref(input_ref)
+                .value(self.text.clone())
+                .on_change_text(cx.listener(|this: &mut Self, v: &str, cx| {
+                    this.text = v.to_owned();
+                    cx.notify();
+                }))
+                .placeholder("Focus me (iOS shows a bar over the keyboard)")
+                .input_accessory("counter")
+                .border_1()
+                .border_color(colors::border())
+                .rounded(px(8.0))
+                .px(px(10.0))
+                .py(px(8.0))
+                .text_size(px(16.0))
                 .into_element(),
-                view()
-                    .bg(rgb(0xf6f8fa))
-                    .flex_row()
-                    .items_center()
-                    .px_3()
-                    .py_2()
-                    .border_t_1()
-                    .border_color(colors::border())
-                    .child(
-                        muted(format!(
-                            "{} characters",
-                            self.text.encode_utf16().count()
-                        ))
-                        .flex_1(),
-                    )
-                    .child(button("Clear", colors::gray()).on_press(cx.listener(
-                        |this: &mut Self, _, cx| {
-                            this.text.clear();
-                            cx.notify();
-                        },
-                    )))
-                    .child(view().w(px(8.0)))
-                    .child(button("Done", colors::accent()).on_press(cx.listener(
-                        |this: &mut Self, _, _| {
-                            if let Some(input) = &this.input {
-                                input.blur();
-                            }
-                        },
-                    )))
-                    .into_element(),
-            ],
-        )
+        ];
+        if cx.os() == Os::Android {
+            content.push(muted("Android has no input accessories.").into_element());
+        }
+        content.push(
+            input_accessory_view("counter")
+                .bg(rgb(0xf6f8fa))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .px_3()
+                        .py_2()
+                        .border_t(hairline(cx))
+                        .border_t_color(colors::border())
+                        .child(
+                            muted(format!("{} characters", self.text.encode_utf16().count()))
+                                .flex_1(),
+                        )
+                        .child(button("Clear", colors::gray()).on_press(cx.listener(
+                            |this: &mut Self, _, cx| {
+                                this.text.clear();
+                                cx.notify();
+                            },
+                        )))
+                        .child(view().w(px(8.0)))
+                        .child(button("Done", colors::accent()).on_press(cx.listener(
+                            |this: &mut Self, _, _| {
+                                if let Some(input) = &this.input {
+                                    input.blur();
+                                }
+                            },
+                        ))),
+                )
+                .into_element(),
+        );
+        section("InputAccessoryView", content)
     }
 }
 
@@ -514,12 +514,11 @@ impl Component for ModalOptions {
                 cx.notify();
             })
         };
-        // TS also allows portrait and landscape on iOS
-        // (`supportedOrientations`); `Modal` has no Rust method for it.
         let modal_view = self.visible.then(|| {
             modal()
                 .animation(ModalAnimation::Slide)
                 .status_bar_translucent(self.translucent)
+                .supported_orientations([Orientation::Portrait, Orientation::Landscape])
                 .on_request_close(show(false))
                 .child(
                     view().flex_1().bg(rgb(0xfff8c5)).child(
@@ -559,37 +558,69 @@ impl Component for ModalOptions {
                             )),
                         )
                         .into_element(),
-                    muted("Android: translucent content reaches under the status bar.")
-                        .into_element(),
+                    muted(
+                        "Android: translucent content reaches under the status bar. iOS: this modal allows portrait and landscape.",
+                    )
+                    .into_element(),
                 ],
             ))
             .children(modal_view)
     }
 }
 
-/// What a Rust component knows of the platform and the user's settings.
+/// The platform, the pixel ratio and the screen reader.
 #[derive(Debug, Default)]
-struct PlatformInfo;
+struct PlatformInfo {
+    /// Announcements made.
+    announced: u32,
+    /// The note the reader's focus moves to.
+    note: Option<ElementRef>,
+}
 
 impl Component for PlatformInfo {
     const NAME: &'static str = "gallery.components.platform";
     type Props = ();
     type Event = NoEvent;
 
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self.note = Some(cx.element_ref());
+    }
+
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        // Rust is compiled per platform: the OS is known at compile time.
-        let branch = if cfg!(target_os = "ios") {
-            "ios branch"
-        } else if cfg!(target_os = "android") {
-            "android branch"
+        let os = cx.os();
+        let (major, minor) = cx.os_version();
+        // A string on iOS ("17.5"), the API level on Android (as TS's).
+        let version = if os == Os::Android {
+            major.to_string()
         } else {
-            ""
+            format!("{major}.{minor}")
+        };
+        let idiom = cx.idiom();
+        let branch = match os {
+            Os::Ios => "ios branch",
+            Os::Android => "android branch",
+            _ => "",
         };
         let rows = [
-            ("std::env::consts::OS", std::env::consts::OS.to_owned()),
-            ("cfg!(target_os)", branch.to_owned()),
-            ("cx.screen_reader()", cx.screen_reader().to_string()),
-            ("cx.reduce_motion()", cx.reduce_motion().to_string()),
+            ("Platform.OS", os.name().to_owned()),
+            ("Platform.Version", version),
+            (
+                "isPad / isTV / isMacCatalyst",
+                format!(
+                    "{} / {} / {}",
+                    idiom == Idiom::Pad,
+                    idiom == Idiom::Tv,
+                    idiom == Idiom::Mac
+                ),
+            ),
+            ("Platform.select", branch.to_owned()),
+            ("PixelRatio.get()", cx.pixel_ratio().to_string()),
+            (
+                "roundToNearestPixel(10.3)",
+                cx.round_to_nearest_pixel(10.3).to_string(),
+            ),
+            ("screenReaderEnabled()", cx.screen_reader().to_string()),
+            ("reduceMotion()", cx.reduce_motion().to_string()),
         ]
         .map(|(name, value)| {
             row()
@@ -600,19 +631,29 @@ impl Component for PlatformInfo {
         });
         let mut content: Vec<AnyElement> = rows.into();
         content.extend([
-            muted(
-                "Not readable from Rust yet: the OS version, isPad / isTV / isMacCatalyst, the pixel ratio.",
-            )
-            .into_element(),
-            view()
-                .h(px(HAIRLINE))
-                .bg(colors::text())
+            view().h(px(hairline(cx))).bg(colors::text()).into_element(),
+            muted("The line above is one device pixel tall.").into_element(),
+            row()
+                .child(button("Announce", colors::accent()).on_press(cx.listener(
+                    |this: &mut Self, _, cx| {
+                        this.announced += 1;
+                        cx.announce_for_accessibility(format!("Announcement {}", this.announced));
+                    },
+                )))
+                .child(
+                    button("Focus the note", colors::gray()).on_press(cx.listener(
+                        |this: &mut Self, _, _| {
+                            if let Some(note) = &this.note {
+                                note.set_accessibility_focus();
+                            }
+                        },
+                    )),
+                )
                 .into_element(),
-            muted("The line above is a point tall (a device pixel needs the pixel ratio).")
-                .into_element(),
             muted(
-                "Screen reader announcements and moving its focus are not available to Rust components yet.",
+                "With VoiceOver or TalkBack on, the buttons above speak and move the reader here.",
             )
+            .element_ref(self.note.as_ref().expect("set up"))
             .into_element(),
         ]);
         section("Platform, PixelRatio, AccessibilityInfo", content)

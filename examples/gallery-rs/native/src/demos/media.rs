@@ -92,8 +92,7 @@ impl Component for Media {
         let inline = section(
             "Web view",
             [
-                web_view("about:blank")
-                    .html(PAGE, None)
+                web_view_html(PAGE, None)
                     .element_ref(&web)
                     .h(px(200.0))
                     .rounded_lg()

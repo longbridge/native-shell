@@ -203,18 +203,33 @@ impl Styles {
             .p(px(14.0))
             .bg(rgb(0xffffff))
             .rounded(px(12.0))
-            // TS's "Flip" button calls `I18nManager.forceRTL`: a Rust
-            // component can read the direction (`cx.rtl()`), not set it.
             .child(
-                view().flex_row().items_center().gap_2().child(
-                    text(if cx.rtl() {
-                        "Right to left"
-                    } else {
-                        "Left to right"
-                    })
-                    .flex_1()
-                    .font_weight(FontWeight::SEMIBOLD),
-                ),
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        text(if cx.rtl() {
+                            "Right to left"
+                        } else {
+                            "Left to right"
+                        })
+                        .flex_1()
+                        .font_weight(FontWeight::SEMIBOLD),
+                    )
+                    .child(
+                        text("Flip")
+                            .text_color(rgb(0xffffff))
+                            .bg(rgb(0x0969da))
+                            .px_3()
+                            .py(px(6.0))
+                            .rounded(px(8.0))
+                            .overflow_hidden()
+                            .on_press(cx.listener(|_: &mut Self, _, cx| {
+                                let rtl = cx.environment().rtl;
+                                cx.force_rtl(!rtl);
+                            })),
+                    ),
             )
             .child(view().flex_row().gap_2().children(boxes))
             .child(text(

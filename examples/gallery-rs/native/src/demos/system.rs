@@ -1,6 +1,6 @@
 //! System: Status bar, alerts, action sheets, environment, timers (as the TSX gallery's `demos/System.tsx`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use nsh_core::ui::{AnyElement, Dialog, DialogButton, DialogButtonStyle, prelude::*};
 use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
@@ -51,6 +51,14 @@ pub(crate) struct System {
     bar_style: usize,
     /// The status bar is hidden.
     bar_hidden: bool,
+    /// Counts the display frames while it runs ("Count frames").
+    frames: Option<Task<()>>,
+    /// Frames since `since`.
+    frame_count: u32,
+    /// When the frames counted started.
+    since: Option<Instant>,
+    /// Frames per second, over the last second.
+    fps: u32,
 }
 
 impl System {
@@ -71,6 +79,45 @@ impl System {
             .await;
         })
         .detach();
+    }
+}
+
+impl System {
+    /// Starts or stops counting frames: a task awaits each display frame
+    /// (TS: `requestAnimationFrame` asking again from its callback).
+    fn toggle_frames(&mut self, cx: &mut Context<'_, Self>) {
+        if self.frames.take().is_some() {
+            cx.notify();
+            return;
+        }
+        self.frame_count = 0;
+        self.since = Some(Instant::now());
+        self.frames = Some(cx.spawn(|this, cx| async move {
+            loop {
+                let at = cx.next_frame().await;
+                if this
+                    .update(move |this, cx| this.frame(at, cx))
+                    .await
+                    .is_none()
+                {
+                    break;
+                }
+            }
+        }));
+        cx.notify();
+    }
+
+    /// A frame began at `at`: once a second, the rate.
+    fn frame(&mut self, at: Instant, cx: &mut Context<'_, Self>) {
+        self.frame_count += 1;
+        let since = *self.since.get_or_insert(at);
+        let elapsed = at.saturating_duration_since(since).as_secs_f64();
+        if elapsed >= 1.0 {
+            self.fps = (f64::from(self.frame_count) / elapsed).round() as u32;
+            self.frame_count = 0;
+            self.since = Some(at);
+            cx.notify();
+        }
     }
 }
 
@@ -241,7 +288,11 @@ impl Component for System {
                         Self::ask(cx, dialog, move |i| chosen(&options, i.max(0)));
                     }))
                     .into_element(),
-                note("Toast (Android): Rust components have no toast API yet."),
+                button("Toast (Android)", colors::gray())
+                    .on_press(cx.listener(|_: &mut Self, _, cx| {
+                        cx.toast("Hello from a toast", ToastDuration::Long);
+                    }))
+                    .into_element(),
                 row(
                     "Answer",
                     if self.answer.is_empty() {
@@ -253,19 +304,44 @@ impl Component for System {
             ],
         );
 
+        let counting = self.frames.is_some();
         let timers = section(
             "Frames and timers",
             [
-                row("requestAnimationFrame", "no frame callback in Rust"),
-                row("set_interval (1 s)", self.ticks.to_string()),
+                row(
+                    "requestAnimationFrame",
+                    if counting {
+                        format!("{} fps", self.fps)
+                    } else {
+                        "stopped".to_owned()
+                    },
+                ),
+                row("setInterval (1 s)", self.ticks.to_string()),
+                button(
+                    if counting {
+                        "Stop counting frames"
+                    } else {
+                        "Count frames"
+                    },
+                    colors::accent(),
+                )
+                .on_press(cx.listener(|this: &mut Self, _, cx| this.toggle_frames(cx)))
+                .into_element(),
             ],
         );
 
         let network = section(
             "Network and logs",
-            [note(
-                "fetch() and console.log are JS APIs. A Rust component would fetch with an HTTP crate in a task (cx.spawn runs on tokio) and log with the log crate; the gallery's crate adds no dependencies for them.",
-            )],
+            [
+                note(
+                    "fetch() is a JS API: a Rust component fetches with an HTTP crate in a task (cx.spawn runs on tokio).",
+                ),
+                button("log::info! (shown by nsh run)", colors::gray())
+                    .on_press(cx.listener(|_: &mut Self, _, _| {
+                        log::info!(target: "gallery", "hello from the gallery");
+                    }))
+                    .into_element(),
+            ],
         );
 
         view().flex_1().child(page([

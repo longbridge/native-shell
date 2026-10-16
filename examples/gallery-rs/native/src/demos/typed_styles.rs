@@ -15,11 +15,10 @@ use nsh_core::ui::{
     prelude::*,
 };
 
+use crate::assets::LOGO;
+
 /// The photo of the filters' card.
 const PHOTO: &str = "https://picsum.photos/seed/nsh-tailwind/600/400";
-
-/// The gallery's logo, as the TSX gallery imports it (`../logo@2x.png`).
-const LOGO: &str = "asset:/logo@2x.png";
 
 /// The TSX gallery's `brand` color (its `nsh.json` Tailwind theme).
 const BRAND_50: Color = rgb(0xf5f3ff);

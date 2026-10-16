@@ -10,10 +10,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+log.workspace = true
 nsh-core.workspace = true
 nsh-ui-mobile.workspace = true
 
 [dev-dependencies]
 nsh-engine.workspace = true
 crossbeam-channel.workspace = true
-log.workspace = true

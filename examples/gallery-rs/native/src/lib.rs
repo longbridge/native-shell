@@ -4,6 +4,7 @@
 //! nsh's Rust component API. The app imports the set as `gallery/native`
 //! (`nsh.json` `"rust"`).
 
+mod assets;
 mod demos;
 mod nav;
 mod ui;
@@ -15,7 +16,9 @@ use crate::nav::Routes;
 /// The UI set of the gallery: what `App.tsx` imports from `gallery/native`.
 pub fn registry() -> Registry {
     let mut registry = Registry::ui_set("gallery/native");
-    registry.register::<Gallery>();
+    registry
+        .register::<Gallery>()
+        .assets(nsh_core::ui::assets!());
     registry
 }
 

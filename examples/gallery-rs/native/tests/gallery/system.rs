@@ -1,5 +1,5 @@
 //! The System demo: the environment, the status bar's settings, system
-//! dialogs and their answers, a timer.
+//! dialogs and their answers, a toast, a timer and display frames.
 
 use std::time::Duration;
 
@@ -118,4 +118,57 @@ fn system_counts_seconds() {
         "{:?}",
         screen.texts
     );
+}
+
+#[test]
+fn system_shows_a_toast() {
+    let (engine, rx, mut screen) = crate::common::open("System");
+    let text = screen.find("Toast (Android)").expect("the toast's button");
+    engine
+        .control()
+        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    let mut toast = None;
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
+        screen.apply(&batch);
+        toast = toast.or_else(|| {
+            batch.items.iter().find_map(|item| match item {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::Toast { text, long },
+                } => Some((text.clone(), *long)),
+                _ => None,
+            })
+        });
+    }
+    assert_eq!(toast, Some(("Hello from a toast".to_owned(), true)));
+}
+
+#[test]
+fn system_counts_frames() {
+    let (engine, rx, mut screen) = crate::common::open("System");
+    assert!(shows(&screen, "stopped"), "{:?}", screen.texts);
+    crate::common::press(&engine, &rx, &mut screen, "Count frames");
+    assert!(
+        shows(&screen, "0 fps") && shows(&screen, "Stop counting frames"),
+        "{:?}",
+        screen.texts
+    );
+    // The platform's display frames, for a little over a second.
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_millis(1200) {
+        engine.control().frame();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    crate::common::drain(&rx, &mut screen);
+    assert!(
+        screen.texts.iter().any(|t| t
+            .1
+            .strip_suffix(" fps")
+            .and_then(|n| n.parse::<u32>().ok())
+            .is_some_and(|n| n > 0)),
+        "{:?}",
+        screen.texts
+    );
+    crate::common::press(&engine, &rx, &mut screen, "Stop counting frames");
+    assert!(shows(&screen, "stopped"), "{:?}", screen.texts);
 }

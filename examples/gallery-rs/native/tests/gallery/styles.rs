@@ -1,5 +1,6 @@
 //! The Styles demo on a headless engine: its cards render with their
-//! shadows, corners, borders and transforms; the clipping card toggles.
+//! shadows, corners, borders and transforms; the clipping card toggles;
+//! "Flip" lays the surface out right to left and back.
 
 use std::collections::HashMap;
 
@@ -85,4 +86,37 @@ fn the_clipping_card_toggles() {
         "{:?}",
         screen.texts
     );
+}
+
+#[test]
+fn flip_lays_the_surface_out_right_to_left() {
+    let (engine, rx, mut screen) = crate::common::open("Styles");
+    let flip = screen.find("Flip").expect("the Flip button");
+    let mut directions = Vec::new();
+    let mut press = |screen: &mut crate::common::Screen| {
+        engine
+            .control()
+            .dispatch_event(flip, EventKind::Press, EventPayload::None);
+        while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {
+            screen.apply(&batch);
+            for item in &batch.items {
+                if let MountItem::LayoutDirection { rtl } = item {
+                    directions.push(*rtl);
+                }
+            }
+        }
+    };
+    press(&mut screen);
+    assert!(
+        screen.texts.iter().any(|t| t.1 == "Right to left"),
+        "{:?}",
+        screen.texts
+    );
+    press(&mut screen);
+    assert!(
+        screen.texts.iter().any(|t| t.1 == "Left to right"),
+        "{:?}",
+        screen.texts
+    );
+    assert_eq!(directions, [true, false]);
 }

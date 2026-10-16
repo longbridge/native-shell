@@ -3,21 +3,18 @@
 
 use nsh_core::{
     Size,
-    ui::{AnyElement, Image, Text, prelude::*},
+    ui::{AnyElement, Image, ImageProgress, ImageSize, Text, prelude::*},
 };
 
-use crate::ui::{button, colors, page, section};
+use crate::{
+    assets::{BOUNCE, LOGO, SPINNER},
+    ui::{button, colors, page, section},
+};
 
 /// A 2:1 network image.
 const WIDE: &str = "https://picsum.photos/seed/nsh-wide/480/240";
 /// A large network image (`Image.getSize`, `Image.prefetch`).
 const BIG: &str = "https://picsum.photos/seed/nsh-progress/2400/1600";
-
-/// The TSX gallery's assets, at the paths its imports give them. A Rust
-/// image has no natural size (TS's imports carry it): the views size them.
-const LOGO: &str = "asset:/logo@2x.png";
-const BOUNCE: &str = "asset:/bounce.gif";
-const SPINNER: &str = "asset:/spinner.webp";
 
 /// The background of images still loading.
 fn loading() -> Color {
@@ -55,8 +52,16 @@ pub(crate) struct Images {
     seed: u32,
     /// The large image shows.
     show: bool,
+    /// What `image_size` answered for the large image.
+    size: String,
+    /// What `prefetch_image` answered.
+    prefetched: String,
     /// The large image's download progress and load.
     progress: String,
+    /// Waits for `image_size`'s answer.
+    sizing: Option<Task<()>>,
+    /// Waits for `prefetch_image`'s answer.
+    prefetching: Option<Task<()>>,
 }
 
 impl Images {
@@ -102,19 +107,25 @@ impl Images {
                         .border(3.0)
                         .border_color(colors::purple()),
                 )
-                // TS rounds the top left and bottom right corners (40):
-                // the typed styles set all corners, or the top or bottom
-                // pair, not one corner.
-                .child(image(WIDE).size(px(90.0)))
+                .child(
+                    image(WIDE)
+                        .size(px(90.0))
+                        .rounded_tl(px(40.0))
+                        .rounded_br(px(40.0)),
+                )
                 .into_element()],
         )
         .into_element()
     }
 
     fn assets() -> AnyElement {
-        let logo = || image(LOGO).size(px(64.0));
-        // TS tints these (`tintColor`): the typed styles have no tint.
-        let tints = ["#cf222e", "#1a7f37", "#0969da"].map(|tint| captioned(logo(), tint));
+        // At its natural size (64 × 64 points: `@2x` of 128 pixels).
+        let tints = [
+            (0xcf222e, "#cf222e"),
+            (0x1a7f37, "#1a7f37"),
+            (0x0969da, "#0969da"),
+        ]
+        .map(|(tint, name)| captioned(image(LOGO).tint_color(rgb(tint)), name));
         section(
             "Assets and tint",
             [view()
@@ -122,7 +133,7 @@ impl Images {
                 .gap_4()
                 .items_center()
                 .justify_center()
-                .child(captioned(logo(), "logo@2x.png"))
+                .child(captioned(image(LOGO), "logo@2x.png"))
                 .children(tints)
                 .into_element()],
         )
@@ -136,8 +147,8 @@ impl Images {
                 .flex_row()
                 .gap_6()
                 .justify_center()
-                .child(captioned(image(BOUNCE).size(px(96.0)), "bounce.gif"))
-                .child(captioned(image(SPINNER).size(px(96.0)), "spinner.webp"))
+                .child(captioned(image(BOUNCE), "bounce.gif"))
+                .child(captioned(image(SPINNER), "spinner.webp"))
                 .child(captioned(
                     image(BOUNCE).size(px(48.0)).rounded(px(24.0)),
                     "scaled, round",
@@ -203,16 +214,26 @@ impl Images {
     }
 
     fn info(&self, cx: &RenderCx<'_, Self>) -> AnyElement {
-        let status = if self.progress.is_empty() {
+        let status = [&self.size, &self.prefetched, &self.progress]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let status = if status.is_empty() {
             "Prefetch, then show: no download, no progress".to_owned()
         } else {
-            self.progress.clone()
+            status
         };
         let big = self.show.then(|| {
             image(BIG)
                 .h(px(160.0))
                 .rounded(px(10.0))
                 .bg(loading())
+                .on_progress(cx.listener(|this: &mut Self, e: &ImageProgress, cx| {
+                    this.progress = format!("{}%", (e.loaded / e.total.max(1.0) * 100.0).round());
+                    cx.notify();
+                }))
                 .on_load(cx.listener(|this: &mut Self, _: &Size, cx| {
                     this.progress = if this.progress.is_empty() {
                         "loaded (no download)".to_owned()
@@ -226,21 +247,53 @@ impl Images {
             "Image.getSize, Image.prefetch, onProgress",
             [view()
                 .gap(px(10.0))
-                .child(view().flex_row().gap_2().child(
-                    button(if self.show { "Hide" } else { "Show" }, rgb(0x1a7f37)).on_press(
-                        cx.listener(|this: &mut Self, _, cx| {
-                            this.show = !this.show;
-                            cx.notify();
-                        }),
-                    ),
-                ))
+                .child(
+                    view()
+                        .flex_row()
+                        .gap_2()
+                        .child(button("getSize", colors::accent()).on_press(cx.listener(
+                            |this: &mut Self, _, cx| {
+                                let size = cx.image_size(BIG);
+                                let task = cx.spawn(|this, _| async move {
+                                    let size = size.await;
+                                    this.update(move |this, cx| {
+                                        this.size = match size {
+                                            Ok(ImageSize { width, height }) => {
+                                                format!("{width}×{height} px")
+                                            }
+                                            Err(error) => error,
+                                        };
+                                        cx.notify();
+                                    })
+                                    .await;
+                                });
+                                this.sizing = Some(task);
+                            },
+                        )))
+                        .child(button("prefetch", colors::purple()).on_press(cx.listener(
+                            |this: &mut Self, _, cx| {
+                                let loaded = cx.prefetch_image(BIG);
+                                let task = cx.spawn(|this, _| async move {
+                                    let loaded = loaded.await;
+                                    this.update(move |this, cx| {
+                                        this.prefetched =
+                                            if loaded { "prefetched" } else { "failed" }.to_owned();
+                                        cx.notify();
+                                    })
+                                    .await;
+                                });
+                                this.prefetching = Some(task);
+                            },
+                        )))
+                        .child(
+                            button(if self.show { "Hide" } else { "Show" }, rgb(0x1a7f37))
+                                .on_press(cx.listener(|this: &mut Self, _, cx| {
+                                    this.show = !this.show;
+                                    cx.notify();
+                                })),
+                        ),
+                )
                 .child(text(status).text_color(colors::muted()))
-                // TS's getSize and prefetch buttons call `Image.getSize` /
-                // `Image.prefetch` and the image reports `onProgress`: the
-                // Rust API has none of them.
-                .child(caption(
-                    "Image.getSize, Image.prefetch and onProgress are not in the Rust API",
-                ))
                 .children(big)
                 .into_element()],
         )

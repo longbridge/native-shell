@@ -3,10 +3,9 @@
 
 use nsh_core::ui::{EllipsizeMode, prelude::*};
 
-const LOREM: &str = "Native text, typeset once on the engine thread with CoreText and drawn on the main thread without any layout work.";
+use crate::assets::{LOGO, PACIFICO};
 
-/// The gallery's logo, as the TSX gallery imports it (`../logo@2x.png`).
-const LOGO: &str = "asset:/logo@2x.png";
+const LOREM: &str = "Native text, typeset once on the engine thread with CoreText and drawn on the main thread without any layout work.";
 
 fn caption(content: impl Into<SharedString>) -> AnyElement {
     text(content)
@@ -126,12 +125,9 @@ impl Component for TextDemo {
                     .child(caption(format!("Pressed: {}", self.tapped)))
                     .child(caption("Views and images inside text (they wrap with it)"))
                     .child(self.inline(cx))
-                    // TS imports the font file, which registers its family;
-                    // Rust cannot bundle nor register a font, so this shows
-                    // only where the app registered Pacifico.
                     .child(
                         text("Custom fonts")
-                            .font_family("Pacifico")
+                            .font_family(PACIFICO.family)
                             .text_size(px(30.0))
                             .text_color(rgb(0x8250df)),
                     )
