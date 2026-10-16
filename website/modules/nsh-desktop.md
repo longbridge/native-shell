@@ -25,7 +25,7 @@ const isAvailable: boolean;
 ```ts
 const Window: {
   setTitle(title: string): void;
-  setTitleBar(style: "default" | "hidden"): void;
+  setTitleBar(style: "default" | "hidden", height?: number): void;
   minimize(): void;
   toggleMaximize(): void;
   toggleFullScreen(): void;
@@ -36,7 +36,7 @@ const Window: {
 | Member | Description |
 |---|---|
 | `setTitle(title)` | The window's title: the title bar, the taskbar or Dock, the window switcher. |
-| `setTitleBar(style)` | `"hidden"` removes the system's title bar: the app fills the window up to its top edge and draws a title bar of its own. The system's window controls stay (macOS's traffic lights, Windows' minimize / maximize / close buttons, GTK's window buttons). `"default"` brings the system's title bar back. |
+| `setTitleBar(style, height?)` | `"hidden"` removes the system's title bar: the app fills the window up to its top edge and draws a title bar of its own. The system's window controls stay (macOS's traffic lights, Windows' minimize / maximize / close buttons, GTK's window buttons). `height` is your bar's height in points: the controls are centered in it (Windows' caption buttons fill it); without it they take the platform's height. `"default"` brings the system's title bar back. |
 | `minimize()` | Minimizes the window. |
 | `toggleMaximize()` | Maximizes the window, or restores it when it is maximized. |
 | `toggleFullScreen()` | Enters or leaves full screen. |
@@ -50,14 +50,14 @@ With the title bar hidden, the app draws its own bar and says which parts of it 
 import { Input, Text, View } from "nsh";
 import { titleBar, Window } from "nsh/desktop";
 
-Window.setTitleBar("hidden");
+Window.setTitleBar("hidden", 40); // a bar 40 points tall
 
 function TitleBar() {
   return (
     <View
       desktop={{ windowDrag: true }}
       style={{
-        height: Math.max(titleBar().height, 40),
+        height: titleBar().height || 40,
         paddingLeft: titleBar().left + 8, // macOS's traffic lights
         paddingRight: titleBar().right + 8, // the caption buttons on Windows, GTK's buttons
         flexDirection: "row",
@@ -88,9 +88,9 @@ The hidden title bar's area, in points (reactive): its `height`, and the widths 
 
 | | `height` | `left` | `right` |
 |---|---|---|---|
-| macOS | The title bar's (28) | The traffic lights' width | 0 |
-| Windows | 32 | 0 | The three caption buttons (138) |
-| Linux | The header bar's | The window buttons at the start (the desktop's button layout) | The window buttons at the end |
+| macOS | `height`, else the title bar's (28) | The traffic lights' width | 0 |
+| Windows | `height`, else 32 | 0 | The three caption buttons (138) |
+| Linux | `height`, else the header bar's | The window buttons at the start (the desktop's button layout) | The window buttons at the end |
 
 On Windows the caption buttons are drawn by nsh in Windows 11's style and follow the app's appearance; hovering the maximize button shows Windows 11's snap layouts. The window keeps its resize borders, shadow and rounded corners on every platform.
 

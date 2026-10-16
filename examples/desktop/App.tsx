@@ -65,7 +65,8 @@ function App() {
   ];
 
   effect(() => {
-    Window.setTitleBar(hidden() ? "hidden" : "default");
+    // The bar is 40 points tall: the window controls are centered in it.
+    Window.setTitleBar(hidden() ? "hidden" : "default", 40);
   });
 
   effect(() => {
@@ -88,7 +89,7 @@ function App() {
 
   // Where each menu button is, to open its menu below it.
   const buttons: Record<string, { x: number; width: number }> = {};
-  const barHeight = () => Math.max(titleBar().height, 40);
+  const barHeight = () => titleBar().height || 40;
 
   return (
     <View style={{ flex: 1, backgroundColor: dark() ? "#111318" : "#f4f5f7" }}>

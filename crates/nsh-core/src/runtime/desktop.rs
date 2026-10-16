@@ -31,9 +31,14 @@ impl Window {
     /// (`"hidden"`): the app then fills the window up to its top edge and
     /// draws a title bar of its own, made draggable with
     /// `desktop={{ windowDrag: true }}`; the system's window controls stay,
-    /// in the area `titleBar()` reports.
-    pub(crate) fn set_title_bar(style: TitleBarStyle, cx: &mut ModuleCx) {
-        desktop(cx, DesktopCommand::SetTitleBar(style));
+    /// in the area `titleBar()` reports. `height` is the app's bar's height
+    /// in points: the controls are centered in it (Windows' caption buttons
+    /// fill it); the platform's own without it.
+    pub(crate) fn set_title_bar(style: TitleBarStyle, height: Option<f32>, cx: &mut ModuleCx) {
+        let height = height
+            .filter(|h| h.is_finite() && *h > 0.0)
+            .map(|h| h.min(200.0));
+        desktop(cx, DesktopCommand::SetTitleBar { style, height });
     }
 
     /// Minimizes the window.

@@ -418,7 +418,14 @@ pub enum DesktopCommand {
     /// The window's title.
     SetTitle(String),
     /// The title bar's style.
-    SetTitleBar(TitleBarStyle),
+    SetTitleBar {
+        /// Shown or hidden.
+        style: TitleBarStyle,
+        /// The height of the app's own title bar, in points: the window
+        /// controls are centered in it (Windows' caption buttons fill it);
+        /// `None` for the platform's height.
+        height: Option<f32>,
+    },
     /// Minimizes the window.
     Minimize,
     /// Maximizes the window, or restores it when it is maximized.

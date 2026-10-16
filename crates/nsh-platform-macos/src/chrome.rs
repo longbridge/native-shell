@@ -114,6 +114,8 @@ define_class!(
 #[derive(Default)]
 pub(crate) struct Chrome {
     style: Cell<TitleBarStyle>,
+    /// The app's title bar's height (`Window.setTitleBar`'s).
+    height: Cell<Option<f32>>,
     /// The target of its menu items (made with the first menu).
     target: RefCell<Option<Retained<MenuTarget>>>,
 }
@@ -135,7 +137,13 @@ pub(crate) fn update_area(surface: &Surface) {
         {
             let frame = window.frame();
             let layout = window.contentLayoutRect();
-            let height = (frame.size.height - layout.size.height) as f32;
+            let height = match surface.chrome.height.get() {
+                Some(height) => {
+                    center_traffic_lights(&window, height);
+                    height
+                }
+                None => (frame.size.height - layout.size.height) as f32,
+            };
             let left = window
                 .standardWindowButton(NSWindowButton::ZoomButton)
                 .map(|zoom| {
@@ -164,6 +172,37 @@ pub(crate) fn update_area(surface: &Surface) {
     }
 }
 
+/// Centers the traffic lights in an app's title bar `height` points tall:
+/// the title bar's container takes that height at the window's top and the
+/// buttons are centered in it. AppKit lays them out again on every resize
+/// and full screen change, so this runs after each ([`update_area`]).
+fn center_traffic_lights(window: &NSWindow, height: f32) {
+    let buttons = [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ]
+    .map(|b| window.standardWindowButton(b));
+    let Some(close) = &buttons[0] else { return };
+    // The buttons are in the title bar view, which fills its container.
+    let Some(container) = close.superview().and_then(|bar| bar.superview()) else {
+        return;
+    };
+    let height = f64::from(height);
+    let mut frame = container.frame();
+    frame.size.height = height;
+    frame.origin.y = window.frame().size.height - height;
+    container.setFrame(frame);
+    for button in buttons.iter().flatten() {
+        let f = button.frame();
+        // The title bar view is not flipped: y goes up.
+        button.setFrameOrigin(NSPoint::new(
+            f.origin.x,
+            ((height - f.size.height) / 2.0).round(),
+        ));
+    }
+}
+
 // --- Commands ---------------------------------------------------------------------------
 
 /// A desktop command (on the root).
@@ -174,7 +213,8 @@ pub(crate) fn command(surface: &Rc<Surface>, command: &DesktopCommand) {
                 window.setTitle(&NSString::from_str(title));
             }
         }
-        DesktopCommand::SetTitleBar(style) => {
+        DesktopCommand::SetTitleBar { style, height } => {
+            surface.chrome.height.set(*height);
             surface.chrome.style.set(*style);
             apply_title_bar(surface);
         }

@@ -72,8 +72,18 @@ use crate::{
     surface::Surface,
 };
 
-/// The hidden title bar's height, in points (Windows 11's caption).
-const CAPTION_HEIGHT: f32 = 32.0;
+/// The hidden title bar's height when the app gives none, in points
+/// (Windows 11's caption).
+const DEFAULT_CAPTION_HEIGHT: f32 = 32.0;
+
+/// The hidden title bar's height, in points: the app's, else Windows'.
+fn caption_height(surface: &Surface) -> f32 {
+    surface
+        .chrome
+        .height
+        .get()
+        .unwrap_or(DEFAULT_CAPTION_HEIGHT)
+}
 /// A caption button's width, in points.
 const BUTTON_WIDTH: f32 = 46.0;
 
@@ -123,6 +133,8 @@ pub(crate) type Action = Rc<dyn Fn(&Rc<Surface>)>;
 #[derive(Default)]
 pub(crate) struct Chrome {
     style: Cell<TitleBarStyle>,
+    /// The app's title bar's height (`Window.setTitleBar`'s).
+    height: Cell<Option<f32>>,
     /// The caption button under the mouse (`HT*`, 0 for none).
     hover: Cell<u32>,
     /// The caption button pressed.
@@ -177,7 +189,7 @@ fn update_area(surface: &Surface) {
     let mut env = surface.environment.get();
     env.title_bar = if hidden(surface) {
         Insets {
-            top: CAPTION_HEIGHT,
+            top: caption_height(surface),
             right: 3.0 * BUTTON_WIDTH,
             bottom: 0.0,
             left: 0.0,
@@ -222,8 +234,9 @@ pub(crate) fn command(surface: &Rc<Surface>, command: &DesktopCommand) {
             // SAFETY: a plain call with a NUL-terminated string.
             let _ = unsafe { SetWindowTextW(hwnd, &windows::core::HSTRING::from(title.as_str())) };
         }
-        DesktopCommand::SetTitleBar(style) => {
-            if c.style.replace(*style) != *style {
+        DesktopCommand::SetTitleBar { style, height } => {
+            let changed = c.height.replace(*height) != *height;
+            if c.style.replace(*style) != *style || changed {
                 show_menu_bar(surface);
                 frame_changed(hwnd);
                 update_area(surface);
@@ -432,7 +445,7 @@ pub(crate) fn nc_calc_size(
 
 /// The caption button at `(x, y)` (points), as its hit test code.
 fn caption_at(surface: &Surface, x: f32, y: f32) -> Option<u32> {
-    if !hidden(surface) || !(0.0..CAPTION_HEIGHT).contains(&y) {
+    if !hidden(surface) || !(0.0..caption_height(surface)).contains(&y) {
         return None;
     }
     let from_right = surface.size().0 - x;
@@ -585,6 +598,7 @@ pub(crate) fn draw(surface: &Surface, dc: &ID2D1DeviceContext, scale: f32) {
     let px = 1.0 / scale;
     let snap = |v: f32| (v * scale).round() / scale + px / 2.0;
     let glyph = 10.0;
+    let caption = caption_height(surface);
     for (i, code) in [HTCLOSE, HTMAXBUTTON, HTMINBUTTON].into_iter().enumerate() {
         let x = width - BUTTON_WIDTH * (i + 1) as f32;
         let hovered = c.hover.get() == code;
@@ -617,13 +631,13 @@ pub(crate) fn draw(surface: &Surface, dc: &ID2D1DeviceContext, scale: f32) {
             if let Some(bg) = background
                 && let Ok(brush) = dc.CreateSolidColorBrush(&color_f(bg), None)
             {
-                dc.FillRectangle(&rect_f(x, 0.0, BUTTON_WIDTH, CAPTION_HEIGHT), &brush);
+                dc.FillRectangle(&rect_f(x, 0.0, BUTTON_WIDTH, caption), &brush);
             }
             let Ok(brush) = dc.CreateSolidColorBrush(&color_f(foreground), None) else {
                 continue;
             };
             let left = snap(x + (BUTTON_WIDTH - glyph) / 2.0);
-            let top = snap((CAPTION_HEIGHT - glyph) / 2.0);
+            let top = snap((caption - glyph) / 2.0);
             let (right, bottom) = (left + glyph - px, top + glyph - px);
             let line = |a: (f32, f32), b: (f32, f32)| {
                 dc.DrawLine(
@@ -636,7 +650,7 @@ pub(crate) fn draw(surface: &Surface, dc: &ID2D1DeviceContext, scale: f32) {
             };
             match code {
                 HTMINBUTTON => {
-                    let y = snap(CAPTION_HEIGHT / 2.0);
+                    let y = snap(caption / 2.0);
                     line((left, y), (right + px, y));
                 }
                 HTMAXBUTTON if zoomed(hwnd) => {

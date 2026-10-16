@@ -50,6 +50,8 @@ const MARGIN: i32 = 6;
 #[derive(Default)]
 pub(crate) struct Chrome {
     style: Cell<TitleBarStyle>,
+    /// The app's title bar's height (`Window.setTitleBar`'s).
+    height: Cell<Option<f32>>,
     /// The `AppView`'s overlay (the window buttons go in it) and the box
     /// above it that holds the menu bar.
     overlay: RefCell<Option<glib::WeakRef<gtk::Overlay>>>,
@@ -126,7 +128,11 @@ fn watch(surface: &Rc<Surface>, window: &gtk::Window) {
 pub(crate) fn command(surface: &Rc<Surface>, command: &DesktopCommand) {
     let c = &surface.chrome;
     match command {
-        DesktopCommand::SetTitleBar(style) => {
+        DesktopCommand::SetTitleBar { style, height } => {
+            let resized = c.height.replace(*height) != *height;
+            if resized && c.style.get() == *style {
+                update_area(surface);
+            }
             if c.style.replace(*style) != *style
                 && let Some(window) = window(surface)
             {
@@ -270,7 +276,9 @@ fn update_area(surface: &Surface) {
                         (w.measure(gtk::Orientation::Horizontal, -1).1 + 2 * MARGIN) as f32
                     }
                 };
-                let top = HEADER_HEIGHT.max((height(start).max(height(end)) + 2 * MARGIN) as f32);
+                let top = surface.chrome.height.get().unwrap_or_else(|| {
+                    HEADER_HEIGHT.max((height(start).max(height(end)) + 2 * MARGIN) as f32)
+                });
                 for controls in [start, end] {
                     let h = height(controls) as f32;
                     controls.set_margin_top(((top - h) / 2.0).round() as i32);

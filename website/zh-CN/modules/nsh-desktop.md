@@ -25,7 +25,7 @@ const isAvailable: boolean;
 ```ts
 const Window: {
   setTitle(title: string): void;
-  setTitleBar(style: "default" | "hidden"): void;
+  setTitleBar(style: "default" | "hidden", height?: number): void;
   minimize(): void;
   toggleMaximize(): void;
   toggleFullScreen(): void;
@@ -36,7 +36,7 @@ const Window: {
 | 成员 | 说明 |
 |---|---|
 | `setTitle(title)` | 窗口的标题：标题栏、任务栏或 Dock、窗口切换器里显示的名字。 |
-| `setTitleBar(style)` | `"hidden"` 去掉系统标题栏：应用一直铺到窗口顶边，自己绘制标题栏。系统的窗口按钮保留（macOS 的红绿灯、Windows 的最小化 / 最大化 / 关闭按钮、GTK 的窗口按钮）。`"default"` 恢复系统标题栏。 |
+| `setTitleBar(style, height?)` | `"hidden"` 去掉系统标题栏：应用一直铺到窗口顶边，自己绘制标题栏。系统的窗口按钮保留（macOS 的红绿灯、Windows 的最小化 / 最大化 / 关闭按钮、GTK 的窗口按钮）。`height` 是你的标题栏高度（单位为点）：窗口按钮在其中垂直居中（Windows 的标题栏按钮撑满这个高度）；省略时使用平台的高度。`"default"` 恢复系统标题栏。 |
 | `minimize()` | 最小化窗口。 |
 | `toggleMaximize()` | 最大化窗口，已最大化时还原。 |
 | `toggleFullScreen()` | 进入或退出全屏。 |
@@ -50,14 +50,14 @@ const Window: {
 import { Input, Text, View } from "nsh";
 import { titleBar, Window } from "nsh/desktop";
 
-Window.setTitleBar("hidden");
+Window.setTitleBar("hidden", 40); // 40 点高的标题栏
 
 function TitleBar() {
   return (
     <View
       desktop={{ windowDrag: true }}
       style={{
-        height: Math.max(titleBar().height, 40),
+        height: titleBar().height || 40,
         paddingLeft: titleBar().left + 8, // macOS 的红绿灯
         paddingRight: titleBar().right + 8, // Windows 的标题栏按钮、GTK 的窗口按钮
         flexDirection: "row",
@@ -88,9 +88,9 @@ const titleBar: Accessor<{ height: number; left: number; right: number }>;
 
 | | `height` | `left` | `right` |
 |---|---|---|---|
-| macOS | 标题栏的高度（28） | 红绿灯的宽度 | 0 |
-| Windows | 32 | 0 | 三个标题栏按钮（138） |
-| Linux | 标题栏（header bar）的高度 | 开头的窗口按钮（按桌面的按钮布局） | 末尾的窗口按钮 |
+| macOS | `height`，否则为标题栏的高度（28） | 红绿灯的宽度 | 0 |
+| Windows | `height`，否则为 32 | 0 | 三个标题栏按钮（138） |
+| Linux | `height`，否则为标题栏（header bar）的高度 | 开头的窗口按钮（按桌面的按钮布局） | 末尾的窗口按钮 |
 
 在 Windows 上，标题栏按钮由 nsh 按 Windows 11 的样式绘制，跟随应用的外观；鼠标停在最大化按钮上会出现 Windows 11 的贴靠布局。在所有平台上窗口都保留调整大小的边框、阴影和圆角。
 
