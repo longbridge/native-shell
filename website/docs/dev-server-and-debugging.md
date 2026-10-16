@@ -36,7 +36,8 @@ What each target does:
 - **`catalyst`** (macOS) runs the development host as a Mac app. Stopping `nsh run` (Ctrl-C) closes it, and closing the
   window ends `nsh run`.
 - **`ios`** installs the development host in the simulator, launches it pointed at the dev server and keeps watching.
-  The simulator shares the Mac's network, so the host reaches the server on `127.0.0.1`. Requires Xcode.
+  The simulator shares the Mac's network, so the host reaches the server on `127.0.0.1`. Stopping `nsh run` (Ctrl-C)
+  closes the host, which would otherwise join the next session. Requires Xcode.
 - **`android`** installs the development host APK (again only when the runtime changed), runs
   `adb reverse tcp:<port> tcp:<port>` so the device's own `127.0.0.1` reaches the server, and starts it. Works with an
   emulator or a USB device. Requires the Android SDK (`ANDROID_HOME`). When `nsh run` ends (Ctrl-C too), it stops the

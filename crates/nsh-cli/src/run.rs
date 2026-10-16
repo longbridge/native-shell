@@ -102,9 +102,13 @@ pub(crate) fn run(
             let step = ui::Step::start("launching the development host");
             simctl(&launch)?;
             step.finish();
-            // The simulator shares the Mac's network: 127.0.0.1 is the dev server.
+            // The simulator shares the Mac's network: 127.0.0.1 is the dev
+            // server, so a host left running would join the next session
+            // of any app: Ctrl-C stops it too.
+            let stoppable = ui::Stoppable::new();
             let result = session.watch(|| Ok(false));
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
+            drop(stoppable);
             result
         }
         Target::Android => unreachable!("handled above"),

@@ -32,7 +32,7 @@ nsh dev App.tsx                     # server only
 
 - **`catalyst`**（macOS）以 Mac 应用的形式运行开发宿主。停止 `nsh run`（Ctrl-C）会关闭它，关闭窗口也会结束 `nsh run`。
 - **`ios`** 将开发宿主安装到模拟器中，启动它并指向开发服务器，然后持续监听。模拟器与 Mac 共享网络，因此宿主通过
-  `127.0.0.1` 即可访问服务器。需要 Xcode。
+  `127.0.0.1` 即可访问服务器。停止 `nsh run`（Ctrl-C）会关闭宿主，否则它会接入下一次会话。需要 Xcode。
 - **`android`** 安装开发宿主 APK（同样只在运行时有变化时才安装），执行 `adb reverse tcp:<port> tcp:<port>`，使设备
   自己的 `127.0.0.1` 能访问到服务器，然后启动它。支持模拟器或 USB 连接的设备。需要 Android SDK（`ANDROID_HOME`）。
   `nsh run` 结束时（包括 Ctrl-C）会停止宿主并移除这条端口转发，因此该宿主不会接入下一次会话。
