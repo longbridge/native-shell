@@ -1222,10 +1222,17 @@ enum KeyMove {
 /// What a key scrolls: whether along the horizontal axis, and how.
 fn key_move(event: &KeyEvent) -> Option<(bool, KeyMove)> {
     let m = event.modifiers;
-    // Ctrl / Alt / Windows key combinations are shortcuts (Alt+Left goes
-    // back).
-    if !event.down || m.ctrl || m.alt || m.meta {
+    if !event.down || m.alt || m.meta {
         return None;
+    }
+    // Ctrl+Home / Ctrl+End go to the edges, as in browsers; other Ctrl,
+    // Alt and Windows key combinations are shortcuts (Alt+Left goes back).
+    if m.ctrl {
+        return match event.vk {
+            vk if vk == VK_HOME.0 => Some((false, KeyMove::Start)),
+            vk if vk == VK_END.0 => Some((false, KeyMove::End)),
+            _ => None,
+        };
     }
     Some(match event.vk {
         vk if vk == VK_UP.0 => (false, KeyMove::Points(-KEY_LINE)),
@@ -1688,6 +1695,12 @@ mod tests {
         assert_eq!(key_move(&key(VK_END.0, none)), Some((false, KeyMove::End)));
         assert_eq!(key_move(&key(VK_LEFT.0, alt)), None);
         assert_eq!(key_move(&key(b'A' as u16, none)), None);
+        let ctrl = Modifiers { ctrl: true, ..none };
+        assert_eq!(
+            key_move(&key(VK_HOME.0, ctrl)),
+            Some((false, KeyMove::Start))
+        );
+        assert_eq!(key_move(&key(VK_DOWN.0, ctrl)), None);
         let up = KeyEvent {
             down: false,
             ..key(VK_DOWN.0, none)
