@@ -35,6 +35,15 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   shadow (clipping a layer clips its shadow). Hosted AppKit views (text fields, headers, videos, web views) are
   `ViewState::natives`, above the children, except a sheet's scrim (hosted by the root, below its card); hit testing
   follows the AppKit order of hosted views and children, so a click on the card reaches the card.
+- **Web views and videos are views among the others**, so window composition needs no surfaces of its own (unlike
+  Windows' child windows): a `WKWebView` is a layer-backed subview of its node's view, and the layer WebKit's process
+  draws into is composited by Core Animation with the rest. What is above it in the view tree draws over it (later
+  siblings, modals and sheets with their scrim, toasts; the dev status line, error overlay and FPS HUD are above the
+  root), and its ancestors' clipping (corner radii, masks), opacity, transforms, hiding and scroll offsets apply to
+  it. AppKit's input and in-process rendering do not follow the layers: the root's `hitTest:` decides with nsh's
+  picking (Input, below), a page under a transformed ancestor is drawn transformed but gets mouse positions as if it
+  were not, and `renderInContext:` leaves pages and videos out (leaving screens and modals take the live views
+  along; `--script`'s `shot` shows them blank). `NSAlert` sheets are windows of their own, above everything.
 - **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
   `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
   contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
