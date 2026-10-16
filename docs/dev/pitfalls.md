@@ -197,6 +197,15 @@ Things that were found the hard way. Read the section of the area you change bef
   draws the glyphs hinted with the baseline on the pixel grid, a pixel or so beyond. A view with text (or a text field)
   adds a clear node `TEXT_OVERHANG` around its bounds that changes with each `NshView::changed`, so its damage covers
   that (`ViewState::draw_overhang`).
+- **WebKitGTK hands back keys a page did not use, except arrows**: `PageClientImpl::doneWithKeyEvent` puts unused key
+  presses back into GTK (so the window's bubble-phase controllers see Escape), but always keeps arrow keys, so Alt+Left
+  never reaches the window from a focused page. `native/web.rs` takes the history keys in a capture-phase controller on
+  the web view.
+- **WebKitGTK's `decide-policy` does not say which frame a navigation is for** (`WebKitNavigationAction` has no main
+  frame flag, and subframe navigations come through it too): a policy decided there applies to frames as well.
+- **GTK delivers pointer events by allocation**, ignoring nsh's clipping (`overflow: hidden` in `snapshot`), `hidden`
+  and `pointerEvents`: a hosted widget (a web view's page) gets clicks and wheels outside what is drawn of it unless
+  the root's capture controller stops them (`input.rs`'s `shields_page`).
 - **Tiling window managers ignore the host's `--size`** (the window's default size): scripted screenshots have the size
   the window got, and the script's `resize` too (it resizes on X11 and floating windows).
 

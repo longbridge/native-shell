@@ -98,7 +98,8 @@ docs: Describe the capability checks of fetch redirects
   toolchain for `cargo +nightly fmt`.
 - Xcode, for the iOS, simulator and Mac Catalyst targets.
 - For Linux: the GTK 4 (4.14 or later) development packages (`libgtk-4-dev`, `gtk4`,
-  `gtk4-devel`) and clang.
+  `gtk4-devel`), WebKitGTK 6.0's for web views (`libwebkitgtk-6.0-dev`, `webkitgtk-6.0`,
+  `webkitgtk6.0-devel`; the Linux hosts build with them by default) and clang.
 - For Windows (10 1809 or later): Visual Studio Build Tools with the C++ workload and the Windows SDK, and LLVM
   (libclang, for QuickJS' bindings; found in `C:\Program Files\LLVM`, else set `LIBCLANG_PATH`). If rustc overflows
   its stack on the `windows` crate, set `RUST_MIN_STACK=268435456`.

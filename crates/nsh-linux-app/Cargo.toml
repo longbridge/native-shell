@@ -9,6 +9,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["webview"]
+# Web views (WebKitGTK 6.0): `libwebkitgtk-6.0-dev` to build, and packaged
+# apps then need `libwebkitgtk-6.0-4` to start; off, a web view shows a
+# placeholder and the runner needs only GTK 4.
+webview = ["nsh-platform-linux/webview"]
+
 [dependencies]
 log.workspace = true
 

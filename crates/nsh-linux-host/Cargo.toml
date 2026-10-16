@@ -9,6 +9,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["webview"]
+# Web views (WebKitGTK 6.0): `libwebkitgtk-6.0-dev` to build; off, a web
+# view shows a placeholder.
+webview = ["nsh-platform-linux/webview"]
+
 [dependencies]
 log.workspace = true
 

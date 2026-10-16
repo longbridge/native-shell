@@ -16,7 +16,10 @@
 //! their allocation transforms (frame, scroll offset, shift, transform).
 //! Outside a view's bounds, only the area its descendants cover
 //! (`MountItem::Overflow`: a dropdown under its field) is looked into, as
-//! on iOS and Android.
+//! on iOS and Android. GTK still delivers events by its own picking, so
+//! presses, hovers and wheels GTK would send to a web view's page where
+//! nsh does not show it (clipped off, hidden) are kept from the page
+//! (`shields_page`), after nsh handled them.
 //!
 //! Presses follow React Native and the other backends: the innermost view
 //! listening to press events gets them (or the pressable text span under
@@ -512,6 +515,56 @@ fn update_cursor(view: &NshView) {
 // --- GDK events ---------------------------------------------------------------------
 
 fn handle(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
+    // Decided before nsh's own handling moves anything.
+    let shielded = shields_page(surface, event);
+    let propagation = dispatch(surface, event);
+    if shielded {
+        glib::Propagation::Stop
+    } else {
+        propagation
+    }
+}
+
+/// Whether `event` would reach a web view's page where nsh does not show
+/// it: GTK picks widgets by their allocations and knows nothing of
+/// `overflow: hidden`, `hidden` or `pointerEvents`, so without this a
+/// page clipped by a parent would take clicks, hovers and wheels outside
+/// what is drawn of it. nsh's own handling of the event goes on (the view
+/// actually under the pointer gets it); only the page is kept from it.
+fn shields_page(surface: &Surface, event: &gdk::Event) -> bool {
+    use gdk::EventType as T;
+    if !surface.native.has_pages() {
+        return false;
+    }
+    let buttons = gdk::ModifierType::BUTTON1_MASK
+        | gdk::ModifierType::BUTTON2_MASK
+        | gdk::ModifierType::BUTTON3_MASK;
+    let point = match event.event_type() {
+        T::ButtonPress | T::TouchBegin => root_point(&surface.root, event),
+        // Drags that started in the page stay with it.
+        T::MotionNotify if !event.modifier_state().intersects(buttons) => {
+            root_point(&surface.root, event)
+        }
+        T::Scroll => root_point(&surface.root, event).or_else(|| surface.input.last.get()),
+        _ => None,
+    };
+    let Some((x, y)) = point else {
+        return false;
+    };
+    let Some(page) = surface
+        .root
+        .pick(x as f64, y as f64, gtk::PickFlags::DEFAULT)
+        .and_then(|target| crate::native::page_of(&target))
+    else {
+        return false;
+    };
+    let shown = pick(&surface.root, x, y)
+        .and_then(|hit| hit.native)
+        .is_some_and(|native| native == page || native.is_ancestor(&page));
+    !shown
+}
+
+fn dispatch(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
     use gdk::EventType as T;
     let ty = event.event_type();
     match ty {
@@ -1724,10 +1777,12 @@ fn scrolls_itself(widget: &gtk::Widget) -> bool {
             return false;
         }
         let ty = w.type_();
-        if ty.is_a(gtk::Scrollable::static_type())
-            || ty.is_a(gtk::ScrolledWindow::static_type())
-            || ty.name().contains("WebView")
-        {
+        if ty.name().contains("WebView") {
+            // A page with `scrollEnabled: false` leaves wheels to the
+            // scroll views around it.
+            return !w.has_css_class(crate::native::UNSCROLLABLE);
+        }
+        if ty.is_a(gtk::Scrollable::static_type()) || ty.is_a(gtk::ScrolledWindow::static_type()) {
             return true;
         }
         current = w.parent();

@@ -15,6 +15,10 @@ nsh 应用也能在 Linux 上运行。Linux 后端用 GTK 4 控件渲染应用�
 - **GTK 4.14** 及以上。构建 nsh 的 Linux 运行时（从源码构建，或在 Linux 上运行 `cargo xtask dist`）
   还需要它们的开发包和 clang：Debian 与 Ubuntu（24.04 及以上）为 `libgtk-4-dev clang`，Arch 为 `gtk4 clang`，Fedora 为
   `gtk4-devel clang`。
+- Web 视图需要 **WebKitGTK 6.0**（2.40 及以上）：构建运行时需要 Debian 与 Ubuntu 上的 `libwebkitgtk-6.0-dev`、Arch 上的
+  `webkitgtk-6.0`、Fedora 上的 `webkitgtk6.0-devel`。开发宿主和发布运行器默认使用它，因此打包后的应用运行的机器上需要装有
+  WebKitGTK 6.0（Debian 与 Ubuntu 上为 `libwebkitgtk-6.0-4`；GNOME 桌面自带）。在没有它的开发包的机器上，`cargo xtask dist`
+  构建的运行时中 Web 视图为占位视图，其应用只需要 GTK。
 - 应用要播放的视频格式对应的 **GStreamer** 插件（GTK 通过 GStreamer 播放视频）。
 
 ## 运行应用
@@ -54,8 +58,8 @@ out/<Name>/
 out/<Name>.tar.gz
 ```
 
-可执行文件会在自身旁边找到 `nsh/`（指向它的符号链接也可以，例如放在 `~/.local/bin` 中）。运行应用的机器上必须装有 GTK 4
-和 Pango。要让应用出现在桌面的启动器中，把可执行文件（或其链接）放到 `PATH` 中，把 `.desktop` 文件放到
+可执行文件会在自身旁边找到 `nsh/`（指向它的符号链接也可以，例如放在 `~/.local/bin` 中）。运行应用的机器上必须装有 GTK 4、
+Pango 和 WebKitGTK 6.0。要让应用出现在桌面的启动器中，把可执行文件（或其链接）放到 `PATH` 中，把 `.desktop` 文件放到
 `~/.local/share/applications`，把图标放到图标主题目录中。`--run` 会在打包后启动应用。
 
 ## 嵌入 GTK 应用
@@ -118,9 +122,13 @@ fn main() -> gtk::glib::ExitCode {
 快捷键适用于任何键盘布局（在西里尔或希腊字母布局下，Ctrl+C 是美式布局中输入 C 的那个键）。确认输入法组合文字（中文、日文等）的回车
 不会提交。`onKeyPress` 报告的与 React Native 一致：输入的文字、`"Enter"`、`"Backspace"` 和 `"Escape"`；粘贴的文字不报告。
 
+Web 视图是绘制在 nsh 视图之内的 WebKitGTK 页面：sheet、对话框、toast 以及排在它后面的视图会绘制在页面之上，父视图会裁剪它、改变它的透明度。
+它的网站数据（cookie、存储、缓存）按应用分别保存在 `~/.local/share/<app id>/webkit` 和 `~/.cache/<app id>/webkit` 下。
+`webview` 权限同样作用于框架中的页面：应用未获授权的主机的 `iframe` 保持空白。在页面中按 Escape 会离开页面，与文本框中一样
+（除非页面自己用了它）；页面有历史记录时，Alt+Left 和鼠标的后退键在页面中后退。
+
 不支持：
 
-- **`WebView`**：它需要 WebKitGTK；Web 视图只显示一个中性的占位视图。
 - **视频的 `rate`**：GTK 只能以正常速度播放。`onEnd` 只对不循环的视频触发。
 - **可缩放的滚动视图**（`zoomTo`、缩放相关属性）。
 - **`mixBlendMode` 和 `backdropFilter`**（背景色仍会绘制）；`borderCurve: "continuous"` 绘制为圆形圆角。

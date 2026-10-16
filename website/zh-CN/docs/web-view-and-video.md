@@ -10,14 +10,16 @@ order: 21
 
 | 组件 | iOS | Android | macOS | Linux | Windows |
 |---|---|---|---|---|---|
-| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | 不支持：显示占位视图 | WebView2，位于子窗口中 |
+| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | WebKitGTK 6.0 的 `WebKitWebView` | WebView2，位于子窗口中 |
 | `Video` | AVPlayerLayer；设置 `controls` 时为 AVPlayerViewController | TextureView 上的 MediaPlayer；设置 `controls` 时为 MediaController | AVPlayerLayer；设置 `controls` 时为 AVKit 的 AVPlayerView | `GtkPicture` 中的 GTK 媒体流（GStreamer）；设置 `controls` 时为 `GtkVideo` | Media Foundation 媒体引擎，画面用 Direct2D 绘制；设置 `controls` 时为 nsh 自己的控制栏 |
 
 它们背后的框架（WebKit、AVFoundation）在应用第一次用到时才加载，所以从不显示网页或视频的应用不会在启动时为它们付出代价。请从 `nsh/webview` 和 `nsh/video` 导入它们。
 
 在 [macOS](./macos.md) 上，Web 视图没有自己的滚动视图，因此 `scrollEnabled` 会被忽略。
 
-在 [Linux](./linux.md) 上，Web 视图需要 WebKitGTK，而 nsh 不使用它：Web 视图只显示一个中性的占位视图，并忽略它的命令。视频能播放哪些格式取决于已安装的
+在 [Linux](./linux.md) 上，Web 视图是绘制在它的视图之内的 WebKitGTK 页面：绘制在它上方的 nsh 内容（对话框、sheet）会遮住它，父视图会裁剪它。
+那里的 `webview` 权限同样作用于框架的导航（未获授权的主机的 `iframe` 保持空白），`scrollEnabled: false` 让页面本身不滚动（页面中的元素仍可滚动）。
+应用需要装有 WebKitGTK 6.0；不带它构建的运行时显示中性的占位视图。视频能播放哪些格式取决于已安装的
 GStreamer 插件；不支持 `rate`（始终以 1× 播放），`onEnd` 只对不循环的视频触发。
 
 在 [Windows](./windows.md) 上，Web 视图是位于子窗口中的 WebView2 控件，跟随它的视图移动：它会被父视图和圆角裁剪，但绘制在它上方的
