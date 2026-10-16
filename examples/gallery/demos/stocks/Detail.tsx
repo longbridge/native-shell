@@ -1,7 +1,7 @@
 import { cleanup, computed, effect, Scroll, signal, Text, untracked, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
-import { Screen, Sheet, useSafeAreaInsets } from "nsh/ui/mobile";
+import { Modal, Screen, Sheet, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon } from "../../icons";
 import { Button, colors, finish, header, Press, Stat } from "../../ui";
 import { Depth, OrderBook } from "./Book";
@@ -219,10 +219,39 @@ function Ranges(props: { market: Market; stock: Stock }) {
   );
 }
 
-/** A stock: quote and chart on the first screen, then the book, depth, the
- * tape, the flow and the ranges, all live. Buy / Sell at the bottom open
- * the order ticket in a sheet. */
+/** Pauses and resumes the market. */
+function PauseButton(props: { market: Market }) {
+  return (
+    <Press
+      onPress={() => (props.market.running() ? props.market.stop() : props.market.start())}
+      hitSlop={6}
+      accessibilityLabel={props.market.running() ? "Pause the market" : "Resume the market"}
+    >
+      <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, props.market.running() ? { ...finish.pill, borderWidth: 1 } : finish.accent]}>
+        <Icon name={props.market.running() ? "pause" : "play"} size={13} tint={props.market.running() ? colors.muted : colors.onAccent} />
+      </View>
+    </Press>
+  );
+}
+
+/** A stock, pushed: its view under a header with the pause button. */
 export function Detail(props: { market: Market; stock: Stock }) {
+  return (
+    <Screen title={props.stock.code} {...header} headerRight={<PauseButton market={props.market} />}>
+      <StockView market={props.market} stock={props.stock} />
+    </Screen>
+  );
+}
+
+/**
+ * A stock: quote and chart on the first screen, then the book, depth, the
+ * tape, the flow and the ranges, all live. Buy / Sell at the bottom open
+ * the order ticket in a sheet. `wide` (the desktop layout, beside the
+ * watchlist, whose strip has the pause button) heads it with the code,
+ * draws the chart taller and, while `split` holds, puts the book, the
+ * tape, depth and flow in a column right of the quote, chart and ranges.
+ */
+export function StockView(props: { market: Market; stock: Stock; wide?: boolean; split?: () => boolean }) {
   props.market.focus(props.stock);
   cleanup(() => props.market.focus(null));
   const side = signal<Side>("buy");
@@ -234,81 +263,108 @@ export function Detail(props: { market: Market; stock: Stock }) {
     ticket.set(true);
   };
   const stats = () => props.market.stats();
+  const footer = (
+    <Text style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 96 + insets().bottom, fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>
+      simulated · {stats().ms.toFixed(2)} ms JS/tick · {stats().updates} quotes/s
+    </Text>
+  );
+  const split = () => props.split?.() ?? false;
+  const ticketView = (
+    <Ticket
+      open={ticket}
+      stock={props.stock}
+      side={side}
+      onSide={(s) => side.set(s)}
+      onPlaced={(title, detail, s) => {
+        ticket.set(false);
+        banner.show(title, detail, s);
+      }}
+    />
+  );
   return (
-    <Screen
-      title={props.stock.code}
-      {...header}
-      headerRight={
-        <Press
-          onPress={() => (props.market.running() ? props.market.stop() : props.market.start())}
-          hitSlop={6}
-          accessibilityLabel={props.market.running() ? "Pause the market" : "Resume the market"}
-        >
-          <View style={[{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" }, props.market.running() ? { ...finish.pill, borderWidth: 1 } : finish.accent]}>
-            <Icon name={props.market.running() ? "pause" : "play"} size={13} tint={props.market.running() ? colors.muted : colors.onAccent} />
-          </View>
-        </Press>
-      }
-    >
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <If
+        when={props.wide}
+        else={
+          <Scroll style={{ flex: 1 }}>
+            <Quote market={props.market} stock={props.stock} />
+            <Block>
+              <Chart stock={props.stock} running={() => props.market.running()} />
+            </Block>
+            <OrderBook market={props.market} stock={props.stock} />
+            <Tape market={props.market} stock={props.stock} />
+            <Depth market={props.market} stock={props.stock} />
+            <Flow market={props.market} />
+            <Ranges market={props.market} stock={props.stock} />
+            {footer}
+          </Scroll>
+        }
+      >
         <Scroll style={{ flex: 1 }}>
-          <Quote market={props.market} stock={props.stock} />
-          <Block>
-            <Chart stock={props.stock} running={() => props.market.running()} />
-          </Block>
-          <OrderBook market={props.market} stock={props.stock} />
-          <Tape market={props.market} stock={props.stock} />
-          <Depth market={props.market} stock={props.stock} />
-          <Flow market={props.market} />
-          <Ranges market={props.market} stock={props.stock} />
-          <Text style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 96 + insets().bottom, fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>
-            simulated · {stats().ms.toFixed(2)} ms JS/tick · {stats().updates} quotes/s
-          </Text>
+          <Text style={{ paddingHorizontal: 16, paddingTop: 14, fontSize: 22, fontWeight: "700", letterSpacing: -0.3, color: colors.text }}>{props.stock.code}</Text>
+          <View style={{ flexDirection: split() ? "row" : "column", alignItems: split() ? "flex-start" : "stretch" }}>
+            <View style={{ flex: split() ? 1 : undefined, minWidth: 0 }}>
+              <Quote market={props.market} stock={props.stock} />
+              <Block>
+                <Chart stock={props.stock} running={() => props.market.running()} height={340} />
+              </Block>
+              <Ranges market={props.market} stock={props.stock} />
+            </View>
+            <View style={{ width: split() ? 380 : undefined, borderLeftWidth: split() ? 1 : 0, borderLeftColor: colors.line }}>
+              <OrderBook market={props.market} stock={props.stock} />
+              <Tape market={props.market} stock={props.stock} />
+              <Depth market={props.market} stock={props.stock} />
+              <Flow market={props.market} />
+            </View>
+          </View>
+          {footer}
         </Scroll>
-        {/* The trade bar, over the content. */}
-        <View
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-            paddingHorizontal: 16,
-            paddingTop: 10,
-            paddingBottom: 10 + insets().bottom,
-            // Glass: the page shows through, blurred, as it scrolls under.
-            ...finish.glass,
-            borderTopWidth: 1,
-            borderTopColor: finish.glass.borderColor,
-          }}
-        >
-          <View style={{ width: 92, gap: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>{price(props.stock.quote().last, props.stock)}</Text>
-            <Text style={{ fontSize: 12, fontVariant: ["tabular-nums"], color: toneOf(percent(props.stock.quote())) }}>{signed(percent(props.stock.quote()))}%</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button label="Sell" variant="secondary" onPress={() => trade("sell")} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button label="Buy" onPress={() => trade("buy")} />
-          </View>
+      </If>
+      {/* The trade bar, over the content. */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          paddingBottom: 10 + insets().bottom,
+          // Glass: the page shows through, blurred, as it scrolls under.
+          ...finish.glass,
+          borderTopWidth: 1,
+          borderTopColor: finish.glass.borderColor,
+        }}
+      >
+        <View style={{ width: 92, gap: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>{price(props.stock.quote().last, props.stock)}</Text>
+          <Text style={{ fontSize: 12, fontVariant: ["tabular-nums"], color: toneOf(percent(props.stock.quote())) }}>{signed(percent(props.stock.quote()))}%</Text>
         </View>
-        {banner.view}
-        <Sheet open={ticket()} onClose={() => ticket.set(false)}>
-          <Ticket
-            open={ticket}
-            stock={props.stock}
-            side={side}
-            onSide={(s) => side.set(s)}
-            onPlaced={(title, detail, s) => {
-              ticket.set(false);
-              banner.show(title, detail, s);
-            }}
-          />
-        </Sheet>
+        <View style={{ flex: 1 }}>
+          <Button label="Sell" variant="secondary" onPress={() => trade("sell")} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="Buy" onPress={() => trade("buy")} />
+        </View>
       </View>
-    </Screen>
+      {banner.view}
+      {/* The ticket: a bottom sheet on phones, a card in the window on
+          desktops (Escape or a click outside closes it). */}
+      <If
+        when={props.wide}
+        else={
+          <Sheet open={ticket()} onClose={() => ticket.set(false)}>
+            {ticketView}
+          </Sheet>
+        }
+      >
+        <Modal visible={ticket()} desktop={{ presentationStyle: "formSheet" }} onRequestClose={() => ticket.set(false)}>
+          <View style={{ flex: 1, padding: 20, backgroundColor: colors.surface }}>{ticketView}</View>
+        </Modal>
+      </If>
+    </View>
   );
 }

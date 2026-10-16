@@ -1,10 +1,10 @@
-import { batch, computed, effect, Input, Scroll, signal, Text, View, type YNode } from "nsh";
+import { batch, computed, effect, Input, Scroll, signal, Text, View, type ViewStyle, type YNode } from "nsh";
 import { createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Clipboard } from "nsh/clipboard";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
-import { alpha, Appear, Badge, colors, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
+import { alpha, Appear, Badge, colors, desktop, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
 import { Glyph } from "./chat/glyphs";
 import { type Block, Markdown, parse } from "./chat/markdown";
 import { ActionButton, Avatar, Caret, DateSeparator, ErrorRow, FileChip, Photo, Spinner, ToolCard } from "./chat/parts";
@@ -34,9 +34,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /**
  * A simulated AI assistant: replies stream token by token (batched per
  * frame), think first, call tools, fail and recover; every scenario comes
- * from local scripts and timers.
+ * from local scripts and timers. The desktop layout adds a list of
+ * conversations on the left and keeps messages and the composer in a
+ * readable column.
  */
 export function Chat() {
+  const wide = desktop();
+  /** Desktop: messages and the composer in a centered column. */
+  const column: ViewStyle = wide ? { width: "100%", maxWidth: 820, alignSelf: "center" } : {};
   const insets = useSafeAreaInsets();
   let ids = 0;
   const nextId = () => `m${ids++}`;
@@ -439,7 +444,7 @@ export function Chat() {
   };
 
   const empty = (
-    <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16, paddingVertical: 24, gap: 24 }}>
+    <View style={{ ...column, flex: 1, justifyContent: "center", paddingHorizontal: 16, paddingVertical: 24, gap: 24 }}>
         <Appear>
           <View style={{ alignItems: "center", gap: 12 }}>
             <IconTile name="spark" tint={colors.accent} size={56} />
@@ -491,7 +496,7 @@ export function Chat() {
     ...chips.map((c) => ({ id: c.id, glyph: "regenerate" as const, label: c.label })),
   ];
 
-  return (
+  const pane = (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>
@@ -517,7 +522,7 @@ export function Chat() {
               {(item) => {
                 const kind = computed(() => item().kind);
                 return (
-                  <View>
+                  <View style={wide ? column : undefined}>
                     {(() => {
                       switch (kind()) {
                         case "date":
@@ -681,7 +686,7 @@ export function Chat() {
         </If>
 
         {/* The composer. */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom), gap: 8 }}>
+        <View style={{ ...column, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom), gap: 8 }}>
           <If when={attachment()}>
             <Appear>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -747,6 +752,74 @@ export function Chat() {
           </View>
         </View>
       </KeyboardAvoidingView>
+    </View>
+  );
+  if (!wide) return pane;
+
+  // Desktop: the scenarios as conversations, each opened afresh.
+  const current = signal<string | null>(null);
+  const newChat = () => {
+    stop();
+    batch(() => {
+      messages.set([]);
+      attachment.set(null);
+      menu.set(false);
+      current.set(null);
+    });
+  };
+  const openChat = (id: string) => {
+    newChat();
+    current.set(id);
+    play(id);
+  };
+  return (
+    <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.background }}>
+      <View style={{ width: 280, borderRightWidth: 1, borderRightColor: colors.line, padding: 12, gap: 2 }}>
+        <Press onPress={newChat} accessibilityLabel="New chat">
+          <View
+            style={{
+              height: 40,
+              borderRadius: radius.control,
+              borderCurve: "continuous",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              backgroundColor: colors.raised,
+              ...finish.raised,
+              borderWidth: 1,
+              borderColor: colors.border,
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="plus" size={15} tint={colors.text} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>New chat</Text>
+          </View>
+        </Press>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.faint, letterSpacing: 0.6, paddingHorizontal: 12, paddingTop: 18, paddingBottom: 6 }}>
+          CONVERSATIONS
+        </Text>
+        <Each of={chips}>
+          {(chip) => (
+            <View
+              onPress={() => openChat(chip().id)}
+              accessibilityRole="button"
+              accessibilityLabel={chip().label}
+              accessibilityState={{ selected: current() === chip().id }}
+              class={current() === chip().id ? "bg-paper-border dark:bg-graphite-raised" : "hover:bg-paper-card active:bg-paper-border dark:hover:bg-graphite-card dark:active:bg-graphite-raised"}
+              style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: radius.control, gap: 2, cursor: "pointer" }}
+            >
+              <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: current() === chip().id ? "600" : "400", color: colors.text }}>
+                {chip().label}
+              </Text>
+              <Text numberOfLines={1} style={{ fontSize: 12, color: colors.muted }}>
+                {scenarios.find((x) => x.id === chip().id)?.prompt ?? "Weeks of messages, loaded at once"}
+              </Text>
+            </View>
+          )}
+        </Each>
+      </View>
+      {pane}
     </View>
   );
 }

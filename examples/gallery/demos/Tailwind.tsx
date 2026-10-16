@@ -1,8 +1,8 @@
-import { Input, type JSX, Scroll, signal, Text, View } from "nsh";
+import { Input, type JSX, signal, Text, View } from "nsh";
 import { Image } from "nsh/image";
 import logo from "../logo@2x.png";
 import { Icon, type IconName } from "../icons";
-import { Appear, colors } from "../ui";
+import { colors, DemoPage } from "../ui";
 
 /**
  * The gallery's design built from class strings alone: the surfaces and the
@@ -406,20 +406,5 @@ function Inputs() {
 const sections: (() => JSX.Element)[] = [Hero, Stats, Buttons, Cards, Layout, Shadows, Gradients, Typography, Effects, Motion, Lists, Inputs, Colors];
 
 export function Tailwind() {
-  return (
-    <Scroll class="flex-1 bg-paper-page dark:bg-graphite-page">
-      <View class="gap-4 p-4 pb-10">
-        <Each of={sections}>
-          {(section, i) => {
-            const Body = section();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={sections} />;
 }

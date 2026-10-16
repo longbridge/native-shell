@@ -1,9 +1,9 @@
-import { type JSX, Scroll, signal, Text, View } from "nsh";
+import { type JSX, signal, Text, View } from "nsh";
 import { Image } from "nsh/image";
 import bounce from "../bounce.gif";
 import logo from "../logo@2x.png";
 import spinner from "../spinner.webp";
-import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, Meter, mono, radius } from "../ui";
+import { alpha, Appear, Badge, Button, Caption, Card, colors, DemoPage, finish, Meter, mono, radius } from "../ui";
 
 // Fixed photos (in color), large enough to stay sharp at 3x.
 const wide = "https://picsum.photos/id/1015/1200/600";
@@ -298,20 +298,5 @@ function Events() {
 
 export function Images() {
   const cards = [ResizeModes, Corners, Assets, Animated, Placeholders, Blur, Info, Events];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={cards}>
-          {(Demo, i) => {
-            const Body = Demo();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={cards} columns={3} />;
 }

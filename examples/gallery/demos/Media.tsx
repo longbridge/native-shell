@@ -1,8 +1,8 @@
-import { Scroll, signal, Text, View, type YNode } from "nsh";
+import { signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 import { Icon } from "../icons";
-import { Appear, Badge, Button, Caption, Card, colors, finish, isDark, Meter, Press, radius, RoundButton, Segmented } from "../ui";
+import { Badge, Button, Caption, Card, colors, DemoPage, finish, isDark, Meter, Press, radius, RoundButton, Segmented } from "../ui";
 
 /** An inline page in the gallery's colors (for the appearance shown: the page reloads when it changes). */
 const page = () => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -125,13 +125,19 @@ function Player() {
   const time = signal(0);
   const duration = signal(0);
   const buffering = signal(false);
+  const failed = signal(false);
   let video!: YNode;
   return (
     <Card
       icon="play"
       title="Video"
       subtitle="AVPlayer / MediaPlayer"
-      right={<Badge label={buffering() ? "Buffering" : paused() ? "Paused" : "Playing"} tone={buffering() ? "warn" : paused() ? "neutral" : "accent"} />}
+      right={
+        <Badge
+          label={failed() ? "Error" : buffering() ? "Buffering" : paused() ? "Paused" : "Playing"}
+          tone={failed() ? "danger" : buffering() ? "warn" : paused() ? "neutral" : "accent"}
+        />
+      }
     >
       <Video
         ref={video}
@@ -142,6 +148,7 @@ function Player() {
         controls={controls() === "system"}
         style={{ height: 200, backgroundColor: "#000000", ...frame() }}
         onLoad={(e) => duration.set(e.duration)}
+        onError={() => failed.set(true)}
         onBuffer={(e) => buffering.set(e.isBuffering)}
         onProgress={(e) => {
           time.set(e.currentTime);
@@ -175,20 +182,5 @@ function Player() {
 
 export function Media() {
   const cards = [Messaging, Site, Player];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={cards}>
-          {(Demo, i) => {
-            const Body = Demo();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={cards} />;
 }

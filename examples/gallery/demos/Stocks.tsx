@@ -3,8 +3,8 @@ import { createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { Icon } from "../icons";
 import { nav } from "../nav";
-import { colors, finish, motion, Press, Segmented } from "../ui";
-import { Detail } from "./stocks/Detail";
+import { colors, desktop, finish, motion, paneWidth, Press, Segmented } from "../ui";
+import { Detail, StockView } from "./stocks/Detail";
 import { createMarket, grouped, INDEX_BASE, ISSUES, type Market, percent, price, type Stock, sectors, signed, time, toneOf } from "./stocks/market";
 import { alpha, calm, SpringBar } from "./stocks/parts";
 
@@ -273,18 +273,24 @@ function Sparkline(props: { stock: Stock }) {
 }
 
 /** A watchlist row: code and name, today's sparkline, the price and its
- * change, plain text on a flat row. */
-function StockRow(props: { market: Market; stock: Stock; first: boolean }) {
+ * change, plain text on a flat row. In the desktop layout the row shown
+ * beside the list is `active`, and the others light up under the pointer. */
+function StockRow(props: { market: Market; stock: Stock; first: boolean; onPress: () => void; wide?: boolean; active?: boolean }) {
   const q = () => props.stock.quote();
   const change = () => percent(q());
   return (
     <View
-      onPress={() => open(props.market, props.stock)}
+      onPress={props.onPress}
       underlayColor={colors.surface}
       accessibilityRole="button"
       accessibilityLabel={props.stock.name}
-      style={{ height: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 }}
+      accessibilityState={props.wide ? { selected: !!props.active } : undefined}
+      class={props.wide ? (props.active ? "bg-paper-border dark:bg-graphite-raised" : "hover:bg-paper-card dark:hover:bg-graphite-card") : undefined}
+      style={{ height: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, cursor: props.wide ? "pointer" : undefined }}
     >
+      <If when={props.active}>
+        <View style={{ position: "absolute", top: 14, bottom: 14, left: 0, width: 3, borderRadius: 1.5, backgroundColor: colors.accent }} />
+      </If>
       <If when={!props.first}>
         <View style={{ position: "absolute", top: 0, left: 16, right: 0, height: 1, backgroundColor: colors.line }} />
       </If>
@@ -309,10 +315,15 @@ function StockRow(props: { market: Market; stock: Stock; first: boolean }) {
   );
 }
 
+/** The watchlist's width beside the stock in the desktop layout. */
+const WATCHLIST = 380;
+
 /** The watchlist: quotes that change every 50 ms under a one-line market
  * strip; sorted filters re-sort once a second with a layout animation. A
- * stock opens its details; leaving the demo stops the market. */
+ * stock opens its details, pushed on phones, beside the list on desktops;
+ * leaving the demo stops the market. */
 export function Stocks() {
+  const wide = desktop();
   const market = createMarket();
   market.start();
   cleanup(() => market.stop());
@@ -367,7 +378,9 @@ export function Stocks() {
     { value: "active" as const, label: "Active" },
   ];
   const stats = () => market.stats();
-  return (
+  // Desktop: the stock beside the list.
+  const shown = signal<Stock>(stocks[0]);
+  const watchlist = (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <MarketStrip market={market} />
       <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
@@ -375,7 +388,18 @@ export function Stocks() {
       </View>
       <Scroll style={{ flex: 1 }}>
         <View>
-          <Each of={rows()}>{(stock, i) => <StockRow market={market} stock={stock()} first={i() === 0} />}</Each>
+          <Each of={rows()}>
+            {(stock, i) => (
+              <StockRow
+                market={market}
+                stock={stock()}
+                first={i() === 0}
+                onPress={() => (wide ? shown.set(stock()) : open(market, stock()))}
+                wide={wide}
+                active={wide && shown() === stock()}
+              />
+            )}
+          </Each>
           <If when={!rows().length}>
             <Text style={{ paddingVertical: 32, textAlign: "center", fontSize: 14, color: colors.muted }}>Nothing here right now</Text>
           </If>
@@ -384,6 +408,20 @@ export function Stocks() {
           Simulated, fictional companies · tick 50 ms · {stats().ms.toFixed(2)} ms JS/tick · {stats().updates} quotes/s
         </Text>
       </Scroll>
+    </View>
+  );
+  if (!wide) return watchlist;
+  // The book and the tape go beside the chart when the stock has the room.
+  const split = computed(() => paneWidth() - WATCHLIST >= 860);
+  return (
+    <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.background }}>
+      <View style={{ width: WATCHLIST, borderRightWidth: 1, borderRightColor: colors.line }}>{watchlist}</View>
+      <View style={{ flex: 1 }}>
+        {(() => {
+          const stock = shown();
+          return <StockView market={market} stock={stock} wide split={split} />;
+        })()}
+      </View>
     </View>
   );
 }

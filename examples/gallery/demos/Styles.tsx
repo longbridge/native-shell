@@ -3,7 +3,7 @@ import { Animated, createNativeValue, Easing } from "nsh/animated";
 import { I18nManager } from "nsh/device";
 import { Image } from "nsh/image";
 import { List } from "nsh/list";
-import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, isDark, mono, Press, radius, Segmented, tints, Toggle } from "../ui";
+import { alpha, Badge, Button, Caption, Card, colors, DemoPage, finish, hint, isDark, mono, Press, radius, Segmented, tints, Toggle } from "../ui";
 
 /** The stage every specimen stands on: the card's light, without its drop shadow. */
 const stage = () => ({
@@ -242,7 +242,7 @@ function Layers() {
   return (
     <Card icon="lists" title="Clipping and layers" subtitle="overflow · zIndex · opacity" right={<Toggle value={clip()} onChange={(v) => clip.set(v)} label="Clip" />}>
       <Grid>
-        <Tile label={clip() ? "Clipped" : "Visible"} code={`overflow: ${clip() ? "hidden" : "visible"}`} note="Tap to switch" onPress={() => clip.set(!clip())}>
+        <Tile label={clip() ? "Clipped" : "Visible"} code={`overflow: ${clip() ? "hidden" : "visible"}`} note={hint("Tap to switch", "Click to switch")} onPress={() => clip.set(!clip())}>
           <View
             style={{
               ...box(),
@@ -254,7 +254,7 @@ function Layers() {
             }}
           >
             <View style={{ position: "absolute", left: -26, top: -26, width: 72, height: 72, borderRadius: 36, backgroundColor: colors.danger }} />
-            <Label color={colors.warn}>Tap</Label>
+            <Label color={colors.warn}>{hint("Tap", "Click")}</Label>
           </View>
         </Tile>
         <Tile label="Stacking order" code="zIndex" note={`Front: ${front() + 1} of 3 · tap`} onPress={() => front.set((front() + 1) % 3)}>
@@ -357,7 +357,7 @@ function FlipCard() {
             <Text style={{ fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>0°</Text>
           </View>
           <View style={{ gap: 2 }}>
-            <Text style={{ fontSize: 20, fontWeight: "600", color: colors.text }}>Tap to flip</Text>
+            <Text style={{ fontSize: 20, fontWeight: "600", color: colors.text }}>{hint("Tap to flip", "Click to flip")}</Text>
             <Text style={{ fontSize: 13, color: colors.muted }}>A spring turns it on the UI thread</Text>
           </View>
         </View>
@@ -533,20 +533,5 @@ function RightToLeft() {
 
 export function Styles() {
   const sections = [Corners, Borders, Shadows, Layers, Transforms, Numerals, RightToLeft];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={sections}>
-          {(Section, i) => {
-            const Body = Section();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={sections} />;
 }

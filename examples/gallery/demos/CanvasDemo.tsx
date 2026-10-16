@@ -1,8 +1,8 @@
-import { type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
+import { type GestureResponderEvent, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing, type NativeValue } from "nsh/animated";
 import { Canvas, type CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 import logo from "../logo@2x.png";
-import { alpha, Appear, Button, Caption, Card, colors, Figure, finish, isDark, Legend, type Palette, Segmented, Stat } from "../ui";
+import { alpha, Button, Caption, Card, colors, DemoPage, Figure, finish, hint, isDark, Legend, type Palette, Segmented, Stat } from "../ui";
 
 const TAU = Math.PI * 2;
 const SANS = (size: number, weight = "400") => `${weight} ${size}px system-ui`;
@@ -736,7 +736,7 @@ function Sketch() {
     <Card
       icon="gestures"
       title="Sketch"
-      subtitle="Touch → draw from JS"
+      subtitle={hint("Touch → draw from JS", "Drag → draw from JS")}
       right={<Button label="Clear" variant="secondary" disabled={strokes().length === 0} onPress={() => strokes.set([])} />}
     >
       <Canvas
@@ -784,20 +784,5 @@ function Sketch() {
 
 export function CanvasDemo() {
   const cards = [Dial, AreaChart, Ridgeline, DotMatrix, Dumbbell, Clock, Glyphs, Compositing, Sketch];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={cards}>
-          {(Demo, i) => {
-            const Body = Demo();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={cards} columns={3} />;
 }

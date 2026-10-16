@@ -99,8 +99,9 @@ interface Frame {
  * The stock's chart: the intraday time-share line with its average price,
  * or candles with MA5 / 10 / 20, both over volume. Drag sideways for the
  * crosshair; its lines move natively and the readout floats beside it.
+ * The plot is 216 pt tall unless `height` says otherwise.
  */
-export function Chart(props: { stock: Stock; running: () => boolean }) {
+export function Chart(props: { stock: Stock; running: () => boolean; height?: number }) {
   const period = signal<Period>("intraday");
   const cursor = signal<number | null>(null);
   const width = signal(0);
@@ -297,9 +298,9 @@ export function Chart(props: { stock: Stock; running: () => boolean }) {
           <Legend color={colors.faint} label="Vol" value={compact(focus().v)} />
         </If>
       </View>
-      <View style={{ height: HEIGHT }}>
+      <View style={{ height: props.height ?? HEIGHT }}>
         <Canvas
-          style={{ height: HEIGHT }}
+          style={{ height: props.height ?? HEIGHT }}
           onLayout={(e) => width.set(e.width)}
           {...scrub(pick)}
           accessibilityLabel={`${props.stock.code} ${period()} chart`}

@@ -2,7 +2,7 @@ import { cleanup, Scroll, signal, Text, View } from "nsh";
 import { Animated, type CompositeAnimation, createNativeValue, Easing, LayoutAnimation, type LayoutAnimationConfig, type NativeNode } from "nsh/animated";
 import { Canvas, type CanvasRenderingContext2D } from "nsh/canvas";
 import { Icon } from "../icons";
-import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, isDark, Legend, mono, type Palette, Press, radius, Segmented, tints } from "../ui";
+import { alpha, Badge, Button, Caption, Card, colors, DemoPage, finish, isDark, Legend, mono, type Palette, Press, radius, Segmented, tints } from "../ui";
 
 /** The tones of the demos' dots and tiles (call in a reactive scope). */
 const tones = () => [colors.accent, colors.info, colors.warn, colors.danger, colors.up];
@@ -827,34 +827,5 @@ function Layout() {
 }
 
 export function Animations() {
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Appear index={0}>
-          <Hero />
-        </Appear>
-        <Appear index={1}>
-          <EasingPlot />
-        </Appear>
-        <Appear index={2}>
-          <EasingRace />
-        </Appear>
-        <Appear index={3}>
-          <Composition />
-        </Appear>
-        <Appear index={4}>
-          <Springs />
-        </Appear>
-        <Appear index={5}>
-          <Interpolations />
-        </Appear>
-        <Appear index={6}>
-          <HidingHeader />
-        </Appear>
-        <Appear index={7}>
-          <Layout />
-        </Appear>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={[Hero, EasingPlot, EasingRace, Composition, Springs, Interpolations, HidingHeader, Layout]} />;
 }

@@ -1,9 +1,9 @@
-import { type JSX, Scroll, signal, Text, View } from "nsh";
+import { type JSX, signal, Text, View } from "nsh";
 import { fontScale } from "nsh/device";
 import { Image } from "nsh/image";
 import pacifico from "../fonts/Pacifico-Regular.ttf";
 import logo from "../logo@2x.png";
-import { alpha, Appear, Caption, Card, colors, finish, isDark, mono, Press, radius, tints } from "../ui";
+import { alpha, Caption, Card, colors, DemoPage, finish, isDark, mono, Press, radius, tints } from "../ui";
 
 const LOREM =
   "Native text, typeset once on the engine thread with CoreText and drawn on the main thread without any layout work.";
@@ -218,20 +218,5 @@ function Truncation() {
 
 export function TextDemo() {
   const cards = [Links, Inline, Fonts, Scaling, Truncation];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={cards}>
-          {(Demo, i) => {
-            const Body = Demo();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={cards} />;
 }

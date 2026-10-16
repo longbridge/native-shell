@@ -3,7 +3,7 @@ import { Animated, createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
-import { Appear, Badge, Button, Caption, Card, colors, finish, header, IconTile, Inset, Meter, mono, Press, radius, RoundButton, Section, Segmented, tints, toneColor, type Tone } from "../ui";
+import { Appear, Badge, Button, Caption, Card, colors, DemoPage, finish, header, hint, IconTile, Inset, Meter, mono, Press, radius, RoundButton, Section, Segmented, tints, type Tone, toneColor } from "../ui";
 
 /**
  * A labelled input (`api` names the prop it shows, `hint` is a plain note):
@@ -192,9 +192,10 @@ export function Form() {
   };
 
   return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode={mode()}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Appear>
+    <DemoPage
+      keyboardDismissMode={mode()}
+      cards={[
+        () => (
           <Card
             icon="form"
             title="Keyboard"
@@ -202,11 +203,10 @@ export function Form() {
             right={<Badge label={`${Math.round(keyboard().height)} pt`} tone={keyboard().height > 0 ? "accent" : "neutral"} />}
           >
             <Segmented options={modes} value={mode()} onChange={(m) => mode.set(m)} />
-            <Caption label="Drag the form with the keyboard up" note={mode()} />
+            <Caption label={hint("Drag the form with the keyboard up", "Desktops have no on-screen keyboard to dismiss")} note={mode()} />
           </Card>
-        </Appear>
-
-        <Appear index={1}>
+        ),
+        () => (
           <Section title="Account" note="autoComplete">
             <Field
               ref={ref(0)}
@@ -273,9 +273,8 @@ export function Form() {
               placeholder="https://"
             />
           </Section>
-        </Appear>
-
-        <Appear index={2}>
+        ),
+        () => (
           <Section title="Numbers" note="keyboardType">
             <Pair>
               <Field ref={ref(5)} next={next(5)} label="Age" hint="3 digits" keyboardType="number-pad" maxLength={3} placeholder="36" />
@@ -302,9 +301,8 @@ export function Form() {
               style={{ letterSpacing: 10, fontSize: 22, fontWeight: "500", fontVariant: ["tabular-nums"], textAlign: "center" }}
             />
           </Section>
-        </Appear>
-
-        <Appear index={3}>
+        ),
+        () => (
           <Section title="Shipping address" note="scrolls into view">
             <Field ref={ref(8)} next={next(8)} label="Street" autoComplete="street-address" placeholder="12 Analytical Way" />
             <Pair>
@@ -313,15 +311,13 @@ export function Form() {
             </Pair>
             <Field ref={ref(11)} next={next(11)} label="Country" placeholder="United Kingdom" />
           </Section>
-        </Appear>
-
-        <Appear index={4}>
+        ),
+        () => (
           <Section title="Selection and keys" note="onSelectionChange">
             <SelectionDemo />
           </Section>
-        </Appear>
-
-        <Appear index={5}>
+        ),
+        () => (
           <Section title="Text" note="Input props">
             <Field
               ref={ref(12)}
@@ -359,9 +355,8 @@ export function Form() {
             <AutoGrow />
             <Field label="No caret" api="caretHidden" caretHidden defaultValue="No caret here" />
           </Section>
-        </Appear>
-
-        <Appear index={6}>
+        ),
+        () => (
           <Card
             icon="check"
             title="Create the account"
@@ -388,19 +383,23 @@ export function Form() {
               <Button label="Hide keyboard" variant="secondary" onPress={() => Keyboard.dismiss()} />
             </Pair>
           </Card>
-        </Appear>
-
-        <Appear index={7}>
+        ),
+        () => (
           <Card title="More keyboards" subtitle="Sheets and bars that ride on the keyboard" flush>
             <Inset padding={0} gap={0}>
               <LinkRow first icon="components" title="Inputs in a sheet" note='presentationStyle="pageSheet"' onPress={() => sheet.set(true)} />
               <LinkRow icon="text" title="A message bar at the bottom" note="KeyboardAvoidingView" onPress={() => nav.push({ name: "page", page: MessageBar })} />
             </Inset>
           </Card>
-        </Appear>
-      </View>
-
-      <Modal visible={sheet()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => sheet.set(false)}>
+        ),
+      ]}
+    >
+      <Modal
+        visible={sheet()}
+        ios={{ presentationStyle: "pageSheet" }}
+        desktop={{ presentationStyle: "pageSheet" }}
+        onRequestClose={() => sheet.set(false)}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
             <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
@@ -420,7 +419,7 @@ export function Form() {
           </Scroll>
         </SafeAreaView>
       </Modal>
-    </Scroll>
+    </DemoPage>
   );
 }
 

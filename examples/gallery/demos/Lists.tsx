@@ -1,9 +1,9 @@
-import { Input, Scroll, signal, Text, View, type YNode } from "nsh";
+import { computed, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { LayoutAnimation } from "nsh/animated";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
-import { Appear, Badge, Button, colors, finish, IconTile, Meter, mono, Press, radius, RoundButton, Section, Segmented, type Tone, toneColor, toneTint } from "../ui";
+import { Appear, Badge, Button, colors, columnsFor, desktop, finish, hint, IconTile, Meter, mono, Press, radius, RoundButton, Section, Segmented, type Tone, toneColor, toneTint } from "../ui";
 
 const tones: Tone[] = ["accent", "info", "warn", "up", "danger", "neutral"];
 
@@ -32,20 +32,22 @@ function Action(props: { label: string; icon?: IconName; onPress: () => void }) 
   );
 }
 
-/** Three columns, a header and a footer, padding and gaps, viewability. */
+/** Three columns (as many as fit in the desktop layout, at least 130 pt
+ * each), a header and a footer, padding and gaps, viewability. */
 function Grid() {
   const items = Array.from({ length: 90 }, (_, i) => ({ id: i, height: 84 + (i % 4) * 22, tone: tones[i % tones.length] }));
   const first = signal(-1);
   const last = signal(-1);
   let list!: YNode;
-  return (
+  const wide = desktop();
+  const grid = (columns: number) => (
     <List
       ref={list}
       each={items}
-      numColumns={3}
+      numColumns={columns}
       estimatedItemSize={110}
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: 16, gap: 8 }}
+      contentContainerStyle={wide ? { padding: 24, gap: 12 } : { padding: 16, gap: 8 }}
       viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
       onViewableItemsChanged={({ viewableItems }) => {
         first.set(viewableItems.length ? viewableItems[0].index : -1);
@@ -75,7 +77,7 @@ function Grid() {
                 </Text>
               </Text>
             </View>
-            <Text style={{ fontSize: 13, color: colors.faint, paddingBottom: 6 }}>90 items, 3 columns</Text>
+            <Text style={{ fontSize: 13, color: colors.faint, paddingBottom: 6 }}>{`90 items, ${columns} columns`}</Text>
           </View>
           <Meter value={last() < 0 ? 0 : (last() + 1) / items.length} />
           <View style={{ flexDirection: "row", gap: 8 }}>
@@ -111,6 +113,10 @@ function Grid() {
       )}
     </List>
   );
+  if (!wide) return grid(3);
+  // Rebuilt when the number of columns changes.
+  const columns = computed(() => columnsFor(130, 10, undefined, 12));
+  return <View style={{ flex: 1 }}>{(() => grid(columns()))()}</View>;
 }
 
 const people = [
@@ -453,7 +459,7 @@ function More() {
             ListEmptyComponent={
               <View style={{ alignItems: "center", justifyContent: "center", gap: 10, height: 194 }}>
                 <IconTile name="lists" tint={colors.faint} />
-                <Text style={{ fontSize: 13, color: colors.muted }}>Nothing here yet: tap Add</Text>
+                <Text style={{ fontSize: 13, color: colors.muted }}>{hint("Nothing here yet: tap Add", "Nothing here yet: click Add")}</Text>
               </View>
             }
             ItemSeparatorComponent={() => <View style={{ height: 1, marginLeft: 14, backgroundColor: colors.line }} />}
@@ -489,7 +495,7 @@ export function Lists() {
   const tab = signal<Tab>("grid");
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+      <View style={desktop() ? { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 4, width: "100%", maxWidth: 600 } : { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
         <Segmented options={tabs} value={tab()} onChange={(v) => tab.set(v)} />
       </View>
       {(() => {

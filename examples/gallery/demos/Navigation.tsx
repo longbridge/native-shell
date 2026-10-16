@@ -1,10 +1,11 @@
 import { cleanup, effect, Input, type JSX, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { BackHandler } from "nsh/android";
+import { Platform } from "nsh/device";
 import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
-import { Appear, Badge, Button, Card, colors, Figure, header, finish, IconTile, Inset, isDark, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";
+import { Appear, Badge, Button, Card, colors, DemoPage, Figure, finish, header, hint, IconTile, Inset, isDark, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";
 
 const edges = ["top", "bottom", "left", "right"] as const;
 
@@ -164,7 +165,12 @@ function CustomHeader() {
 function Locked() {
   return (
     <Screen title="No swipe back" {...header} gestureEnabled={false}>
-      <Page intro="The back gesture is off on this screen: no swipe on iOS, no predictive animation on Android. The back buttons still work.">
+      <Page
+        intro={hint(
+          "The back gesture is off on this screen: no swipe on iOS, no predictive animation on Android. The back buttons still work.",
+          "The back gesture is off on this screen (touch screens only). The back button, Escape and Alt+Left still work.",
+        )}
+      >
         <Section title="Leaving" note="gestureEnabled={false}">
           <View style={{ flexDirection: "row" }}>
             <Stat width="50%" label="Swipe / predictive" value="Off" tone="danger" />
@@ -189,7 +195,12 @@ function Unsaved() {
   };
   return (
     <Screen title="Unsaved changes" {...header} preventBack={text().length > 0} onBackRequest={confirm}>
-      <Page intro="Type something, then go back (header button, swipe, Android back): the screen asks first.">
+      <Page
+        intro={hint(
+          "Type something, then go back (header button, swipe, Android back): the screen asks first.",
+          "Type something, then go back (header button, Escape, Alt+Left, the mouse's back button): the screen asks first.",
+        )}
+      >
         <Card icon="form" title="Draft" subtitle="preventBack + onBackRequest" right={<Badge label={text().length > 0 ? "Guarded" : "Empty"} tone={text().length > 0 ? "warn" : "neutral"} />}>
           <Input
             value={text()}
@@ -305,11 +316,11 @@ type Sheet = "fullScreen" | "pageSheet" | "formSheet" | "fade" | "dialog" | "dis
 
 const modals: { key: Exclude<Sheet, null>; title: string; note: string; icon: IconName }[] = [
   { key: "fullScreen", title: "Full screen", note: "Slides up", icon: "mobile" },
-  { key: "pageSheet", title: "Page sheet", note: "iOS sheet", icon: "components" },
-  { key: "formSheet", title: "Form sheet", note: "iOS, centered", icon: "form" },
+  { key: "pageSheet", title: "Page sheet", note: hint("iOS sheet", "A tall centered card"), icon: "components" },
+  { key: "formSheet", title: "Form sheet", note: hint("iOS, centered", "A smaller centered card"), icon: "form" },
   { key: "fade", title: "Fade", note: "Fades in", icon: "spark" },
   { key: "dialog", title: "Dialog", note: "See-through", icon: "bell" },
-  { key: "dismissible", title: "Dismissible", note: "Swipe to close", icon: "arrow-down" },
+  { key: "dismissible", title: "Dismissible", note: hint("Swipe to close", "Escape or click outside"), icon: "arrow-down" },
 ];
 
 /** A modal's content: what it is, its safe area, a close button. */
@@ -356,15 +367,14 @@ export function Navigation() {
   const current = () => modals.find((m) => m.key === sheet());
 
   return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Appear>
-          <Card icon="nav" title="Native stack" subtitle="Headers, transitions, the safe area" right={<Badge label="UIKit / View" />}>
+    <DemoPage
+      cards={[
+        () => (
+          <Card icon="nav" title="Native stack" subtitle="Headers, transitions, the safe area" right={<Badge label={hint("UIKit / View", Platform.OS === "linux" ? "GTK 4" : "Native views")} />}>
             <Insets />
           </Card>
-        </Appear>
-
-        <Appear index={1}>
+        ),
+        () => (
           <Card title="Screens" subtitle="Screen options, pushed with nav.push" flush>
             <Inset padding={0} gap={0}>
               <LinkRow first icon="text" title="Large title" note="ios.headerLargeTitle" onPress={push(LargeTitle)} />
@@ -378,9 +388,8 @@ export function Navigation() {
               <LinkRow icon="lists" title="A deep stack" note="push / popToTop" onPress={push(() => <Deep depth={1} />)} />
             </Inset>
           </Card>
-        </Appear>
-
-        <Appear index={2}>
+        ),
+        () => (
           <Card title="Modals" subtitle="Presentation styles and transitions" flush>
             <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8 }}>
               <Each of={modals}>
@@ -410,41 +419,52 @@ export function Navigation() {
               </Each>
             </View>
           </Card>
-        </Appear>
-
-        <Appear index={3}>
+        ),
+        () => (
           <Card
             icon="system"
             title="Back button"
-            subtitle="Android: BackHandler"
+            subtitle={hint("Android: BackHandler", "BackHandler: Escape, Alt+Left")}
             right={<Toggle value={intercept()} onChange={(v) => intercept.set(v)} label="Intercept the back button" />}
           >
             <Figure value={String(backs())} unit={backs() === 1 ? "press" : "presses"} note={intercept() ? "caught" : "popped"} tone={intercept() ? "warn" : "accent"} />
             <Text style={{ fontSize: 13, lineHeight: 18, color: colors.muted }}>
-              {intercept() ? "The handler returns true: back presses stay on this screen." : "Off: the back button pops this screen."}
+              {intercept()
+                ? "The handler returns true: back presses stay on this screen."
+                : hint("Off: the back button pops this screen.", "Off: Escape pops this screen, or the app's last screen does nothing.")}
             </Text>
           </Card>
-        </Appear>
-      </View>
-
+        ),
+      ]}
+    >
       <Modal
         visible={sheet() === "fullScreen" || sheet() === "pageSheet" || sheet() === "formSheet" || sheet() === "fade"}
         ios={{ presentationStyle: sheet() === "pageSheet" ? "pageSheet" : sheet() === "formSheet" ? "formSheet" : "fullScreen" }}
+        desktop={{ presentationStyle: sheet() === "pageSheet" ? "pageSheet" : sheet() === "formSheet" ? "formSheet" : "fullScreen" }}
         animationType={sheet() === "fade" ? "fade" : "slide"}
         onRequestClose={close}
       >
         <ModalBody
           title={current()?.title ?? ""}
           note={String(sheet())}
-          body="Close with the button, the back button (Android) or a swipe down (iOS sheets)."
+          body={hint(
+            "Close with the button, the back button (Android) or a swipe down (iOS sheets).",
+            sheet() === "pageSheet" || sheet() === "formSheet" ? "Close with the button, Escape or a click outside the card." : "Close with the button or Escape.",
+          )}
           onClose={close}
         />
       </Modal>
-      <Modal visible={sheet() === "dismissible"} dismissible ios={{ presentationStyle: "pageSheet" }} onRequestClose={close}>
+      <Modal
+        visible={sheet() === "dismissible"}
+        dismissible
+        ios={{ presentationStyle: "pageSheet" }}
+        desktop={{ presentationStyle: "pageSheet" }}
+        onRequestClose={close}
+      >
         <ModalBody
           title="Dismissible"
           note="dismissible"
-          body="Swipe it down (iOS) or press back (Android): it closes natively, then tells the app."
+          body={hint("Swipe it down (iOS) or press back (Android): it closes natively, then tells the app.", "Press Escape or click outside: it closes natively, then tells the app.")}
           onClose={close}
         />
       </Modal>
@@ -469,6 +489,6 @@ export function Navigation() {
           </View>
         </View>
       </Modal>
-    </Scroll>
+    </DemoPage>
   );
 }

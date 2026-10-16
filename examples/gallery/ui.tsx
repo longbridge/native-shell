@@ -1,7 +1,7 @@
-import type { JSX, ViewStyle } from "nsh";
-import { effect, signal, Text, View } from "nsh";
-import { colorScheme } from "nsh/device";
+import type { JSX, ScrollProps, ViewStyle } from "nsh";
+import { computed, effect, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
+import { colorScheme, Platform, windowSize } from "nsh/device";
 import { Icon, type IconName } from "./icons";
 
 /** Whether the gallery shows its dark palette (reactive: reading it subscribes). */
@@ -64,7 +64,8 @@ export interface Palette {
  * The gallery's look: a graphite page (or a paper one in light
  * appearance), cards with an inset surface, tabular numbers and one citrus
  * accent. Sizes are for phones: 16 pt gutters, 44 pt touch targets, 15 pt
- * body text.
+ * body text. The desktop layout (`desktop`) keeps them and puts more side by
+ * side.
  */
 export const colors: Palette = themed<Palette>(
   {
@@ -275,6 +276,32 @@ export const header = {
     return colors.accent;
   },
 };
+
+/**
+ * Instructions for the device's input: `touch` on phones and tablets,
+ * `pointer` on desktops (a mouse, a touchpad, a keyboard).
+ */
+export const hint = (touch: string, pointer: string) => (Platform.isDesktop ? pointer : touch);
+
+/** The width of the desktop layout's sidebar. */
+export const SIDEBAR = 264;
+
+/**
+ * Whether the gallery takes its desktop layout: a sidebar of the demos next
+ * to the open one, demos in columns, hover states. Desktops take it from
+ * 700 pt wide, other platforms from 900 pt (an iPad in landscape, a wide
+ * Mac Catalyst window); phones never do. Below that it is the phone layout,
+ * unchanged. The shell remounts when it changes, so demos read it once.
+ */
+export const desktop = computed(() => windowSize().width >= (Platform.isDesktop ? 700 : 900));
+
+/** The width of the desktop layout's content pane, right of the sidebar. */
+export const paneWidth = () => windowSize().width - SIDEBAR;
+
+/** How many columns at least `min` pt wide fit in `width` (the content
+ * pane by default), with `gap` between them and 24 pt gutters: 1 to `max`. */
+export const columnsFor = (min: number, max: number, width = paneWidth(), gap = 20) =>
+  Math.max(1, Math.min(max, Math.floor((width - 48 + gap) / (min + gap))));
 
 /** The motion every control shares: quick, slightly springy. */
 export const motion = {
@@ -779,3 +806,64 @@ export function Meter(props: { value: number; tone?: Tone; marker?: number }) {
   );
 }
 
+/**
+ * A demo's page of cards, each fading in after the one before. On phones
+ * one column on the 16 pt gutters; in the desktop layout the cards are
+ * dealt left to right into as many columns as fit the pane (at least
+ * 380 pt each, `columns` at most), on 24 pt gutters. `children` follow the
+ * cards inside the scroll view (a demo's modals).
+ */
+export function DemoPage(props: {
+  cards: (() => JSX.Element)[];
+  /** The most columns on a desktop (default 2). */
+  columns?: number;
+  /** Space under the last card on phones (default 40). */
+  bottom?: number;
+  /** Whether the cards fade in (default true). */
+  appear?: boolean;
+  keyboardDismissMode?: ScrollProps["keyboardDismissMode"];
+  keyboardShouldPersistTaps?: ScrollProps["keyboardShouldPersistTaps"];
+  children?: JSX.Element;
+}) {
+  const card = (Body: () => JSX.Element, index: number) =>
+    props.appear === false ? (
+      <Body />
+    ) : (
+      <Appear index={index}>
+        <Body />
+      </Appear>
+    );
+  const wide = desktop();
+  // Read in the layout below: it is rebuilt only when the count changes.
+  const columns = computed(() => columnsFor(380, props.columns ?? 2));
+  return (
+    <Scroll
+      style={{ flex: 1, backgroundColor: colors.background }}
+      keyboardDismissMode={props.keyboardDismissMode}
+      keyboardShouldPersistTaps={props.keyboardShouldPersistTaps}
+    >
+      <If
+        when={wide}
+        else={
+          <View style={{ padding: 16, paddingBottom: props.bottom ?? 40, gap: 16 }}>
+            <Each of={props.cards}>{(body, i) => card(body(), i())}</Each>
+          </View>
+        }
+      >
+        {(() => {
+          const n = columns();
+          return (
+            <View
+              style={{ flexDirection: "row", alignItems: "flex-start", gap: 20, padding: 24, paddingBottom: 48, width: "100%", maxWidth: n * 560 + 48, alignSelf: "center" }}
+            >
+              {Array.from({ length: n }, (_, column) => (
+                <View style={{ flex: 1, minWidth: 0, gap: 20 }}>{props.cards.map((body, i) => (i % n === column ? card(body, i) : null))}</View>
+              ))}
+            </View>
+          );
+        })()}
+      </If>
+      {props.children}
+    </Scroll>
+  );
+}

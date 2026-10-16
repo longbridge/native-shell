@@ -1,4 +1,4 @@
-import { cleanup, Scroll, signal, Text, View } from "nsh";
+import { cleanup, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Toast } from "nsh/android";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
@@ -11,6 +11,7 @@ import {
   Caption,
   Card,
   colors,
+  DemoPage,
   Figure,
   finish,
   IconTile,
@@ -25,8 +26,8 @@ import {
   Stat,
   tints,
   Toggle,
-  toneColor,
   type Tone,
+  toneColor,
 } from "../ui";
 
 /** The window drawn to scale, with the safe area insets shaded. */
@@ -360,20 +361,5 @@ function Network() {
 
 export function System() {
   const sections = [Environment, StatusBarCard, Dialogs, FramesAndTimers, Network];
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Each of={sections}>
-          {(section, i) => {
-            const Body = section();
-            return (
-              <Appear index={i()}>
-                <Body />
-              </Appear>
-            );
-          }}
-        </Each>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={sections} />;
 }

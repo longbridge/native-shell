@@ -5,7 +5,7 @@
 // keeps the color they give it.
 import { signal, Text, View } from "nsh";
 import { Button, Group, ListView, SelectList, Sheet, Stepper, type StepperRef, TextField } from "nsh/ui/mobile";
-import { Appear, Badge, Caption, Card, colors, isDark, mono, Row, Toggle } from "../ui";
+import { Appear, Badge, Caption, Card, colors, hint, isDark, mono, Row, Toggle } from "../ui";
 
 const inset = signal(false);
 
@@ -49,14 +49,19 @@ function Header() {
       </Appear>
 
       <Appear index={2}>
-        <Card icon="components" title="Sheet" subtitle="Follows the finger natively, springs back">
+        <Card icon="components" title="Sheet" subtitle={hint("Follows the finger natively, springs back", "Follows the pointer natively, springs back")}>
           <Button title="Open the sheet" onPress={() => sheet.set(true)} />
-          <Caption label="Drag, tap outside or press back" note="onClose" />
+          <Caption label={hint("Drag, tap outside or press back", "Drag it down or click outside")} note="onClose" />
         </Card>
       </Appear>
       <Sheet open={sheet()} onClose={() => sheet.set(false)}>
         <Text style={{ fontSize: 17, fontWeight: "600" }}>A sheet in Rust</Text>
-        <Text style={{ opacity: 0.7 }}>It follows the finger natively and springs back; drag it down, tap outside or press back to close.</Text>
+        <Text style={{ opacity: 0.7 }}>
+          {hint(
+            "It follows the finger natively and springs back; drag it down, tap outside or press back to close.",
+            "It follows the pointer natively and springs back; drag it down or click outside to close.",
+          )}
+        </Text>
         <Button title="Done" onPress={() => sheet.set(false)} />
       </Sheet>
 

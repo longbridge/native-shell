@@ -1,10 +1,10 @@
-import { cleanup, type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
+import { cleanup, type GestureResponderEvent, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { PanResponder } from "nsh/gesture";
 import { Image } from "nsh/image";
 import { Icon, type IconName } from "../icons";
-import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, IconTile, isDark, mono, Press, radius, Row, Stat, tints } from "../ui";
+import { alpha, Badge, Button, Caption, Card, colors, DemoPage, finish, hint, IconTile, isDark, mono, Press, radius, Row, Stat, tints } from "../ui";
 
 /** A dot matrix behind a stage, drawn once. */
 function Dots() {
@@ -94,7 +94,9 @@ function Transformable() {
         <Stat width="33%" label="Scale" value={`${last().scale.toFixed(2)}×`} tone="accent" />
         <Stat width="34%" label="Angle" value={`${Math.round(last().angle)}°`} tone="info" />
       </View>
-      <Text style={{ fontSize: 13, lineHeight: 18, color: colors.muted }}>Pinch and rotate with two fingers (Option-drag in the simulator).</Text>
+      <Text style={{ fontSize: 13, lineHeight: 18, color: colors.muted }}>
+        {hint("Pinch and rotate with two fingers (Option-drag in the simulator).", "Drag with the mouse; pinch and rotate on a touchpad or a touch screen.")}
+      </Text>
       <Button label="Reset" variant="secondary" onPress={reset} />
     </Card>
   );
@@ -171,7 +173,7 @@ function TouchPad() {
     );
   };
   return (
-    <Card icon="system" title="Touch events" subtitle="Start, move, end and cancel, for every finger" right={<Badge label={`${fingers().length} down`} tone={fingers().length ? "accent" : "neutral"} />}>
+    <Card icon="system" title="Touch events" subtitle={hint("Start, move, end and cancel, for every finger", "Start, move, end and cancel, for the mouse and every finger")} right={<Badge label={`${fingers().length} down`} tone={fingers().length ? "accent" : "neutral"} />}>
       <View
         onTouchStart={note("start")}
         onTouchMove={note("move")}
@@ -181,7 +183,7 @@ function TouchPad() {
       >
         <Dots />
         <If when={fingers().length === 0}>
-          <Text style={{ fontSize: 14, color: colors.muted }}>Touch here, try two fingers</Text>
+          <Text style={{ fontSize: 14, color: colors.muted }}>{hint("Touch here, try two fingers", "Press and drag here with the mouse")}</Text>
         </If>
         <Each of={fingers()} key={(f) => f.id}>
           {(f) => (
@@ -254,7 +256,7 @@ function PressEvents() {
           justifyContent: "center",
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>Tap, hold, or slide off</Text>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>{hint("Tap, hold, or slide off", "Click, hold, or slide off")}</Text>
       </View>
       <View style={{ flexDirection: "row", gap: 6 }}>
         <Each of={[...names]}>
@@ -335,7 +337,7 @@ function HitSlop() {
   breathe.start();
   cleanup(() => breathe.stop());
   return (
-    <Card icon="search" title="Hit slop" subtitle="A 12 pt dot that takes taps 30 pt around it" right={<Badge label={`${taps()} taps`} tone={taps() ? "accent" : "neutral"} />}>
+    <Card icon="search" title="Hit slop" subtitle={hint("A 12 pt dot that takes taps 30 pt around it", "A 12 pt dot that takes clicks 30 pt around it")} right={<Badge label={`${taps()} taps`} tone={taps() ? "accent" : "neutral"} />}>
       <View style={{ ...stage(), height: 140, alignItems: "center", justifyContent: "center" }}>
         <Dots />
         <View
@@ -357,7 +359,7 @@ function HitSlop() {
           <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger, ...knob() }} />
         </Press>
       </View>
-      <Api label="The dashed ring is the touch area" api="hitSlop={30}" />
+      <Api label={hint("The dashed ring is the touch area", "The dashed ring is the click area")} api="hitSlop={30}" />
     </Card>
   );
 }
@@ -366,7 +368,7 @@ function HitSlop() {
 function PointerEvents() {
   const through = signal(0);
   return (
-    <Card icon="nav" title="Pointer events" subtitle="An overlay that lets taps through" right={<Badge label={`${through()}`} tone="up" />}>
+    <Card icon="nav" title="Pointer events" subtitle={hint("An overlay that lets taps through", "An overlay that lets clicks through")} right={<Badge label={`${through()}`} tone="up" />}>
       <View style={{ height: 88 }}>
         <Press onPress={() => through.set(through() + 1)} scale={0.98} style={{ flex: 1 }}>
           <View
@@ -410,7 +412,7 @@ function PointerEvents() {
           }}
         />
       </View>
-      <Api label="Taps on the hatched band reach the button" api={'pointerEvents="none"'} />
+      <Api label={hint("Taps on the hatched band reach the button", "Clicks on the hatched band reach the button")} api={'pointerEvents="none"'} />
     </Card>
   );
 }
@@ -450,31 +452,5 @@ function Accessibility() {
 }
 
 export function Gestures() {
-  return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Appear index={0}>
-          <Transformable />
-        </Appear>
-        <Appear index={1}>
-          <Ball />
-        </Appear>
-        <Appear index={2}>
-          <TouchPad />
-        </Appear>
-        <Appear index={3}>
-          <PressEvents />
-        </Appear>
-        <Appear index={4}>
-          <HitSlop />
-        </Appear>
-        <Appear index={5}>
-          <PointerEvents />
-        </Appear>
-        <Appear index={6}>
-          <Accessibility />
-        </Appear>
-      </View>
-    </Scroll>
-  );
+  return <DemoPage cards={[Transformable, Ball, TouchPad, PressEvents, HitSlop, PointerEvents, Accessibility]} />;
 }

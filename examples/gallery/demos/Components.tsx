@@ -1,4 +1,4 @@
-import { Input, type InputProps, type JSX, Scroll, signal, Text, View, type YNode } from "nsh";
+import { Input, type InputProps, type JSX, signal, Text, View, type YNode } from "nsh";
 import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/accessibility";
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
@@ -13,8 +13,10 @@ import {
   Caption,
   Card as UiCard,
   colors,
+  DemoPage,
   finish,
   header,
+  hint,
   IconTile,
   Inset,
   isDark,
@@ -141,7 +143,13 @@ function PressableSheet() {
         <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onAccent }}>Open a sheet</Text>
       </View>
       <Caption label="Scales and darkens while pressed" note="active:scale-[0.97]" />
-      <Modal visible={sheet()} ios={{ presentationStyle: "pageSheet" }} animationType="slide" onRequestClose={() => sheet.set(false)}>
+      <Modal
+        visible={sheet()}
+        ios={{ presentationStyle: "pageSheet" }}
+        desktop={{ presentationStyle: "pageSheet" }}
+        animationType="slide"
+        onRequestClose={() => sheet.set(false)}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={{ flex: 1, padding: 16, gap: 16 }}>
             <View style={{ gap: 8, paddingHorizontal: 4, paddingTop: 8 }}>
@@ -149,7 +157,9 @@ function PressableSheet() {
                 <Badge label="pageSheet" tone="accent" />
               </View>
               <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.text }}>A sheet</Text>
-              <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>Swipe down (iOS) or press back (Android) to close.</Text>
+              <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>
+                {hint("Swipe down (iOS) or press back (Android) to close.", "Press Escape or click outside the card to close.")}
+              </Text>
             </View>
             <View style={{ flex: 1 }} />
             <UiButton label="Close" onPress={() => sheet.set(false)} />
@@ -189,7 +199,7 @@ function PressFeedback() {
   const last = signal("None yet");
   const disabled = signal(false);
   return (
-    <UiCard icon="gestures" title="Press feedback" subtitle="Drawn natively while the finger is down">
+    <UiCard icon="gestures" title="Press feedback" subtitle={hint("Drawn natively while the finger is down", "Drawn natively while the button is down")}>
       <View style={tile()} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
         <Tile title="Fades while pressed" note="activeOpacity={0.4}" />
       </View>
@@ -223,7 +233,8 @@ function Accessory() {
         placeholder="Focus me"
         ios={{ inputAccessoryViewID: "counter" }}
       />
-      <Caption label={Platform.OS === "android" ? "Android has no input accessories" : "The bar counts what you type"} note='inputAccessoryViewID="counter"' />
+      <Caption
+        label={Platform.isDesktop ? "Desktops have no input accessories" : Platform.OS === "android" ? "Android has no input accessories" : "The bar counts what you type"} note='inputAccessoryViewID="counter"' />
       <InputAccessoryView nativeID="counter" style={{ backgroundColor: colors.surface }}>
         <View
           style={{
@@ -369,7 +380,7 @@ function PlatformInfo() {
 function MobileComponents() {
   const presses = signal(0);
   return (
-    <UiCard icon="mobile" title="nsh/ui/mobile" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? "tap" : "taps"}`} tone={presses() ? "accent" : "neutral"} />}>
+    <UiCard icon="mobile" title="nsh/ui/mobile" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? hint("tap", "click") : hint("taps", "clicks")}`} tone={presses() ? "accent" : "neutral"} />}>
       <Button title="Primary" onPress={() => presses.set(presses() + 1)} />
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View style={{ flex: 1 }}>
@@ -412,37 +423,24 @@ function MobileComponents() {
 
 export function Components() {
   return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode="interactive">
-      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        <Appear>
-          <MobileComponents />
-        </Appear>
-        <Appear index={1}>
-          <PressFeedback />
-        </Appear>
-        <Appear index={2}>
-          <PressableSheet />
-        </Appear>
-        <Appear index={3}>
-          <LayoutAnimations />
-        </Appear>
-        <Appear index={4}>
-          <Accessory />
-        </Appear>
-        <Appear index={5}>
+    <DemoPage
+      keyboardDismissMode="interactive"
+      cards={[
+        MobileComponents,
+        PressFeedback,
+        PressableSheet,
+        LayoutAnimations,
+        Accessory,
+        () => (
           <UiCard title="Keyboard avoidance" subtitle="Content outside scroll views" flush>
             <Inset padding={0} gap={0}>
               <LinkRow icon="form" title="KeyboardAvoidingView" note="padding / height / position" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
             </Inset>
           </UiCard>
-        </Appear>
-        <Appear index={6}>
-          <ModalOptions />
-        </Appear>
-        <Appear index={7}>
-          <PlatformInfo />
-        </Appear>
-      </View>
-    </Scroll>
+        ),
+        ModalOptions,
+        PlatformInfo,
+      ]}
+    />
   );
 }

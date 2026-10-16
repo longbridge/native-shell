@@ -1,4 +1,6 @@
-import { mount, Scroll, Text, View } from "nsh";
+import { mount, Scroll, signal, Text, untracked, View } from "nsh";
+import { Platform, windowSize } from "nsh/device";
+import { Image } from "nsh/image";
 import { Screen, Stack, StatusBar } from "nsh/ui/mobile";
 import { Animations } from "./demos/Animations";
 import { CanvasDemo } from "./demos/CanvasDemo";
@@ -20,8 +22,9 @@ import { System } from "./demos/System";
 import { Tailwind } from "./demos/Tailwind";
 import { TextDemo } from "./demos/TextDemo";
 import { Icon } from "./icons";
+import logo from "./logo@2x.png";
 import { type DemoEntry, nav } from "./nav";
-import { Appear, colors, header, IconTile, isDark, mono, Press, radius } from "./ui";
+import { Appear, Badge, colors, desktop, header, IconTile, isDark, mono, Press, radius, SIDEBAR } from "./ui";
 
 /** The demos, by what they show. */
 const groups: { title: string; demos: DemoEntry[] }[] = [
@@ -135,32 +138,170 @@ function Home() {
   );
 }
 
+/** The phone layout: the index, demos pushed over it. */
+function Phone() {
+  // Back from the desktop layout: the demo it showed stays open.
+  if (untracked(wasDesktop)) nav.reset([untracked(nav.routes)[0], { name: "demo", demo: untracked(selected) }]);
+  return (
+    <Stack navigator={nav} style={{ flex: 1 }}>
+      {(route) => {
+        switch (route.name) {
+          case "home":
+            return <Home />;
+          case "demo": {
+            const Demo = route.demo.screen;
+            return (
+              <Screen title={route.demo.name} {...header}>
+                <View style={{ flex: 1, backgroundColor: colors.background }}>
+                  <Demo />
+                </View>
+              </Screen>
+            );
+          }
+          case "page": {
+            const Page = route.page;
+            return <Page />;
+          }
+        }
+      }}
+    </Stack>
+  );
+}
+
+/** The demo the desktop layout shows. */
+const selected = signal<DemoEntry>(groups[0].demos[0]);
+/** Whether the desktop layout has been shown (for the switch back). */
+const wasDesktop = signal(false);
+
+/** Shows a demo in the desktop layout, closing what it had pushed. */
+const select = (demo: DemoEntry) => {
+  if (nav.routes().length > 1) nav.popToTop();
+  selected.set(demo);
+};
+
+/** A demo in the sidebar: an accent bar and a raised fill when selected,
+ * a fill under the pointer otherwise. */
+function SidebarRow(props: { demo: DemoEntry }) {
+  const active = () => selected() === props.demo;
+  return (
+    <View
+      onPress={() => select(props.demo)}
+      accessibilityRole="button"
+      accessibilityLabel={props.demo.name}
+      accessibilityState={{ selected: active() }}
+      class={active() ? "bg-paper-border dark:bg-graphite-raised" : "hover:bg-paper-card active:bg-paper-border dark:hover:bg-graphite-line dark:active:bg-graphite-raised"}
+      style={{ height: 36, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, borderRadius: radius.control, cursor: "pointer" }}
+    >
+      <View style={{ position: "absolute", left: 0, top: 9, width: 3, height: 18, borderRadius: 1.5, backgroundColor: colors.accent, opacity: active() ? 1 : 0 }} />
+      <Icon name={props.demo.icon} size={17} tint={active() ? colors.accent : colors.muted} />
+      <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: active() ? "600" : "400", color: active() ? colors.text : colors.muted }}>
+        {props.demo.name}
+      </Text>
+    </View>
+  );
+}
+
+/** The desktop layout's sidebar: the app, the demos by group, the window. */
+function Sidebar() {
+  return (
+    <View style={{ width: SIDEBAR, backgroundColor: colors.inset, borderRightWidth: 1, borderRightColor: colors.line }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 }}>
+        <Image src={logo} style={{ width: 32, height: 32, borderRadius: 8 }} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>Gallery</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>native-shell · {Platform.OS}</Text>
+        </View>
+      </View>
+      <Scroll style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
+          <Each of={groups}>
+            {(group) => (
+              <View style={{ gap: 2 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.faint, letterSpacing: 0.6, paddingHorizontal: 10, paddingTop: 16, paddingBottom: 6 }}>
+                  {group().title.toUpperCase()}
+                </Text>
+                <Each of={group().demos}>{(demo) => <SidebarRow demo={demo()} />}</Each>
+              </View>
+            )}
+          </Each>
+        </View>
+      </Scroll>
+      <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.line, gap: 2 }}>
+        <Text style={{ fontSize: 12, color: colors.muted, fontFamily: mono }}>
+          {Math.round(windowSize().width)} × {Math.round(windowSize().height)} pt
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.faint }}>Narrower than 700 pt: the phone layout</Text>
+      </View>
+    </View>
+  );
+}
+
+/** The selected demo under a toolbar with its name and what it shows. */
+function DemoPane() {
+  const group = () => groups.find((g) => g.demos.includes(selected()))!.title;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ height: 64, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 24, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+        <IconTile name={selected().icon} size={36} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text numberOfLines={1} style={{ fontSize: 18, fontWeight: "600", color: colors.text }}>
+            {selected().name}
+          </Text>
+          <Text numberOfLines={1} style={{ fontSize: 13, color: colors.muted }}>
+            {selected().detail}
+          </Text>
+        </View>
+        <Badge label={group()} />
+      </View>
+      <View style={{ flex: 1 }}>
+        {(() => {
+          const Demo = selected().screen;
+          return <Demo />;
+        })()}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The desktop layout: a sidebar of the demos and the selected one beside
+ * it, no index to go back to. What a demo pushes opens over it in the
+ * content pane, with a back button.
+ */
+function Desktop() {
+  // From the phone layout: show the demo it had open.
+  const routes = untracked(nav.routes);
+  const open = routes.find((r) => r.name === "demo");
+  if (open) selected.set(open.demo);
+  if (routes.length > 1) nav.reset([routes[0]]);
+  wasDesktop.set(true);
+  return (
+    <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.background }}>
+      <Sidebar />
+      <Stack navigator={nav} style={{ flex: 1 }}>
+        {(route) => {
+          if (route.name !== "page") {
+            return (
+              <Screen headerShown={false}>
+                <DemoPane />
+              </Screen>
+            );
+          }
+          const Page = route.page;
+          return <Page />;
+        }}
+      </Stack>
+    </View>
+  );
+}
+
 function App() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle={isDark() ? "light-content" : "dark-content"} />
-      <Stack navigator={nav} style={{ flex: 1 }}>
-        {(route) => {
-          switch (route.name) {
-            case "home":
-              return <Home />;
-            case "demo": {
-              const Demo = route.demo.screen;
-              return (
-                <Screen title={route.demo.name} {...header}>
-                  <View style={{ flex: 1, backgroundColor: colors.background }}>
-                    <Demo />
-                  </View>
-                </Screen>
-              );
-            }
-            case "page": {
-              const Page = route.page;
-              return <Page />;
-            }
-          }
-        }}
-      </Stack>
+      <If when={desktop()} else={<Phone />}>
+        <Desktop />
+      </If>
     </View>
   );
 }

@@ -1,10 +1,11 @@
-import { signal, Text, View } from "nsh";
+import { computed, signal, Text, untracked, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
+import { Platform } from "nsh/device";
 import { Image } from "nsh/image";
 import { List } from "nsh/list";
 import logo from "../logo@2x.png";
 import { Icon } from "../icons";
-import { Badge, colors, finish, Press, radius, Stat, type Tone, toneColor } from "../ui";
+import { Badge, colors, columnsFor, desktop, finish, paneWidth, Press, radius, Stat, type Tone, toneColor } from "../ui";
 
 type Photo = { id: number; title: string; author: string; tone: Tone; views: number };
 
@@ -63,7 +64,49 @@ function PhotoRow(props: { photo: Photo }) {
   );
 }
 
+/** A photo in the desktop layout's grid: the picture over its title and
+ * author, a fill under the pointer. */
+function PhotoTile(props: { photo: Photo }) {
+  return (
+    <Press scale={0.97} accessibilityLabel={props.photo.title}>
+      <View class="hover:bg-paper-card dark:hover:bg-graphite-card" style={{ padding: 6, gap: 8, borderRadius: radius.card, borderCurve: "continuous", cursor: "pointer" }}>
+        <Image
+          src={`https://picsum.photos/seed/${props.photo.id}/480/360`}
+          style={{
+            width: "100%",
+            aspectRatio: 4 / 3,
+            borderRadius: radius.inset,
+            borderCurve: "continuous",
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.raised,
+            ...finish.raised,
+          }}
+        />
+        <View style={{ gap: 3, paddingHorizontal: 4, paddingBottom: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: colors.text }}>
+              {props.photo.title}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>#{props.photo.id}</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: toneColor(props.photo.tone) }} />
+            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.muted }}>
+              {props.photo.author} · {compact(props.photo.views)} views
+            </Text>
+          </View>
+        </View>
+      </View>
+    </Press>
+  );
+}
+
+/** The stream: rows on phones, a grid of as many columns as fit (at least
+ * 200 pt each) in the desktop layout. */
 export function Photos() {
+  const wide = desktop();
+  const columns = computed(() => (wide ? columnsFor(200, 8, undefined, 16) : 1));
   const photos = signal(makePhotos(1, 1000));
   const refreshing = signal(false);
   const refreshes = signal(0);
@@ -85,11 +128,12 @@ export function Photos() {
     photos.set([...current, ...makePhotos(current.length + 1, PAGE)]);
   };
 
-  const hero = (
+  // Functions: the desktop grid builds them again with its list.
+  const hero = () => (
     <View
       style={{
-        paddingHorizontal: 16,
-        paddingTop: 8,
+        paddingHorizontal: wide ? 0 : 16,
+        paddingTop: wide ? 0 : 8,
         paddingBottom: 16,
         opacity: scrollY.interpolate({ inputRange: [0, 150], outputRange: [1, 0] }),
         // Moves at half speed: the list slides over it.
@@ -143,29 +187,63 @@ export function Photos() {
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 12 }}>
         <Icon name="arrow-down" size={14} tint={colors.faint} />
-        <Text style={{ flex: 1, fontSize: 13, color: colors.faint }}>Pull to refresh. Scrolling to the end loads {PAGE} more.</Text>
+        {Platform.isDesktop ? (
+          <Text style={{ flex: 1, fontSize: 13, color: colors.faint }}>Scrolling to the end loads {PAGE} more.</Text>
+        ) : (
+          <Text style={{ flex: 1, fontSize: 13, color: colors.faint }}>Pull to refresh. Scrolling to the end loads {PAGE} more.</Text>
+        )}
       </View>
     </View>
   );
 
+  // Built here on phones, as the desktop grid builds its own.
+  const phoneHero = wide ? null : hero();
+
+  const footer = () => <Text style={{ textAlign: "center", fontSize: 13, color: colors.faint, padding: 16 }}>Loading {PAGE} more…</Text>;
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <List
-        each={photos()}
-        estimatedItemSize={76}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        scrollValue={scrollY}
-        refreshing={refreshing()}
-        onRefresh={refresh}
-        onEndReached={loadMore}
-        ListHeaderComponent={hero}
-        ListFooterComponent={
-          <Text style={{ textAlign: "center", fontSize: 13, color: colors.faint, padding: 16 }}>Loading {PAGE} more…</Text>
+      <If
+        when={wide}
+        else={
+          <List
+            each={photos()}
+            estimatedItemSize={76}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            scrollValue={scrollY}
+            refreshing={refreshing()}
+            onRefresh={refresh}
+            onEndReached={loadMore}
+            ListHeaderComponent={phoneHero}
+            ListFooterComponent={footer()}
+          >
+            {(photo) => <PhotoRow photo={photo()} />}
+          </List>
         }
       >
-        {(photo) => <PhotoRow photo={photo()} />}
-      </List>
+        {/* Rebuilt when the number of columns changes. */}
+        {(() => {
+          const n = columns();
+          const tile = untracked(() => ((paneWidth() - 48) / n) * 0.75 + 60);
+          return (
+            <List
+              each={photos()}
+              numColumns={n}
+              estimatedItemSize={tile}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 24, gap: 16 }}
+              scrollValue={scrollY}
+              refreshing={refreshing()}
+              onRefresh={refresh}
+              onEndReached={loadMore}
+              ListHeaderComponent={hero()}
+              ListFooterComponent={footer()}
+            >
+              {(photo) => <PhotoTile photo={photo()} />}
+            </List>
+          );
+        })()}
+      </If>
       {/* The compact bar fades in once the hero has scrolled away. */}
       <View
         pointerEvents="none"

@@ -1,10 +1,15 @@
-import { signal, Text, View } from "nsh";
+import { computed, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue, type NativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
+import { windowSize } from "nsh/device";
 import { Icon } from "../icons";
-import { Appear, Badge, colors, finish, IconTile, mono, radius, Segmented, Stat, tints } from "../ui";
+import { Appear, Badge, colors, finish, hint, IconTile, mono, radius, Segmented, Stat, tints } from "../ui";
 
 const CARD = 128;
+/** Windows shorter than this scroll the demo, with the stage this tall:
+ * below it the stage and the controls under it no longer fit. */
+const SHORT_WINDOW = 640;
+const SHORT_STAGE = 300;
 /** Spring settings the release uses. */
 const feels = {
   soft: { stiffness: 90, damping: 12 },
@@ -75,25 +80,27 @@ export function Physics() {
   };
   const follow = [{ translateX: x }, { translateY: y }] as const;
 
-  return (
-    <View style={{ flex: 1, padding: 16, gap: 12, backgroundColor: colors.background }}>
+  // Short windows scroll, with a stage of fixed height; the rest fills.
+  const short = computed(() => windowSize().height < SHORT_WINDOW);
+  const body = (short: boolean) => (
+    <View style={short ? { padding: 16, gap: 12 } : { flex: 1, padding: 16, gap: 12, backgroundColor: colors.background }}>
       <Appear index={0}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <IconTile name="physics" tint={colors.accent} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={{ fontSize: 17, fontWeight: "600", color: colors.text }}>Drag and release</Text>
             <Text numberOfLines={1} style={{ fontSize: 13, color: colors.muted }}>
-              Tap to pulse, long press to reset
+              {hint("Tap to pulse, long press to reset", "Click to pulse, press and hold to reset")}
             </Text>
           </View>
           <Badge label="UI thread" tone="accent" />
         </View>
       </Appear>
-
       <View
         onLayout={(e) => stage.set({ width: e.width, height: e.height })}
         style={{
-          flex: 1,
+          flex: short ? undefined : 1,
+          height: short ? SHORT_STAGE : undefined,
           overflow: "hidden",
           borderRadius: radius.card,
           borderCurve: "continuous",
@@ -191,7 +198,6 @@ export function Physics() {
           <Text style={{ color: colors.onAccent, fontSize: 15, fontWeight: "700" }}>Drag me</Text>
         </View>
       </View>
-
       <View
         style={{
           backgroundColor: colors.surface,
@@ -236,5 +242,10 @@ export function Physics() {
         </View>
       </View>
     </View>
+  );
+  return (
+    <If when={short()} else={body(false)}>
+      <Scroll style={{ flex: 1, backgroundColor: colors.background }}>{body(true)}</Scroll>
+    </If>
   );
 }

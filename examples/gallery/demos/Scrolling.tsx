@@ -3,7 +3,7 @@ import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { windowSize } from "nsh/device";
 import { List } from "nsh/list";
-import { Badge, Button, Caption, colors, Figure, finish, isDark, Meter, mono, Press, radius, Section, Segmented, Toggle as Switch, type Tone, toneColor, toneTint } from "../ui";
+import { Badge, Button, Caption, colors, DemoPage, Figure, finish, hint, isDark, Meter, mono, Press, radius, Section, Segmented, Toggle as Switch, type Tone, toneColor, toneTint } from "../ui";
 
 const tones: Tone[] = ["accent", "info", "warn", "up", "danger"];
 
@@ -391,74 +391,89 @@ export function Scrolling() {
   const taps = signal<Taps>("never");
   const presses = signal(0);
   return (
-    <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardShouldPersistTaps={taps()}>
-      <View style={{ padding: 16, gap: 16 }}>
-        <Section title="Paging" note="5 pages">
-          <Api names="pagingEnabled · scrollValue" />
-          <Pager />
-        </Section>
-        <Section title="Snapping" note="20 cards">
-          <Api names="snapToInterval · snapToAlignment" />
-          <Cards />
-        </Section>
-        <Section title="Zoom" note="Pinch or tap a tile">
-          <Api names="maximumZoomScale · zoomTo()" />
-          <Zoom />
-        </Section>
-        <Section title="Events and behavior">
-          <Api names="onScroll · onScrollBeginDrag · onMomentumScrollEnd" />
-          <Events />
-        </Section>
-        <Section title="Prepending keeps the position">
-          <Feed />
-        </Section>
-        <Section title="Taps with the keyboard up">
-          <Api names="keyboardShouldPersistTaps" />
-          <Segmented size="small" options={options(["never", "handled", "always"] as const)} value={taps()} onChange={(v) => taps.set(v)} />
-          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>
-            {taps() === "never"
-              ? "A tap outside the input only hides the keyboard; the button does not get it."
-              : taps() === "handled"
-                ? "The button gets the tap and the keyboard stays; a tap on empty space hides it."
-                : "Taps never hide the keyboard."}
-          </Text>
-          <Input
-            placeholder="Type here, then tap the button"
-            placeholderTextColor={colors.faint}
-            selectionColor={colors.accent}
-            style={{
-              height: 44,
-              fontSize: 15,
-              color: colors.text,
-              backgroundColor: colors.surface,
-              ...finish.inset,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.control,
-              paddingHorizontal: 14,
-            }}
-          />
-          <Press onPress={() => presses.set(presses() + 1)} accessibilityLabel="Count a tap">
-            <View
+    <DemoPage
+      appear={false}
+      bottom={16}
+      keyboardShouldPersistTaps={taps()}
+      cards={[
+        () => (
+          <Section title="Paging" note="5 pages">
+            <Api names="pagingEnabled · scrollValue" />
+            <Pager />
+          </Section>
+        ),
+        () => (
+          <Section title="Snapping" note="20 cards">
+            <Api names="snapToInterval · snapToAlignment" />
+            <Cards />
+          </Section>
+        ),
+        () => (
+          <Section title="Zoom" note={hint("Pinch or tap a tile", "Pinch on a touchpad or click a tile")}>
+            <Api names="maximumZoomScale · zoomTo()" />
+            <Zoom />
+          </Section>
+        ),
+        () => (
+          <Section title="Events and behavior">
+            <Api names="onScroll · onScrollBeginDrag · onMomentumScrollEnd" />
+            <Events />
+          </Section>
+        ),
+        () => (
+          <Section title="Prepending keeps the position">
+            <Feed />
+          </Section>
+        ),
+        () => (
+          <Section title="Taps with the keyboard up">
+            <Api names="keyboardShouldPersistTaps" />
+            <Segmented size="small" options={options(["never", "handled", "always"] as const)} value={taps()} onChange={(v) => taps.set(v)} />
+            <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>
+              {taps() === "never"
+                ? "A tap outside the input only hides the keyboard; the button does not get it."
+                : taps() === "handled"
+                  ? "The button gets the tap and the keyboard stays; a tap on empty space hides it."
+                  : "Taps never hide the keyboard."}
+            </Text>
+            <Input
+              placeholder={hint("Type here, then tap the button", "Type here, then click the button")}
+              placeholderTextColor={colors.faint}
+              selectionColor={colors.accent}
               style={{
                 height: 44,
+                fontSize: 15,
+                color: colors.text,
+                backgroundColor: colors.surface,
+                ...finish.inset,
+                borderWidth: 1,
+                borderColor: colors.border,
                 borderRadius: radius.control,
-                borderCurve: "continuous",
-                backgroundColor: colors.light,
-                ...finish.light,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
+                paddingHorizontal: 14,
               }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>Tap me</Text>
-              <Text style={{ fontSize: 15, color: isDark() ? "#55595f" : "#9a9ea4", fontVariant: ["tabular-nums"] }}>{presses()}</Text>
-            </View>
-          </Press>
-          <View style={{ height: 300 }} />
-        </Section>
-      </View>
-    </Scroll>
+            />
+            <Press onPress={() => presses.set(presses() + 1)} accessibilityLabel="Count a tap">
+              <View
+                style={{
+                  height: 44,
+                  borderRadius: radius.control,
+                  borderCurve: "continuous",
+                  backgroundColor: colors.light,
+                  ...finish.light,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>{hint("Tap me", "Click me")}</Text>
+                <Text style={{ fontSize: 15, color: isDark() ? "#55595f" : "#9a9ea4", fontVariant: ["tabular-nums"] }}>{presses()}</Text>
+              </View>
+            </Press>
+            <View style={{ height: 300 }} />
+          </Section>
+        ),
+      ]}
+    />
   );
 }
