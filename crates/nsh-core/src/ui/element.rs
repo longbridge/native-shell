@@ -1150,6 +1150,27 @@ pub trait Interactive: Element {
         self
     }
 
+    /// Two-finger pinches scale `scale` natively (multiplying the value it
+    /// has when the pinch starts; TS: `pinch={{ scale }}`); bind it to its
+    /// transform ([`Element::bind_scale`]). `on_pinch_start` /
+    /// `on_pinch_end` report the pinches.
+    fn pinch_value(mut self, scale: &super::NativeValue) -> Self {
+        let node = scale.node().clone();
+        super::host::set(self.node(), Prop::PinchValue(Some(node.id())));
+        self.node().attrs.bound.push(node);
+        self
+    }
+
+    /// Two-finger rotations turn `angle` natively, in degrees (added to
+    /// the value it has when the rotation starts; TS: `rotation={{ angle
+    /// }}`); bind it to its transform ([`Element::bind_rotate`]).
+    fn rotation_value(mut self, angle: &super::NativeValue) -> Self {
+        let node = angle.node().clone();
+        super::host::set(self.node(), Prop::RotationValue(Some(node.id())));
+        self.node().attrs.bound.push(node);
+        self
+    }
+
     /// A drag started on it (the platform recognizes it).
     fn on_pan_start(self, listener: Listener<PanEvent>) -> Self {
         self.on(EventKind::PanStart, events::typed(listener, events::pan))

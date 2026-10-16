@@ -4732,4 +4732,58 @@ mod touch {
             [(ROOT_ID, Command::ClearJsResponder)]
         );
     }
+
+    /// A card scaled and turned by two-finger gestures.
+    #[derive(Default)]
+    struct Card {
+        scale: Option<NativeValue>,
+        angle: Option<NativeValue>,
+    }
+
+    impl Component for Card {
+        const NAME: &'static str = "test.card";
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+            self.scale = Some(cx.native_value(1.0));
+            self.angle = Some(cx.native_value(0.0));
+        }
+
+        fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let (Some(scale), Some(angle)) = (&self.scale, &self.angle) else {
+                unreachable!("set up")
+            };
+            view()
+                .pinch_value(scale)
+                .rotation_value(angle)
+                .bind_scale(scale)
+                .bind_rotate(angle)
+        }
+    }
+
+    #[test]
+    fn pinches_and_rotations_drive_native_values() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Card>(|| ()));
+        let batch = c.commit().unwrap();
+        let values = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Gestures { values, .. } => Some(*values),
+                _ => None,
+            })
+            .expect("gesture values");
+        let created: Vec<_> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Anim(AnimOp::CreateValue { node, .. }) => Some(*node),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(values.pinch, Some(created[0]));
+        assert_eq!(values.rotation, Some(created[1]));
+    }
 }
