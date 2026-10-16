@@ -124,8 +124,12 @@ pub(crate) fn publish(options: PublishOptions<'_>) -> anyhow::Result<()> {
         &fs::read_to_string(cert_path).with_context(|| format!("read {}", cert_path.display()))?,
     )?;
 
-    let built =
-        crate::build::compile(&entry, true).map_err(|e| anyhow::anyhow!("{}", e.colored))?;
+    let built = crate::build::compile(&entry, true).map_err(|e| e.into_error(&entry))?;
+    crate::ui::done(format!(
+        "built {} {}",
+        crate::ui::path(&entry),
+        built.summary("")
+    ));
     let mut assets = Vec::with_capacity(built.assets.len());
     for asset in &built.assets {
         let bytes = fs::read(&asset.source).with_context(|| format!("read {}", asset.path))?;

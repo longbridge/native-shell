@@ -45,9 +45,9 @@ nsh dev App.tsx
 ```
 
 ```text
- info dev server: ws://127.0.0.1:8790/ws
- info devices on this network: ws://192.168.1.20:8790/ws
- info watching /Users/me/my-app
+✓ built App.tsx (3.2 KB js, 9.8 KB bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
 ```
 
 | 参数 | 说明 |
@@ -101,22 +101,27 @@ nsh dev App.tsx
 ## 日志
 
 `console.log`、`console.info`、`console.debug`、`console.warn` 和 `console.error` 会以 target `js` 输出到原生日志。
-宿主连接期间，它的日志行会转发到运行 `nsh run` / `nsh dev` 的终端，并以设备名作为前缀：
+宿主连接期间，它的日志行会转发到运行 `nsh run` / `nsh dev` 的终端：你的 `console.log` 原样输出（连接了多台设备时前面加上
+设备名），警告和错误写在设备名之后：
 
 ```text
- info iPhone 16 Pro js loading more after 1000
- warn iPhone 16 Pro js deprecated option
-error iPhone 16 Pro js uncaught exception: TypeError: cannot read property 'id' of undefined
-    at Row (demos/Photos.tsx:18:22)
+• iPhone 16 Pro connected, build 1
+loading more after 1000
+warn iPhone 16 Pro: deprecated option
+error iPhone 16 Pro: uncaught exception: TypeError: cannot read property 'id' of undefined
+          at Row (demos/Photos.tsx:18:22)
 ```
 
 `console.log` 像浏览器控制台一样格式化值：字符串原样输出，错误附带调用栈，函数显示名称，对象和数组输出为 JSON。宿主
 未连接时，日志会写入平台日志（iOS 上是 Xcode 控制台 / 统一日志，Android 上是 `adb logcat`）。
 
+终端里的其余内容是每个步骤一行（`✓` 完成，`→` 连接地址，`•` 设备的动态）；nsh 调用的工具（cargo、宿主本身）的输出
+只在出错时打印。`nsh run -v`（或 `NSH_VERBOSE=1`）打印全部内容：每条日志及其级别和来源、cargo 的输出以及宿主自己的输出。
+
 `--trace` 会额外输出每次提交的开销：
 
 ```text
- info nsh::perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
+perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
 ```
 
 这些数字的含义参见[用 nsh trace 测试](./testing-and-trace.md)。
@@ -132,7 +137,7 @@ error iPhone 16 Pro js uncaught exception: TypeError: cannot read property 'id' 
 点击浮层即可关闭，下一次成功重新加载时它也会消失。构建失败也会打印到终端：
 
 ```text
-error build failed:
+error building App.tsx failed
 App.tsx
 
   x <Buton> names nothing in scope
@@ -155,8 +160,8 @@ App.tsx
 运行时会把 bundle 中的位置改写为你的源码位置，因此调用栈指向 `App.tsx:2:28`，而不是 bundle：
 
 ```text
-error js uncaught exception: Error: tap boom
-    at <anonymous> (App.tsx:2:58)
+error Mac Catalyst: uncaught exception: Error: tap boom
+          at <anonymous> (App.tsx:2:58)
 ```
 
 `nsh build` 把 source map 写为 `bundle.js.map`；从文件夹加载 bundle 的嵌入式应用会从 bundle 旁边读取它，

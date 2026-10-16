@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context as _, bail};
 use serde::Deserialize;
 
-use crate::dev::DevSession;
+use crate::{dev::DevSession, ui};
 
 const APP_NAME: &str = "NshDev";
 const BUNDLE_ID: &str = "com.longbridge.nsh.host";
@@ -42,17 +42,26 @@ pub(crate) fn run(
     target: Target,
     device: Option<&str>,
 ) -> anyhow::Result<()> {
-    let session = DevSession::start(entry, port, release)?;
-    session.print_urls();
     let work = entry
         .canonicalize()?
         .parent()
         .context("entry has no directory")?
         .join(".nsh");
     if target == Target::Android {
-        let result = run_android(&session, &work, trace);
-        return result;
+        return run_android(entry, port, release, &work, trace);
     }
+    // The host a previous session left running would connect to this one
+    // until it is replaced.
+    let udid = match target {
+        Target::Ios => {
+            let udid = simulator(device)?;
+            let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
+            Some(udid)
+        }
+        Target::Catalyst | Target::Android => None,
+    };
+    let session = DevSession::start(entry, port, release)?;
+    session.print_urls();
     let host = crate::runtime::file(target.platform(), "nsh-ios-host")?;
     let mut args = vec!["--dev-server".to_owned(), session.local_url()];
     if trace {
@@ -62,16 +71,21 @@ pub(crate) fn run(
         Target::Catalyst => {
             let app = package_catalyst(&work, &host)?;
             let exe = app.join("Contents/MacOS/nsh-ios-host");
-            let mut child = Command::new(&exe)
-                .args(&args)
-                // A host that crashed must not ask to reopen its windows
-                // next time (a modal dialog that blocks the window).
-                .args(["-ApplePersistenceIgnoreState", "YES"])
-                .spawn()
-                .with_context(|| format!("launch {}", exe.display()))?;
+            // Its own output (AppKit's notes) is kept for when it fails.
+            let (mut child, output) = ui::quiet(
+                Command::new(&exe)
+                    .args(&args)
+                    // A host that crashed must not ask to reopen its windows
+                    // next time (a modal dialog that blocks the window).
+                    .args(["-ApplePersistenceIgnoreState", "YES"]),
+            )
+            .with_context(|| format!("launch {}", exe.display()))?;
             let result = session.watch(|| match child.try_wait()? {
                 Some(status) if status.success() => Ok(true),
-                Some(status) => bail!("host exited with {status}"),
+                Some(status) => Err(ui::failure(
+                    format!("the Mac Catalyst host exited with {status}"),
+                    output.text(),
+                )),
                 None => Ok(false),
             });
             let _ = child.kill();
@@ -79,11 +93,15 @@ pub(crate) fn run(
         }
         Target::Ios => {
             let app = package_ios(&work, &host)?;
-            let udid = simulator(device)?;
+            let udid = udid.expect("the simulator is picked before the session");
+            let step = ui::Step::start("installing the development host in the simulator");
             simctl(&["install", &udid, &app.to_string_lossy()])?;
+            step.finish();
             let mut launch = vec!["launch", "--terminate-running-process", &udid, BUNDLE_ID];
             launch.extend(args.iter().map(String::as_str));
+            let step = ui::Step::start("launching the development host");
             simctl(&launch)?;
+            step.finish();
             // The simulator shares the Mac's network: 127.0.0.1 is the dev server.
             let result = session.watch(|| Ok(false));
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
@@ -93,18 +111,30 @@ pub(crate) fn run(
     }
 }
 
-/// Builds and installs the Android dev host (when it changed), forwards
-/// the dev server port to the device and starts the host.
-fn run_android(session: &DevSession, work: &Path, trace: bool) -> anyhow::Result<()> {
+/// Starts a dev session, builds and installs the Android dev host (when
+/// it changed), forwards the dev server port to the device and starts the
+/// host.
+fn run_android(
+    entry: &Path,
+    port: u16,
+    release: bool,
+    work: &Path,
+    trace: bool,
+) -> anyhow::Result<()> {
     use crate::android::{self, Apk, Signing};
     let sdk = android::Sdk::find()?;
     let serial = android::device(&sdk)?;
+    // As on iOS: the host of a previous session must not connect first.
+    let _ = android::adb(&sdk, &serial, &["shell", "am", "force-stop", BUNDLE_ID]);
+    let session = DevSession::start(entry, port, release)?;
+    session.print_urls();
     let runtime = crate::runtime::android(true)?;
     let apk_path = work.join("android/NshDev.apk");
     fs::create_dir_all(apk_path.parent().context("apk dir")?)?;
     let stamp = work.join("android/runtime.stamp");
     let version = runtime_version(&runtime)?;
     if !apk_path.exists() || fs::read_to_string(&stamp).ok().as_deref() != Some(version.as_str()) {
+        let step = ui::Step::start("building the Android development host");
         android::build_apk(
             &sdk,
             &Apk {
@@ -121,11 +151,16 @@ fn run_android(session: &DevSession, work: &Path, trace: bool) -> anyhow::Result
             },
             &apk_path,
         )?;
+        step.done("built the Android development host");
+        let step = ui::Step::start(format!("installing it on {serial}"));
         android::adb(
             &sdk,
             &serial,
             &["install", "-r", "-t", &apk_path.to_string_lossy()],
         )?;
+        step.done(format!(
+            "installed the Android development host on {serial}"
+        ));
         fs::write(&stamp, &version)?;
     }
     // The device reaches the dev server on its own 127.0.0.1.
@@ -150,8 +185,9 @@ fn run_android(session: &DevSession, work: &Path, trace: bool) -> anyhow::Result
     if trace {
         start.extend(["--ez", "trace", "true"]);
     }
+    let step = ui::Step::start("launching the development host");
     android::adb(&sdk, &serial, &start)?;
-    log::info!("running on {serial}");
+    step.finish();
     let result = session.watch(|| Ok(false));
     let _ = android::adb(&sdk, &serial, &["shell", "am", "force-stop", BUNDLE_ID]);
     result
@@ -293,13 +329,17 @@ pub(crate) fn simulator(wanted: Option<&str>) -> anyhow::Result<String> {
                 "no iOS simulator available: install one with `xcodebuild -downloadPlatform iOS`",
             )?,
     };
-    if device.state != "Booted" {
-        eprintln!("booting {}", device.name);
+    let booting =
+        (device.state != "Booted").then(|| ui::Step::start(format!("booting {}", device.name)));
+    if booting.is_some() {
         simctl(&["boot", &device.udid])?;
     }
     // Apps launched before the boot completes are sent to the background
     // when SpringBoard comes up.
     simctl(&["bootstatus", &device.udid, "-b"])?;
+    if let Some(step) = booting {
+        step.done(format!("booted {}", device.name));
+    }
     show_simulators();
     Ok(device.udid.clone())
 }
@@ -324,7 +364,7 @@ fn show_simulators() {
             return;
         }
     }
-    eprintln!("no Simulator or DeviceHub app found: the simulator runs without a window");
+    ui::warn("no Simulator or DeviceHub app found: the simulator runs without a window");
 }
 
 fn info_plist(target: Target) -> String {

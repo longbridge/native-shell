@@ -54,6 +54,22 @@ impl Platform {
             Platform::MacCatalyst => "aarch64-apple-ios-macabi",
         }
     }
+
+    /// The development host (`runner` false) or release runner for it, as
+    /// steps name it: "the development host for the iOS simulator".
+    pub(crate) fn host(self, runner: bool) -> String {
+        let what = if runner {
+            "release runner"
+        } else {
+            "development host"
+        };
+        let platform = match self {
+            Platform::IphoneOs => "iOS devices",
+            Platform::IphoneSimulator => "the iOS simulator",
+            Platform::MacCatalyst => "Mac Catalyst",
+        };
+        format!("the {what} for {platform}")
+    }
 }
 
 /// The Android runtime directory (`classes.dex`, `lib/<abi>/libnsh.so`),
@@ -91,7 +107,12 @@ fn prebuilt_android(dev: bool) -> anyhow::Result<PathBuf> {
         if dev {
             args.push("--dev");
         }
-        cargo(&root, &args)?;
+        let what = if dev {
+            "the Android runtime with development support"
+        } else {
+            "the Android runtime"
+        };
+        cargo(&root, &args, what)?;
     }
     let name = if dev {
         format!("{profile}-dev")
@@ -147,7 +168,7 @@ pub(crate) fn file(platform: Platform, name: &str) -> anyhow::Result<PathBuf> {
             Some(other) => args.extend(["--profile", other]),
             None => bail!("cli profile dir is not UTF-8"),
         }
-        cargo(&root, &args)?;
+        cargo(&root, &args, &platform.host(name == "nsh-ios-app"))?;
     }
     let built = bin
         .parent()
@@ -168,18 +189,10 @@ fn checkout(bin: &Path) -> Option<PathBuf> {
 }
 
 /// Runs cargo in the checkout `root` (the one that runs this CLI under
-/// `cargo run`, else `cargo` from the path).
-fn cargo(root: &Path, args: &[&str]) -> anyhow::Result<()> {
+/// `cargo run`, else `cargo` from the path): the step "building <what>".
+fn cargo(root: &Path, args: &[&str], what: &str) -> anyhow::Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
-    let status = Command::new(&cargo)
-        .args(args)
-        .current_dir(root)
-        .status()
-        .context("run cargo")?;
-    if !status.success() {
-        bail!("cargo {} failed", args.join(" "));
-    }
-    Ok(())
+    crate::ui::cargo(Command::new(&cargo).args(args).current_dir(root), what)
 }
 
 fn existing(path: PathBuf, platform: Platform, name: &str) -> anyhow::Result<PathBuf> {

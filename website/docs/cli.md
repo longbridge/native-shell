@@ -26,6 +26,30 @@ nsh <COMMAND>
 
 `nsh <command> --help` prints the flags of a command; `nsh --version` prints the version.
 
+## Output
+
+Every command prints one line per step, and the details only when something fails:
+
+```text
+✓ built the Rust crate gallery-native (5.0s)
+✓ built App.tsx (500 B js, 809 B bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
+✓ built the development host for the iOS simulator (12.7s)
+• iOS Simulator (iPhone 16 Plus) connected, build 1
+warn iOS Simulator: image failed: An SSL error has occurred and a secure connection to the server cannot be made.
+✓ rebuilt App.tsx (18ms), 1 device
+```
+
+`✓` is a finished step, `→` where to connect, `•` what a device did; `warn` and `error` lines are problems, and
+plain lines are your app's own output (`console.log`). On a terminal a spinner shows the step that is running, and
+lines are colored (unless `NO_COLOR` is set); redirected to a file, only the result lines are written, without colors.
+The output of the tools nsh runs (cargo for an app's Rust crate, the development hosts) is printed below an `error`
+line when one of them fails.
+
+`-v, --verbose` (any command; also `NSH_VERBOSE=1`) prints everything as it comes: every log line with its level and
+source, cargo's output and the hosts' own.
+
 ## nsh init
 
 ```sh
@@ -65,8 +89,9 @@ nsh dev [ENTRY] [--port <PORT>] [--release]
 Runs only the dev server: it builds the app, watches the entry's directory, and pushes every rebuild to the hosts connected to it. It prints the URL for hosts on this machine and one per LAN address for devices:
 
 ```text
- info dev server: ws://127.0.0.1:8790/ws
- info devices on this network: ws://192.168.1.20:8790/ws
+✓ built App.tsx (3.2 KB js, 9.8 KB bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
 ```
 
 Use it with hosts you start yourself, for example an app that embeds the development SDK (`NativeShellDev.xcframework`, `nsh-dev.aar`). Flags as for `nsh run`.
@@ -80,8 +105,8 @@ nsh trace [ENTRY] [--taps <N>] [--idle-ms <MS>] [--scroll <POINTS>] [--width <W>
 Runs the app headless, in the CLI's own process with the same core and runtime as a device but no views, and prints every mount instruction (create, insert, style, frame, text) and the time of each commit. Then it taps the first pressable view and prints what each tap changed. Use it to check that an app starts without errors, to count the work an interaction causes, and in CI ([Testing and trace](./testing-and-trace.md)).
 
 ```text
-bundled in 12.6 ms (3255 B)
- info nsh::perf commit: 56 ops, 412µs (list js 6µs), 49 mount items, 21 nodes
+✓ bundled App.tsx (3255 B in 12.6 ms)
+perf commit: 56 ops, 412µs (list js 6µs), 49 mount items, 21 nodes
 ── initial render: 49 items
    Create { id: 2, kind: View }
    ...
@@ -231,3 +256,5 @@ Signs a revocation list: release keys and packages that must not load any more.
 | `ANDROID_HOME`, `ANDROID_SDK_ROOT` | Android targets | The Android SDK. Fallback: `~/Library/Android/sdk`. |
 | `NSH_KEYSTORE_PASSWORD` | `package --target android` | The keystore password. |
 | `NSH_RUNTIME` | `run`, `package` | A runtime directory to use instead of the one next to the CLI. |
+| `NSH_VERBOSE` | every command | `1`: as `--verbose`. |
+| `NO_COLOR` | every command | Set: no colors on terminals. |

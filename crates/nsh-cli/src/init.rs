@@ -5,6 +5,8 @@ use std::{fs, path::Path};
 
 use anyhow::{Context as _, bail};
 
+use crate::ui;
+
 const APP: &str = r##"import { mount, signal, Text, View } from "nsh";
 import { SafeAreaView } from "nsh/ui/mobile";
 
@@ -67,19 +69,30 @@ pub(crate) fn init(dir: &Path, name: Option<String>) -> anyhow::Result<()> {
         (".gitignore", GITIGNORE.to_owned()),
     ];
     if files.iter().all(|(f, _)| dir.join(f).exists()) {
-        bail!("{} already has an app", dir.display());
+        bail!("{} already has an app", ui::path(&dir));
     }
+    let (mut created, mut kept) = (Vec::new(), Vec::new());
     for (file, contents) in files {
         let path = dir.join(file);
         if path.exists() {
-            log::info!("kept {}", path.display());
+            kept.push(file);
             continue;
         }
         fs::write(&path, contents).with_context(|| format!("write {}", path.display()))?;
-        log::info!("created {}", path.display());
+        created.push(file);
     }
     write_types(&dir);
-    log::info!("run it with `{run}`");
+    let kept = if kept.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", ui::dim(format!("(kept {})", kept.join(", "))))
+    };
+    ui::done(format!(
+        "created {}: {}{kept}",
+        ui::path(&dir),
+        created.join(", ")
+    ));
+    ui::note(format!("run it with `{run}`"));
     Ok(())
 }
 
@@ -101,7 +114,7 @@ pub(crate) fn write_types(dir: &Path) {
             .map_or(Ok(()), fs::create_dir_all)
             .and_then(|()| fs::write(&path, contents));
         if let Err(err) = written {
-            log::warn!("cannot write {}: {err}", path.display());
+            ui::warn(format!("cannot write {}: {err}", ui::path(&path)));
             return;
         }
     }

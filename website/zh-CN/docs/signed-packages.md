@@ -94,7 +94,7 @@ out/com.example.counter-2.nshpkg: com.example.counter 1.0.0 (build 2), 0 assets,
 凡是设备会拒绝的包，`nsh publish` 也拒绝签名：证书必须覆盖该 app id 和当前时间。
 
 ```text
-Error: the release key's certificate does not cover this package: it does not cover app `com.example.counter` (only com.other.app)
+error the release key's certificate does not cover this package: it does not cover app `com.example.counter` (only com.other.app)
 ```
 
 ### 包里有什么

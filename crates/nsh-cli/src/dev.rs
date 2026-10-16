@@ -1,15 +1,20 @@
 use std::{
+    cell::Cell,
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
 use anyhow::Context as _;
 use notify::{RecursiveMode, Watcher};
-use nsh_dev::{DevServer, protocol::WS_PATH};
+use nsh_dev::{ClientEvent, DevServer, protocol::WS_PATH};
 
-use crate::{build, logger};
+use crate::{build, logger, ui};
 
 /// File events arriving within this window are coalesced into one rebuild.
 const DEBOUNCE: Duration = Duration::from_millis(30);
@@ -22,9 +27,12 @@ pub(crate) struct DevSession {
     src_dir: PathBuf,
     release: bool,
     server: DevServer,
+    devices: Arc<Devices>,
     /// The modules of the last good development build: updates are
     /// computed against it.
     hot: std::cell::RefCell<Option<nsh_bundler::HotBundle>>,
+    /// Good builds so far: the first one is "built", the next "rebuilt".
+    builds: Cell<u32>,
 }
 
 impl DevSession {
@@ -37,25 +45,28 @@ impl DevSession {
             .parent()
             .context("entry has no directory")?
             .to_path_buf();
-        let server = start_server(port, &src_dir)?;
+        let devices = Arc::<Devices>::default();
+        let server = start_server(port, &src_dir, devices.clone())?;
         server.serve_files(crate::build::crate_assets().map(|a| (a.path, a.source)));
         let session = DevSession {
             entry,
             src_dir,
             release,
             server,
+            devices,
             hot: Default::default(),
+            builds: Cell::new(0),
         };
         session.rebuild();
         Ok(session)
     }
 
-    /// WebSocket URL for hosts on this machine.
     /// The port the dev server listens on.
     pub(crate) fn port(&self) -> u16 {
         self.server.local_addr().port()
     }
 
+    /// WebSocket URL for hosts on this machine.
     pub(crate) fn local_url(&self) -> String {
         format!(
             "ws://127.0.0.1:{}{WS_PATH}",
@@ -66,17 +77,24 @@ impl DevSession {
     /// Prints where hosts can connect.
     pub(crate) fn print_urls(&self) {
         let port = self.server.local_addr().port();
-        log::info!("dev server: {}", self.local_url());
+        ui::note(format!("dev server {}", self.local_url()));
         for ip in lan_ips() {
-            log::info!("devices on this network: ws://{ip}:{port}{WS_PATH}");
+            ui::detail(format!(
+                "devices on this network: ws://{ip}:{port}{WS_PATH}"
+            ));
         }
     }
 
     /// Rebuilds on source changes until `stop` returns true.
-    pub(crate) fn watch(
-        &self,
-        mut stop: impl FnMut() -> anyhow::Result<bool>,
-    ) -> anyhow::Result<()> {
+    pub(crate) fn watch(&self, stop: impl FnMut() -> anyhow::Result<bool>) -> anyhow::Result<()> {
+        let result = self.watch_until(stop);
+        // The session is over: its hosts going away (stopped by the
+        // command, or with the server) is no news.
+        self.devices.closing.store(true, Ordering::Relaxed);
+        result
+    }
+
+    fn watch_until(&self, mut stop: impl FnMut() -> anyhow::Result<bool>) -> anyhow::Result<()> {
         let (tx, rx) = mpsc::channel();
         let mut watcher =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -85,7 +103,7 @@ impl DevSession {
                 }
             })?;
         watcher.watch(&self.src_dir, RecursiveMode::Recursive)?;
-        log::info!("watching {}", self.src_dir.display());
+        ui::debug(format!("watching {}", ui::path(&self.src_dir)));
         // The app's Rust code: a change builds the app's hosts again.
         let rust = crate::rust_app::current();
         if let Some(app) = &rust
@@ -123,13 +141,15 @@ impl DevSession {
             match build::compile(&self.entry, true) {
                 Ok(built) => {
                     let capabilities = built.capabilities_json();
+                    let summary = self.summary(&built);
                     self.server.publish(
                         built.bytecode,
                         built.code,
                         built.source_map,
                         capabilities,
                         None,
-                    )
+                    );
+                    self.published(summary);
                 }
                 Err(err) => self.failed(err),
             }
@@ -137,6 +157,7 @@ impl DevSession {
         }
         match build::compile_hot(&self.entry) {
             Ok((built, hot)) => {
+                let summary = self.summary(&built);
                 // Other capabilities: the app starts again under them.
                 let patch = self
                     .hot
@@ -161,24 +182,118 @@ impl DevSession {
                     patch,
                 );
                 *self.hot.borrow_mut() = Some(hot);
+                self.published(summary);
             }
             Err(err) => self.failed(err),
         }
     }
 
+    /// What the line of a good build says after its path.
+    fn summary(&self, built: &build::Built) -> String {
+        if self.builds.get() == 0 {
+            built.summary("")
+        } else {
+            ui::dim(format!("({})", ui::duration(built.elapsed)))
+        }
+    }
+
+    /// `✓ built App.tsx (...)`, then `✓ rebuilt App.tsx (18ms), 2 devices`.
+    fn published(&self, summary: String) {
+        let entry = ui::path(&self.entry);
+        let builds = self.builds.get();
+        self.builds.set(builds + 1);
+        if builds == 0 {
+            return ui::done(format!("built {entry} {summary}"));
+        }
+        let devices = match self.server.clients() {
+            0 => String::new(),
+            1 => ", 1 device".to_owned(),
+            n => format!(", {n} devices"),
+        };
+        ui::done(format!("rebuilt {entry} {summary}{}", ui::dim(devices)));
+    }
+
     fn failed(&self, err: build::BuildError) {
-        log::error!("build failed:\n{}", err.colored);
-        self.server.publish_error(err.plain);
+        let plain = err.plain.clone();
+        ui::report(&err.into_error(&self.entry));
+        self.server.publish_error(plain);
     }
 }
 
-fn start_server(port: u16, assets_root: &Path) -> anyhow::Result<DevServer> {
+impl Drop for DevSession {
+    fn drop(&mut self) {
+        // The server stops next.
+        self.devices.closing.store(true, Ordering::Relaxed);
+    }
+}
+
+/// The hosts connected to the dev server: what they do is shown as `•`
+/// lines, their log lines with their names.
+#[derive(Default)]
+struct Devices {
+    connected: Mutex<Vec<String>>,
+    /// The session ends.
+    closing: AtomicBool,
+}
+
+impl Devices {
+    fn connected(&self) -> std::sync::MutexGuard<'_, Vec<String>> {
+        self.connected.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn on_event(&self, event: ClientEvent) {
+        match event {
+            ClientEvent::Connected { device, build } => {
+                let build = build.map_or(String::new(), |b| format!(", build {b}"));
+                ui::event(format!("{device} connected{build}"));
+                self.connected().push(device);
+            }
+            ClientEvent::Disconnected { device } => {
+                {
+                    let mut connected = self.connected();
+                    if let Some(i) = connected.iter().position(|d| *d == device) {
+                        connected.remove(i);
+                    }
+                }
+                if !self.closing.load(Ordering::Relaxed) {
+                    ui::event(ui::dim(format!("{device} disconnected")));
+                }
+            }
+            ClientEvent::Log(log) => {
+                let (label, several) = {
+                    let connected = self.connected();
+                    (short_name(&connected, &log.device), connected.len() > 1)
+                };
+                let device = logger::Device {
+                    name: &log.device,
+                    label: &label,
+                    several,
+                };
+                logger::device(&device, log.level, &log.target, &log.message);
+            }
+        }
+    }
+}
+
+/// `device` without its model ("iOS Simulator (iPhone 16 Plus)": "iOS
+/// Simulator"), unless another connected device has that name too.
+fn short_name(connected: &[String], device: &str) -> String {
+    let short = |name: &str| name.split_once(" (").map_or(name, |(s, _)| s).to_owned();
+    let name = short(device);
+    let shared = connected
+        .iter()
+        .any(|other| other != device && short(other) == name);
+    if shared { device.to_owned() } else { name }
+}
+
+fn start_server(port: u16, assets_root: &Path, devices: Arc<Devices>) -> anyhow::Result<DevServer> {
     let mut last_err = None;
     for port in port..port.saturating_add(PORT_ATTEMPTS) {
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let root = Some(assets_root.to_path_buf());
-        match DevServer::start(addr, nsh_js::BYTECODE_VERSION, root, |log| {
-            logger::print_client(&log)
+        let devices = devices.clone();
+        match DevServer::start(addr, nsh_js::BYTECODE_VERSION, root, move |event| {
+            devices.on_event(event)
         }) {
             Ok(server) => return Ok(server),
             Err(err) => last_err = Some(err),
@@ -229,4 +344,28 @@ fn lan_ips() -> Vec<Ipv4Addr> {
         libc::freeifaddrs(list);
     }
     ips
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn devices_go_by_short_names_unless_two_share_one() {
+        let connected = [
+            "iOS Simulator (iPhone 16 Plus)".to_owned(),
+            "Mac Catalyst".to_owned(),
+        ];
+        assert_eq!(
+            super::short_name(&connected, &connected[0]),
+            "iOS Simulator"
+        );
+        assert_eq!(
+            super::short_name(&connected, "Mac Catalyst"),
+            "Mac Catalyst"
+        );
+        let two = [
+            "iOS Simulator (iPhone 16 Plus)".to_owned(),
+            "iOS Simulator (iPad Air)".to_owned(),
+        ];
+        assert_eq!(super::short_name(&two, &two[1]), "iOS Simulator (iPad Air)");
+    }
 }

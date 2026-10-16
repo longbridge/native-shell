@@ -79,8 +79,8 @@ mount(App);
 `tailwind`、`theme` 和 `capabilities` 在构建应用时会被校验。拼写错误会导致构建失败，而不是变成一个悄无声息不起作用的设置：
 
 ```text
-Error: nsh.json: tailwind: unknown theme key `colours`
-Error: nsh.json: capabilities: unknown key `net` (known: network, webview, statusBar)
+error building App.tsx failed
+nsh.json: tailwind: unknown theme key `colours`
 ```
 
 > [!WARNING]

@@ -60,7 +60,8 @@ crates/
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
   nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / dev / run / package; keygen /
                        certify / publish / verify / revoke; apps with Rust components of their own (`rust_app.rs`: the crate
-                       nsh.json `"rust"` names has a `#[native_module("…")]` fn; docs/dev/tooling.md)
+                       nsh.json `"rust"` names has a `#[native_module("…")]` fn; docs/dev/tooling.md); what it prints (`ui.rs`:
+                       one line per step, tools' output only on failure, `-v` for everything; docs/dev/tooling.md "Output")
   xtask/               Maintainer tasks: `cargo xtask android` (Android runtime), `ios-embed` (the iOS SDK), `dist` (the distribution),
                        `web` (the WebAssembly runtime and the website's demos)
 docs/                 Documentation; `docs/dev/`: for developers of nsh (architecture, internals, decisions, pitfalls)
@@ -191,6 +192,7 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   - Items in private modules are `pub(crate)`, never `pub`.
 - Everything is written in English: code comments, docs, logs and this file. Comments explain why, not what the code says.
 - Library crates only log through the `log` facade (no `eprintln!`); performance logs use target `nsh::perf`, JS logs target `js`. Binaries install the logger.
+  The CLI prints through `nsh-cli`'s `ui.rs` (steps, captured tools, `error` reports).
 - Dependencies are declared once in the root `Cargo.toml` `[workspace.dependencies]`; crates only write `.workspace = true`.
 - Every `unsafe` block has a `// SAFETY:` comment.
 - A crate's integration tests are one test binary (`tests/<name>/main.rs` with a module per area, as

@@ -3,7 +3,7 @@
 use std::{sync::mpsc, time::Duration};
 
 use nsh_dev::{
-    DevClient, DevEvent, DevServer,
+    ClientEvent, DevClient, DevEvent, DevServer,
     protocol::{BundleFormat, LogLevel, WS_PATH},
 };
 
@@ -20,9 +20,9 @@ fn next_non_status(rx: &mpsc::Receiver<DevEvent>) -> DevEvent {
 
 #[test]
 fn bundles_errors_and_logs_round_trip() {
-    let (log_tx, log_rx) = mpsc::channel();
-    let server = DevServer::start("127.0.0.1:0".parse().unwrap(), "bc-1", None, move |log| {
-        let _ = log_tx.send(log);
+    let (client_tx, client_rx) = mpsc::channel();
+    let server = DevServer::start("127.0.0.1:0".parse().unwrap(), "bc-1", None, move |event| {
+        let _ = client_tx.send(event);
     })
     .unwrap();
     server.publish(
@@ -55,6 +55,14 @@ fn bundles_errors_and_logs_round_trip() {
         }
         other => panic!("{other:?}"),
     }
+    // The server reports the host with the build it sent first.
+    match client_rx.recv_timeout(TIMEOUT).unwrap() {
+        ClientEvent::Connected { device, build } => {
+            assert_eq!((device.as_str(), build), ("test-device", Some(1)))
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(server.clients(), 1);
 
     server.publish_error("syntax error at App.tsx:3");
     assert!(matches!(next_non_status(&rx), DevEvent::BuildFailed(m) if m.contains("App.tsx:3")));
@@ -86,11 +94,13 @@ fn bundles_errors_and_logs_round_trip() {
     ));
 
     client.log(LogLevel::Warn, "js", "hello from device");
-    let log = log_rx.recv_timeout(TIMEOUT).unwrap();
-    assert_eq!(
-        (log.device.as_str(), log.message.as_str()),
-        ("test-device", "hello from device")
-    );
+    match client_rx.recv_timeout(TIMEOUT).unwrap() {
+        ClientEvent::Log(log) => assert_eq!(
+            (log.device.as_str(), log.message.as_str()),
+            ("test-device", "hello from device")
+        ),
+        other => panic!("{other:?}"),
+    }
 
     // A client with another engine build gets JS source instead.
     let (tx2, rx2) = mpsc::channel();
@@ -106,4 +116,12 @@ fn bundles_errors_and_logs_round_trip() {
         } => assert_eq!(bytes, b"source v2"),
         other => panic!("{other:?}"),
     }
+
+    // A host that goes away is reported once its session ends.
+    drop(client);
+    let gone = std::iter::from_fn(|| client_rx.recv_timeout(TIMEOUT).ok()).find_map(|e| match e {
+        ClientEvent::Disconnected { device } => Some(device),
+        _ => None,
+    });
+    assert_eq!(gone.as_deref(), Some("test-device"));
 }

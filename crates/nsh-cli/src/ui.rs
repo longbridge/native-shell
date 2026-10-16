@@ -1,0 +1,692 @@
+//! What the command line prints: one line per step, and the details only
+//! when something fails (`docs/dev/tooling.md`, "Output").
+//!
+//! - `✓` a step that finished, `→` where to find something, `•` what a
+//!   device did, `warn` / `error` problems; plain lines are the app's own
+//!   output (its `console.*`).
+//! - While a step runs ([`Step`]), a spinner line shows it, replaced by the
+//!   step's `✓` line. Only on a terminal: otherwise just the result lines.
+//! - Colors on terminals, unless `NO_COLOR` is set.
+//! - The output of the tools the CLI runs (cargo, the hosts) is captured
+//!   ([`cargo`], [`capture`]) and printed under the `error` line only when
+//!   they fail ([`failure`], [`report`]).
+//! - Verbose (`-v`, `NSH_VERBOSE=1`): no spinner, and everything as it
+//!   comes: log lines with their levels and targets (`logger.rs`), the
+//!   tools' and hosts' own output.
+//!
+//! Everything goes to stderr: stdout is the commands' results (`nsh trace`'s
+//! mount items, the signing commands' lines).
+
+use std::{
+    fmt::Display,
+    io::{BufRead as _, BufReader, IsTerminal as _, Write as _},
+    path::Path,
+    process::{Command, ExitStatus, Stdio},
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+use anyhow::Context as _;
+
+/// How the terminal is used, decided once ([`init`]).
+struct Term {
+    /// stderr is a terminal: spinners, wrapping.
+    tty: bool,
+    color: bool,
+    verbose: bool,
+}
+
+static TERM: OnceLock<Term> = OnceLock::new();
+
+fn term() -> &'static Term {
+    TERM.get_or_init(|| Term::detect(false))
+}
+
+impl Term {
+    fn detect(verbose: bool) -> Term {
+        let tty = std::io::stderr().is_terminal();
+        let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+        Term {
+            tty,
+            color: tty && !no_color,
+            verbose,
+        }
+    }
+}
+
+/// Sets up the output: verbose or not, and what stderr is.
+pub(crate) fn init(verbose: bool) {
+    let _ = TERM.set(Term::detect(verbose));
+    let term = term();
+    if term.tty && !term.verbose {
+        // SAFETY: the handler only uses async-signal-safe calls (`write`,
+        // `signal`, `raise`) and an atomic.
+        unsafe {
+            libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
+        }
+    }
+}
+
+/// Whether everything is shown as it comes.
+pub(crate) fn verbose() -> bool {
+    term().verbose
+}
+
+/// Whether output is colored.
+pub(crate) fn color() -> bool {
+    term().color
+}
+
+/// Mirrors [`Out::drawn`] for the signal handler, which cannot lock.
+static SPINNER_DRAWN: AtomicBool = AtomicBool::new(false);
+
+/// Ctrl-C (or a stop) while a spinner is drawn: clears its line, then
+/// ends the process as the signal would have.
+extern "C" fn on_signal(signal: libc::c_int) {
+    if SPINNER_DRAWN.load(Ordering::SeqCst) {
+        let clear = b"\r\x1b[2K";
+        // SAFETY: async-signal-safe calls with a valid buffer.
+        unsafe { libc::write(libc::STDERR_FILENO, clear.as_ptr().cast(), clear.len()) };
+    }
+    // SAFETY: as above: back to the default action, then raise it again.
+    unsafe {
+        libc::signal(signal, libc::SIG_DFL);
+        libc::raise(signal);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+
+fn paint(code: &str, text: impl Display) -> String {
+    if color() {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+/// Secondary text: timings, sizes, hints.
+pub(crate) fn dim(text: impl Display) -> String {
+    paint("2", text)
+}
+
+pub(crate) fn green(text: impl Display) -> String {
+    paint("32", text)
+}
+
+pub(crate) fn cyan(text: impl Display) -> String {
+    paint("36", text)
+}
+
+pub(crate) fn yellow(text: impl Display) -> String {
+    paint("33", text)
+}
+
+pub(crate) fn red(text: impl Display) -> String {
+    paint("31", text)
+}
+
+/// `text` without its ANSI escape sequences.
+pub(crate) fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\x1b' {
+            out.push(c);
+            continue;
+        }
+        // CSI: ESC [ parameters final-byte (@ to ~).
+        if chars.next() == Some('[') {
+            for c in chars.by_ref() {
+                if ('@'..='~').contains(&c) {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The width `text` takes on a terminal (one column per character).
+fn width(text: &str) -> usize {
+    strip_ansi(text).chars().count()
+}
+
+/// `path` relative to the current directory when it is inside it.
+pub(crate) fn path(path: &Path) -> String {
+    let full = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let cwd = std::env::current_dir().and_then(|d| d.canonicalize());
+    match cwd.as_deref().map(|cwd| full.strip_prefix(cwd)) {
+        Ok(Ok(rest)) if rest.as_os_str().is_empty() => ".".to_owned(),
+        Ok(Ok(rest)) => rest.display().to_string(),
+        _ => path.display().to_string(),
+    }
+}
+
+/// A size: `500 B`, `3.2 KB`, `1.4 MB`.
+pub(crate) fn bytes(n: usize) -> String {
+    const K: f64 = 1024.0;
+    let n_f = n as f64;
+    if n < 1024 {
+        format!("{n} B")
+    } else if n_f < K * K {
+        format!("{:.1} KB", n_f / K)
+    } else {
+        format!("{:.1} MB", n_f / (K * K))
+    }
+}
+
+/// A duration: `21ms`, `5.0s`, `1m 3s`.
+pub(crate) fn duration(d: Duration) -> String {
+    let ms = d.as_millis();
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else if ms < 60_000 {
+        format!("{:.1}s", d.as_secs_f64())
+    } else {
+        format!("{}m {}s", ms / 60_000, ms % 60_000 / 1000)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lines
+
+/// What is printed, and the spinner drawn below it.
+struct Out {
+    /// Running steps; the last one is drawn.
+    spinners: Vec<Spinner>,
+    /// The spinner line is on screen.
+    drawn: bool,
+    frame: usize,
+}
+
+struct Spinner {
+    id: u64,
+    label: String,
+    status: String,
+    start: Instant,
+}
+
+static OUT: Mutex<Out> = Mutex::new(Out {
+    spinners: Vec::new(),
+    drawn: false,
+    frame: 0,
+});
+
+const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+fn out() -> std::sync::MutexGuard<'static, Out> {
+    OUT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+impl Out {
+    fn clear(&mut self, err: &mut impl std::io::Write) {
+        if self.drawn {
+            let _ = err.write_all(b"\r\x1b[2K");
+            self.drawn = false;
+            SPINNER_DRAWN.store(false, Ordering::SeqCst);
+        }
+    }
+
+    fn draw(&mut self, err: &mut impl std::io::Write) {
+        let Some(spinner) = self.spinners.last() else {
+            return self.clear(err);
+        };
+        let columns = columns().unwrap_or(80).saturating_sub(1);
+        let mut rest = String::new();
+        let elapsed = spinner.start.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            rest.push_str(&format!(" {}s", elapsed.as_secs()));
+        }
+        if !spinner.status.is_empty() {
+            rest.push_str(" · ");
+            rest.push_str(&spinner.status);
+        }
+        // "⠋ label…" then the dim rest, cut to the terminal's width (a line
+        // that wraps could not be cleared).
+        let label: String = format!("{}…", spinner.label)
+            .chars()
+            .take(columns.saturating_sub(2))
+            .collect();
+        let room = columns.saturating_sub(2 + label.chars().count());
+        let rest: String = rest.chars().take(room).collect();
+        let frame = FRAMES[self.frame % FRAMES.len()];
+        let rest = if rest.is_empty() { rest } else { dim(rest) };
+        let _ = write!(err, "\r\x1b[2K{} {label}{rest}", cyan(frame));
+        let _ = err.flush();
+        self.drawn = true;
+        SPINNER_DRAWN.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Prints `text` (whole lines) above the spinner.
+fn print(text: &str) {
+    let mut out = out();
+    let mut err = std::io::stderr().lock();
+    out.clear(&mut err);
+    let _ = err.write_all(text.as_bytes());
+    if !text.ends_with('\n') {
+        let _ = err.write_all(b"\n");
+    }
+    out.draw(&mut err);
+}
+
+/// The terminal's width, when stderr is one.
+fn columns() -> Option<usize> {
+    if !term().tty {
+        return None;
+    }
+    // SAFETY: TIOCGWINSZ fills the zeroed winsize it is given.
+    let size = unsafe {
+        let mut size: libc::winsize = std::mem::zeroed();
+        (libc::ioctl(libc::STDERR_FILENO, libc::TIOCGWINSZ, &mut size) == 0).then_some(size)
+    };
+    size.map(|s| usize::from(s.ws_col)).filter(|&c| c > 20)
+}
+
+/// `tag message`, the message wrapped to the terminal with a hanging
+/// indent under its first word (its own lines too).
+fn tagged(tag: &str, message: &str) -> String {
+    let columns = columns().map(|c| c.saturating_sub(width(tag) + 1).max(20));
+    wrap(tag, message, columns)
+}
+
+/// [`tagged`] for lines of `room` columns after the tag (`None`: no
+/// wrapping).
+fn wrap(tag: &str, message: &str, room: Option<usize>) -> String {
+    let indent = width(tag) + 1;
+    let mut text = String::new();
+    for (i, line) in message.lines().enumerate() {
+        let mut col = 0;
+        if i > 0 {
+            text.push('\n');
+        }
+        text.push_str(&if i == 0 {
+            format!("{tag} ")
+        } else {
+            " ".repeat(indent)
+        });
+        for (j, word) in line.split(' ').enumerate() {
+            let w = width(word);
+            if j > 0 {
+                // A word longer than a line (a path) stays: the terminal
+                // wraps it.
+                if room.is_some_and(|room| col + 1 + w > room && w <= room) {
+                    text.push('\n');
+                    text.push_str(&" ".repeat(indent));
+                    col = 0;
+                } else {
+                    text.push(' ');
+                    col += 1;
+                }
+            }
+            text.push_str(word);
+            col += w;
+        }
+    }
+    text
+}
+
+/// `✓ message`: a step finished.
+pub(crate) fn done(message: impl Display) {
+    print(&format!("{} {message}", green("✓")));
+}
+
+/// `→ message`: where to find something.
+pub(crate) fn note(message: impl Display) {
+    print(&format!("{} {message}", cyan("→")));
+}
+
+/// `  message`: more about the line above.
+pub(crate) fn detail(message: impl Display) {
+    print(&format!("  {message}"));
+}
+
+/// `• message`: what a device did.
+pub(crate) fn event(message: impl Display) {
+    print(&format!("{} {message}", cyan("•")));
+}
+
+/// `warn message`.
+pub(crate) fn warn(message: impl Display) {
+    print(&tagged(&yellow("warn"), &message.to_string()));
+}
+
+/// `error message`.
+pub(crate) fn error(message: impl Display) {
+    print(&tagged(&red("error"), &message.to_string()));
+}
+
+/// A line as it is: the app's own output, or a tool's.
+pub(crate) fn plain(message: impl Display) {
+    print(&message.to_string());
+}
+
+/// A line only verbose runs show.
+pub(crate) fn debug(message: impl Display) {
+    if verbose() {
+        print(&dim(message));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Steps
+
+/// A step that takes a while: a spinner line while it runs (on a terminal),
+/// replaced by its `✓` line ([`Step::done`]) or by nothing
+/// ([`Step::finish`]; also when it is dropped, as on errors).
+pub(crate) struct Step {
+    id: u64,
+    start: Instant,
+}
+
+impl Step {
+    /// Starts the step, `label` saying what it does ("building …").
+    pub(crate) fn start(label: impl Into<String>) -> Step {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let start = Instant::now();
+        if term().tty && !verbose() {
+            spin();
+            let mut out = out();
+            out.spinners.push(Spinner {
+                id,
+                label: label.into(),
+                status: String::new(),
+                start,
+            });
+            out.draw(&mut std::io::stderr().lock());
+        }
+        Step { id, start }
+    }
+
+    /// What the step is at (shown after its label).
+    pub(crate) fn status(&self, status: &str) {
+        let mut out = out();
+        if let Some(spinner) = out.spinners.iter_mut().find(|s| s.id == self.id) {
+            spinner.status = status.to_owned();
+        }
+    }
+
+    /// How long it has run.
+    pub(crate) fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
+
+    /// Ends it with `✓ message (time)`.
+    pub(crate) fn done(self, message: impl Display) {
+        self.done_with(message, None);
+    }
+
+    /// Ends it with `✓ message (time, note)`.
+    pub(crate) fn done_with(self, message: impl Display, note: Option<&str>) {
+        let time = duration(self.elapsed());
+        let paren = match note {
+            Some(note) => format!("({time}, {note})"),
+            None => format!("({time})"),
+        };
+        drop(self);
+        done(format!("{message} {}", dim(paren)));
+    }
+
+    /// Ends it without a line.
+    pub(crate) fn finish(self) {}
+}
+
+impl Drop for Step {
+    fn drop(&mut self) {
+        let mut out = out();
+        let before = out.spinners.len();
+        out.spinners.retain(|s| s.id != self.id);
+        if out.spinners.len() != before {
+            out.draw(&mut std::io::stderr().lock());
+        }
+    }
+}
+
+/// Starts the thread that animates spinners (once).
+fn spin() {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    STARTED.get_or_init(|| {
+        let _ = std::thread::Builder::new()
+            .name("nsh-spinner".into())
+            .spawn(|| {
+                loop {
+                    std::thread::sleep(Duration::from_millis(80));
+                    let mut out = out();
+                    if !out.spinners.is_empty() {
+                        out.frame += 1;
+                        out.draw(&mut std::io::stderr().lock());
+                    }
+                }
+            });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+
+/// A failure whose details (a tool's output) are printed below its
+/// message ([`report`]).
+#[derive(Debug)]
+pub(crate) struct Failure {
+    message: String,
+    details: String,
+}
+
+/// A [`Failure`] saying `message`, with `details` below it.
+pub(crate) fn failure(message: impl Into<String>, details: impl Into<String>) -> anyhow::Error {
+    Failure {
+        message: message.into(),
+        details: details.into(),
+    }
+    .into()
+}
+
+impl Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Failure {}
+
+/// Prints `error`: `error <message>`, and the details of the
+/// [`Failure`] in it.
+pub(crate) fn report(error: &anyhow::Error) {
+    self::error(format!("{error:#}"));
+    if let Some(failure) = error.chain().find_map(|e| e.downcast_ref::<Failure>())
+        && !failure.details.trim().is_empty()
+    {
+        plain(failure.details.trim_end());
+    }
+}
+
+/// Runs `cmd` with its output (stdout and stderr, in order) captured, each
+/// line passed to `on_line` too; returns its status and the output.
+/// Verbose runs let the output through instead (and return none).
+pub(crate) fn capture(
+    cmd: &mut Command,
+    mut on_line: impl FnMut(&str),
+) -> std::io::Result<(ExitStatus, String)> {
+    if verbose() {
+        return Ok((cmd.status()?, String::new()));
+    }
+    let (reader, writer) = std::io::pipe()?;
+    cmd.stdin(Stdio::null())
+        .stdout(writer.try_clone()?)
+        .stderr(writer);
+    let child = cmd.spawn();
+    // The command keeps its copies of the pipe's write end: without
+    // dropping them the read below never ends.
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    let mut child = child?;
+    let mut output = String::new();
+    let mut reader = BufReader::new(reader);
+    let mut line = Vec::new();
+    while reader.read_until(b'\n', &mut line)? > 0 {
+        let text = String::from_utf8_lossy(&line);
+        on_line(text.trim_end_matches(['\n', '\r']));
+        output.push_str(&text);
+        line.clear();
+    }
+    Ok((child.wait()?, output))
+}
+
+/// Runs the cargo build `cmd` as step `building <what>`: the spinner
+/// shows the crate it compiles, the output is shown only if it fails, and
+/// warnings are counted (`-v` shows them).
+pub(crate) fn cargo(cmd: &mut Command, what: &str) -> anyhow::Result<()> {
+    let step = Step::start(format!("building {what}"));
+    if !verbose() {
+        cmd.env("CARGO_TERM_COLOR", if color() { "always" } else { "never" });
+    }
+    let mut warnings = 0;
+    let (status, output) = capture(cmd, |line| {
+        let line = strip_ansi(line);
+        let line = line.trim_start();
+        if let Some(rest) = line.strip_prefix("Compiling ") {
+            step.status(rest.split(' ').next().unwrap_or(rest));
+        }
+        warnings += generated_warnings(line);
+    })
+    .context("run cargo")?;
+    if !status.success() {
+        return Err(failure(format!("building {what} failed"), output));
+    }
+    let note = match warnings {
+        0 => None,
+        1 => Some("1 warning: -v shows it".to_owned()),
+        n => Some(format!("{n} warnings: -v shows them")),
+    };
+    step.done_with(format!("built {what}"), note.as_deref());
+    Ok(())
+}
+
+/// The count in cargo's "warning: `crate` (lib) generated 2 warnings".
+fn generated_warnings(line: &str) -> usize {
+    let Some(rest) = line.strip_prefix("warning: ") else {
+        return 0;
+    };
+    let Some((_, count)) = rest.split_once(" generated ") else {
+        return 0;
+    };
+    count
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
+}
+
+/// The last lines a long-running process printed, kept to show if it
+/// fails ([`quiet`]).
+#[derive(Clone, Default)]
+pub(crate) struct Tail(std::sync::Arc<Mutex<std::collections::VecDeque<String>>>);
+
+impl Tail {
+    /// The kept lines.
+    pub(crate) fn text(&self) -> String {
+        let lines = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        lines
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+/// Spawns `cmd`, a process that runs alongside the CLI (a host): its own
+/// output is kept, not shown ([`Tail`]); verbose runs show it.
+pub(crate) fn quiet(cmd: &mut Command) -> std::io::Result<(std::process::Child, Tail)> {
+    const KEEP: usize = 200;
+    let tail = Tail::default();
+    if verbose() {
+        return Ok((cmd.spawn()?, tail));
+    }
+    let (reader, writer) = std::io::pipe()?;
+    cmd.stdout(writer.try_clone()?).stderr(writer);
+    let child = cmd.spawn();
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    let child = child?;
+    let lines = tail.clone();
+    std::thread::Builder::new()
+        .name("nsh-host-output".into())
+        .spawn(move || {
+            for line in BufReader::new(reader).lines() {
+                let Ok(line) = line else { break };
+                let mut lines = lines.0.lock().unwrap_or_else(|e| e.into_inner());
+                if lines.len() == KEEP {
+                    lines.pop_front();
+                }
+                lines.push_back(line);
+            }
+        })?;
+    Ok((child, tail))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cargo_warning_summaries_are_counted() {
+        for (line, count) in [
+            ("warning: `app` (lib) generated 2 warnings", 2),
+            ("warning: `app` (lib) generated 1 warning", 1),
+            (
+                "warning: `app` (lib) generated 3 warnings (run `cargo fix --lib -p app` to apply 1 suggestion)",
+                3,
+            ),
+            ("warning: unused variable: `x`", 0),
+            ("   Compiling app v0.1.0", 0),
+        ] {
+            assert_eq!(generated_warnings(line), count, "{line}");
+        }
+    }
+
+    #[test]
+    fn problems_wrap_under_their_first_word() {
+        assert_eq!(
+            wrap(
+                "warn",
+                "iOS Simulator: image failed: An SSL error has occurred",
+                Some(20)
+            ),
+            "warn iOS Simulator: image\n     failed: An SSL error\n     has occurred"
+        );
+        // Their own lines too; a word longer than a line stays.
+        assert_eq!(
+            wrap(
+                "error",
+                "building /a/very/long/path/App.tsx failed\n  at x",
+                Some(20)
+            ),
+            "error building /a/very/long/path/App.tsx\n      failed\n        at x"
+        );
+        assert_eq!(wrap("warn", "a b", None), "warn a b");
+    }
+
+    #[test]
+    fn escapes_are_stripped() {
+        assert_eq!(
+            strip_ansi("\x1b[1m\x1b[32m   Compiling\x1b[0m taffy"),
+            "   Compiling taffy"
+        );
+        assert_eq!(width("\x1b[33mwarn\x1b[0m"), 4);
+    }
+
+    #[test]
+    fn sizes_and_times_read_well() {
+        assert_eq!(bytes(500), "500 B");
+        assert_eq!(bytes(3255), "3.2 KB");
+        assert_eq!(bytes(3 << 20), "3.0 MB");
+        assert_eq!(duration(Duration::from_millis(21)), "21ms");
+        assert_eq!(duration(Duration::from_millis(12_640)), "12.6s");
+        assert_eq!(duration(Duration::from_secs(63)), "1m 3s");
+    }
+}

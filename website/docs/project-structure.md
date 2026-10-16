@@ -79,8 +79,8 @@ The flags of `nsh package` and `nsh publish` (`--name`, `--id`, `--app-version`,
 `tailwind`, `theme` and `capabilities` are checked when the app is built. A typo is a build error rather than a setting that silently does nothing:
 
 ```text
-Error: nsh.json: tailwind: unknown theme key `colours`
-Error: nsh.json: capabilities: unknown key `net` (known: network, webview, statusBar)
+error building App.tsx failed
+nsh.json: tailwind: unknown theme key `colours`
 ```
 
 > [!WARNING]

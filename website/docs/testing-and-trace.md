@@ -44,9 +44,9 @@ Use it to:
 Here is the counter example (`examples/counter/App.tsx`), shortened:
 
 ```text
-bundled in 14.3 ms (3255 B)
- info nsh::perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
- info nsh::perf first frame: eval 271µs, total 1235µs
+✓ bundled App.tsx (3255 B in 14.3 ms)
+perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
+perf first frame: eval 271µs, total 1235µs
 ── initial render: 49 items
    LayoutDirection { rtl: false }
    Create { id: 2, kind: View }
@@ -59,9 +59,9 @@ bundled in 14.3 ms (3255 B)
    ...
    Text { id: 4, text: "nsh counter", content: 342x34 @ 0,0 }
    Text { id: 14, text: "0", content: 36x77 @ 0,0 }
- info nsh::perf event Press on view 20
- info nsh::perf event js: 196µs
- info nsh::perf commit: 10 ops, 248µs (list js 6µs), 8 mount items, 24 nodes
+perf event Press on view 20
+perf event js: 196µs
+perf commit: 10 ops, 248µs (list js 6µs), 8 mount items, 24 nodes
 ── tap #1 on view 20: 8 items
    Create { id: 42, kind: Text }
    Insert { parent: 32, child: 42, before: None }
@@ -93,11 +93,11 @@ in one hop to the main thread. The lines in it are **mount items**:
 Only what changed is sent: a tap that changes one number sends one `Text` item; views get no default style and no empty
 event mask; unchanged frames are not sent. A frame of scrolling that reveals no new row produces **no batch at all**.
 
-### The `nsh::perf` lines
+### The `perf` lines
 
 | Line | Meaning |
 |---|---|
-| `bundled in 14.3 ms (3255 B)` | Bundling time and bundle size (development settings). |
+| `✓ bundled App.tsx (3255 B in 14.3 ms)` | Bundling time and bundle size (development settings). |
 | `commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes` | One commit: the operations JS queued, the time the core spent (rendering components, laying out, diffing), JS time spent binding list rows, the mount items produced, and the nodes alive. |
 | `first frame: eval 271µs, total 1235µs` | Time to evaluate the bundle, and from start to the first batch. |
 | `event Press on view 20` / `event js: 196µs` | An event dispatched, and the time its handler (and what it caused) took in JS. |
@@ -118,7 +118,7 @@ nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0
 Scrolls the first `<Scroll>` or `List` 10 points per frame and prints each frame's batch:
 
 ```text
- info nsh::perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
+perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
 ── scroll to 20: 22 items
    Create { id: 448, kind: View }
    ...
@@ -146,7 +146,7 @@ mount(() => <Cart initialItems={[]} />);
 nsh trace trace/AddItem.tsx --taps 5
 ```
 
-If a tap produces no update, `nsh trace` stops with `Error: tap #1 produced no update` and a non-zero exit code: that
+If a tap produces no update, `nsh trace` stops with `error tap #1 produced no update` and a non-zero exit code: that
 is how it catches handlers that stopped working, for example because the app's nodes were garbage-collected.
 
 ## In CI

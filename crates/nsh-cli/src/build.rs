@@ -1,11 +1,13 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::Context as _;
 use nsh_bundler::{BundleError, BundleOptions};
+
+use crate::ui;
 
 /// A failed build, formatted for terminals and for device error screens.
 #[derive(Debug)]
@@ -45,6 +47,8 @@ pub(crate) struct Built {
     pub(crate) assets: Vec<Asset>,
     /// What the app declares it may reach (`nsh.json` `capabilities`).
     pub(crate) capabilities: Option<nsh_core::access::Capabilities>,
+    /// How long bundling and compiling took.
+    pub(crate) elapsed: Duration,
 }
 
 /// A file an app ships.
@@ -95,10 +99,28 @@ impl Built {
     pub(crate) fn capabilities_json(&self) -> Option<String> {
         self.capabilities.as_ref().map(|c| c.to_json().to_string())
     }
+
+    /// `(3.2 KB js, 9.8 KB bytecode<more>, 21ms)`, dimmed.
+    pub(crate) fn summary(&self, more: &str) -> String {
+        ui::dim(format!(
+            "({} js, {} bytecode{more}, {})",
+            ui::bytes(self.code.len()),
+            ui::bytes(self.bytecode.len()),
+            ui::duration(self.elapsed)
+        ))
+    }
+}
+
+impl BuildError {
+    /// The error for a command that ends with it.
+    pub(crate) fn into_error(self, entry: &Path) -> anyhow::Error {
+        ui::failure(format!("building {} failed", ui::path(entry)), self.colored)
+    }
 }
 
 /// Bundles `entry` and compiles it to bytecode.
 pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> {
+    let start = Instant::now();
     let bundle = nsh_bundler::bundle(&BundleOptions {
         entry: entry.to_path_buf(),
         minify: release,
@@ -108,50 +130,35 @@ pub(crate) fn compile(entry: &Path, release: bool) -> Result<Built, BuildError> 
         .canonicalize()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
-    let start = Instant::now();
     let bytecode = nsh_js::compile_bytecode_with(&bundle.code, release, crate::ui_sets())?;
-    log::info!(
-        "built {} ({} B js in {:.1} ms, {} B bytecode in {:.1} ms)",
-        entry.display(),
-        bundle.code.len(),
-        bundle.elapsed_ms,
-        bytecode.len(),
-        start.elapsed().as_secs_f64() * 1000.0,
-    );
     Ok(Built {
         code: bundle.code,
         bytecode,
         source_map: bundle.source_map,
         assets: assets(dir.as_deref(), &bundle.assets),
         capabilities: bundle.capabilities,
+        elapsed: start.elapsed(),
     })
 }
 
 /// Bundles `entry` for development with hot module replacement: the whole
 /// app (source and bytecode) plus the modules, to compute later updates.
 pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle), BuildError> {
+    let start = Instant::now();
     let hot = nsh_bundler::bundle_hot(entry, crate::ui_sets())?;
     let dir = entry
         .canonicalize()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
     let (code, source_map) = hot.script();
-    let start = Instant::now();
     let bytecode = nsh_js::compile_bytecode_with(&code, false, crate::ui_sets())?;
-    log::info!(
-        "built {} ({} B js in {:.1} ms, {} B bytecode in {:.1} ms)",
-        entry.display(),
-        code.len(),
-        hot.elapsed_ms,
-        bytecode.len(),
-        start.elapsed().as_secs_f64() * 1000.0,
-    );
     let built = Built {
         code,
         bytecode,
         source_map,
         assets: assets(dir.as_deref(), &hot.assets),
         capabilities: hot.capabilities.clone(),
+        elapsed: start.elapsed(),
     };
     Ok((built, hot))
 }
@@ -159,7 +166,7 @@ pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle
 /// Bundles `entry` into `out/bundle.js`, `out/bundle.js.map` and
 /// `out/bundle.qbc`.
 pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<()> {
-    let built = compile(entry, release).map_err(|e| anyhow::anyhow!("{}", e.colored))?;
+    let built = compile(entry, release).map_err(|e| e.into_error(entry))?;
     fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
     let map = built.source_map.as_deref().unwrap_or_default();
     for (name, bytes) in [
@@ -187,7 +194,17 @@ pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<(
         }
         fs::copy(&asset.source, &dest).with_context(|| format!("copy {}", asset.path))?;
     }
-    log::info!("wrote {} ({} assets)", out.display(), built.assets.len());
+    let assets = match built.assets.len() {
+        0 => String::new(),
+        1 => ", 1 asset".to_owned(),
+        n => format!(", {n} assets"),
+    };
+    ui::done(format!(
+        "built {} into {} {}",
+        ui::path(entry),
+        ui::path(out),
+        built.summary(&assets)
+    ));
     Ok(())
 }
 

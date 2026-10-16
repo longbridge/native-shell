@@ -152,10 +152,10 @@ nsh trace App.tsx --scroll 3000 --taps 0            # scrolling, 10 pt per frame
 ```
 
 ```text
- info nsh::perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
- info nsh::perf first frame: eval 271µs, total 1235µs
- info nsh::perf event js: 88µs
- info nsh::perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
+perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
+perf first frame: eval 271µs, total 1235µs
+perf event js: 88µs
+perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
 ```
 
 What to look at:

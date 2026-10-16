@@ -100,7 +100,7 @@ next to the entry, overridden by the flags:
 `nsh publish` refuses to sign what a device would refuse: the certificate must cover the app id and the current time.
 
 ```text
-Error: the release key's certificate does not cover this package: it does not cover app `com.example.counter` (only com.other.app)
+error the release key's certificate does not cover this package: it does not cover app `com.example.counter` (only com.other.app)
 ```
 
 ### What a package holds

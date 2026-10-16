@@ -1,58 +1,97 @@
-use std::io::{IsTerminal, Write};
+//! The `log` backend of the command line, and how log lines are shown,
+//! from this process and from devices (`dev.rs`): normally in the style of
+//! `ui.rs`, without targets; verbose runs show every line with its level
+//! and target.
+//!
+//! Shown normally: warnings and errors, the app's own output (`js`, and
+//! a device's lines from other crates: the app's Rust code) and the timings
+//! of `--trace` (`nsh::perf`). nsh's own info lines (a device's "loading
+//! build 3") are for verbose runs; the CLI says what happens in its steps.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
-use nsh_dev::{ClientLog, protocol::LogLevel};
+use nsh_dev::protocol::LogLevel;
 
-struct Logger {
-    color: bool,
-}
+use crate::ui;
 
-static LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
+struct Logger;
 
-/// Installs the terminal logger.
+/// Installs the logger (after [`ui::init`]).
 pub(crate) fn init() {
-    let logger = LOGGER.get_or_init(|| Logger {
-        color: std::io::stderr().is_terminal(),
+    static LOGGER: Logger = Logger;
+    let _ = log::set_logger(&LOGGER);
+    log::set_max_level(if ui::verbose() {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
     });
-    let _ = log::set_logger(logger);
-    log::set_max_level(LevelFilter::Info);
 }
 
-/// Prints a log line received from a dev host.
-pub(crate) fn print_client(log: &ClientLog) {
-    let level = match log.level {
+/// Where a device's line comes from.
+pub(crate) struct Device<'a> {
+    /// The device's full name, for verbose runs.
+    pub(crate) name: &'a str,
+    /// Its short name, for normal lines.
+    pub(crate) label: &'a str,
+    /// More than one device is connected: the app's own output says which.
+    pub(crate) several: bool,
+}
+
+/// Shows a log line of a device.
+pub(crate) fn device(device: &Device<'_>, level: LogLevel, target: &str, message: &str) {
+    let level = match level {
         LogLevel::Error => Level::Error,
         LogLevel::Warn => Level::Warn,
         LogLevel::Info => Level::Info,
         LogLevel::Debug => Level::Debug,
         LogLevel::Trace => Level::Trace,
     };
-    let color = LOGGER.get().is_some_and(|l| l.color);
-    write_line(
-        color,
-        level,
-        &format!("{} {}", log.device, log.target),
-        &log.message,
-    );
+    show(level, target, message, Some(device));
 }
 
-fn write_line(color: bool, level: Level, source: &str, message: &str) {
-    let (tag, code) = match level {
-        Level::Error => ("error", "31"),
-        Level::Warn => ("warn", "33"),
-        Level::Info => ("info", "32"),
-        Level::Debug => ("debug", "36"),
-        Level::Trace => ("trace", "90"),
-    };
-    let mut err = std::io::stderr().lock();
-    let _ = if color {
-        writeln!(
-            err,
-            "\x1b[{code}m{tag:>5}\x1b[0m \x1b[90m{source}\x1b[0m {message}"
-        )
-    } else {
-        writeln!(err, "{tag:>5} {source} {message}")
-    };
+fn show(level: Level, target: &str, message: &str, device: Option<&Device<'_>>) {
+    if ui::verbose() {
+        let source = match device {
+            Some(device) => format!("{} {target}", device.name),
+            None => source(target),
+        };
+        let tag = match level {
+            Level::Error => ui::red("error"),
+            Level::Warn => ui::yellow(" warn"),
+            Level::Info => ui::green(" info"),
+            Level::Debug => ui::cyan("debug"),
+            Level::Trace => ui::dim("trace"),
+        };
+        return ui::plain(format!("{tag} {} {message}", ui::dim(source)));
+    }
+    let from = |sep: &str| device.map_or(String::new(), |d| format!("{}{sep}", d.label));
+    match level {
+        Level::Error => ui::error(format!("{}{message}", from(": "))),
+        Level::Warn => ui::warn(format!("{}{message}", from(": "))),
+        _ if target == "nsh::perf" => ui::plain(format!(
+            "{} {}{message}",
+            ui::dim("perf"),
+            ui::dim(from(": "))
+        )),
+        // nsh's own: the steps say it.
+        _ if target.starts_with("nsh") => {}
+        // The app's: its `console.*`, a device's Rust code.
+        _ => match device {
+            Some(device) if device.several => ui::plain(format!(
+                "{}{message}",
+                ui::dim(format!("{}: ", device.label))
+            )),
+            _ => ui::plain(message),
+        },
+    }
+}
+
+/// A target as verbose lines show it: the command line's own modules as
+/// `nsh::build`, other crates without `nsh_` (`bundler::...`).
+fn source(target: &str) -> String {
+    match target.strip_prefix("nsh_cli") {
+        Some(rest) => format!("nsh{rest}"),
+        None => target.strip_prefix("nsh_").unwrap_or(target).to_owned(),
+    }
 }
 
 impl Log for Logger {
@@ -65,19 +104,11 @@ impl Log for Logger {
 
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
-            let target = record.target();
-            // The command line's own modules as `nsh::build`, other crates
-            // as `bundler::...`.
-            let source = match target.strip_prefix("nsh_cli") {
-                Some(rest) => format!("nsh{rest}"),
-                None => target.strip_prefix("nsh_").unwrap_or(target).to_owned(),
-            };
-            let source = source.as_str();
-            write_line(
-                self.color,
+            show(
                 record.level(),
-                source,
+                record.target(),
                 &record.args().to_string(),
+                None,
             );
         }
     }

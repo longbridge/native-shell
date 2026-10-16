@@ -16,8 +16,9 @@ mod runtime;
 mod rust_app;
 mod sign;
 mod trace;
+mod ui;
 
-use std::{path::PathBuf, sync::OnceLock};
+use std::{path::PathBuf, process::ExitCode, sync::OnceLock};
 
 use clap::{Args, Parser, Subcommand};
 use nsh_core::ui::Registry;
@@ -34,6 +35,16 @@ pub(crate) fn ui_sets() -> &'static [Registry] {
 #[derive(Parser)]
 #[command(name = "nsh", version, about = "Build and run nsh apps")]
 struct Cli {
+    /// Show everything: log lines with their targets, cargo's output and
+    /// the hosts' own.
+    #[arg(
+        short,
+        long,
+        global = true,
+        env = "NSH_VERBOSE",
+        value_parser = clap::builder::BoolishValueParser::new()
+    )]
+    verbose: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -287,11 +298,25 @@ impl Command {
 }
 
 /// Runs the command line with `ui_sets` (`nsh_ui_mobile::registry()` and
-/// an app's own registry).
-pub fn main_with(ui_sets: Vec<Registry>) -> anyhow::Result<()> {
+/// an app's own registry); errors are printed.
+pub fn main_with(ui_sets: Vec<Registry>) -> ExitCode {
     let _ = UI_SETS.set(ui_sets);
+    let cli = Cli::parse();
+    ui::init(cli.verbose);
     logger::init();
-    let mut command = Cli::parse().command;
+    match run(cli.command) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e.downcast_ref::<rust_app::Restart>().is_some() => {
+            ExitCode::from(rust_app::RESTART)
+        }
+        Err(e) => {
+            ui::report(&e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(mut command: Command) -> anyhow::Result<()> {
     let types = !matches!(command, Command::Trace { .. });
     if let Some(entry) = command.entry_mut() {
         *entry = entry::resolve(entry)?;
@@ -303,14 +328,7 @@ pub fn main_with(ui_sets: Vec<Registry>) -> anyhow::Result<()> {
     if types && let Some(entry) = command.entry_mut() {
         init::write_types_for(entry);
     }
-    let result = dispatch(command);
-    if result
-        .as_ref()
-        .is_err_and(|e| e.downcast_ref::<rust_app::Restart>().is_some())
-    {
-        std::process::exit(rust_app::RESTART);
-    }
-    result
+    dispatch(command)
 }
 
 fn dispatch(command: Command) -> anyhow::Result<()> {

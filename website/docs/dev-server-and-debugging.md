@@ -50,9 +50,9 @@ nsh dev App.tsx
 ```
 
 ```text
- info dev server: ws://127.0.0.1:8790/ws
- info devices on this network: ws://192.168.1.20:8790/ws
- info watching /Users/me/my-app
+✓ built App.tsx (3.2 KB js, 9.8 KB bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
 ```
 
 | Flag | Description |
@@ -113,24 +113,30 @@ Anything loaded from a dev server, `--release` or not, skips the runtime's harde
 ## Logs
 
 `console.log`, `console.info`, `console.debug`, `console.warn` and `console.error` go to the native log with target
-`js`. While a host is connected, its log lines are forwarded to the terminal running `nsh run` / `nsh dev`, prefixed
-with the device's name:
+`js`. While a host is connected, its log lines are forwarded to the terminal running `nsh run` / `nsh dev`: your
+`console.log` lines as they are (prefixed with the device's name when several devices are connected), warnings and
+errors after the device's name:
 
 ```text
- info iPhone 16 Pro js loading more after 1000
- warn iPhone 16 Pro js deprecated option
-error iPhone 16 Pro js uncaught exception: TypeError: cannot read property 'id' of undefined
-    at Row (demos/Photos.tsx:18:22)
+• iPhone 16 Pro connected, build 1
+loading more after 1000
+warn iPhone 16 Pro: deprecated option
+error iPhone 16 Pro: uncaught exception: TypeError: cannot read property 'id' of undefined
+          at Row (demos/Photos.tsx:18:22)
 ```
 
 `console.log` formats values like a browser console: strings as they are, errors with their stack, functions by name,
 objects and arrays as JSON. When the host is not connected, logs go to the platform's log (Xcode's console / the
 unified log on iOS, `adb logcat` on Android).
 
+The rest of the terminal is one line per step (`✓` done, `→` where to connect, `•` what a device did); the output of
+the tools nsh runs (cargo, the hosts themselves) is only printed when one fails. `nsh run -v` (or `NSH_VERBOSE=1`)
+prints everything: every log line with its level and source, cargo's output and the hosts' own.
+
 `--trace` adds the cost of every commit:
 
 ```text
- info nsh::perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
+perf commit: 10 ops, 151µs (list js 2µs), 8 mount items, 27 nodes
 ```
 
 See [Testing with nsh trace](./testing-and-trace.md) for what these numbers mean.
@@ -147,7 +153,7 @@ Tap the overlay to dismiss it. It also disappears on the next successful reload.
 terminal too:
 
 ```text
-error build failed:
+error building App.tsx failed
 App.tsx
 
   x <Buton> names nothing in scope
@@ -171,8 +177,8 @@ build. Before a stack trace is printed or shown, the runtime rewrites the bundle
 point at `App.tsx:2:28`, not at the bundle:
 
 ```text
-error js uncaught exception: Error: tap boom
-    at <anonymous> (App.tsx:2:58)
+error Mac Catalyst: uncaught exception: Error: tap boom
+          at <anonymous> (App.tsx:2:58)
 ```
 
 `nsh build` writes the map as `bundle.js.map`; an embedding app that loads a bundle from a folder reads it from next to

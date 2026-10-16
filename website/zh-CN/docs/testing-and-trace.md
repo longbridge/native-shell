@@ -43,9 +43,9 @@ nsh trace App.tsx
 下面是计数器示例（`examples/counter/App.tsx`）的输出，有删节：
 
 ```text
-bundled in 14.3 ms (3255 B)
- info nsh::perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
- info nsh::perf first frame: eval 271µs, total 1235µs
+✓ bundled App.tsx (3255 B in 14.3 ms)
+perf commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes
+perf first frame: eval 271µs, total 1235µs
 ── initial render: 49 items
    LayoutDirection { rtl: false }
    Create { id: 2, kind: View }
@@ -58,9 +58,9 @@ bundled in 14.3 ms (3255 B)
    ...
    Text { id: 4, text: "nsh counter", content: 342x34 @ 0,0 }
    Text { id: 14, text: "0", content: 36x77 @ 0,0 }
- info nsh::perf event Press on view 20
- info nsh::perf event js: 196µs
- info nsh::perf commit: 10 ops, 248µs (list js 6µs), 8 mount items, 24 nodes
+perf event Press on view 20
+perf event js: 196µs
+perf commit: 10 ops, 248µs (list js 6µs), 8 mount items, 24 nodes
 ── tap #1 on view 20: 8 items
    Create { id: 42, kind: Text }
    Insert { parent: 32, child: 42, before: None }
@@ -92,11 +92,11 @@ bundled in 14.3 ms (3255 B)
 只发送发生变化的内容：一次只改变一个数字的点击只发送一个 `Text` item；视图不会收到默认样式，也不会收到空的事件掩码；
 未变化的 frame 不会发送。一帧滚动如果没有露出新行，**根本不会产生批次**。
 
-### `nsh::perf` 日志行
+### `perf` 日志行
 
 | 行 | 含义 |
 |---|---|
-| `bundled in 14.3 ms (3255 B)` | 打包耗时和 bundle 大小（开发配置）。 |
+| `✓ bundled App.tsx (3255 B in 14.3 ms)` | 打包耗时和 bundle 大小（开发配置）。 |
 | `commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes` | 一次提交：JS 排队的操作数、核心花费的时间（渲染组件、布局、diff）、绑定列表行花费的 JS 时间、产生的 mount item 数，以及存活的节点数。 |
 | `first frame: eval 271µs, total 1235µs` | 执行 bundle 的时间，以及从启动到第一个批次的时间。 |
 | `event Press on view 20` / `event js: 196µs` | 分发了一个事件，以及它的处理函数（及其引起的一切）在 JS 中花费的时间。 |
@@ -117,7 +117,7 @@ nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0
 以每帧 10 点的速度滚动第一个 `<Scroll>` 或 `List`，并打印每一帧的批次：
 
 ```text
- info nsh::perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
+perf commit: 26 ops, 297µs (list js 111µs), 22 mount items, 233 nodes
 ── scroll to 20: 22 items
    Create { id: 448, kind: View }
    ...
@@ -144,7 +144,7 @@ mount(() => <Cart initialItems={[]} />);
 nsh trace trace/AddItem.tsx --taps 5
 ```
 
-如果某次点击没有产生任何更新，`nsh trace` 会以 `Error: tap #1 produced no update` 停止，并返回非零退出码：它正是靠这一点
+如果某次点击没有产生任何更新，`nsh trace` 会以 `error tap #1 produced no update` 停止，并返回非零退出码：它正是靠这一点
 发现失效的处理函数，例如应用的节点被垃圾回收的情况。
 
 ## 在 CI 中

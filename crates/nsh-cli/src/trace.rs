@@ -10,6 +10,8 @@ use nsh_bundler::BundleOptions;
 use nsh_core::{ApproxTextEngine, EventKind, MountBatch, MountItem, Size};
 use nsh_engine::{Bundle, Engine, EngineConfig, EngineControl, MountSink};
 
+use crate::{build::BuildError, ui};
+
 struct ChannelSink {
     batches: Sender<MountBatch>,
     /// Set once the engine runs; drives `requestAnimationFrame` at 60 Hz.
@@ -47,12 +49,17 @@ pub(crate) fn trace(
         minify: false,
         ui_sets: crate::ui_sets().to_vec(),
     })
-    .map_err(|e| anyhow::anyhow!("{}", e.colored))?;
-    eprintln!(
-        "bundled in {:.1} ms ({} B)",
-        bundle.elapsed_ms,
-        bundle.code.len()
-    );
+    .map_err(|e| BuildError::from(e).into_error(entry))?;
+    // Exact numbers: traces are compared.
+    ui::done(format!(
+        "bundled {} {}",
+        ui::path(entry),
+        ui::dim(format!(
+            "({} B in {:.1} ms)",
+            bundle.code.len(),
+            bundle.elapsed_ms
+        ))
+    ));
     let bytecode = nsh_js::compile_bytecode_with(&bundle.code, false, crate::ui_sets())?;
     // SAFETY: compiled just now by this runtime.
     let bytecode = unsafe { Bundle::bytecode(bytecode) };
@@ -124,7 +131,7 @@ pub(crate) fn trace(
                 }
             }
         }
-        None if taps > 0 => eprintln!("no pressable view found"),
+        None if taps > 0 => ui::warn("no pressable view found"),
         None => {}
     }
     Ok(())

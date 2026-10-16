@@ -1,7 +1,10 @@
 use std::{
     io,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -20,6 +23,26 @@ use tokio::sync::broadcast;
 use crate::protocol::{
     BundleFormat, ClientMessage, LogLevel, PROTOCOL_VERSION, ServerMessage, WS_PATH,
 };
+
+/// What a dev host did, for the server's owner to show ([`DevServer::start`]).
+#[derive(Debug, Clone)]
+pub enum ClientEvent {
+    /// A host connected.
+    Connected {
+        /// Device name from the client's hello.
+        device: String,
+        /// The build it was sent first: the latest bundle (`None`: none
+        /// yet, or the latest build failed).
+        build: Option<u64>,
+    },
+    /// A host's connection ended.
+    Disconnected {
+        /// Device name from the client's hello.
+        device: String,
+    },
+    /// A log line from a host.
+    Log(ClientLog),
+}
 
 /// A log line received from a dev host.
 #[derive(Debug, Clone)]
@@ -67,7 +90,9 @@ struct Shared {
     latest: Mutex<Option<Event>>,
     events: broadcast::Sender<Event>,
     bytecode_version: String,
-    on_log: Box<dyn Fn(ClientLog) + Send + Sync>,
+    /// Hosts connected now.
+    clients: AtomicUsize,
+    on_event: Box<dyn Fn(ClientEvent) + Send + Sync>,
 }
 
 /// The dev server: serves the latest bundle to dev hosts and pushes
@@ -82,12 +107,13 @@ pub struct DevServer {
 impl DevServer {
     /// Starts listening on `addr`. `bytecode_version` is the format of the
     /// bytecode this server publishes; clients reporting another version get
-    /// JS source instead. `on_log` receives client log lines.
+    /// JS source instead. `on_event` receives what hosts do (connecting,
+    /// disconnecting, their log lines), on the server's threads.
     pub fn start(
         addr: SocketAddr,
         bytecode_version: impl Into<String>,
         assets_root: Option<std::path::PathBuf>,
-        on_log: impl Fn(ClientLog) + Send + Sync + 'static,
+        on_event: impl Fn(ClientEvent) + Send + Sync + 'static,
     ) -> io::Result<DevServer> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -100,7 +126,8 @@ impl DevServer {
             latest: Mutex::new(None),
             events: broadcast::channel(16).0,
             bytecode_version: bytecode_version.into(),
-            on_log: Box::new(on_log),
+            clients: AtomicUsize::new(0),
+            on_event: Box::new(on_event),
         });
         let listener = runtime.block_on(tokio::net::TcpListener::bind(addr))?;
         let addr = listener.local_addr()?;
@@ -132,6 +159,11 @@ impl DevServer {
     /// The bound address (useful with port 0).
     pub fn local_addr(&self) -> SocketAddr {
         self.addr
+    }
+
+    /// The number of hosts connected now.
+    pub fn clients(&self) -> usize {
+        self.shared.clients.load(Ordering::Relaxed)
     }
 
     /// Announces that a rebuild started.
@@ -290,11 +322,15 @@ async fn serve_client(mut socket: WebSocket, shared: Arc<Shared>) -> Result<(), 
         },
     )
     .await?;
-    log::info!("{device} connected");
 
     // Subscribe before reading the latest state so no event is missed.
     let mut events = shared.events.subscribe();
     let latest = shared.latest.lock().expect("latest lock").clone();
+    let build = match &latest {
+        Some(Event::Bundle(bundle)) => Some(bundle.version),
+        _ => None,
+    };
+    let _connection = Connection::new(&shared, &device, build);
     if let Some(event) = latest {
         send_event(&mut socket, &event, format).await?;
     }
@@ -313,17 +349,41 @@ async fn serve_client(mut socket: WebSocket, shared: Arc<Shared>) -> Result<(), 
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Text(text))) => {
                     if let Ok(ClientMessage::Log { level, target, message }) = serde_json::from_str(&text) {
-                        (shared.on_log)(ClientLog { device: device.clone(), level, target, message });
+                        (shared.on_event)(ClientEvent::Log(ClientLog { device: device.clone(), level, target, message }));
                     }
                 }
                 Some(Ok(_)) => {}
                 Some(Err(err)) => return Err(err.into()),
-                None => {
-                    log::info!("{device} disconnected");
-                    return Ok(());
-                }
+                None => return Ok(()),
             },
         }
+    }
+}
+
+/// A host connected after its hello: counted and reported until its
+/// session ends, however it ends.
+struct Connection<'a> {
+    shared: &'a Shared,
+    device: &'a str,
+}
+
+impl<'a> Connection<'a> {
+    fn new(shared: &'a Shared, device: &'a str, build: Option<u64>) -> Self {
+        shared.clients.fetch_add(1, Ordering::Relaxed);
+        (shared.on_event)(ClientEvent::Connected {
+            device: device.to_owned(),
+            build,
+        });
+        Connection { shared, device }
+    }
+}
+
+impl Drop for Connection<'_> {
+    fn drop(&mut self) {
+        self.shared.clients.fetch_sub(1, Ordering::Relaxed);
+        (self.shared.on_event)(ClientEvent::Disconnected {
+            device: self.device.to_owned(),
+        });
     }
 }
 

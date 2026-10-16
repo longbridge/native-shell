@@ -23,7 +23,7 @@ use std::{
 
 use anyhow::{Context as _, bail};
 
-use crate::runtime::Platform;
+use crate::{runtime::Platform, ui};
 
 /// The function `#[native_module]` makes at the root of the app's crate
 /// (`nsh-macros` `native_module.rs`): the app's UI set.
@@ -40,7 +40,7 @@ const RESTARTED_ENV: &str = "NSH_RUST_RESTARTED";
 /// The exit code of the app's command line when the app's Rust code changed
 /// during `nsh dev` / `nsh run`: `nsh` builds it again and runs the command
 /// anew ([`reexec`]).
-pub(crate) const RESTART: i32 = 75;
+pub(crate) const RESTART: u8 = 75;
 
 /// The error a development session ends with when the app's Rust code
 /// changed ([`RESTART`]).
@@ -126,8 +126,8 @@ pub(crate) fn reexec(entry: Option<&Path>) -> anyhow::Result<Option<std::process
     };
     let mut restarted = false;
     loop {
-        log::info!(target: "nsh::rust", "building the command line of {}", app.package);
-        let cli = match app.build(&app.bin("cli"), None, false, &[]) {
+        let what = format!("the Rust crate {}", app.package);
+        let cli = match app.build(&app.bin("cli"), None, false, &[], &what) {
             Ok(cli) => cli,
             Err(e) if restarted => {
                 app.wait_after(&e)?;
@@ -145,11 +145,11 @@ pub(crate) fn reexec(entry: Option<&Path>) -> anyhow::Result<Option<std::process
         let status = command
             .status()
             .with_context(|| format!("run {}", cli.display()))?;
-        if status.code() != Some(RESTART) {
+        if status.code() != Some(i32::from(RESTART)) {
             return Ok(Some(status));
         }
         restarted = true;
-        log::info!(target: "nsh::rust", "the app's Rust code changed: building it again");
+        ui::note("the app's Rust code changed: building it again");
     }
 }
 
@@ -230,7 +230,8 @@ impl RustApp {
     fn wait_after(&self, error: &anyhow::Error) -> anyhow::Result<()> {
         use notify::{RecursiveMode, Watcher};
 
-        log::error!(target: "nsh::rust", "{error:#}: fix the code and save, nsh builds it again");
+        ui::report(error);
+        ui::detail(ui::dim("fix the code and save: nsh builds it again"));
         let (tx, rx) = std::sync::mpsc::channel();
         let mut watcher =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -304,9 +305,7 @@ impl RustApp {
             &ws.join("cli/main.rs"),
             &format!(
                 "//! `nsh` for this app: the mobile UI and the app's Rust components.\n\n\
-                 fn main() -> std::process::ExitCode {{\n    match nsh_cli::main_with({sets}) {{\n        \
-                 Ok(()) => std::process::ExitCode::SUCCESS,\n        Err(err) => {{\n            \
-                 eprintln!(\"Error: {{err:?}}\");\n            std::process::ExitCode::FAILURE\n        }}\n    }}\n}}\n{}",
+                 fn main() -> std::process::ExitCode {{\n    nsh_cli::main_with({sets})\n}}\n{}",
                 app_set("")
             ),
         )?;
@@ -365,8 +364,8 @@ impl RustApp {
         self.source.join("target")
     }
 
-    /// `cargo build`s package `package` (for `triple`, else the host) and
-    /// returns its artifact `artifact` (default: the binary named as the
+    /// `cargo build`s package `package` (for `triple`, else the host), the
+    /// step "building <what>", and returns its binary (named as the
     /// package).
     fn build(
         &self,
@@ -374,26 +373,28 @@ impl RustApp {
         triple: Option<&str>,
         release: bool,
         extra: &[&str],
+        what: &str,
     ) -> anyhow::Result<PathBuf> {
-        self.build_with(
-            Command::new(cargo()),
+        let build = Build {
             package,
             triple,
             release,
             extra,
-            package,
-        )
+            artifact: package,
+            what,
+        };
+        self.build_with(Command::new(cargo()), &build)
     }
 
-    fn build_with(
-        &self,
-        mut cmd: Command,
-        package: &str,
-        triple: Option<&str>,
-        release: bool,
-        extra: &[&str],
-        artifact: &str,
-    ) -> anyhow::Result<PathBuf> {
+    fn build_with(&self, mut cmd: Command, build: &Build<'_>) -> anyhow::Result<PathBuf> {
+        let Build {
+            package,
+            triple,
+            release,
+            extra,
+            artifact,
+            what,
+        } = *build;
         cmd.arg("build")
             .arg("--manifest-path")
             .arg(self.workspace.join("Cargo.toml"))
@@ -406,12 +407,7 @@ impl RustApp {
         if release {
             cmd.arg("--release");
         }
-        let status = cmd.status().context("run cargo")?;
-        if !status.success() {
-            let error = anyhow::anyhow!(
-                "building {package} failed (the app's crate: {})",
-                self.crate_dir.display()
-            );
+        if let Err(error) = ui::cargo(&mut cmd, what) {
             // A development session that ran: a mistake in the code just
             // saved waits for the fix (the command line runs again).
             if env::var_os(RESTARTED_ENV).is_some() {
@@ -432,13 +428,9 @@ impl RustApp {
     /// The iOS development host (`runner` false) or release runner of the
     /// app, built for `platform`.
     pub(crate) fn ios(&self, platform: Platform, runner: bool) -> anyhow::Result<PathBuf> {
-        let (what, name) = if runner {
-            ("ios-app", "release runner")
-        } else {
-            ("ios-host", "development host")
-        };
-        log::info!(target: "nsh::rust", "building the iOS {name} of {}", self.package);
-        self.build(&self.bin(what), Some(platform.triple()), runner, &[])
+        let name = if runner { "ios-app" } else { "ios-host" };
+        let what = platform.host(runner);
+        self.build(&self.bin(name), Some(platform.triple()), runner, &[], &what)
     }
 
     /// The Android runtime of the app: the prebuilt runtime's `classes.dex`
@@ -461,22 +453,37 @@ impl RustApp {
                 "x86" => "i686-linux-android",
                 other => bail!("unknown Android ABI {other}"),
             };
-            log::info!(target: "nsh::rust", "building libnsh.so ({abi}) of {}", self.package);
             let features: &[&str] = if dev { &["--features", "dev"] } else { &[] };
-            let lib = self.build_with(
-                sdk.ndk_cargo(triple)?,
-                &self.bin("android"),
-                Some(triple),
-                !dev,
-                features,
-                "libnsh_app.so",
-            )?;
+            let build = Build {
+                package: &self.bin("android"),
+                triple: Some(triple),
+                release: !dev,
+                extra: features,
+                artifact: "libnsh_app.so",
+                what: &format!("libnsh.so of {} for {abi}", self.package),
+            };
+            let lib = self.build_with(sdk.ndk_cargo(triple)?, &build)?;
             let dir = out.join("lib").join(&abi);
             fs::create_dir_all(&dir)?;
             install(&lib, &dir.join("libnsh.so"))?;
         }
         Ok(out)
     }
+}
+
+/// A `cargo build` of a package of the workspace ([`RustApp::build_with`]).
+#[derive(Clone, Copy)]
+struct Build<'a> {
+    package: &'a str,
+    /// The target (`None`: the host).
+    triple: Option<&'a str>,
+    release: bool,
+    /// More arguments (features).
+    extra: &'a [&'a str],
+    /// The file it makes, in the target directory.
+    artifact: &'a str,
+    /// What the step says it builds.
+    what: &'a str,
 }
 
 /// `app_set()`, the app's UI set, for the generated code (each item under

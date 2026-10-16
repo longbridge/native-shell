@@ -26,6 +26,29 @@ nsh <COMMAND>
 
 `nsh <command> --help` 打印某个命令的参数；`nsh --version` 打印版本号。
 
+## 输出
+
+每个命令每个步骤打印一行，只在出错时打印细节：
+
+```text
+✓ built the Rust crate gallery-native (5.0s)
+✓ built App.tsx (500 B js, 809 B bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
+✓ built the development host for the iOS simulator (12.7s)
+• iOS Simulator (iPhone 16 Plus) connected, build 1
+warn iOS Simulator: image failed: An SSL error has occurred and a secure connection to the server cannot be made.
+✓ rebuilt App.tsx (18ms), 1 device
+```
+
+`✓` 表示完成的步骤，`→` 是连接地址，`•` 是设备的动态；`warn` 和 `error` 行是问题，不带符号的行是应用自己的输出
+（`console.log`）。在终端里，正在进行的步骤会显示一个转动的指示符，各行带颜色（设置了 `NO_COLOR` 时不带）；重定向到
+文件时只写入结果行，不带颜色。nsh 调用的工具（应用 Rust crate 的 cargo 构建、开发宿主）出错时，它们的输出打印在
+`error` 行下面。
+
+`-v, --verbose`（所有命令都可用；也可以设置 `NSH_VERBOSE=1`）原样打印全部内容：每条日志及其级别和来源、cargo 的
+输出以及宿主自己的输出。
+
 ## nsh init
 
 ```sh
@@ -65,8 +88,9 @@ nsh dev [ENTRY] [--port <PORT>] [--release]
 只运行开发服务器：构建应用、监视入口所在目录，并把每次重新构建推送给连接到它的宿主。它会打印本机宿主使用的 URL，以及每个局域网地址对应的设备 URL：
 
 ```text
- info dev server: ws://127.0.0.1:8790/ws
- info devices on this network: ws://192.168.1.20:8790/ws
+✓ built App.tsx (3.2 KB js, 9.8 KB bytecode, 21ms)
+→ dev server ws://127.0.0.1:8790/ws
+  devices on this network: ws://192.168.1.20:8790/ws
 ```
 
 适合配合你自己启动的宿主使用，例如嵌入了开发版 SDK（`NativeShellDev.xcframework`、`nsh-dev.aar`）的应用。参数与 `nsh run` 相同。
@@ -80,8 +104,8 @@ nsh trace [ENTRY] [--taps <N>] [--idle-ms <MS>] [--scroll <POINTS>] [--width <W>
 以无界面方式运行应用：在 CLI 自己的进程里，使用与设备上相同的 core 和运行时，只是没有视图；它会打印每条挂载指令（create、insert、style、frame、text）和每次 commit 的耗时。之后它会点击第一个可按压的视图，并打印每次点击带来的变化。可以用它检查应用能否无错误地启动、统计一次交互引起的工作量，也可以在 CI 中使用（[测试与 trace](./testing-and-trace.md)）。
 
 ```text
-bundled in 12.6 ms (3255 B)
- info nsh::perf commit: 56 ops, 412µs (list js 6µs), 49 mount items, 21 nodes
+✓ bundled App.tsx (3255 B in 12.6 ms)
+perf commit: 56 ops, 412µs (list js 6µs), 49 mount items, 21 nodes
 ── initial render: 49 items
    Create { id: 2, kind: View }
    ...
@@ -231,3 +255,5 @@ nsh revoke --root <ROOT.secret> [--extend <LIST>] [--sequence <N>] [--key <ID>].
 | `ANDROID_HOME`、`ANDROID_SDK_ROOT` | Android 目标 | Android SDK 位置。后备路径：`~/Library/Android/sdk`。 |
 | `NSH_KEYSTORE_PASSWORD` | `package --target android` | keystore 密码。 |
 | `NSH_RUNTIME` | `run`、`package` | 用来替代 CLI 旁边运行时的运行时目录。 |
+| `NSH_VERBOSE` | 所有命令 | `1`：等同于 `--verbose`。 |
+| `NO_COLOR` | 所有命令 | 设置后，终端输出不带颜色。 |

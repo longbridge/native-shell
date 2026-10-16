@@ -11,7 +11,10 @@ use std::{
 use anyhow::{Context as _, bail};
 use serde::Deserialize;
 
-use crate::runtime::{self, Platform};
+use crate::{
+    runtime::{self, Platform},
+    ui,
+};
 
 /// Where the app runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -113,8 +116,8 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         executable
     };
 
-    let built =
-        crate::build::compile(&entry, true).map_err(|e| anyhow::anyhow!("{}", e.colored))?;
+    let built = crate::build::compile(&entry, true).map_err(|e| e.into_error(&entry))?;
+    ui::done(format!("built {} {}", ui::path(&entry), built.summary("")));
     let platform = match options.target {
         PackageTarget::Ios => Platform::IphoneOs,
         PackageTarget::IosSimulator => Platform::IphoneSimulator,
@@ -161,12 +164,13 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
     match options.target {
         PackageTarget::IosSimulator => {
             codesign(&app, "-", None)?;
-            log::info!("packaged {}", app.display());
+            ui::done(format!("packaged {}", ui::path(&app)));
             if options.run {
                 let udid = crate::run::simulator(None)?;
+                let step = ui::Step::start(format!("installing {id} in the simulator"));
                 crate::run::simctl(&["install", &udid, &app.to_string_lossy()])?;
                 crate::run::simctl(&["launch", "--terminate-running-process", &udid, &id])?;
-                log::info!("launched {id} in the simulator");
+                step.done(format!("launched {id} in the simulator"));
             }
         }
         PackageTarget::Android => unreachable!("packaged above"),
@@ -175,10 +179,10 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
                 bail!("--run only applies to the simulator and Android");
             }
             let (Some(identity), Some(profile)) = (options.sign, options.profile) else {
-                log::warn!(
+                ui::warn(format!(
                     "{} is unsigned: pass --sign <identity> and --profile <file.mobileprovision> to install it on devices",
-                    app.display()
-                );
+                    ui::path(&app)
+                ));
                 return Ok(());
             };
             fs::copy(profile, app.join("embedded.mobileprovision"))
@@ -189,7 +193,7 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
             codesign(&app, identity, Some(&path))?;
             let ipa = options.out.join(format!("{name}.ipa"));
             make_ipa(&app, &ipa)?;
-            log::info!("packaged {}", ipa.display());
+            ui::done(format!("packaged {}", ui::path(&ipa)));
         }
     }
     Ok(())
@@ -221,13 +225,14 @@ fn package_android(
             password: password.to_owned(),
         },
         None => {
-            log::warn!("signing with the debug key: pass --keystore for store releases");
+            ui::warn("signing with the debug key: pass --keystore for store releases");
             Signing::Debug
         }
     };
     fs::create_dir_all(options.out)?;
     let apk_path = options.out.join(format!("{name}.apk"));
     let version = config.version.as_deref().unwrap_or("1.0.0");
+    let step = ui::Step::start(format!("packaging {}", ui::path(&apk_path)));
     android::build_apk(
         &sdk,
         &Apk {
@@ -244,9 +249,10 @@ fn package_android(
         },
         &apk_path,
     )?;
-    log::info!("packaged {}", apk_path.display());
+    step.done(format!("packaged {}", ui::path(&apk_path)));
     if options.run {
         let serial = android::device(&sdk)?;
+        let step = ui::Step::start(format!("installing {id} on {serial}"));
         android::adb(
             &sdk,
             &serial,
@@ -263,7 +269,7 @@ fn package_android(
                 &format!("{id}/com.longbridge.nsh.AppActivity"),
             ],
         )?;
-        log::info!("launched {id} on {serial}");
+        step.done(format!("launched {id} on {serial}"));
     }
     Ok(())
 }
