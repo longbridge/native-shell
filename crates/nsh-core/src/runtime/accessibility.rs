@@ -1,7 +1,7 @@
 //! `nsh/accessibility`: the screen reader's commands.
 
 use crate::{
-    Command, ROOT_ID,
+    Command,
     ui::{ModuleCx, NodeRef, module, task::Action},
 };
 
@@ -13,7 +13,7 @@ pub(crate) struct AccessibilityInfo;
 impl AccessibilityInfo {
     /// The screen reader reads `message` (a VoiceOver announcement, TalkBack).
     pub(crate) fn announce_for_accessibility(message: String, cx: &mut ModuleCx) {
-        cx.act(Action::Command(ROOT_ID, Command::Announce(message)));
+        cx.announce_for_accessibility(message);
     }
 
     /// Moves the screen reader's focus to `node` (a `ref`).

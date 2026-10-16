@@ -1,24 +1,38 @@
 //! The platform's services for Rust components on the engine: the fonts
-//! the UI sets' crates ship are registered before the first render.
+//! the UI sets' crates ship are registered before the first render, tasks
+//! wait for display frames, components set the layout direction and read
+//! the pixel ratio and the device.
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use crossbeam_channel::{Receiver, Sender};
 use nsh_core::{
-    ApproxTextEngine, AttributedText, MountBatch, MountItem, Size, TextEngine, TextLayout,
+    ApproxTextEngine, AttributedText, EventKind, EventPayload, MountBatch, MountItem, Size,
+    TextEngine, TextLayout,
+    platform::{Idiom, Os},
     ui::{AssetFile, AssetKind, Registry, Root, prelude::*},
 };
 use nsh_engine::{App, Assets, Engine, EngineConfig, Environment, MountSink};
 
-/// Hands the batches to the test.
-struct Batches(Sender<MountBatch>);
+/// Hands the batches to the test and counts the frames asked for.
+struct FrameSink {
+    batches: Sender<MountBatch>,
+    frames: Arc<AtomicUsize>,
+}
 
-impl MountSink for Batches {
+impl MountSink for FrameSink {
     fn submit(&self, batch: MountBatch) {
-        let _ = self.0.send(batch);
+        let _ = self.batches.send(batch);
+    }
+
+    fn request_frame(&self) {
+        self.frames.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -37,18 +51,48 @@ fn config(app: App) -> EngineConfig {
     }
 }
 
-/// Waits until a batch shows `until` (or 5 seconds passed).
-fn until(rx: &Receiver<MountBatch>, until: &str) {
+/// A Rust app of `C`, its batches and the count of frames it asked for.
+fn start<C: Component>(environment: Environment) -> (Engine, Receiver<MountBatch>, Arc<AtomicUsize>)
+where
+    C::Props: Default,
+{
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let frames = Arc::new(AtomicUsize::new(0));
+    let config = EngineConfig {
+        environment,
+        ..config(App::Rust(Root::of::<C>()))
+    };
+    let sink = FrameSink {
+        batches: tx,
+        frames: frames.clone(),
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, sink).unwrap();
+    (engine, rx, frames)
+}
+
+/// The texts and layout directions the batches carry, until one shows
+/// `until` (or 5 seconds passed).
+fn until(rx: &Receiver<MountBatch>, until: &str) -> (Vec<String>, Vec<bool>, Option<u32>) {
     let deadline = Instant::now() + Duration::from_secs(5);
+    let (mut texts, mut directions, mut host) = (Vec::new(), Vec::new(), None);
     while let Ok(batch) = rx.recv_deadline(deadline) {
-        if batch
-            .items
-            .iter()
-            .any(|item| matches!(item, MountItem::Text { text, .. } if text.text == until))
-        {
+        for item in &batch.items {
+            match item {
+                MountItem::Text { text, .. } => texts.push(text.text.clone()),
+                MountItem::LayoutDirection { rtl } => directions.push(*rtl),
+                MountItem::Insert {
+                    parent: nsh_core::ROOT_ID,
+                    child,
+                    ..
+                } => host = Some(*child),
+                _ => {}
+            }
+        }
+        if texts.iter().any(|t| t == until) {
             break;
         }
     }
+    (texts, directions, host)
 }
 
 /// Records the fonts registered.
@@ -128,7 +172,10 @@ fn the_fonts_ui_sets_ship_are_registered_before_the_first_render() {
     let _engine = Engine::start(
         config,
         move || Fonts(ApproxTextEngine, registered),
-        Batches(tx),
+        FrameSink {
+            batches: tx,
+            frames: Arc::default(),
+        },
     )
     .unwrap();
     until(&rx, "ready");
@@ -137,5 +184,175 @@ fn the_fonts_ui_sets_ship_are_registered_before_the_first_render() {
     assert_eq!(
         *fonts.lock().unwrap(),
         [b"asset:/@app/fonts/Script.ttf".to_vec()]
+    );
+}
+
+/// Counts display frames while a task awaits them.
+#[derive(Default)]
+struct Frames {
+    frames: u32,
+    /// The frame `request_animation_frame` called back with.
+    called: bool,
+    _loop: Option<Task<()>>,
+    _once: Option<Task<()>>,
+}
+
+impl Component for Frames {
+    const NAME: &'static str = "app.frames";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        let start = Instant::now();
+        self._once = Some(cx.request_animation_frame(move |this, at, cx| {
+            this.called = at >= start;
+            cx.notify();
+        }));
+        self._loop = Some(cx.spawn(|this, cx| async move {
+            for _ in 0..3 {
+                cx.next_frame().await;
+                this.update(|this, cx| {
+                    this.frames += 1;
+                    cx.notify();
+                })
+                .await;
+            }
+        }));
+    }
+
+    fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view().child(text(format!(
+            "{} frames, called {}",
+            self.frames, self.called
+        )))
+    }
+}
+
+#[test]
+fn tasks_wait_for_display_frames() {
+    let (engine, rx, frames) = start::<Frames>(Environment::default());
+    until(&rx, "0 frames, called false");
+    // The engine asked the platform for a frame (once until it comes).
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while frames.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(frames.load(Ordering::SeqCst), 1);
+    for n in 1..=3 {
+        engine.control().frame();
+        let (texts, ..) = until(&rx, &format!("{n} frames, called true"));
+        assert_eq!(
+            texts.last().map(String::as_str),
+            Some(format!("{n} frames, called true").as_str())
+        );
+    }
+    // Each frame asked for the next; none is asked for once the task ended.
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(frames.load(Ordering::SeqCst), 3);
+}
+
+/// Flips the surface's direction on presses.
+#[derive(Default)]
+struct Direction {
+    presses: u32,
+}
+
+impl Component for Direction {
+    const NAME: &'static str = "app.direction";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view()
+            .flex_1()
+            .on_press(cx.listener(|this: &mut Self, _, cx| {
+                this.presses += 1;
+                match this.presses {
+                    1 => cx.force_rtl(true),
+                    2 => cx.force_rtl(false),
+                    _ => cx.allow_rtl(false),
+                }
+            }))
+            .child(text(if cx.rtl() { "rtl" } else { "ltr" }))
+    }
+}
+
+#[test]
+fn components_set_the_layout_direction() {
+    let (engine, rx, _) = start::<Direction>(Environment::default());
+    // A Rust app's surface takes the platform's direction.
+    let (_, directions, host) = until(&rx, "ltr");
+    assert_eq!(directions, [false]);
+    let host = host.expect("the root component");
+    let press = || {
+        engine
+            .control()
+            .dispatch_event(host, EventKind::Press, EventPayload::None)
+    };
+    press();
+    let (_, directions, _) = until(&rx, "rtl");
+    assert_eq!(directions, [true]);
+    press();
+    let (_, directions, _) = until(&rx, "ltr");
+    assert_eq!(directions, [false]);
+    // A right-to-left language lays out right to left...
+    engine.control().set_environment(Environment {
+        rtl: true,
+        ..Environment::default()
+    });
+    let (_, directions, _) = until(&rx, "rtl");
+    assert_eq!(directions, [true]);
+    // ...unless the app does not allow it.
+    press();
+    let (_, directions, _) = until(&rx, "ltr");
+    assert_eq!(directions, [false]);
+}
+
+/// Shows the pixel ratio and the device.
+#[derive(Default)]
+struct Device;
+
+impl Component for Device {
+    const NAME: &'static str = "app.device";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let (major, minor) = cx.os_version();
+        view().child(text(format!(
+            "{} {major}.{minor} {:?} ×{} {}",
+            cx.os().name(),
+            cx.idiom(),
+            cx.pixel_ratio(),
+            cx.round_to_nearest_pixel(10.3),
+        )))
+    }
+}
+
+#[test]
+fn components_read_the_pixel_ratio_and_the_device() {
+    let environment = Environment {
+        pixel_ratio: 3.0,
+        os: Os::Android,
+        os_version: (34, 0),
+        idiom: Idiom::Pad,
+        ..Environment::default()
+    };
+    let (engine, rx, _) = start::<Device>(environment);
+    let (texts, ..) = until(&rx, "android 34.0 Pad ×3 10.333333");
+    assert!(
+        texts.iter().any(|t| t == "android 34.0 Pad ×3 10.333333"),
+        "{texts:?}"
+    );
+    // The window moved to another screen: the pixel ratio's readers render
+    // again.
+    engine.control().set_environment(Environment {
+        pixel_ratio: 2.0,
+        ..environment
+    });
+    let (texts, ..) = until(&rx, "android 34.0 Pad ×2 10.5");
+    assert!(
+        texts.iter().any(|t| t == "android 34.0 Pad ×2 10.5"),
+        "{texts:?}"
     );
 }

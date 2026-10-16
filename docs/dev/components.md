@@ -117,7 +117,13 @@ impl Component for Button {
   | async work | `cx.spawn(|this, cx| async move { .. this.update(..).await })`; the component's tasks end with it |
   | `cleanup` | `fn cleanup(&mut self, props, cx)` (with a `Context`: it can still use the platform's services), and `Drop` |
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
+  | `PixelRatio.get()`, `roundToNearestPixel`, `Platform.OS` / `Version` / `isPad` | `cx.pixel_ratio()`, `cx.round_to_nearest_pixel(v)`, `cx.os()`, `cx.os_version()`, `cx.idiom()` in the render |
+  | `requestAnimationFrame(cb)`, `cancelAnimationFrame` | `cx.request_animation_frame(\|this, at, cx\| ..)` returns a `Task` (dropping it cancels); in a task `cx.next_frame().await` (an `Instant`), once per frame in a loop |
+  | `I18nManager.forceRTL` / `allowRTL` | `cx.force_rtl(bool)` / `cx.allow_rtl(bool)`: the root's direction at once, `cx.rtl()` readers render again |
   | `import logo from "./logo@2x.png"`, `import font from "./a.ttf"` | `const LOGO: ImageAsset = asset!("logo@2x.png");` (`image(LOGO)` lays out at its natural size), `const A: FontAsset = asset!("a.ttf");` (`.font_family(A.family)`), with `registry.assets(assets!())` (below) |
+  | `Image.getSize(uri)`, `Image.prefetch(uri)` | `cx.image_size(uri)` / `cx.prefetch_image(uri)`: answers to await in a task |
+  | `AccessibilityInfo.announceForAccessibility`, `setAccessibilityFocus(ref)` | `cx.announce_for_accessibility(msg)`, `self.note.set_accessibility_focus()` (an `ElementRef`) |
+  | `Toast.show(msg, "long")` (`nsh/android`) | `cx.toast(msg, ToastDuration::Long)` (nothing happens off Android) |
   | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
   | a signal or store at module level | `cx.global::<G>()` in the render (subscribes); `cx.update_global::<G, _>(..)` in listeners, tasks' updates and modules renders the readers again |
@@ -140,7 +146,12 @@ impl Component for Button {
 - **Platform services** are on `Context` (setup, listeners, updates, methods), `ModuleCx` and `AsyncCx`:
   `cx.dialog(Dialog)` shows an alert or action sheet and returns a future of the index chosen (-1: dismissed; the
   answer is the root's `Dialog` event, which the core resolves; JS never sees it);
-  `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
+  `dismiss_keyboard()`, `animate_layout(..)`, `announce_for_accessibility(..)`, `toast(..)`, `force_rtl` /
+  `allow_rtl`, the image information (`image_size`, `prefetch_image`: on `Context` and `AsyncCx`), display frames
+  (`Context::request_animation_frame`, `AsyncCx::next_frame`: the core keeps the waiting tasks' answers, the engine
+  asks the platform for a frame while one waits, `MountSink::request_frame`, and delivers it at
+  `EngineControl::frame`), and the status bar (below); they are actions the core applies in order with the
+  component's other changes (`ui/services.rs`, `core/services.rs`). `cx.update_global::<G, _>(|g, cx| ..)` is
   state the surface's components and modules share.
 - **Native values** (`ui/animated.rs`) are nodes of the platform's animation graph with odd ids (JS's are even,
   like node ids: the graph indexes nodes by id, so both must stay dense; ids from 2^31 are the graph's own
@@ -183,7 +194,8 @@ mobile UI's navigation: `navigation.rs`).
 The runtime has modules of its own the same way (`crates/nsh-core/src/runtime/`, `runtime::registries()`): one
 `Registry` per JS module (`Registry::runtime("nsh/android")`), whose functions JS calls as `nsh/android:Toast.show` so
 they never clash with a UI set's; the core looks a call up in the set's registry, then the runtime's. Runtime modules
-use the core's internal actions (toasts, announcements, `ImageInfo` requests) instead of public context methods.
+use the same services as components (`cx.toast`, `cx.announce_for_accessibility`, `cx.image_size`), and the core's
+internal actions for the rest (exiting the app, a ref's accessibility focus).
 `#[module(flat)]` exports functions one by one (`setStatusBarBackgroundColor`); a function returning `Result` rejects
 the promise with the error; a `NodeRef` parameter is a `YNode` in TS (sent as `{ $node: id }`).
 
@@ -211,8 +223,12 @@ component cancels all of its own.
 ## Environment
 
 The engine hands the core what components may read (`ui::Environment`: window, safe area, keyboard height, appearance,
-font scale, reduced motion, screen reader, direction). A render records what it read (`RenderCx::window()` and the
-like); when the environment changes, only the components that read a changed part render again.
+font scale, reduced motion, screen reader, direction, pixel ratio, OS, its version, idiom). A render records what it
+read (`RenderCx::window()` and the like); when the environment changes, only the components that read a changed part
+render again. The direction components read is the surface's: its root's (`Prop::LayoutDirection`, which JS's
+`I18nManager` sets), else the platform's; once a component sets a policy (`force_rtl` / `allow_rtl`), and from the
+start in a Rust app, the core sets the root's direction from it and the language (in an app whose JS sets it too,
+the last one wins; JS's `isRTL` does not hear Rust's).
 
 ## Assets
 

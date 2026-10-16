@@ -3,10 +3,7 @@
 
 use crate::{
     JsonValue,
-    ui::{
-        AsyncCx, ImageSize, JsValue, PropError, TsTypes, module,
-        task::{Action, Answer},
-    },
+    ui::{AsyncCx, ImageSize, JsValue, PropError, TsTypes, module},
 };
 
 /// Image information and loading ahead.
@@ -37,25 +34,18 @@ impl JsValue for ImageUri {
     }
 }
 
-/// The size of the image at `uri`, its bytes loaded.
-async fn size(uri: ImageUri, cx: &AsyncCx) -> Result<ImageSize, String> {
-    let (answer, slot) = Answer::new();
-    cx.act(Action::ImageInfo(uri.0, slot));
-    answer.await
-}
-
 /// Image information and loading ahead.
 #[module]
 impl Image {
     /// The image's size in pixels; its bytes stay loaded for the views that
     /// show it next.
     pub(crate) async fn get_size(source: ImageUri, cx: AsyncCx) -> Result<ImageSize, String> {
-        size(source, &cx).await
+        cx.image_size(source.0).await
     }
 
     /// Loads the image ahead of showing it: true once its bytes are in
     /// memory.
     pub(crate) async fn prefetch(source: ImageUri, cx: AsyncCx) -> bool {
-        size(source, &cx).await.is_ok()
+        cx.prefetch_image(source.0).await
     }
 }

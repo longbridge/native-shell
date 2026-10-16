@@ -1,6 +1,7 @@
 mod classes;
 mod components;
 mod list;
+mod services;
 #[cfg(test)]
 mod tests;
 mod touch;
@@ -1875,6 +1876,7 @@ impl<M: TextEngine> Core<M> {
                     node.direction = Some(rtl);
                     self.mount.push(MountItem::LayoutDirection { rtl });
                     self.update_direction(key);
+                    self.root_direction_changed(rtl);
                 }
                 return Ok(());
             }

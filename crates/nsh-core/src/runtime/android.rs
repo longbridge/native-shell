@@ -2,33 +2,18 @@
 
 use crate::{
     Command, ROOT_ID, StatusBarSetting,
-    ui::{Color, ModuleCx, PropEnum, module, task::Action},
+    ui::{Color, ModuleCx, ToastDuration, module, task::Action},
 };
 
 /// Short messages at the bottom of the screen.
 pub(crate) struct Toast;
-
-/// How long a toast shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PropEnum)]
-pub(crate) enum ToastDuration {
-    /// About 2 seconds.
-    Short,
-    /// About 3.5 seconds.
-    Long,
-}
 
 /// Short messages at the bottom of the screen (Android's toasts).
 #[module]
 impl Toast {
     /// Shows `message` (`"short"` by default).
     pub(crate) fn show(message: String, duration: Option<ToastDuration>, cx: &mut ModuleCx) {
-        cx.act(Action::Command(
-            ROOT_ID,
-            Command::Toast {
-                text: message,
-                long: duration == Some(ToastDuration::Long),
-            },
-        ));
+        cx.toast(message, duration.unwrap_or_default());
     }
 }
 

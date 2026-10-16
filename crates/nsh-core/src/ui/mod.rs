@@ -38,6 +38,7 @@ mod module;
 pub mod palette;
 pub(crate) mod responder;
 mod scrollable;
+pub(crate) mod services;
 pub(crate) mod status_bar;
 mod style;
 pub(crate) mod task;
@@ -81,6 +82,7 @@ pub use self::{
     },
     responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
     scrollable::Scrollable,
+    services::{Prefetch, ToastDuration},
     status_bar::StatusBarEntry,
     style::{
         AdaptiveColor, BorderCurve, FontWeight, Length, StyleRefinement, Styled, WritingDirection,
@@ -104,6 +106,7 @@ pub use crate::{
     LayoutTransition, ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType,
     ScreenAnimation, SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent,
     TransformKind, TransformOrigin, Viewability,
+    platform::{Idiom, Os},
     style::{Color, OriginLen},
 };
 
@@ -209,6 +212,7 @@ pub mod prelude {
         Text,
         Theme,
         Timing,
+        ToastDuration,
         TouchClaim,
         Video,
         VideoInfo,

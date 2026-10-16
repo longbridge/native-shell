@@ -243,7 +243,7 @@ pub(super) struct Components {
     /// row function of the component's last render, and the number of rows
     /// its wrappers last saw.
     lists: FxHashMap<NodeId, (PlaceFn, u32)>,
-    environment: Environment,
+    pub(super) environment: Environment,
     /// Runs the components' async tasks and timers.
     pub(super) executor: Rc<Executor>,
     /// State the components, modules and tasks share, by type (also the
@@ -265,6 +265,8 @@ pub(super) struct Components {
     js_back: bool,
     /// The touches the components hear and their responder.
     pub(super) touch: super::touch::TouchState,
+    /// Display frames and the layout direction.
+    pub(super) services: super::services::Services,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -296,6 +298,7 @@ impl Default for Components {
             insets: FxHashMap::default(),
             js_back: false,
             touch: super::touch::TouchState::default(),
+            services: Default::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -439,11 +442,19 @@ impl<M: TextEngine> Core<M> {
             child: id,
             before: None,
         });
+        self.own_direction();
     }
 
     /// The environment components read ([`crate::ui::RenderCx::window`]
-    /// and the like): the components that read what changed render again.
-    pub fn set_environment(&mut self, environment: Environment) {
+    /// and the like), as the platform reports it: the components that read
+    /// what changed render again.
+    pub fn set_environment(&mut self, mut environment: Environment) {
+        environment.rtl = self.surface_rtl(environment.rtl);
+        self.apply_environment(environment);
+    }
+
+    /// The environment components read is now `environment`.
+    pub(super) fn apply_environment(&mut self, environment: Environment) {
         let old = self.components.environment;
         let changed = environment.changes(&old);
         self.components.environment = environment;
@@ -479,7 +490,7 @@ impl<M: TextEngine> Core<M> {
             window: size,
             ..self.components.environment
         };
-        self.set_environment(environment);
+        self.apply_environment(environment);
     }
 
     /// Wakes the engine when a component's task is woken (from any
@@ -2415,6 +2426,8 @@ impl<M: TextEngine> Core<M> {
                 let _ = self.apply_op(Op::Anim(op));
             }
             Action::ReportViewable(list) => self.report_viewable(list),
+            Action::Frame(answer) => self.wait_frame(answer),
+            Action::Direction(change) => self.change_direction(change),
             Action::ImageInfo(uri, answer) => {
                 let id = self.components.next_image_info;
                 self.components.next_image_info += 1;

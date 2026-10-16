@@ -306,6 +306,36 @@ impl<'a, C: Component> RenderCx<'a, C> {
         (self.scope.measure)(&font, text)
     }
 
+    /// Device pixels per point (TS: `PixelRatio.get()`); one device pixel
+    /// is `1.0 / cx.pixel_ratio()` points.
+    pub fn pixel_ratio(&self) -> f32 {
+        self.read(env::PIXEL_RATIO).pixel_ratio
+    }
+
+    /// `points` rounded to whole device pixels (TS:
+    /// `PixelRatio.roundToNearestPixel`).
+    pub fn round_to_nearest_pixel(&self, points: f32) -> f32 {
+        let ratio = self.pixel_ratio().max(f32::MIN_POSITIVE);
+        (points * ratio).round() / ratio
+    }
+
+    /// The operating system (TS: `Platform.OS`).
+    pub fn os(&self) -> crate::platform::Os {
+        self.scope.environment.os
+    }
+
+    /// The OS version: major and minor on iOS, the API level and 0 on
+    /// Android (TS: `Platform.Version`).
+    pub fn os_version(&self) -> (u16, u16) {
+        self.scope.environment.os_version
+    }
+
+    /// The kind of device (TS: `Platform.isPad`, `isTV`,
+    /// `isMacCatalyst`).
+    pub fn idiom(&self) -> crate::platform::Idiom {
+        self.scope.environment.idiom
+    }
+
     /// A handler for an element of this render: `f` gets the component (its
     /// state), the event and a [`Context`] to change state, emit events and
     /// start timers.
@@ -418,6 +448,59 @@ impl<'a, C: Component> Context<'a, C> {
         ));
     }
 
+    /// The screen reader reads `message` (TS:
+    /// `AccessibilityInfo.announceForAccessibility`).
+    pub fn announce_for_accessibility(&mut self, message: impl Into<String>) {
+        self.inner
+            .actions
+            .push(super::services::announce(message.into()));
+    }
+
+    /// Shows `message` at the bottom of the screen (Android's toasts, TS:
+    /// `Toast.show`); nothing happens elsewhere.
+    pub fn toast(&mut self, message: impl Into<String>, duration: super::ToastDuration) {
+        self.inner
+            .actions
+            .push(super::services::toast(message.into(), duration));
+    }
+
+    /// The size in pixels of the image at `uri` (TS: `Image.getSize`), to
+    /// await in a task; its bytes stay loaded for the views that show it
+    /// next.
+    pub fn image_size(
+        &mut self,
+        uri: impl Into<String>,
+    ) -> task::Answer<Result<task::ImageSize, String>> {
+        let (answer, action) = super::services::image_size(uri.into());
+        self.inner.actions.push(action);
+        answer
+    }
+
+    /// Loads the image at `uri` ahead of showing it (TS: `Image.prefetch`):
+    /// await it in a task for whether it loaded.
+    pub fn prefetch_image(&mut self, uri: impl Into<String>) -> super::Prefetch {
+        let (answer, action) = super::services::prefetch(uri.into());
+        self.inner.actions.push(action);
+        answer
+    }
+
+    /// Lays the surface out right to left whatever the user's language
+    /// (TS: `I18nManager.forceRTL`), at once: the components that read
+    /// [`RenderCx::rtl`] render again. `false` follows the language again.
+    pub fn force_rtl(&mut self, force: bool) {
+        self.inner
+            .actions
+            .push(Action::Direction(super::services::Direction::Force(force)));
+    }
+
+    /// Whether a right-to-left language lays the surface out right to left
+    /// (TS: `I18nManager.allowRTL`; true by default).
+    pub fn allow_rtl(&mut self, allow: bool) {
+        self.inner
+            .actions
+            .push(Action::Direction(super::services::Direction::Allow(allow)));
+    }
+
     /// A native animation value starting at `value` (TS:
     /// `createNativeValue`): keep it in a field, bind it to styles, drags,
     /// scroll offsets or drawings, and animate it from listeners and tasks.
@@ -489,6 +572,20 @@ impl<'a, C: Component> Context<'a, C> {
         self.spawn(move |this, cx| async move {
             cx.timer(delay).await;
             this.update(f).await;
+        })
+    }
+
+    /// Runs `f` when the next display frame starts, with its time (TS:
+    /// `requestAnimationFrame`; dropping the task is
+    /// `cancelAnimationFrame`). Ask again from `f` for the frame after; a
+    /// task awaiting [`AsyncCx::next_frame`] in a loop runs every frame.
+    pub fn request_animation_frame(
+        &mut self,
+        f: impl FnOnce(&mut C, Instant, &mut Context<'_, C>) + 'static,
+    ) -> Task<()> {
+        self.spawn(move |this, cx| async move {
+            let at = cx.next_frame().await;
+            this.update(move |this, cx| f(this, at, cx)).await;
         })
     }
 

@@ -69,6 +69,12 @@ impl ElementRef {
         self.send(Command::Blur);
     }
 
+    /// Moves the screen reader's focus to the element (TS:
+    /// `AccessibilityInfo.setAccessibilityFocus(ref)`).
+    pub fn set_accessibility_focus(&self) {
+        self.send(Command::AccessibilityFocus);
+    }
+
     /// Selects `start..end` of an input (UTF-16 units; a caret when equal).
     pub fn set_selection(&self, start: u32, end: u32) {
         self.send(Command::SetSelection { start, end });
