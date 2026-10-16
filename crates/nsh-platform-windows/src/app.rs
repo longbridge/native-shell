@@ -109,7 +109,9 @@ impl Default for AppOptions {
 /// clipboard).
 ///
 /// ```no_run
-/// use nsh_platform_windows::{AppOptions, AppView, AssetBase, Bundle, windows::Win32::Foundation::HWND};
+/// use nsh_platform_windows::{
+///     AppOptions, AppView, AssetBase, Bundle, windows::Win32::Foundation::HWND,
+/// };
 ///
 /// # fn host(parent: HWND) -> windows::core::Result<()> {
 /// let view = AppView::new(

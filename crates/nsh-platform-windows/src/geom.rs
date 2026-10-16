@@ -247,9 +247,21 @@ fn invert3(m: &[[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
     }
     let k = 1.0 / det;
     Some([
-        [(e * i - f * h) * k, (c * h - b * i) * k, (b * f - c * e) * k],
-        [(f * g - d * i) * k, (a * i - c * g) * k, (c * d - a * f) * k],
-        [(d * h - e * g) * k, (b * g - a * h) * k, (a * e - b * d) * k],
+        [
+            (e * i - f * h) * k,
+            (c * h - b * i) * k,
+            (b * f - c * e) * k,
+        ],
+        [
+            (f * g - d * i) * k,
+            (a * i - c * g) * k,
+            (c * d - a * f) * k,
+        ],
+        [
+            (d * h - e * g) * k,
+            (b * g - a * h) * k,
+            (a * e - b * d) * k,
+        ],
     ])
 }
 

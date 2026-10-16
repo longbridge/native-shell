@@ -127,9 +127,8 @@ pub(crate) fn run(surface: Rc<Surface>, script: &str) {
                 }),
                 "quit" => on_main(key, |s| {
                     // SAFETY: a plain call on the surface's window.
-                    let _ = unsafe {
-                        windows::Win32::UI::WindowsAndMessaging::DestroyWindow(s.hwnd())
-                    };
+                    let _ =
+                        unsafe { windows::Win32::UI::WindowsAndMessaging::DestroyWindow(s.hwnd()) };
                 }),
                 other => log::warn!("script: unknown step `{other}`"),
             }

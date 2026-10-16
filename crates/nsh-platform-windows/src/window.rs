@@ -29,7 +29,9 @@ use windows::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::{
             Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmFlush, DwmSetWindowAttribute},
-            Gdi::{BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, ScreenToClient, UpdateWindow},
+            Gdi::{
+                BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, ScreenToClient, UpdateWindow,
+            },
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
@@ -244,7 +246,14 @@ pub(crate) fn wake(hwnd: isize) {
     if hwnd != 0 {
         // SAFETY: posting to a window handle is thread-safe; a window that
         // is gone makes the call fail harmlessly.
-        let _ = unsafe { PostMessageW(Some(HWND(hwnd as *mut _)), WM_NSH_WAKE, WPARAM(0), LPARAM(0)) };
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_NSH_WAKE,
+                WPARAM(0),
+                LPARAM(0),
+            )
+        };
     }
 }
 
@@ -268,15 +277,25 @@ pub(crate) fn invoke(f: impl FnOnce() + Send + 'static) {
     // SAFETY: the dispatcher takes ownership of `raw` when it gets the
     // message; if posting fails it is freed here.
     unsafe {
-        if PostMessageW(Some(HWND(hwnd as *mut _)), WM_NSH_CALL, WPARAM(0), LPARAM(raw as isize))
-            .is_err()
+        if PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            WM_NSH_CALL,
+            WPARAM(0),
+            LPARAM(raw as isize),
+        )
+        .is_err()
         {
             drop(Box::from_raw(raw));
         }
     }
 }
 
-unsafe extern "system" fn dispatch_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn dispatch_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if msg == WM_NSH_CALL {
         // SAFETY: `invoke` posted a leaked box of this type.
         let f = unsafe { Box::from_raw(lparam.0 as *mut Box<dyn FnOnce() + Send>) };
@@ -340,7 +359,12 @@ fn hi(l: isize) -> i32 {
     ((l >> 16) & 0xFFFF) as i16 as i32
 }
 
-unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn window_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if msg == WM_NCCREATE {
         // SAFETY: `lparam` is the CREATESTRUCTW of this window; its
         // `lpCreateParams` is the `WindowData` box `create` leaked.
@@ -492,7 +516,10 @@ fn handle(
                 let _ = unsafe { ReleaseCapture() };
             }
             let (x, y) = point(lparam);
-            crate::input::pointer(surface, mouse_event(PointerKind::Up, x, y, button, 1, surface));
+            crate::input::pointer(
+                surface,
+                mouse_event(PointerKind::Up, x, y, button, 1, surface),
+            );
             // X buttons must return TRUE.
             return Some(LRESULT(1));
         }
@@ -611,8 +638,12 @@ fn handle(
             crate::text_input::char_input(surface, &text);
             return Some(LRESULT(0));
         }
-        WM_IME_SETCONTEXT | WM_IME_STARTCOMPOSITION | WM_IME_COMPOSITION
-        | WM_IME_ENDCOMPOSITION | WM_IME_NOTIFY | WM_IME_REQUEST => {
+        WM_IME_SETCONTEXT
+        | WM_IME_STARTCOMPOSITION
+        | WM_IME_COMPOSITION
+        | WM_IME_ENDCOMPOSITION
+        | WM_IME_NOTIFY
+        | WM_IME_REQUEST => {
             return crate::text_input::ime(surface, hwnd, msg, wparam, lparam);
         }
         WM_SETFOCUS => crate::text_input::window_focus(surface, true),
@@ -677,7 +708,14 @@ fn count_clicks(data: &WindowData, lparam: LPARAM) -> u32 {
     clicks
 }
 
-fn mouse_event(kind: PointerKind, x: f32, y: f32, button: u8, clicks: u32, surface: &Surface) -> PointerEvent {
+fn mouse_event(
+    kind: PointerKind,
+    x: f32,
+    y: f32,
+    button: u8,
+    clicks: u32,
+    surface: &Surface,
+) -> PointerEvent {
     PointerEvent {
         kind,
         x,
@@ -711,7 +749,11 @@ fn lines_per_notch() -> f32 {
         )
     };
     // "One screen at a time" (u32::MAX) scrolls a generous amount.
-    let l = if lines == u32::MAX { 20.0 } else { lines.clamp(1, 20) as f32 };
+    let l = if lines == u32::MAX {
+        20.0
+    } else {
+        lines.clamp(1, 20) as f32
+    };
     LINES.with(|c| c.set(Some(l)));
     l
 }
@@ -792,7 +834,12 @@ impl Ticker {
                     if !s.pending.swap(true, Ordering::AcqRel) {
                         // SAFETY: posting is thread-safe.
                         let posted = unsafe {
-                            PostMessageW(Some(HWND(s.hwnd as *mut _)), WM_NSH_TICK, WPARAM(0), LPARAM(0))
+                            PostMessageW(
+                                Some(HWND(s.hwnd as *mut _)),
+                                WM_NSH_TICK,
+                                WPARAM(0),
+                                LPARAM(0),
+                            )
                         };
                         if posted.is_err() {
                             break;

@@ -22,7 +22,9 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use nsh_core::{EventMask, MAX_TRANSFORMS, NodeId, Rect, TransformKind, ViewKind, ViewProps, ViewStyle};
+use nsh_core::{
+    EventMask, MAX_TRANSFORMS, NodeId, Rect, TransformKind, ViewKind, ViewProps, ViewStyle,
+};
 
 use crate::{geom::Mat4, render::DrawCx};
 
@@ -534,5 +536,4 @@ impl NshView {
     fn attached_root(&self, root: &NshView) -> bool {
         root.0.invalidate.borrow().is_some()
     }
-
 }
