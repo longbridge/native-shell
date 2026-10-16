@@ -234,6 +234,7 @@ Things that were found the hard way. Read the section of the area you change bef
   the return type): write the body as one expression.
 - In-process screenshots (`cacheDisplayInRect:`, `renderInContext:`) ignore `maskedCorners`, `shadowPath`, Core Image
   filters and cut masks at the mask layer's bounds; they show no sheets, `AVPlayerLayer` or `WKWebView` content.
+  Screens and modals that leave as images take their live web views and videos along (`native::lend`).
 - `screencapture -l` needs the Screen Recording permission and fails ("could not create image from window") without
   it; while the screen is locked a full-screen capture is black.
 

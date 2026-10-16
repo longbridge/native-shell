@@ -251,6 +251,34 @@ enum Host {
     Component(Option<Box<dyn NativeComponent>>),
 }
 
+impl Host {
+    /// Its node's view and the hosted view, if that one shows what
+    /// another process draws, which `renderInContext:` leaves out: a
+    /// `WKWebView` (WebKit's web content process) or a video (an
+    /// `AVPlayerLayer`, drawn by the media server).
+    fn drawn_elsewhere(&self) -> Option<(NshView, Retained<NSView>)> {
+        match self {
+            Host::Web(host) => {
+                let web = host.web.as_ref()?;
+                let holder = host.holder.load().and_then(|v| NshView::from_ns(&v))?;
+                // SAFETY: a WKWebView is an NSView.
+                Some((holder, Retained::from(unsafe { as_view(web) })))
+            }
+            Host::Video(host) => Some((host.view.clone(), host.shown.clone()?)),
+            Host::Component(_) => None,
+        }
+    }
+
+    /// Whether `view` is the view it hosts in its node's view.
+    fn hosts(&self, view: &NSView) -> bool {
+        match self {
+            Host::Web(host) => host.is(view),
+            Host::Video(host) => host.shown.as_deref().is_some_and(|v| std::ptr::eq(v, view)),
+            Host::Component(_) => false,
+        }
+    }
+}
+
 /// Sets up a web view, video or component container.
 pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
     let host = match view.kind() {
@@ -375,6 +403,191 @@ pub(crate) fn passes_wheel(surface: &Surface, native: &NSView) -> bool {
         Host::Web(web) => !web.scrolls && web.is(native),
         _ => false,
     })
+}
+
+define_class!(
+    /// Holds a web view or video lent to the image of a screen or modal
+    /// that leaves ([`lend`]), clipped where its ancestors clipped it.
+    /// The pointer passes through (the image takes no events).
+    #[unsafe(super(NSView, objc2_app_kit::NSResponder, NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "NshLentClip"]
+    struct LentClip;
+
+    unsafe impl NSObjectProtocol for LentClip {}
+
+    impl LentClip {
+        #[unsafe(method(isFlipped))]
+        fn is_flipped(&self) -> bool {
+            true
+        }
+
+        #[unsafe(method_id(hitTest:))]
+        fn hit_test(&self, _point: NSPoint) -> Option<Retained<NSView>> {
+            None
+        }
+    }
+);
+
+/// A live web view or video lent to the image of a screen or modal that
+/// leaves: `renderInContext:` cannot draw what other processes draw
+/// (WebKit's, the media server), so the image shows the view itself
+/// where it was. Dropping it (the image is gone) gives the view back to
+/// its node's view if that still hosts it (the app kept the node), else
+/// lets it go.
+pub(crate) struct Lent {
+    surface: Weak<Surface>,
+    holder: NshView,
+    shown: Retained<NSView>,
+    clip: Retained<LentClip>,
+}
+
+impl Drop for Lent {
+    fn drop(&mut self) {
+        let id = self.holder.id();
+        let back = self.surface.upgrade().is_some_and(|surface| {
+            surface
+                .native
+                .hosts
+                .try_borrow()
+                .is_ok_and(|hosts| hosts.get(&id).is_some_and(|host| host.hosts(&self.shown)))
+        });
+        crate::surface::quiet(|| {
+            if back {
+                fill(&self.holder, &self.shown);
+            } else {
+                self.shown.removeFromSuperview();
+            }
+            self.clip.removeFromSuperview();
+        });
+    }
+}
+
+/// Moves the web views and videos inside `top` (a screen or modal that
+/// leaves as an image of its layers) onto `image` (a view at `top`'s
+/// place and size, showing that image), each where it showed and clipped
+/// as it was (to a rectangle, rounded only by the corners of the one view
+/// that clips it), so they keep showing their page or frame while the
+/// image leaves. The keyboard focus does not go with them.
+pub(crate) fn lend(surface: &Rc<Surface>, top: &NshView, image: &NSView) -> Vec<Lent> {
+    let found: Vec<(NshView, Retained<NSView>)> = {
+        let Ok(hosts) = surface.native.hosts.try_borrow() else {
+            return Vec::new();
+        };
+        hosts
+            .values()
+            .filter_map(Host::drawn_elsewhere)
+            .filter(|(_, shown)| shown.isDescendantOf(top.ns()))
+            .collect()
+    };
+    let mut lent = Vec::new();
+    for (holder, shown) in found {
+        let Some(place) = place_in(&shown, top.ns()) else {
+            continue;
+        };
+        if let Some(window) = shown.window() {
+            let focused = window.firstResponder().is_some_and(|r| {
+                r.downcast_ref::<NSView>()
+                    .is_some_and(|v| v.isDescendantOf(&shown))
+            });
+            if focused {
+                window.makeFirstResponder(Some(surface.root.ns()));
+            }
+        }
+        // SAFETY: NSView's designated initializer.
+        let clip: Retained<LentClip> =
+            unsafe { msg_send![LentClip::alloc(surface.mtm), initWithFrame: place.clip] };
+        crate::surface::quiet(|| {
+            clip.setWantsLayer(true);
+            if let Some(layer) = clip.layer() {
+                layer.setMasksToBounds(true);
+                if let Some(corners) = &place.corners {
+                    layer.setCornerRadius(corners.cornerRadius());
+                    layer.setMaskedCorners(corners.maskedCorners());
+                    layer.setCornerCurve(&corners.cornerCurve());
+                }
+            }
+            image.addSubview(&clip);
+            holder
+                .state_mut()
+                .natives
+                .retain(|n| !std::ptr::eq(&*n.view, &*shown));
+            clip.addSubview(&shown);
+            let (f, c) = (place.frame, place.clip);
+            shown.setFrame(NSRect::new(
+                NSPoint::new(f.origin.x - c.origin.x, f.origin.y - c.origin.y),
+                f.size,
+            ));
+        });
+        lent.push(Lent {
+            surface: Rc::downgrade(surface),
+            holder,
+            shown,
+            clip,
+        });
+    }
+    lent
+}
+
+/// Where a lent view goes, in its leaving view's coordinates.
+struct Place {
+    /// The lent view's frame.
+    frame: NSRect,
+    /// What its ancestors let show of it.
+    clip: NSRect,
+    /// The layer whose rounded corners clipped it, when that layer alone
+    /// made the clip.
+    corners: Option<Retained<objc2_quartz_core::CALayer>>,
+}
+
+/// Where `shown` shows inside `top`; `None` when it does not (hidden, or
+/// clipped away).
+fn place_in(shown: &NSView, top: &NSView) -> Option<Place> {
+    let frame = shown.convertRect_toView(shown.bounds(), Some(top));
+    let mut clip = top.bounds();
+    let mut innermost: Option<(NSRect, Retained<objc2_quartz_core::CALayer>)> = None;
+    let mut at: Retained<NSView> = Retained::from(shown);
+    while !std::ptr::eq(&*at, top) {
+        if at.isHidden() || at.layer().is_some_and(|l| l.isHidden()) {
+            return None;
+        }
+        at = crate::view::superview(&at)?;
+        let Some(layer) = at.layer() else { continue };
+        if layer.masksToBounds() || layer.mask().is_some() {
+            let r = at.convertRect_toView(at.bounds(), Some(top));
+            clip = intersect(clip, r)?;
+            if innermost.is_none() {
+                innermost = Some((r, layer));
+            }
+        }
+    }
+    let clip = intersect(clip, frame)?;
+    // Corners belong to the clip only when its layer's bounds are the
+    // whole clip; a mask (differing radii) is not copied.
+    let corners = innermost
+        .filter(|(r, layer)| layer.mask().is_none() && same_rect(*r, clip))
+        .map(|(_, layer)| layer);
+    Some(Place {
+        frame,
+        clip,
+        corners,
+    })
+}
+
+/// The intersection of two rectangles; `None` when it is empty.
+fn intersect(a: NSRect, b: NSRect) -> Option<NSRect> {
+    let x0 = a.origin.x.max(b.origin.x);
+    let y0 = a.origin.y.max(b.origin.y);
+    let x1 = (a.origin.x + a.size.width).min(b.origin.x + b.size.width);
+    let y1 = (a.origin.y + a.size.height).min(b.origin.y + b.size.height);
+    (x1 > x0 && y1 > y0).then(|| NSRect::new(NSPoint::new(x0, y0), CGSize::new(x1 - x0, y1 - y0)))
+}
+
+fn same_rect(a: NSRect, b: NSRect) -> bool {
+    (a.origin.x - b.origin.x).abs() < 0.5
+        && (a.origin.y - b.origin.y).abs() < 0.5
+        && (a.size.width - b.size.width).abs() < 0.5
+        && (a.size.height - b.size.height).abs() < 0.5
 }
 
 fn take_component(surface: &Surface, id: NodeId) -> Option<Box<dyn NativeComponent>> {
@@ -1083,6 +1296,8 @@ fn js_string(s: &str) -> String {
 
 /// A web view: the `WKWebView` (when WebKit loads) filling its node's view.
 struct WebHost {
+    /// The node's view, which hosts the web view.
+    holder: objc2::rc::Weak<ViewObj>,
     web: Option<Retained<AnyObject>>,
     handler: Retained<WebHandler>,
     /// The props applied (`None` before the first).
@@ -1119,6 +1334,7 @@ impl WebHost {
             }
         });
         WebHost {
+            holder: objc2::rc::Weak::new(&**view),
             web: web.flatten(),
             handler,
             props: None,
