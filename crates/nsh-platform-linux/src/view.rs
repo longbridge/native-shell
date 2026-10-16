@@ -3,14 +3,17 @@
 //! The core lays everything out, so a view never measures itself: its
 //! parent places it at the frame the core gave it (`size_allocate`, with
 //! the frame's origin, the scroll offset, a sticky shift and the view's
-//! transform in one `gsk::Transform`). Sizes are kept as `f32` points in
+//! transform in one `gsk::Transform`; the offset at whole points, see
+//! [`placement`]). Sizes are kept as `f32` points in
 //! [`ViewState::frame`] and drawing uses them; the integer allocation only
 //! bounds picking.
 //!
 //! A view draws itself in `snapshot`: shadows and background
 //! ([`crate::decor`]), its content (text, image, canvas), its children
 //! (clipped to the rounded bounds when `overflow: hidden`), then its
-//! border, as UIKit draws layer borders over the content.
+//! border, as UIKit draws layer borders over the content. Views with text
+//! widen their damage by the pixels glyphs paint outside their nodes
+//! ([`TEXT_OVERHANG`]).
 //!
 //! Native GTK widgets a view hosts (a text field, a header) are
 //! [`ViewState::natives`]: placed at their own rectangles, after the app's
@@ -215,6 +218,28 @@ impl ViewState {
         r
     }
 
+    /// Widens the damage of its text by [`TEXT_OVERHANG`] with a clear
+    /// node: GTK damages the bounds of the nodes that differ between frames
+    /// and of the subtrees that moved, and this node is in both whenever
+    /// the text is (`phase` flips in the first snapshot after a
+    /// [`NshView::changed`]).
+    fn draw_overhang(&self, snapshot: &gtk::Snapshot, phase: bool) {
+        if self.text.is_none() && self.input.is_none() {
+            return;
+        }
+        // Any change of its bounds damages the old and the new ones.
+        let m = TEXT_OVERHANG + if phase { 1.0 / 64.0 } else { 0.0 };
+        snapshot.append_color(
+            &gtk::gdk::RGBA::TRANSPARENT,
+            &graphene::Rect::new(
+                -m,
+                -m,
+                self.frame.width + 2.0 * m,
+                self.frame.height + 2.0 * m,
+            ),
+        );
+    }
+
     /// True if its children are clipped to its rounded bounds.
     pub(crate) fn clips(&self) -> bool {
         self.style.overflow_hidden
@@ -288,6 +313,52 @@ pub(crate) fn rounded(rect: graphene::Rect, r: [f32; 4]) -> gsk::RoundedRect {
     gsk::RoundedRect::new(rect, s(r[0]), s(r[1]), s(r[2]), s(r[3]))
 }
 
+/// Shifts a translation `(dx, dy)` off GTK 4.22's inexact damage path:
+/// `gsk_transform_node_diff` takes the shortcut for whole offsets when `dx`
+/// is whole and `dy` is not (it tests `floorf (dy) != dy`; fixed upstream
+/// to `==`), and that shortcut translates the damage region by the
+/// truncated offsets. The damage of a subtree that changed then lands up to
+/// a point off, and the pixels it misses keep what moved or shrank there.
+/// A `dx` off the whole points by an invisible fraction takes the exact path.
+fn exact_damage(dx: f32, dy: f32) -> f32 {
+    if dx.floor() == dx && dy.floor() != dy {
+        dx + 1.0 / 256.0
+    } else {
+        dx
+    }
+}
+
+/// The transform that places a child at `(x, y)` (parent coordinates),
+/// then applies its own `transform`.
+///
+/// The offset is rounded to whole points, as GTK allocates its own widgets
+/// (a `GtkViewport` scrolls by whole pixels): frames already are (the core
+/// rounds layout), scroll offsets and shifts are not, and edges and text
+/// stay sharp while scrolling.
+fn placement(x: f32, y: f32, transform: Option<gsk::Transform>) -> gsk::Transform {
+    let t = gsk::Transform::new().translate(&graphene::Point::new(x.round(), y.round()));
+    let Some(own) = transform else {
+        return t;
+    };
+    let t = t.transform(Some(&own));
+    if t.category() != gsk::TransformCategory::_2dTranslate {
+        return t;
+    }
+    let (dx, dy) = t.to_translate();
+    let nudge = exact_damage(dx, dy) - dx;
+    if nudge == 0.0 {
+        t
+    } else {
+        t.translate(&graphene::Point::new(nudge, 0.0))
+    }
+}
+
+/// How far text may paint outside its node's bounds (points): GSK bounds a
+/// text node by the glyphs' unhinted ink, while the cairo renderer draws
+/// them hinted, with the baseline rounded to the pixel grid, a pixel or so
+/// beyond. Damage that follows the bounds misses those pixels.
+const TEXT_OVERHANG: f32 = 2.0;
+
 /// A resize callback ([`NshView::on_resize`]).
 type Resized = Box<dyn Fn(f32, f32)>;
 
@@ -299,6 +370,11 @@ mod imp {
         /// Called with the new size when GTK resizes the view (the root:
         /// the window's content area).
         pub(crate) resized: RefCell<Option<Resized>>,
+        /// The phase of the margin text adds to the damage
+        /// ([`ViewState::draw_overhang`]), and whether it changed since
+        /// the last snapshot ([`NshView::changed`]). A cell: GTK's signals
+        /// call `changed` while the state may be borrowed.
+        pub(crate) damage: std::cell::Cell<(bool, bool)>,
     }
 
     impl Default for NshView {
@@ -306,6 +382,7 @@ mod imp {
             NshView {
                 state: RefCell::new(ViewState::new(0, ViewKind::View)),
                 resized: RefCell::new(None),
+                damage: Default::default(),
             }
         }
     }
@@ -368,7 +445,7 @@ mod imp {
             while let Some(widget) = child {
                 child = widget.next_sibling();
                 if let Some(rect) = natives.iter().find(|n| n.widget == widget).map(|n| n.rect) {
-                    let t = gsk::Transform::new().translate(&graphene::Point::new(rect.x, rect.y));
+                    let t = placement(rect.x, rect.y, None);
                     widget.allocate(
                         rect.width.ceil().max(0.0) as i32,
                         rect.height.ceil().max(0.0) as i32,
@@ -386,11 +463,7 @@ mod imp {
                 if let Some(w) = mirror {
                     x = w - x - f.width;
                 }
-                let mut t =
-                    gsk::Transform::new().translate(&graphene::Point::new(x, f.y - sy + s.shift.1));
-                if let Some(own) = s.transform() {
-                    t = t.transform(Some(&own));
-                }
+                let t = placement(x, f.y - sy + s.shift.1, s.transform());
                 drop(s);
                 widget.allocate(
                     f.width.ceil().max(0.0) as i32,
@@ -415,6 +488,10 @@ mod imp {
                 snapshot.push_opacity(opacity as f64);
             }
             let filters = crate::decor::push_filters(snapshot, &state);
+            let (phase, changed) = self.damage.get();
+            let phase = phase ^ changed;
+            self.damage.set((phase, false));
+            state.draw_overhang(snapshot, phase);
             let soft = crate::decor::soft_shadows(obj.upcast_ref(), &state);
             crate::decor::draw_background(snapshot, &state, soft);
             let clip = state.clips();
@@ -524,6 +601,8 @@ impl NshView {
 
     /// Something it draws changed.
     pub(crate) fn changed(&self) {
+        let damage = &self.imp().damage;
+        damage.set((damage.get().0, true));
         self.queue_draw();
     }
 
@@ -584,5 +663,21 @@ impl NshView {
     /// Calls `f` with the size GTK gives the view on every allocation.
     pub(crate) fn on_resize(&self, f: impl Fn(f32, f32) + 'static) {
         *self.imp().resized.borrow_mut() = Some(Box::new(f));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exact_damage;
+
+    #[test]
+    fn exact_damage_moves_whole_dx_off_the_truncating_path() {
+        // The path GTK 4.22 truncates: whole dx, fractional dy.
+        let dx = exact_damage(10.0, 3.5);
+        assert!(dx != dx.floor() && (dx - 10.0).abs() < 0.01);
+        // Exact paths stay as they are.
+        assert_eq!(exact_damage(10.0, 3.0), 10.0);
+        assert_eq!(exact_damage(10.25, 3.5), 10.25);
+        assert_eq!(exact_damage(-4.5, 0.0), -4.5);
     }
 }

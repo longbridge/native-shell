@@ -225,6 +225,8 @@ impl Ctx {
             return;
         };
         input.update_placeholder();
+        // The field's text paints outside its bounds: see `NshView::changed`.
+        view.changed();
         if input.applying.get() {
             return;
         }

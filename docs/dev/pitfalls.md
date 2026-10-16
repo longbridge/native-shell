@@ -188,8 +188,17 @@ Things that were found the hard way. Read the section of the area you change bef
   main thread loads the font by description.
 - **GDK decodes only PNG, JPEG and TIFF by itself**; GIF and WebP need gdk-pixbuf loaders many systems lack, so the
   `image` crate decodes them (their first frame).
+- **GTK 4.22 damages a translation with a whole `dx` and a fractional `dy` wrongly**: `gsk_transform_node_diff` tests
+  `floorf (dy) != dy` (fixed upstream to `==`) and translates the damage by the truncated offsets, so the pixels of
+  what moved or shrank under a fractionally scrolled view stay on screen. `view.rs` places children at whole points
+  and moves a remaining translation off that path (`placement`). Check damage on screen (`import -window root`, `grim`),
+  not with `shot`, which renders a fresh frame; `GSK_DEBUG=full-redraw` tells a damage bug from a drawing one.
+- **GSK's cairo renderer paints text outside its node's bounds**: a text node is bounded by the unhinted ink, cairo
+  draws the glyphs hinted with the baseline on the pixel grid, a pixel or so beyond. A view with text (or a text field)
+  adds a clear node `TEXT_OVERHANG` around its bounds that changes with each `NshView::changed`, so its damage covers
+  that (`ViewState::draw_overhang`).
 - **Tiling window managers ignore the host's `--size`** (the window's default size): scripted screenshots have the size
-  the window got.
+  the window got, and the script's `resize` too (it resizes on X11 and floating windows).
 
 ## Testing on simulators and emulators
 

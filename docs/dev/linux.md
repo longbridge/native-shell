@@ -29,7 +29,8 @@ server client, log forwarding, the error overlay: `dev.rs`).
 
 - **One widget per node.** Each node is an `NshView` (`view.rs`, a `gtk::Widget` subclass). The core lays everything
   out, so a view never measures itself: its parent places it in `size_allocate` at the core's frame (origin, scroll
-  offset, sticky shift and transform in one `gsk::Transform`); frames are kept as `f32` points and the integer
+  offset, sticky shift and transform in one `gsk::Transform`, the offset at whole points as GTK places its own widgets);
+  frames are kept as `f32` points and the integer
   allocation only bounds picking. `snapshot` draws, in order: shadows and background (`decor.rs`), the content (text,
   image, canvas), the children (clipped to the rounded bounds with `overflow: hidden`), the border, then hosted GTK
   widgets (`ViewState::natives`: text editors, headers, videos).

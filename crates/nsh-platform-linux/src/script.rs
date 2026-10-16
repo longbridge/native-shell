@@ -15,7 +15,8 @@
 //! - `key <name>`: presses a key (GDK names: `Return`, `BackSpace`, ...).
 //! - `dark` / `light`: switches the system's appearance (an app that
 //!   forces one keeps it).
-//! - `resize <w> <h>`: resizes the window.
+//! - `resize <w> <h>`: resizes the window (a tiling window manager keeps
+//!   its own size).
 //! - `quit`: closes the window.
 
 use std::{rc::Rc, time::Duration};
