@@ -611,6 +611,8 @@ pub struct Registry {
     namespace: Option<&'static str>,
     /// The JS module a UI set is imported as (`nsh/ui/mobile`).
     ui_set: Option<&'static str>,
+    /// The files its crates ship ([`Registry::assets`]).
+    assets: Arc<Vec<&'static [super::AssetFile]>>,
 }
 
 impl fmt::Debug for Registry {
@@ -707,6 +709,20 @@ impl Registry {
     pub fn native_values(&mut self, values: &[&'static str]) -> &mut Self {
         Arc::make_mut(&mut self.native_values).extend_from_slice(values);
         self
+    }
+
+    /// Ships `files` with the apps that use the set (`assets!()`: a crate's
+    /// `assets/` directory): `nsh run` serves them, `nsh package` copies
+    /// them into the app, and the engine registers the fonts among them
+    /// before the first render. `asset!` refers to one.
+    pub fn assets(&mut self, files: &'static [super::AssetFile]) -> &mut Self {
+        Arc::make_mut(&mut self.assets).push(files);
+        self
+    }
+
+    /// The files [`Registry::assets`] ships.
+    pub fn asset_files(&self) -> impl Iterator<Item = &'static super::AssetFile> + '_ {
+        self.assets.iter().flat_map(|files| files.iter())
     }
 
     /// The values of [`Registry::native_values`].

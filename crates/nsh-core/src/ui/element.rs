@@ -527,7 +527,7 @@ pub struct Attrs {
     pub(crate) pointer_events: PointerEvents,
     pub(crate) active_opacity: Option<f32>,
     pub(crate) number_of_lines: u32,
-    pub(crate) src: Option<SharedString>,
+    pub(crate) src: Option<super::ImageSrc>,
     pub(crate) inset_padding: Option<EdgeInsets>,
     pub(crate) inset_margin: Option<EdgeInsets>,
     /// An inline style from JS (a `StyleProp` prop), over the styles.
@@ -582,9 +582,9 @@ impl Attrs {
             out.push(Prop::NumberOfLines(self.number_of_lines));
         }
         if self.src != old.src {
-            out.push(Prop::Source(self.src.as_ref().map(|uri| ImageSource {
-                uri: uri.to_arc(),
-                size: None,
+            out.push(Prop::Source(self.src.as_ref().map(|src| ImageSource {
+                uri: src.uri.to_arc(),
+                size: src.size,
             })));
         }
         if self.inset_padding != old.inset_padding {
@@ -1473,13 +1473,15 @@ impl Image {
         self
     }
 
-    /// Shown until it loads (a URL or an asset).
-    pub fn placeholder(mut self, src: &str) -> Self {
+    /// Shown until it loads (a URL, an `asset:/` URI or an
+    /// [`super::ImageAsset`]).
+    pub fn placeholder(mut self, src: impl Into<super::ImageSrc>) -> Self {
+        let src = src.into();
         super::host::set(
             &mut self.0,
             Prop::Image(crate::ImageProp::DefaultSource(Some(ImageSource {
-                uri: src.into(),
-                size: None,
+                uri: src.uri.to_arc(),
+                size: src.size,
             }))),
         );
         self
@@ -1621,8 +1623,10 @@ pub fn text(content: impl Into<SharedString>) -> Text {
     Text(node)
 }
 
-/// An image loading `src` (a URL or an asset).
-pub fn image(src: impl Into<SharedString>) -> Image {
+/// An image loading `src`: a URL, a file path or `asset:/` URI, or an
+/// [`super::ImageAsset`] (`asset!("logo@2x.png")`), which lays out at its
+/// natural size before it loads.
+pub fn image(src: impl Into<super::ImageSrc>) -> Image {
     let mut node = ElNode::new(Tag::Image);
     node.attrs.src = Some(src.into());
     Image(node)

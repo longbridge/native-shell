@@ -751,6 +751,23 @@ impl<M: TextEngine + 'static> Driver<M> {
                 }
             }
         }
+        // The fonts the UI sets' crates ship, before anything is measured.
+        let fonts = config
+            .ui_sets
+            .iter()
+            .flat_map(nsh_core::ui::Registry::asset_files)
+            .filter(|file| file.kind == nsh_core::ui::AssetKind::Font);
+        for font in fonts {
+            let result = match config.assets.as_deref() {
+                Some(assets) => assets.read(font.uri),
+                None => Err("this host cannot load assets".to_owned()),
+            }
+            .and_then(|data| core.register_font(&data));
+            if let Err(err) = result {
+                log::error!("font failed: {}: {err}", font.uri);
+                sink.report_error(&format!("font failed: {}: {err}", font.uri));
+            }
+        }
         // A task woken on any thread wakes the loop.
         let wake = tx.clone();
         core.set_task_notify(Arc::new(move || {

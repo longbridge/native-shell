@@ -12,9 +12,13 @@
 //!   methods of the component's ref in JS (`ref.setValue(5)`,
 //!   `await ref.value()`).
 //!
+//! - `asset!("logo@2x.png")` / `assets!()`: the files a crate ships in its
+//!   `assets/` directory, read at compile time.
+//!
 //! The code they generate names `::nsh_core::ui`. `style_helpers!` is
 //! internal to `nsh-core`: the spacing and sizing methods of `Styled`.
 
+mod assets;
 mod host_props;
 mod js_ops;
 
@@ -694,6 +698,40 @@ const STEPS: &[(&str, f32)] = &[
     ("80", 320.0),
     ("96", 384.0),
 ];
+
+/// A file of the crate's `assets/` directory (`asset!("logo@2x.png")`, the
+/// path relative to it), as TS imports one: an image is an `ImageAsset`
+/// with its natural size in points (`@2x` / `@3x` in the name divide its
+/// pixels), a font (`.ttf`, `.otf`) a `FontAsset` with its family name,
+/// anything else a `FileAsset`. Read at compile time: a missing or broken
+/// file fails the build, and a changed one builds the crate again. The
+/// registry ships the files (`Registry::assets(assets!())`).
+#[proc_macro]
+pub fn asset(input: TokenStream) -> TokenStream {
+    let lit = parse_macro_input!(input as LitStr);
+    assets::asset(lit)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Every file of the crate's `assets/` directory, as `&'static
+/// [AssetFile]`: what `Registry::assets` ships with the app (`nsh run`
+/// serves them, `nsh package` copies them; the engine registers the
+/// fonts).
+#[proc_macro]
+pub fn assets(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return syn::Error::new(
+            Span::call_site(),
+            "`assets!()` takes no arguments: it lists the crate's `assets/` directory",
+        )
+        .into_compile_error()
+        .into();
+    }
+    assets::assets(Span::call_site())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 /// Internal to `nsh-core`: `name => [StyleKey, ...]` lines become a method
 /// `name(length)` and one method per spacing step (`p_4()` is 16pt) of

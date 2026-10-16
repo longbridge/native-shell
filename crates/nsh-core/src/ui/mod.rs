@@ -26,6 +26,7 @@
 //! `docs/dev/components.md`.
 
 pub(crate) mod animated;
+mod asset;
 mod back;
 mod component;
 mod element;
@@ -45,13 +46,14 @@ mod value;
 pub(crate) mod virtual_list;
 
 pub use nsh_anim::{Curve, EaseMode, Easing, Extrapolate, Output as AnimOutput};
-pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
+pub use nsh_macros::{Event, JsObject, PropEnum, Props, asset, assets, methods, module};
 
 pub use self::{
     animated::{
         AnimOperand, Animated, Animation, AnimationEnd, Interpolation, NativeNode, NativeValue,
         Spring, Timing,
     },
+    asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
     back::BackSubscription,
     component::{
         Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
@@ -147,9 +149,11 @@ pub mod prelude {
         EventPayload,
         Extrapolate,
         FluentBuilder,
+        FontAsset,
         FontWeight,
         // Typed events.
         GestureEvent,
+        ImageAsset,
         Input,
         Interactive,
         Interpolation,
@@ -215,6 +219,7 @@ pub mod prelude {
         WebNavigation,
         WebView,
         WritingDirection,
+        asset,
         canvas,
         image,
         input,

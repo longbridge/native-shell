@@ -115,6 +115,7 @@ impl Component for Button {
   | async work | `cx.spawn(|this, cx| async move { .. this.update(..).await })`; the component's tasks end with it |
   | `cleanup` | `fn cleanup(&mut self, props, cx)` (with a `Context`: it can still use the platform's services), and `Drop` |
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
+  | `import logo from "./logo@2x.png"`, `import font from "./a.ttf"` | `const LOGO: ImageAsset = asset!("logo@2x.png");` (`image(LOGO)` lays out at its natural size), `const A: FontAsset = asset!("a.ttf");` (`.font_family(A.family)`), with `registry.assets(assets!())` (below) |
   | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
   | a signal or store at module level | `cx.global::<G>()` in the render (subscribes); `cx.update_global::<G, _>(..)` in listeners, tasks' updates and modules renders the readers again |
@@ -210,6 +211,18 @@ component cancels all of its own.
 The engine hands the core what components may read (`ui::Environment`: window, safe area, keyboard height, appearance,
 font scale, reduced motion, screen reader, direction). A render records what it read (`RenderCx::window()` and the
 like); when the environment changes, only the components that read a changed part render again.
+
+## Assets
+
+A crate ships files in its `assets/` directory, as TS imports them: `asset!("logo@2x.png")` (`nsh-macros`, the path
+relative to `assets/`) reads the file at compile time and is an `ImageAsset { uri, width, height }` (the natural size
+in points: `@2x` / `@3x` divide the pixels), a `FontAsset { uri, family }` (`.ttf`, `.otf`: the family from the
+font's name table) or a `FileAsset { uri }`; a missing or unreadable file fails the build, a changed one builds the
+crate again (`include_bytes!`). The URI is `asset:/@<package>/<path>`, apart from the app's own files. The registry
+ships the directory: `registry.assets(assets!())` lists every file (`AssetFile`: URI, the file where the crate was
+built, kind), which the app's command line (`rust_app.rs`, the registry is in-process) serves in development and
+copies into packages next to the imported assets, and whose fonts the engine registers before the first render
+(`EngineConfig::ui_sets`, read through `EngineConfig::assets`).
 
 ## Styles
 
