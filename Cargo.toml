@@ -23,7 +23,7 @@ nsh-ui-mobile = { path = "crates/nsh-ui-mobile" }
 nsh-macros = { path = "crates/nsh-macros" }
 nsh-js = { path = "crates/nsh-js" }
 nsh-engine = { path = "crates/nsh-engine", default-features = false }
-nsh-bundler = { path = "crates/nsh-bundler" }
+nsh-bundler = { path = "crates/nsh-bundler", default-features = false }
 nsh-platform-ios = { path = "crates/nsh-platform-ios", default-features = false }
 nsh-platform-android = { path = "crates/nsh-platform-android", default-features = false }
 nsh-dev = { path = "crates/nsh-dev" }
@@ -67,7 +67,7 @@ rquickjs = { version = "=0.14.0", default-features = false, features = ["std"] }
 
 rolldown = "=1.2.13"
 rolldown_common = "=1.2.13"
-oxc = { version = "=0.153.0", features = ["transformer", "codegen", "semantic"] }
+oxc = { version = "=0.153.0", features = ["transformer", "codegen", "semantic", "ast_visit"] }
 
 # Apple bindings: default features off. The defaults pull in every header
 # and link frameworks we never use (CloudKit, CoreData, Metal, ...), which

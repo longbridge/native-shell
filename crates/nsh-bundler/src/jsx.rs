@@ -176,6 +176,8 @@ pub(crate) struct KebabUse {
     /// Where its type can be imported from: (an import's specifier, or
     /// `None` for this module; the export); `None` when it is neither
     /// imported nor exported.
+    // Read by the bundle's `.nsh/types`.
+    #[cfg_attr(not(feature = "bundle"), allow(dead_code))]
     pub(crate) source: Option<(Option<String>, String)>,
 }
 
@@ -189,7 +191,7 @@ pub(crate) fn transform<'a>(
     scoping: &Scoping,
     source: &str,
     prologue: Option<&str>,
-    modules: &crate::plugin::NativeModules,
+    modules: &crate::compile::NativeModules,
 ) -> Result<Vec<KebabUse>, String> {
     let components: Vec<&str> = modules.components.iter().map(String::as_str).collect();
     let components = components.as_slice();
@@ -1167,13 +1169,13 @@ mod tests {
     use super::*;
 
     fn compile(source: &str) -> Result<String, String> {
-        crate::plugin::compile_native(
+        crate::compile::compile_native(
             std::path::Path::new("App.tsx"),
             SourceType::tsx(),
             source,
             None,
             None,
-            &crate::plugin::NativeModules::new(&[nsh_ui_mobile::registry()]),
+            &crate::compile::NativeModules::new(&[nsh_ui_mobile::registry()]),
         )
         .map(|(code, ..)| code)
     }

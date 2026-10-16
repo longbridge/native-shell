@@ -39,7 +39,9 @@ crates/
                        the app's themes (nsh.json `tailwind` / `theme`, checked, handed to the renderer by the entry) and the
                        unknown-class check (`classes.rs`);
                        development bundles with hot module replacement (`hot.rs`); the app's part of `.nsh/types` (`types.rs`:
-                       its kebab-case components' JSX types, asset imports)
+                       its kebab-case components' JSX types, asset imports); feature `bundle` (default off in the workspace;
+                       the CLI turns it on) is all of that, without it only `compile_module` (`compile.rs`: one module, no
+                       rolldown) is left, which also builds for WebAssembly (the website's playground)
   nsh-dev/             Dev tooling: dev server protocol, server (CLI, feature `server`), client (host, feature `client`)
   nsh-platform-ios/    UIKit backend (iOS / simulator / Mac Catalyst): native view mounting, CoreText text engine, input, AppView, standalone app;
                        feature `dev`: dev server client, log forwarding, error overlay; feature `embed`: the C ABI (`embed.rs`,

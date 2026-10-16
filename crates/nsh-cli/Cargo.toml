@@ -14,7 +14,7 @@ name = "nsh"
 path = "src/main.rs"
 
 [dependencies]
-nsh-bundler.workspace = true
+nsh-bundler = { workspace = true, features = ["bundle"] }
 nsh-core.workspace = true
 nsh-engine = { workspace = true, features = ["js"] }
 nsh-dev = { workspace = true, features = ["server"] }
