@@ -65,6 +65,11 @@ pub(crate) struct Dom {
     os: Cell<Os>,
     /// The layout direction sent to the root (`None`: nothing mounted yet).
     rtl: Cell<Option<bool>>,
+    /// The `onDismiss` handlers of modals the app removed, kept until the
+    /// platform reports their dismissal, oldest first (owned): an app
+    /// removes a modal in `onRequestClose`, and the platform reports
+    /// `onDismiss` once it has gone (after its animation).
+    dismissed: RefCell<Vec<(NodeId, JsValue)>>,
     /// Whether the user's language is written right to left.
     env_rtl: Cell<bool>,
 }
@@ -228,6 +233,7 @@ impl Dom {
             os: Cell::new(Os::Ios),
             rtl: Cell::new(None),
             env_rtl: Cell::new(false),
+            dismissed: RefCell::new(Vec::new()),
         }
     }
 
@@ -235,6 +241,10 @@ impl Dom {
     pub(crate) fn free_all(&mut self, raw: *mut JsContext) {
         // SAFETY: the renderer's own value; no JS runs from here on.
         unsafe { qjs::JS_FreeValue(raw, self.root.replace(UNDEFINED)) };
+        for (_, v) in self.dismissed.take() {
+            // SAFETY: values the renderer owned.
+            unsafe { qjs::JS_FreeValue(raw, v) };
+        }
     }
 
     /// The platform `ios={{…}}` / `android={{…}}` props are for.
@@ -709,6 +719,10 @@ pub(crate) fn insert_node(
     insert_before(ctx, parent, child, before)
 }
 
+/// How many removed modals' `onDismiss` handlers wait for their dismissal
+/// at most (a modal removed before it was presented never gets one).
+const MAX_DISMISSED: usize = 16;
+
 fn next_id(ctx: *mut JsContext) -> NodeId {
     let d = dom(ctx);
     let id = d.next_id.get();
@@ -722,7 +736,7 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     if p.is_null() {
         return;
     }
-    let data = unsafe { Box::from_raw(p) };
+    let mut data = unsafe { Box::from_raw(p) };
     if let Some(state) = crate::state::of_runtime(rt) {
         // SAFETY: a projection of the live state's renderer.
         let d = unsafe { &(*state).dom };
@@ -735,6 +749,24 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
         if data.id != ROOT {
             // Not the op queue: a finalizer may run while it is borrowed.
             d.shared.releases.borrow_mut().push(data.id);
+        }
+        // A removed modal still hears its dismissal.
+        if data.tag == Some(Tag::Modal)
+            && let Some(i) = data
+                .handlers
+                .iter()
+                .position(|&(e, _)| e == EventKind::Dismiss)
+        {
+            let (_, handler) = data.handlers.swap_remove(i);
+            let oldest = {
+                let mut dismissed = d.dismissed.borrow_mut();
+                dismissed.push((data.id, handler));
+                (dismissed.len() > MAX_DISMISSED).then(|| dismissed.remove(0).1)
+            };
+            if let Some(v) = oldest {
+                // SAFETY: a value the renderer owned, freed after the borrow.
+                unsafe { qjs::JS_FreeValueRT(rt, v) };
+            }
         }
     }
     for v in data.children {
@@ -2694,9 +2726,16 @@ unsafe extern "C" fn setup(
 
 /// The handler node `id` has for `event` (owned), if any.
 pub(crate) fn handler(ctx: *mut JsContext, id: NodeId, event: EventKind) -> Option<JsValue> {
-    let p = dom(ctx).by_id(id);
+    let d = dom(ctx);
+    let p = d.by_id(id);
     if p.is_null() {
-        return None;
+        // A removed modal's dismissal: its handler, given away (owned).
+        if event != EventKind::Dismiss {
+            return None;
+        }
+        let mut dismissed = d.dismissed.borrow_mut();
+        let i = dismissed.iter().position(|&(n, _)| n == id)?;
+        return Some(dismissed.remove(i).1);
     }
     // SAFETY: live node data; a dup of the handler.
     unsafe { &(*p).handlers }

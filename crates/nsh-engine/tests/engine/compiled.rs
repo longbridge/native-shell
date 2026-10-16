@@ -295,3 +295,51 @@ fn navigation_stacks_screens_and_modals() {
     });
     assert!(text_id(&batch, "in modal").is_some());
 }
+
+const MODAL_DISMISS: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Modal } from "nsh/ui/mobile";
+
+const open = signal(true);
+const status = signal("waiting");
+
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <Text>{status()}</Text>
+    <Modal visible={open()} onRequestClose={() => open.set(false)} onDismiss={() => status.set("dismissed")}>
+      <Text>in modal</Text>
+    </Modal>
+  </View>
+));
+"#;
+
+/// An app removes its modal when asked to close it; the platform reports
+/// the dismissal once the modal has gone, and the app still hears it.
+#[test]
+fn removed_modal_hears_its_dismissal() {
+    let (engine, rx) = start_app(MODAL_DISMISS);
+    let control = engine.control();
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let modal = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Modal,
+                ..
+            } => Some(*id),
+            _ => None,
+        })
+        .expect("a modal");
+    control.dispatch_event(modal, EventKind::RequestClose, EventPayload::None);
+    next(&rx, |b| {
+        b.items
+            .iter()
+            .any(|i| matches!(i, MountItem::Remove { id } if *id == modal))
+    });
+    control.dispatch_event(modal, EventKind::Dismiss, EventPayload::None);
+    let batch = next(&rx, |b| text_id(b, "dismissed").is_some());
+    assert!(text_id(&batch, "dismissed").is_some());
+}
