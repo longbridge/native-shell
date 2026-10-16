@@ -29,6 +29,7 @@ nsh-ui-mobile.workspace = true
 windows.workspace = true
 windows-core.workspace = true
 windows-numerics.workspace = true
+webview2-com.workspace = true
 # GIF and WebP animations (WIC decodes the first frame of everything else).
 image = { workspace = true, features = ["gif", "webp"] }
 rustc-hash.workspace = true

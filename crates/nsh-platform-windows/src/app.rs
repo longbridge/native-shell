@@ -141,6 +141,7 @@ impl AppView {
         let surface = Surface::new(initial_environment());
         surface.appearance.set(options.appearance);
         surface.native.set_components(options.components.clone());
+        surface.native.set_app_id(&options.app_id);
         let hwnd = crate::window::create(&surface, &options.title, options.size, parent)?;
         let view = Rc::new(AppView {
             surface,
@@ -165,6 +166,12 @@ impl AppView {
 
     /// Runs `app`, replacing what ran.
     pub fn load(&self, app: App) {
+        let access = match &app {
+            App::Js(bundle) => bundle.policy.access(),
+            // Native code reaches what the platform allows.
+            App::Rust(_) => nsh_engine::Policy::default().access(),
+        };
+        self.surface.native.set_access(Arc::new(access));
         let options = self.options.borrow();
         let config = EngineConfig {
             app,

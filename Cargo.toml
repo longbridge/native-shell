@@ -110,6 +110,8 @@ windows = { version = "0.62", features = [
 ] }
 windows-core = "0.62"
 windows-numerics = "0.3"
+# WebView2 (the Windows backend's web views): bindings and the static loader.
+webview2-com = "0.39"
 # The Linux backend (GTK 4.14+: Ubuntu 24.04, Debian 13, Fedora 40).
 gtk4 = { version = "0.11", features = ["v4_14"] }
 pango = "0.22"
