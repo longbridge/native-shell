@@ -130,3 +130,80 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool
     let _ = (surface, event);
     false
 }
+
+/// Puts `text` on the clipboard (Unicode text).
+pub(crate) fn set_clipboard_text(text: &str) -> bool {
+    use windows::Win32::{
+        Foundation::{GlobalFree, HANDLE, HGLOBAL},
+        System::{
+            DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData},
+            Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock},
+            Ole::CF_UNICODETEXT,
+        },
+    };
+    let units: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: the clipboard is opened and closed here; the global memory
+    // holds `units` and is owned by the clipboard once `SetClipboardData`
+    // succeeds (freed here otherwise).
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            return false;
+        }
+        let mut ok = false;
+        if EmptyClipboard().is_ok()
+            && let Ok(memory) = GlobalAlloc(GMEM_MOVEABLE, units.len() * 2)
+        {
+            let ptr = GlobalLock(memory) as *mut u16;
+            if !ptr.is_null() {
+                std::ptr::copy_nonoverlapping(units.as_ptr(), ptr, units.len());
+                let _ = GlobalUnlock(memory);
+                ok = SetClipboardData(u32::from(CF_UNICODETEXT.0), Some(HANDLE(memory.0))).is_ok();
+            }
+            if !ok {
+                let _ = GlobalFree(Some(HGLOBAL(memory.0)));
+            }
+        }
+        let _ = CloseClipboard();
+        ok
+    }
+}
+
+/// The clipboard's text, if it has some.
+pub(crate) fn clipboard_text() -> Option<String> {
+    use windows::Win32::{
+        Foundation::HGLOBAL,
+        System::{
+            DataExchange::{CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard},
+            Memory::{GlobalLock, GlobalSize, GlobalUnlock},
+            Ole::CF_UNICODETEXT,
+        },
+    };
+    // SAFETY: the clipboard is opened and closed here; the data is read
+    // while locked and copied out.
+    unsafe {
+        IsClipboardFormatAvailable(u32::from(CF_UNICODETEXT.0)).ok()?;
+        OpenClipboard(None).ok()?;
+        let text = GetClipboardData(u32::from(CF_UNICODETEXT.0)).ok().and_then(|h| {
+            let memory = HGLOBAL(h.0);
+            let ptr = GlobalLock(memory) as *const u16;
+            if ptr.is_null() {
+                return None;
+            }
+            let max = GlobalSize(memory) / 2;
+            let units = std::slice::from_raw_parts(ptr, max);
+            let len = units.iter().position(|u| *u == 0).unwrap_or(max);
+            let text = String::from_utf16_lossy(&units[..len]);
+            let _ = GlobalUnlock(memory);
+            Some(text)
+        });
+        let _ = CloseClipboard();
+        text
+    }
+}
+
+/// True when the clipboard has text.
+pub(crate) fn clipboard_has_text() -> bool {
+    use windows::Win32::System::{DataExchange::IsClipboardFormatAvailable, Ole::CF_UNICODETEXT};
+    // SAFETY: a plain query.
+    unsafe { IsClipboardFormatAvailable(u32::from(CF_UNICODETEXT.0)) }.is_ok()
+}
