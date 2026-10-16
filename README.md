@@ -15,6 +15,7 @@ describes the UI and handles the events.
 |---|---|
 | `examples/gallery` | A demo index covering what nsh supports: lists (recycling, columns, sticky sections, an inverted chat, horizontal lists), navigation (header options, modals, the back button), forms and the keyboard, controls, gestures, native animations, images, styles, text, web view and video, environment / timers / fetch |
 | `examples/counter` | The smallest app |
+| `examples/hopper` | Hopper Lab: a dark, tabbed dashboard for test hops of a small lander, built only from primitives: interactive canvas charts (scrub, drag handles, resize zones), a slider, switches, menus, native animations and navigation. `FINDINGS.md` lists what it found missing in nsh |
 | `examples/bench` | Rust components against the same component in TSX (see its README) |
 | `examples/embed-ios`, `examples/embed-android` | nsh inside existing native apps (see their READMEs), running `examples/embedded` with a native component the host app registers |
 

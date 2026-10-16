@@ -1,0 +1,187 @@
+import { signal } from "nsh";
+import { ceiling, flyHop, flying, type Hop, hoverThrottle, plan, resetPlan, segments } from "../store";
+import { color, mono, radius } from "../theme";
+import { Action, Caption, Counter, Line, Panel, Slider, Switch, Tabs } from "../ui";
+
+type Axis = "x" | "y" | "z";
+
+/** A target coordinate in meters; the field lights up while edited and
+ * turns rose when the apogee is over the range's ceiling. */
+function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
+  const focused = signal(false);
+  const over = () => props.axis === "z" && Number(plan.target().z) > ceiling;
+  return (
+    <view style={{ flex: 1, gap: 6 }}>
+      <text style={{ fontSize: 12, color: over() ? color.alert : color.muted }}>{props.label}</text>
+      <view
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          height: 44,
+          paddingHorizontal: 12,
+          borderRadius: radius.control,
+          borderWidth: 1.5,
+          borderColor: over() ? color.alert : focused() ? color.accent : color.line,
+          backgroundColor: color.inset,
+        }}
+      >
+        <input
+          value={plan.target()[props.axis]}
+          onChangeText={(text) => {
+            const minus = props.signed && text.startsWith("-") ? "-" : "";
+            const digits = text.replace(/[^0-9]/g, "").slice(0, 3);
+            plan.target.set({ ...plan.target(), [props.axis]: minus + digits });
+          }}
+          onFocus={() => focused.set(true)}
+          onBlur={() => {
+            focused.set(false);
+            const v = plan.target()[props.axis];
+            if (v === "" || v === "-") plan.target.set({ ...plan.target(), [props.axis]: "0" });
+          }}
+          keyboardType="number-pad"
+          returnKeyType="done"
+          selectionColor={color.accent}
+          accessibilityLabel={`${props.label}, meters`}
+          style={{ flex: 1, fontFamily: mono, fontSize: 15, color: color.text, paddingVertical: 6 }}
+        />
+        <if
+          when={props.signed}
+          else={<text style={{ fontFamily: mono, fontSize: 13, color: color.faint }}>m</text>}
+        >
+          {/* The number pad has no minus key: this flips the sign. */}
+          <text
+            onPress={() => {
+              const v = plan.target()[props.axis];
+              plan.target.set({ ...plan.target(), [props.axis]: v.startsWith("-") ? v.slice(1) : `-${v}` });
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Flip the sign of ${props.label}`}
+            style={{ fontFamily: mono, fontSize: 15, color: color.accent }}
+          >
+            ±
+          </text>
+        </if>
+      </view>
+    </view>
+  );
+}
+
+function Option(props: { title: string; detail: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean; first?: boolean }) {
+  return (
+    <Line first={props.first}>
+      <view style={{ flex: 1, gap: 2, paddingVertical: 10, opacity: props.disabled ? 0.5 : 1 }}>
+        <text style={{ fontSize: 15, color: color.text }}>{props.title}</text>
+        <text style={{ fontSize: 12, color: color.muted }}>{props.detail}</text>
+      </view>
+      <Switch value={props.value} onChange={props.onChange} disabled={props.disabled} label={props.title} />
+    </Line>
+  );
+}
+
+const results: Record<Hop["outcome"], { label: string; tint: string }> = {
+  nominal: { label: "nominal", tint: color.accent },
+  hard: { label: "hard landing", tint: color.caution },
+  abort: { label: "aborted", tint: color.alert },
+};
+
+export function FlightPlan() {
+  const last = signal<Hop | null>(null);
+  const fly = async () => {
+    last.set(null);
+    last.set(await flyHop());
+  };
+  return (
+    <Panel icon="plan" title="Flight plan" status="Hop profile · pad B">
+      <Tabs options={segments} value={plan.segment()} onChange={(s) => plan.segment.set(s)} />
+
+      <view style={{ gap: 10 }}>
+        <Caption
+          label="Throttle"
+          value={`${plan.throttle()}%`}
+          tint={plan.throttle() < hoverThrottle ? color.caution : color.text}
+        />
+        <Slider
+          min={40}
+          max={100}
+          floor={hoverThrottle}
+          unit="%"
+          value={plan.throttle()}
+          label="Throttle, percent"
+          onChange={(v) => plan.throttle.set(v)}
+        />
+      </view>
+
+      <view>
+        <Line first>
+          <text style={{ flex: 1, fontSize: 15, color: color.text }}>Gimbal limit</text>
+          <Counter
+            label="Gimbal limit"
+            value={plan.gimbal()}
+            format={(v) => `±${v}°`}
+            step={1}
+            min={2}
+            max={12}
+            onChange={(v) => plan.gimbal.set(v)}
+          />
+        </Line>
+        <Line>
+          <text style={{ flex: 1, fontSize: 15, color: color.text }}>Hover time</text>
+          <Counter
+            label="Hover time"
+            value={plan.hoverTime()}
+            format={(v) => `${v} s`}
+            step={1}
+            min={0}
+            max={40}
+            onChange={(v) => plan.hoverTime.set(v)}
+          />
+        </Line>
+      </view>
+
+      <view style={{ gap: 8 }}>
+        <text style={{ fontSize: 14, color: color.muted }}>Target</text>
+        <view style={{ flexDirection: "row", gap: 10 }}>
+          <Coordinate axis="x" label="East" signed />
+          <Coordinate axis="y" label="North" signed />
+          <Coordinate axis="z" label="Apogee" />
+        </view>
+        <if when={Number(plan.target().z) > ceiling}>
+          <text style={{ fontSize: 12, color: color.alert }}>The range's ceiling is {ceiling} m.</text>
+        </if>
+      </view>
+
+      <view>
+        <Option
+          first
+          title="Terrain-relative navigation"
+          detail="Lidar locks onto the pad below 40 m"
+          value={plan.terrainNav()}
+          onChange={(v) => plan.terrainNav.set(v)}
+        />
+        <Option title="Deploy legs at 30 m" detail="Earlier adds drag on descent" value={plan.legsAt30()} onChange={(v) => plan.legsAt30.set(v)} />
+        <Option
+          title="Abort on excess tilt"
+          detail="Waiting for IMU calibration"
+          value={plan.autoAbort()}
+          onChange={(v) => plan.autoAbort.set(v)}
+          disabled
+        />
+      </view>
+
+      <view style={{ gap: 10 }}>
+        <view style={{ flexDirection: "row", gap: 10 }}>
+          <Action label="Defaults" disabled={flying()} onPress={resetPlan} />
+          <Action label={flying() ? "Flying…" : "Fly hop"} primary disabled={flying()} onPress={fly} />
+        </view>
+        <if when={last()}>
+          <text style={{ fontSize: 13, color: color.muted, textAlign: "center" }}>
+            Hop {last()?.id}:{" "}
+            <text style={{ color: results[last()?.outcome ?? "nominal"].tint }}>{results[last()?.outcome ?? "nominal"].label}</text> ·{" "}
+            {last()?.note}
+          </text>
+        </if>
+      </view>
+    </Panel>
+  );
+}
