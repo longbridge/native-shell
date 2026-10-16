@@ -27,7 +27,14 @@ impl Sdk {
             .iter()
             .find_map(env::var_os)
             .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Android/sdk")))
+            // Android Studio's default place.
+            .or_else(|| {
+                if cfg!(windows) {
+                    env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Android/Sdk"))
+                } else {
+                    env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Android/sdk"))
+                }
+            })
             .filter(|p| p.exists())
             .context("Android SDK not found: install it and set ANDROID_HOME")?;
         let build_tools = newest(&root.join("build-tools"))
@@ -64,12 +71,16 @@ impl Sdk {
         // The NDK's "darwin-x86_64" toolchain is universal.
         let host = if cfg!(target_os = "macos") {
             "darwin-x86_64"
+        } else if cfg!(windows) {
+            "windows-x86_64"
         } else {
             "linux-x86_64"
         };
         let toolchain = ndk.join("toolchains/llvm/prebuilt").join(host);
         let bin = toolchain.join("bin");
-        let clang = bin.join(format!("{triple}{MIN_SDK}-clang"));
+        // On Windows the NDK's per-target compilers are batch files.
+        let script = if cfg!(windows) { ".cmd" } else { "" };
+        let clang = bin.join(format!("{triple}{MIN_SDK}-clang{script}"));
         let env_triple = triple.replace('-', "_");
         let mut cmd = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
         cmd.env(format!("CC_{env_triple}"), &clang)
@@ -86,6 +97,10 @@ impl Sdk {
     }
 
     fn tool(&self, name: &str) -> PathBuf {
+        // On Windows, the Java tools are batch files.
+        if cfg!(windows) && name == "apksigner" {
+            return self.build_tools.join("apksigner.bat");
+        }
         self.build_tools.join(name)
     }
 }
@@ -314,7 +329,8 @@ fn sign(sdk: &Sdk, signing: &Signing, apk: &Path) -> anyhow::Result<()> {
 
 /// The standard debug keystore, created like Android Studio does.
 fn debug_keystore() -> anyhow::Result<PathBuf> {
-    let dir = PathBuf::from(env::var_os("HOME").context("HOME")?).join(".android");
+    let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let dir = PathBuf::from(env::var_os(home).context(home)?).join(".android");
     let path = dir.join("debug.keystore");
     if !path.exists() {
         fs::create_dir_all(&dir)?;

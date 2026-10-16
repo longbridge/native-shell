@@ -330,6 +330,7 @@ fn install_commands(dir: &Path) -> Vec<(HostPlatform, String)> {
         (HostPlatform::MacCatalyst, run(Target::Catalyst, "catalyst")),
         (HostPlatform::MacOs, run(Target::Macos, "macos")),
         (HostPlatform::Linux, run(Target::Linux, "linux")),
+        (HostPlatform::Windows, run(Target::Windows, "windows")),
         (HostPlatform::IosSimulator, run(Target::Ios, "ios")),
         (HostPlatform::Android, run(Target::Android, "android")),
     ]

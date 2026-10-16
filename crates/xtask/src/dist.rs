@@ -7,6 +7,7 @@
 //! dist/nsh/runtime/ios/maccatalyst/nsh-ios-host                development host
 //! dist/nsh/runtime/macos/{nsh-macos-host,nsh-macos-app}        development host, packaged app runner
 //! dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        development host, packaged app runner
+//! dist/nsh/runtime/windows/{nsh-windows-host,nsh-windows-app}.exe  development host, packaged app runner
 //! dist/nsh/runtime/android/{release,dev}/                      classes.dex, lib/<abi>/libnsh.so
 //! dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  embedding in iOS apps
 //! dist/nsh/embed/android/{nsh,nsh-dev}.aar                     embedding in Android apps
@@ -15,13 +16,10 @@
 //! The iOS runtimes and SDK need Xcode: they are built on macOS only, as is
 //! the macOS (AppKit) runtime, built for this machine. The
 //! Linux runtime is built for this machine, on Linux only (where it runs,
-//! GTK 4 and Pango must be installed).
+//! GTK 4 and Pango must be installed); the Windows runtime likewise, on
+//! Windows only (where the CLI is `bin/nsh.exe`).
 
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{env, fs, path::Path, process::Command};
 
 use anyhow::Context as _;
 
@@ -41,7 +39,10 @@ pub(crate) fn dist() -> anyhow::Result<()> {
 
     // The CLI for this machine.
     cargo(&["build", "--release", "-p", "nsh-cli"], "nsh")?;
-    copy(&release.join("release/nsh"), &out.join("bin/nsh"))?;
+    copy(
+        &release.join("release").join(exe("nsh")),
+        &out.join("bin").join(exe("nsh")),
+    )?;
 
     if cfg!(target_os = "macos") {
         ios_runtimes(&release, &out)?;
@@ -68,10 +69,30 @@ pub(crate) fn dist() -> anyhow::Result<()> {
             )?;
         }
     }
+    if cfg!(windows) {
+        for (package, what) in [
+            ("nsh-windows-host", "the development host for Windows"),
+            ("nsh-windows-app", "the release runner for Windows"),
+        ] {
+            cargo(&["build", "--release", "-p", package], what)?;
+            copy(
+                &release.join("release").join(exe(package)),
+                &out.join("runtime/windows").join(exe(package)),
+            )?;
+        }
+    }
 
-    // Android runtimes.
+    // Android runtimes. Windows machines often have no Android SDK: the
+    // distribution is then made without them.
+    let android = !cfg!(windows) || android::Sdk::find().is_ok();
+    if !android {
+        term::warn("no Android SDK (ANDROID_HOME): the distribution has no Android runtime");
+    }
     let abis: Vec<String> = android::ABIS.iter().map(|a| a.to_string()).collect();
-    for (dev, name) in [(false, "release"), (true, "dev")] {
+    for (dev, name) in [(false, "release"), (true, "dev")]
+        .into_iter()
+        .filter(|_| android)
+    {
         let built = android::build(true, dev, &abis)?;
         let dest = out.join("runtime/android").join(name);
         copy(&built.join("classes.dex"), &dest.join("classes.dex"))?;
@@ -179,23 +200,37 @@ fn make_aar(built: &Path, abis: &[String], dev: bool, aar: &Path) -> anyhow::Res
         fs::create_dir_all(dir)?;
     }
     let _ = fs::remove_file(aar);
-    term::run(
-        Command::new("zip")
-            .current_dir(&work)
-            .args(["-q", "-r"])
-            .arg(aar.canonicalize().unwrap_or_else(|_| abs(aar)))
-            .arg("."),
-    )?;
+    zip_dir(&work, aar).with_context(|| format!("create {}", aar.display()))?;
     fs::remove_dir_all(&work)?;
     Ok(())
 }
 
-fn abs(p: &Path) -> PathBuf {
-    if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        env::current_dir().unwrap_or_default().join(p)
+/// Zips the files under `dir` into `archive`, by their paths relative to
+/// `dir` (with `/`, whatever this machine's separator).
+fn zip_dir(dir: &Path, archive: &Path) -> anyhow::Result<()> {
+    use std::io::Write as _;
+
+    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+
+    let mut zip = ZipWriter::new(fs::File::create(archive)?);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let mut pending = vec![(dir.to_path_buf(), String::new())];
+    while let Some((dir, prefix)) = pending.pop() {
+        let mut entries: Vec<_> = fs::read_dir(&dir)?.collect::<Result<_, _>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
+            if entry.file_type()?.is_dir() {
+                zip.add_directory(format!("{name}/"), options)?;
+                pending.push((entry.path(), format!("{name}/")));
+            } else {
+                zip.start_file(name, options)?;
+                zip.write_all(&fs::read(entry.path())?)?;
+            }
+        }
     }
+    zip.finish()?;
+    Ok(())
 }
 
 /// `cargo <args>` in the workspace: the step "building <what>".
@@ -205,6 +240,12 @@ pub(crate) fn cargo(args: &[&str], what: &str) -> anyhow::Result<()> {
         Command::new(cargo).current_dir(android::root()).args(args),
         what,
     )
+}
+
+/// The file of executable `name` built for this machine (`nsh.exe` on
+/// Windows).
+fn exe(name: &str) -> String {
+    format!("{name}{}", env::consts::EXE_SUFFIX)
 }
 
 pub(crate) fn copy(from: &Path, to: &Path) -> anyhow::Result<()> {

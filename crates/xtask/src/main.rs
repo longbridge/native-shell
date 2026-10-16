@@ -1,8 +1,8 @@
 //! Maintainer tasks, run with `cargo xtask <task>`:
 //!
 //! - `run` (the default, and what `cargo run` runs): an example app in the
-//!   machine's own development host (AppKit on macOS, GTK on Linux), restarted when
-//!   Rust code changes.
+//!   machine's own development host (AppKit on macOS, GTK on Linux, Win32 on
+//!   Windows), restarted when Rust code changes.
 //! - `android`: the Android runtime (`libnsh.so` per ABI, `classes.dex`)
 //!   into `target/android/<profile>`, where `nsh run` / `nsh package` find it.
 //! - `dist`: the distribution in `dist/nsh`: the `nsh` CLI plus every
@@ -48,8 +48,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Task {
     /// Run an example app (default: the gallery, in the AppKit host on
-    /// macOS, the GTK host on Linux) with hot reload, rebuilt and restarted when Rust code
-    /// changes.
+    /// macOS, the GTK host on Linux, the Win32 host on Windows) with hot
+    /// reload, rebuilt and restarted when Rust code changes.
     Run(run::RunArgs),
     /// Build the Android runtime.
     Android {

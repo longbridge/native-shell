@@ -75,7 +75,10 @@ pub(crate) fn build(out: &Path) -> anyhow::Result<()> {
         copy(&web.join(file), &out.join(file))?;
     }
 
-    let nsh = root.join("target/release/nsh");
+    let nsh = root.join(format!(
+        "target/release/nsh{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     let demos = root.join("website/demos");
     let tmp = root.join("target/web-demos");
     let step = term::Step::start("bundling the website's demos");

@@ -1,7 +1,8 @@
 name: Windows
 
 # Builds, lints and tests the Windows backend (Win32, Direct2D, DirectWrite)
-# and the tooling that runs it.
+# and the tooling that runs it (`nsh run --target windows`, `nsh package
+# --target windows`, `cargo run` on Windows).
 
 on:
   push:
@@ -62,9 +63,9 @@ jobs:
         run: >
           cargo clippy --all-targets
           -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app
-          -p nsh-cli -p nsh-dev
+          -p nsh-cli -p nsh-dev -p xtask
           -- -D warnings
 
       # Tests need no display: they open no window.
       - name: Test
-        run: cargo test -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app -p nsh-cli -p nsh-dev
+        run: cargo test -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app -p nsh-cli -p nsh-dev -p xtask

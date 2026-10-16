@@ -1,8 +1,7 @@
 //! `cargo run` (the workspace's default task): runs an example app, the
 //! gallery by default, on the machine's own desktop backend (the AppKit
-//! host on macOS, the GTK host on Linux; an Android device or emulator
-//! elsewhere) with hot reload
-//! (`nsh run`), and rebuilds and restarts it when the runtime's sources
+//! host on macOS, the GTK host on Linux, the Win32 host on Windows; an
+//! Android device or emulator elsewhere) with hot reload (`nsh run`), and rebuilds and restarts it when the runtime's sources
 //! under `crates/` change: components and modules are Rust and live in the
 //! host, so only JS and TSX reload in place.
 
@@ -30,8 +29,9 @@ pub(crate) struct RunArgs {
     #[arg(default_value = "examples/gallery")]
     entry: String,
     /// Where to run: `macos` (the AppKit host), `catalyst`, `ios` (a
-    /// simulator), `android` or `linux`; default: the machine's own
-    /// backend (`macos` on macOS, `linux` on Linux), else `android`.
+    /// simulator), `android`, `linux` or `windows`; default: the machine's
+    /// own backend (`macos` on macOS, `linux` on Linux, `windows` on
+    /// Windows), else `android`.
     #[arg(long)]
     target: Option<String>,
     /// iOS simulator to use (name or UDID).
@@ -94,8 +94,8 @@ pub(crate) fn run(args: RunArgs) -> anyhow::Result<()> {
                 }
                 return Ok(());
             }
-            if let Some(child) = app.as_mut()
-                && let Some(status) = child.try_wait()?
+            if let Some(app) = app.as_mut()
+                && let Some(status) = app.child.try_wait()?
             {
                 // The host window was closed.
                 std::process::exit(status.code().unwrap_or(1));
@@ -133,17 +133,26 @@ fn build_cli(root: &Path) -> anyhow::Result<()> {
     )
 }
 
+/// `nsh run`, started by [`launch`].
+struct App {
+    child: Child,
+    /// Ends `nsh run` and the host with xtask, however xtask ends.
+    #[cfg(windows)]
+    _job: Option<win::Job>,
+}
+
 /// Starts `nsh run`, which builds the host it needs, in a process group of
 /// its own.
-fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
-    use std::os::unix::process::CommandExt as _;
-
-    let mut cmd = Command::new(root.join("target/debug/nsh"));
+fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<App> {
+    let nsh = format!("target/debug/nsh{}", std::env::consts::EXE_SUFFIX);
+    let mut cmd = Command::new(root.join(&nsh));
     cmd.arg("run").arg(&args.entry).current_dir(root);
     let default = if cfg!(target_os = "macos") {
         "macos"
     } else if cfg!(target_os = "linux") {
         "linux"
+    } else if cfg!(windows) {
+        "windows"
     } else {
         "android"
     };
@@ -157,14 +166,29 @@ fn launch(root: &Path, args: &RunArgs) -> anyhow::Result<Child> {
     if term::verbose() {
         cmd.arg("--verbose");
     }
-    cmd.process_group(0)
-        .spawn()
-        .context("launch target/debug/nsh")
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        cmd.creation_flags(windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP);
+    }
+    let child = cmd.spawn().with_context(|| format!("launch {nsh}"))?;
+    Ok(App {
+        #[cfg(windows)]
+        _job: win::Job::assign(&child),
+        child,
+    })
 }
 
 /// Stops `nsh run` and everything it started (the Catalyst, macOS or Linux
 /// host).
-fn stop(app: &mut Child) {
+#[cfg(unix)]
+fn stop(app: &mut App) {
+    let app = &mut app.child;
     let Ok(pgid) = libc::pid_t::try_from(app.id()) else {
         let _ = app.kill();
         return;
@@ -180,4 +204,78 @@ fn stop(app: &mut Child) {
     // SAFETY: as above.
     unsafe { libc::killpg(pgid, libc::SIGKILL) };
     let _ = app.wait();
+}
+
+/// Stops `nsh run` and everything it started: Ctrl-Break to its process
+/// group (`nsh` takes it as Ctrl-C, and stops its host), then the job.
+#[cfg(windows)]
+fn stop(app: &mut App) {
+    use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent};
+
+    // SAFETY: a plain call naming the process group `launch` created.
+    unsafe { GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, app.child.id()) };
+    for _ in 0..30 {
+        if matches!(app.child.try_wait(), Ok(Some(_))) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // Closing the job ends whatever is left of it.
+    app._job = None;
+    let _ = app.child.kill();
+    let _ = app.child.wait();
+}
+
+/// Windows ends a child process with its parent only in a job.
+#[cfg(windows)]
+mod win {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        },
+    };
+
+    /// A job object that ends its processes when it closes.
+    pub(super) struct Job(HANDLE);
+
+    impl Job {
+        /// Puts `child` in a new job; `None` if Windows refuses.
+        pub(super) fn assign(child: &std::process::Child) -> Option<Job> {
+            use std::os::windows::io::AsRawHandle as _;
+
+            // SAFETY: an unnamed job with default security, owned (and
+            // closed) by the returned value.
+            let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+            if job.is_null() {
+                return None;
+            }
+            let job = Job(job);
+            // SAFETY: zeroed is a valid "no limits" value of this plain C
+            // structure.
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            // SAFETY: `info` is the structure the information class names,
+            // with its size; `child`'s handle is open while it is borrowed.
+            let ok = unsafe {
+                SetInformationJobObject(
+                    job.0,
+                    JobObjectExtendedLimitInformation,
+                    (&raw const info).cast(),
+                    std::mem::size_of_val(&info) as u32,
+                ) != 0
+                    && AssignProcessToJobObject(job.0, child.as_raw_handle()) != 0
+            };
+            ok.then_some(job)
+        }
+    }
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            // SAFETY: the handle this value owns, closed once.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
 }

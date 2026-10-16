@@ -36,6 +36,24 @@ fn term() -> &'static Term {
 /// Sets up the output.
 pub(crate) fn init(verbose: bool) {
     let tty = std::io::stderr().is_terminal();
+    #[cfg(windows)]
+    if tty {
+        use windows_sys::Win32::System::Console::{
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING, GetConsoleMode, GetStdHandle, STD_ERROR_HANDLE,
+            SetConsoleMode,
+        };
+        // Colors and the step line's clearing are escape sequences, which
+        // the console takes only when asked to.
+        // SAFETY: plain console calls on this process's stderr handle;
+        // `mode` is a local the call fills.
+        unsafe {
+            let err = GetStdHandle(STD_ERROR_HANDLE);
+            let mut mode = 0;
+            if GetConsoleMode(err, &mut mode) != 0 {
+                SetConsoleMode(err, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
+    }
     let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     let _ = TERM.set(Term {
         tty,
@@ -76,6 +94,11 @@ pub(crate) fn done(message: impl Display) {
 /// `→ message`.
 pub(crate) fn note(message: impl Display) {
     line(&format!("{} {message}", paint("36", "→")));
+}
+
+/// `warning message`.
+pub(crate) fn warn(message: impl Display) {
+    line(&format!("{} {message}", paint("33", "warning")));
 }
 
 /// Prints `error <message>` and the output of the tool that failed.

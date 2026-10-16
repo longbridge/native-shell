@@ -12,13 +12,16 @@
 //! runtime/linux/nsh-linux-app                release runner (Linux)
 //! runtime/macos/nsh-macos-host               development host (macOS, AppKit)
 //! runtime/macos/nsh-macos-app                release runner (macOS)
+//! runtime/windows/nsh-windows-host.exe       development host (Windows)
+//! runtime/windows/nsh-windows-app.exe        release runner (Windows)
 //! runtime/android/release/             classes.dex + lib/<abi>/libnsh.so
 //! runtime/android/dev/                 the same with development support
 //! ```
 //!
 //! In a cargo checkout, the same files come from `target/<triple>/<profile>`
-//! (with the profile of this CLI; Linux's and macOS's from `target/<profile>`,
-//! as they are built for this machine), and are built with cargo first, so a run
+//! (with the profile of this CLI; Linux's, macOS's and Windows' from
+//! `target/<profile>`, as they are built for this machine), and are built
+//! with cargo first, so a run
 //! never uses a missing or stale host. `NSH_RUNTIME` overrides the root.
 //! An app with a Rust crate of its own gets hosts built for it instead
 //! (`rust_app.rs`).
@@ -45,6 +48,8 @@ pub(crate) enum Platform {
     Linux,
     /// macOS (AppKit), on this machine.
     MacOs,
+    /// Windows (Win32), on this machine.
+    Windows,
 }
 
 impl Platform {
@@ -55,6 +60,7 @@ impl Platform {
             Platform::MacCatalyst => "ios/maccatalyst",
             Platform::Linux => "linux",
             Platform::MacOs => "macos",
+            Platform::Windows => "windows",
         }
     }
 
@@ -64,20 +70,34 @@ impl Platform {
             Platform::IphoneOs => Some("aarch64-apple-ios"),
             Platform::IphoneSimulator => Some("aarch64-apple-ios-sim"),
             Platform::MacCatalyst => Some("aarch64-apple-ios-macabi"),
-            Platform::Linux | Platform::MacOs => None,
+            Platform::Linux | Platform::MacOs | Platform::Windows => None,
         }
     }
 
-    /// The development host (`runner` false) or release runner binary.
+    /// The development host (`runner` false) or release runner binary:
+    /// its package, and its file without the executable suffix.
     pub(crate) fn binary(self, runner: bool) -> &'static str {
         match (self, runner) {
             (Platform::Linux, false) => "nsh-linux-host",
             (Platform::Linux, true) => "nsh-linux-app",
             (Platform::MacOs, false) => "nsh-macos-host",
             (Platform::MacOs, true) => "nsh-macos-app",
+            (Platform::Windows, false) => "nsh-windows-host",
+            (Platform::Windows, true) => "nsh-windows-app",
             (_, false) => "nsh-ios-host",
             (_, true) => "nsh-ios-app",
         }
+    }
+
+    /// The file of [`Platform::binary`]: with this machine's executable
+    /// suffix (`.exe`) when it is built for this machine.
+    pub(crate) fn file_name(self, runner: bool) -> String {
+        let suffix = if self.triple().is_none() {
+            env::consts::EXE_SUFFIX
+        } else {
+            ""
+        };
+        format!("{}{suffix}", self.binary(runner))
     }
 
     /// The development host (`runner` false) or release runner for it, as
@@ -94,6 +114,7 @@ impl Platform {
             Platform::MacCatalyst => "Mac Catalyst",
             Platform::Linux => "Linux",
             Platform::MacOs => "macOS",
+            Platform::Windows => "Windows",
         };
         format!("the {what} for {platform}")
     }
@@ -173,9 +194,10 @@ pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> 
         return app.runtime(platform, runner);
     }
     let name = platform.binary(runner);
+    let file_name = platform.file_name(runner);
     if let Some(root) = env::var_os("NSH_RUNTIME") {
         return existing(
-            PathBuf::from(root).join(platform.dir()).join(name),
+            PathBuf::from(root).join(platform.dir()).join(&file_name),
             platform,
             name,
         );
@@ -183,7 +205,7 @@ pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> 
     let exe = env::current_exe()?;
     let bin = exe.parent().context("cli has no parent directory")?;
     // Distribution: bin/nsh + runtime/.
-    let dist = bin.join("../runtime").join(platform.dir()).join(name);
+    let dist = bin.join("../runtime").join(platform.dir()).join(&file_name);
     if dist.exists() {
         return Ok(dist);
     }
@@ -217,7 +239,7 @@ pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> 
         built.push(triple);
     }
     built.push(profile);
-    built.push(name);
+    built.push(file_name);
     existing(built, platform, name)
 }
 

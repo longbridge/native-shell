@@ -45,7 +45,26 @@ const BUILDS: &[(&str, &str, &str, &str)] = &[
         "linux-arm64",
         "sha512-Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==",
     ),
+    (
+        "windows",
+        "x86_64",
+        "win32-x64",
+        "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==",
+    ),
+    (
+        "windows",
+        "aarch64",
+        "win32-arm64",
+        "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==",
+    ),
 ];
+
+/// The compiler's file in the package (`tsc.exe` on Windows).
+const TSC: &str = if cfg!(windows) {
+    "package/lib/tsc.exe"
+} else {
+    "package/lib/tsc"
+};
 
 /// Type checks the app of `entry` (its directory's `tsconfig.json`, with
 /// the `.nsh/types` the command line wrote before) and fails on errors.
@@ -92,7 +111,7 @@ fn typescript() -> anyhow::Result<PathBuf> {
         );
     };
     let dir = cache()?.join(format!("typescript-{TYPESCRIPT}-{name}"));
-    let tsc = dir.join("package/lib/tsc");
+    let tsc = dir.join(TSC);
     if tsc.exists() {
         return Ok(tsc);
     }
@@ -117,8 +136,8 @@ fn typescript() -> anyhow::Result<PathBuf> {
     tar::Archive::new(flate2::read::GzDecoder::new(tarball.as_slice()))
         .unpack(&partial)
         .context("unpack TypeScript")?;
-    if !partial.join("package/lib/tsc").exists() {
-        bail!("{url} has no package/lib/tsc");
+    if !partial.join(TSC).exists() {
+        bail!("{url} has no {TSC}");
     }
     if std::fs::rename(&partial, &dir).is_err() {
         // Another run installed it meanwhile.
@@ -145,7 +164,9 @@ fn cache() -> anyhow::Result<PathBuf> {
         return Ok(PathBuf::from(dir));
     }
     let home = env::var_os("HOME").map(PathBuf::from);
-    let base = if cfg!(target_os = "macos") {
+    let base = if cfg!(windows) {
+        env::var_os("LOCALAPPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
         home.map(|h| h.join("Library/Caches"))
     } else {
         env::var_os("XDG_CACHE_HOME")

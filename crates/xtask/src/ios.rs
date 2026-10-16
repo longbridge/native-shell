@@ -211,15 +211,25 @@ fn make_framework(
     fs::write(resources.join("Info.plist"), info_plist(slice))?;
     if slice.versioned {
         let link = |target: &str, name: &str| -> anyhow::Result<()> {
-            std::os::unix::fs::symlink(target, framework.join(name))
-                .with_context(|| format!("link {name}"))
+            symlink(target, &framework.join(name)).with_context(|| format!("link {name}"))
         };
-        std::os::unix::fs::symlink("A", framework.join("Versions/Current"))?;
+        link("A", "Versions/Current")?;
         link("Versions/Current/NativeShell", "NativeShell")?;
         link("Versions/Current/Modules", "Modules")?;
         link("Versions/Current/Resources", "Resources")?;
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn symlink(target: &str, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+/// Frameworks are built with Xcode, on macOS only.
+#[cfg(not(unix))]
+fn symlink(_target: &str, _link: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
 }
 
 fn info_plist(slice: &Slice) -> String {

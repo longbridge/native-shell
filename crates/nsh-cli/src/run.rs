@@ -25,16 +25,21 @@ pub(crate) enum Target {
     Linux,
     /// The macOS (AppKit) development host, in a window on this machine.
     Macos,
+    /// The Windows development host, in a window on this machine.
+    Windows,
 }
 
 impl Target {
     /// The default: the host that runs on this machine (Mac Catalyst on
-    /// macOS, the GTK host on Linux; Android elsewhere).
+    /// macOS, the GTK host on Linux, the Win32 host on Windows; Android
+    /// elsewhere).
     pub(crate) fn native() -> Target {
         if cfg!(target_os = "macos") {
             Target::Catalyst
         } else if cfg!(target_os = "linux") {
             Target::Linux
+        } else if cfg!(windows) {
+            Target::Windows
         } else {
             Target::Android
         }
@@ -45,6 +50,7 @@ impl Target {
             Target::Catalyst => crate::runtime::Platform::MacCatalyst,
             Target::Linux => crate::runtime::Platform::Linux,
             Target::Macos => crate::runtime::Platform::MacOs,
+            Target::Windows => crate::runtime::Platform::Windows,
             Target::Ios | Target::Android => crate::runtime::Platform::IphoneSimulator,
         }
     }
@@ -88,7 +94,9 @@ pub(crate) fn run(
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
             Some(udid)
         }
-        Target::Catalyst | Target::Android | Target::Linux | Target::Macos => None,
+        Target::Catalyst | Target::Android | Target::Linux | Target::Macos | Target::Windows => {
+            None
+        }
     };
     let session = DevSession::start(entry, port, release)?;
     session.print_urls();
@@ -134,6 +142,11 @@ pub(crate) fn run(
                 .args(["-ApplePersistenceIgnoreState", "YES"]);
             run_local(&session, &mut command, "the macOS host")
         }
+        Target::Windows => {
+            let mut command = Command::new(&host);
+            command.args(&args);
+            run_local(&session, &mut command, "the Windows host")
+        }
         Target::Ios => {
             let app = package_ios(&work, &host)?;
             let udid = udid.expect("the simulator is picked before the session");
@@ -161,9 +174,20 @@ pub(crate) fn run(
 /// Runs `command`, a host in a window on this machine, until its window
 /// closes or the session ends; `what` names it when it fails.
 fn run_local(session: &DevSession, command: &mut Command, what: &str) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        // Out of the console's Ctrl-C: this command stops the host itself,
+        // so that a stop is not taken for the host failing.
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP);
+    }
     // Its own output is kept for when it fails.
     let (mut child, output) = ui::quiet(command)
         .with_context(|| format!("launch {}", command.get_program().to_string_lossy()))?;
+    // Windows ends a child with its parent only in a job: the host goes
+    // with this command however it ends (closed console, killed).
+    #[cfg(windows)]
+    let _job = KillOnClose::assign(&child);
     // A host left running would open a second window next time: Ctrl-C and
     // SIGTERM close it too.
     let stoppable = ui::Stoppable::new();
@@ -179,6 +203,58 @@ fn run_local(session: &DevSession, command: &mut Command, what: &str) -> anyhow:
     let _ = child.wait();
     drop(stoppable);
     result
+}
+
+/// A job object that ends its processes when it closes: when dropped, or
+/// with this process, however it ends.
+#[cfg(windows)]
+pub(crate) struct KillOnClose(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl KillOnClose {
+    /// Puts `child` in a new such job; `None` (the child then outlives a
+    /// killed parent, as without it) if Windows refuses.
+    pub(crate) fn assign(child: &std::process::Child) -> Option<KillOnClose> {
+        use std::os::windows::io::AsRawHandle as _;
+
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+
+        // SAFETY: an unnamed job with default security; the handle is
+        // owned by the returned value, which closes it.
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            return None;
+        }
+        let job = KillOnClose(job);
+        // SAFETY: zeroed is a valid "no limits" value of this plain C
+        // structure.
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `info` is the structure the information class names, with
+        // its size; `child`'s handle is open while it is borrowed.
+        let ok = unsafe {
+            SetInformationJobObject(
+                job.0,
+                JobObjectExtendedLimitInformation,
+                (&raw const info).cast(),
+                std::mem::size_of_val(&info) as u32,
+            ) != 0
+                && AssignProcessToJobObject(job.0, child.as_raw_handle()) != 0
+        };
+        ok.then_some(job)
+    }
+}
+
+#[cfg(windows)]
+impl Drop for KillOnClose {
+    fn drop(&mut self) {
+        // SAFETY: the job handle this value owns, closed once.
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
+    }
 }
 
 /// Starts a dev session, builds and installs the Android dev host (when
@@ -443,7 +519,7 @@ fn info_plist(target: Target) -> String {
              <key>LSMinimumSystemVersion</key><string>11.0</string>"
         }
         // A launch screen entry opts into the full screen (no letterboxing).
-        Target::Ios | Target::Android | Target::Linux | Target::Macos => {
+        Target::Ios | Target::Android | Target::Linux | Target::Macos | Target::Windows => {
             "<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>\n    \
              <key>MinimumOSVersion</key><string>15.0</string>\n    \
              <key>CFBundleSupportedPlatforms</key><array><string>iPhoneSimulator</string></array>\n    \

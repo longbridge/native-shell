@@ -1,7 +1,8 @@
 //! `nsh package`: builds an installable app from the prebuilt runtime, the
 //! app bundle and its assets. Needs no Rust; iOS packaging uses Xcode's
 //! command line tools (`codesign`, and `actool` for icons), macOS packaging
-//! `codesign` and `sips`, Linux packaging `tar`.
+//! `codesign` and `sips`, Linux packaging `tar`; Windows packaging needs
+//! nothing (`windows.rs`).
 
 use std::{
     fs,
@@ -31,6 +32,9 @@ pub(crate) enum PackageTarget {
     Linux,
     /// macOS (AppKit): an ad hoc signed `.app`.
     Macos,
+    /// Windows: a directory with the runner as `<name>.exe` (the app's
+    /// icon embedded) and the bundle, and the same as a `.zip`.
+    Windows,
 }
 
 /// App metadata: `nsh.json` next to the entry, overridden by flags.
@@ -78,7 +82,7 @@ pub(crate) struct PackageOptions<'a> {
     /// Android release keystore, key alias and password.
     pub(crate) keystore: Option<(&'a Path, &'a str, &'a str)>,
     /// Install and launch in the simulator or on the device afterwards
-    /// (Linux, macOS: launch it).
+    /// (Linux, macOS, Windows: launch it).
     pub(crate) run: bool,
 }
 
@@ -141,6 +145,9 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         PackageTarget::Macos => {
             return package_macos(&options, config, &name, &id, &executable, &built);
         }
+        PackageTarget::Windows => {
+            return crate::windows::package(&options, config, &name, &id, &built);
+        }
     };
     let runner = runtime::file(platform, true)?;
 
@@ -170,7 +177,8 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         PackageTarget::IosSimulator
         | PackageTarget::Android
         | PackageTarget::Linux
-        | PackageTarget::Macos => "iphonesimulator",
+        | PackageTarget::Macos
+        | PackageTarget::Windows => "iphonesimulator",
     };
     let mut info = info_plist(&name, &id, &executable, config, sdk);
     if let Some(icon) = &config.icon {
@@ -193,7 +201,10 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
                 step.done(format!("launched {id} in the simulator"));
             }
         }
-        PackageTarget::Android | PackageTarget::Linux | PackageTarget::Macos => {
+        PackageTarget::Android
+        | PackageTarget::Linux
+        | PackageTarget::Macos
+        | PackageTarget::Windows => {
             unreachable!("packaged above")
         }
         PackageTarget::Ios => {

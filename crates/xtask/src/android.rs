@@ -32,7 +32,14 @@ impl Sdk {
             .iter()
             .find_map(env::var_os)
             .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Android/sdk")))
+            // Android Studio's default place.
+            .or_else(|| {
+                if cfg!(windows) {
+                    env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Android/Sdk"))
+                } else {
+                    env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Android/sdk"))
+                }
+            })
             .filter(|p| p.exists())
             .context("Android SDK not found: set ANDROID_HOME")?;
         let ndk = match env::var_os("ANDROID_NDK_HOME") {
@@ -58,6 +65,8 @@ impl Sdk {
         // The NDK's "darwin-x86_64" toolchain is universal.
         let host = if cfg!(target_os = "macos") {
             "darwin-x86_64"
+        } else if cfg!(windows) {
+            "windows-x86_64"
         } else {
             "linux-x86_64"
         };
@@ -125,7 +134,9 @@ pub(crate) fn build(release: bool, dev: bool, abis: &[String]) -> anyhow::Result
 fn ndk_cargo(sdk: &Sdk, triple: &str) -> Command {
     let toolchain = sdk.toolchain();
     let bin = toolchain.join("bin");
-    let clang = bin.join(format!("{triple}{MIN_SDK}-clang"));
+    // On Windows the NDK's per-target compilers are batch files.
+    let script = if cfg!(windows) { ".cmd" } else { "" };
+    let clang = bin.join(format!("{triple}{MIN_SDK}-clang{script}"));
     let env_triple = triple.replace('-', "_");
     let mut cmd = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
     cmd.current_dir(root())
@@ -220,12 +231,15 @@ fn java(sdk: &Sdk, out: &Path) -> anyhow::Result<()> {
     let mut class_files = Vec::new();
     collect_ext(&classes, "class", &mut class_files)?;
     term::run(
-        Command::new(sdk.build_tools.join("d8"))
-            .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
-            .arg(sdk.android_jar())
-            .arg("--output")
-            .arg(out)
-            .args(&class_files),
+        Command::new(
+            sdk.build_tools
+                .join(if cfg!(windows) { "d8.bat" } else { "d8" }),
+        )
+        .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
+        .arg(sdk.android_jar())
+        .arg("--output")
+        .arg(out)
+        .args(&class_files),
     )?;
     // `classes.jar` for the AAR (Gradle projects dex it themselves).
     let jar = out.join("classes.jar");
