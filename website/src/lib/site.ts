@@ -4,7 +4,7 @@ export const SITE_URL = 'https://native-shell.com';
 export const SITE_TITLE = 'native-shell';
 
 export const SITE_DESCRIPTION =
-  'Native apps in TSX: a React Native–like framework whose runtime, reactive graph and components are Rust, laid out by Taffy and rendered with real UIKit and Android views.';
+  'native-shell: AI-generated UI, native in your app. iOS and Android apps load TSX modules at run time — signed, sandboxed by the host, and rendered with real UIKit and Android views.';
 
 export const REPO_URL = 'https://github.com/longbridge/native-shell';
 

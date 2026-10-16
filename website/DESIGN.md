@@ -6,14 +6,18 @@ code themes — adapted for a mobile framework.
 
 ## Principles
 
-1. **Say what it is, immediately.** The headline states the product in plain
-   words: native apps in TSX, rendered by real native views. Architecture
-   comes further down.
-2. **Show the real thing.** The home page and documentation run real demo
-   apps (`demos/*.tsx`) in a phone frame through the web player, and the code
-   sample is the source of the running demo — never invented code. Until the
-   player exists the source is shown alone; the site never shows a mock
-   screenshot as if it were the app.
+1. **Say what it is, immediately.** The headline states the purpose in plain
+   words: AI-generated UI, native in your app. nsh is a layer inside native
+   apps (AI-generated and dynamically delivered UI first, plugins second,
+   standalone apps third), never presented as a way to write whole apps, and
+   never compared with other frameworks outside the comparison page. Architecture comes further down.
+2. **Show the real thing, in its real place.** The hero is a native host app
+   (drawn as such: status bar, navigation bar, chat, input) whose assistant
+   answers with a module; only the dashed, tagged region is nsh, and it runs
+   the real `demos/home-module.tsx` through the web player. The legend says
+   which part is the host and that the module is a web preview. Documentation
+   pages run their demos in a phone frame; the code shown is always the
+   source of what runs.
 3. **Specifics over adjectives.** Every capability card names something a
    reader can check in the repository: a crate, an element, a module, a
    command (`Taffy`, `<list>`, `nsh/animated`, `nsh publish`). Claims track
@@ -65,6 +69,15 @@ Chinese); `ui-monospace` / SF Mono for code. No webfonts. Base 15px.
   860px the section links move behind the burger.
 - Grid columns use `minmax(0, 1fr)`; check phone widths for horizontal
   overflow (the page's `scrollWidth` must equal the viewport).
+
+## The hero story
+
+The hero plays once on load (Replay restarts it): the question rises, the
+assistant types, a pending card ticks Compiled → Signature verified →
+Sandboxed, then the live module fades in once both the story (≥3.2s) and the
+frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
+with reduced motion the final state shows at once. The host app is always
+light, like the module, regardless of the page theme.
 
 ## Devices and demos
 

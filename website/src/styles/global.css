@@ -657,6 +657,13 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
   hr { margin: 2.5rem 0; border: 0; border-top: 1px solid var(--border); }
   img { max-width: 100%; border-radius: var(--radius-card); }
 
+  /* Diagrams (public/diagrams) come as a light and a dark file, as on
+     gpui-kit.com: an SVG behind <img> cannot follow the page's theme class. */
+  img.diagram { display: block; width: 100%; margin-block: 1.75rem; border-radius: 0; }
+  img.diagram-dark { display: none; }
+  :where(.dark) & img.diagram-light { display: none; }
+  :where(.dark) & img.diagram-dark { display: block; }
+
   :not(pre) > code {
     padding: 0.1em 0.35em;
     border: 1px solid var(--border);

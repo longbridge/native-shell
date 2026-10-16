@@ -13,7 +13,7 @@ export interface Props {
 
 const { title, description = SITE_DESCRIPTION, lang = 'en', alternates, robots } = Astro.props;
 
-const pageTitle = !title || title === SITE_TITLE ? `${SITE_TITLE} — Native apps in TSX` : `${title} · ${SITE_TITLE}`;
+const pageTitle = !title || title === SITE_TITLE ? `${SITE_TITLE} — AI-generated UI, native in your app` : `${title} · ${SITE_TITLE}`;
 const canonical = new URL(Astro.url.pathname.replace(/\/+$/, '') || '/', SITE_URL).href;
 const abs = (route: string) => new URL(`${BASE.replace(/\/$/, '')}${route}`, SITE_URL).href;
 ---

@@ -19,6 +19,11 @@ export function plainMarkdown(page: Page): string {
   const file = join(ROOT, page.filePath);
   let body = bodyWithoutFrontmatter(readFileSync(file, 'utf8'));
   body = body.replace(/^#\s+.+\r?\n+/, '');
+  // A diagram's light / dark pair becomes one image at an absolute URL.
+  body = body.replace(
+    /<img class="diagram diagram-light" src="\/([^"]+)" alt="([^"]*)">\r?\n<img class="diagram diagram-dark"[^>]*>/g,
+    (_, src: string, alt: string) => `![${alt}](${SITE_URL}${BASE}${src})`,
+  );
   body = body.replace(/\]\(([^)\s]+?)\)/g, (whole, link: string) => {
     if (/^[a-z][a-z\d+.-]*:/i.test(link) || link.startsWith('#') || link.startsWith('/') || link.startsWith('//')) return whole;
     const at = link.search(/[?#]/);

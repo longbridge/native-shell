@@ -81,6 +81,20 @@ test('internal links reach a built page and anchor', () => {
   expect(broken).toEqual([]);
 });
 
+test('images in pages reach a built file below the base', () => {
+  const broken: string[] = [];
+  for (const page of pages) {
+    const html = readFileSync(page, 'utf8');
+    for (const [, raw] of html.matchAll(/<img\s[^>]*?src="([^"]*)"/g)) {
+      const src = decode(raw);
+      if (/^[a-z][a-z\d+.-]*:/i.test(src) || src.startsWith('//')) continue;
+      const path = src.split(/[?#]/)[0];
+      if (!path.startsWith(base) || !resolveFile(path.slice(base.length - 1))) broken.push(`${page.slice(dist.length)} → ${src}`);
+    }
+  }
+  expect(broken).toEqual([]);
+});
+
 test('every content page has its Markdown twin', () => {
   const missing = pages
     .map((page) => page.slice(dist.length).replace(/\/index\.html$/, ''))
