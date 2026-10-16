@@ -1,10 +1,10 @@
-//! The Photos demo on a headless engine: its rows render, more load at the
-//! end, a pull refreshes.
+//! The Photos demo on a headless engine: its rows render, the list feeds
+//! the header's native value, more load at the end, a pull refreshes.
 
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
-use nsh_core::{EventKind, EventPayload, MountBatch};
+use nsh_core::{EventKind, EventPayload, MountBatch, MountItem};
 use nsh_engine::Engine;
 
 use crate::common::shows;
@@ -42,6 +42,22 @@ fn photos_load_more_and_refresh() {
     ] {
         assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
     }
+
+    // The list feeds the header's fade natively.
+    let list = screen
+        .scroll_of(screen.find("Photo #1").unwrap())
+        .expect("a list");
+    assert!(
+        matches!(
+            screen.scrolls.get(&list),
+            Some(MountItem::ScrollConfig {
+                scroll_value: Some(_),
+                ..
+            })
+        ),
+        "{:?}",
+        screen.scrolls.get(&list)
+    );
 
     // The end of the list loads 200 more.
     dispatch_above(&engine, &rx, &mut screen, "Photo #1", EventKind::EndReached);

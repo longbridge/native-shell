@@ -1,11 +1,9 @@
-//! Photos: a long recycled list of rows with images, pull to refresh and
-//! loading more at the end (as the TSX gallery's `demos/Photos.tsx`).
+//! Photos: a long recycled list of rows with images, pull to refresh,
+//! loading more at the end, and a header that fades and lifts as the list
+//! scrolls, natively (as the TSX gallery's `demos/Photos.tsx`).
 //!
 //! Not ported: the header's logo (Rust components have no asset imports:
-//! `logo@2x.png` is bundled only when JS imports it) and its fade and lift
-//! as the list scrolls (a [`VirtualList`] has no `scroll_value`). Loading
-//! more is the port's `on_end_reached`, but the engine does not deliver
-//! the core's list events to Rust components yet.
+//! `logo@2x.png` is bundled only when JS imports it).
 
 use std::{rc::Rc, time::Duration};
 
@@ -68,6 +66,9 @@ pub(crate) struct Photos {
     refreshing: bool,
     /// The refresh in progress (dropping it cancels it).
     refresh: Option<Task<()>>,
+    /// The list's scroll offset, fed natively: the header fades without a
+    /// render per frame.
+    scroll_y: Option<NativeValue>,
 }
 
 impl Component for Photos {
@@ -75,12 +76,14 @@ impl Component for Photos {
     type Props = ();
     type Event = NoEvent;
 
-    fn setup(&mut self, _: &(), _: &mut Context<'_, Self>) {
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
         self.photos = Rc::new(make_photos(1, 1000).collect());
+        self.scroll_y = Some(cx.native_value(0.0));
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let photos = self.photos.clone();
+        let scroll_y = self.scroll_y.as_ref().expect("set up");
         let refresh = cx.listener(|this: &mut Self, _, cx| {
             this.refreshing = true;
             cx.notify();
@@ -104,6 +107,8 @@ impl Component for Photos {
                     .flex_row()
                     .items_center()
                     .gap(px(10.0))
+                    .bind_opacity(&scroll_y.interpolate(&[0.0, 120.0], &[1.0, 0.35]))
+                    .bind_translate_y(&scroll_y.interpolate(&[0.0, 120.0], &[0.0, -6.0]))
                     .child(
                         text(format!("{} photos", self.photos.len()))
                             .text_size(px(22.0))
@@ -116,6 +121,7 @@ impl Component for Photos {
                     .estimated_item_size(64.0)
                     .flex_1()
                     .bg(rgb(0xffffff))
+                    .scroll_value(scroll_y)
                     .refreshing(self.refreshing)
                     .on_refresh(refresh)
                     .on_end_reached(load_more),

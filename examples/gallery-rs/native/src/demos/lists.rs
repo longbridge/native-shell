@@ -1,20 +1,11 @@
-//! Lists: columns, sections, an inverted chat and horizontal lists, each
-//! under a tab (as the TSX gallery's `demos/Lists.tsx`).
-//!
-//! Not ported, for want of the API on [`VirtualList`]: the grid's header
-//! and footer scrolling with the rows (`ListHeaderComponent` /
-//! `ListFooterComponent`: the header sits above the list, the footer is
-//! left out) and its visible range (`viewabilityConfig` /
-//! `onViewableItemsChanged`), sticky section headers
-//! (`stickyHeaderIndices`), the chat's `keyboardDismissMode` and
-//! `onEndReachedThreshold`. The empty list and the separators are plain
-//! Rust (a text instead of the list, a border on every row but the first).
-//! The chat's `on_end_reached` is the port's, but the engine does not
-//! deliver the core's list events to Rust components yet.
+//! Lists: columns with a header, a footer and the visible rows, sticky
+//! section headers, an inverted chat, horizontal lists and an empty list
+//! with separators, each under a tab (as the TSX gallery's
+//! `demos/Lists.tsx`).
 
 use std::{rc::Rc, time::Duration};
 
-use nsh_core::ui::{Text, View, prelude::*};
+use nsh_core::ui::{Text, prelude::*};
 use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::ui::colors;
@@ -32,10 +23,10 @@ fn link(label: &'static str, on_press: Listener<()>) -> Text {
     text(label).text_color(colors::accent()).on_press(on_press)
 }
 
-/// Three columns, a header with jumps, padding and gaps.
+/// Three columns, a header and a footer, padding and gaps, viewability.
 #[derive(Debug, Default)]
 struct Grid {
-    /// The visible rows (always empty: a [`VirtualList`] cannot report them).
+    /// The visible rows.
     visible: String,
     list: Option<ElementRef>,
 }
@@ -51,60 +42,72 @@ impl Component for Grid {
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let list = self.list.clone().expect("set up");
-        view()
-            .flex_1()
+        let header = view()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .pb_1()
             .child(
+                text(format!("Visible {}", self.visible))
+                    .flex_1()
+                    .text_color(colors::muted()),
+            )
+            .child(link(
+                "Item 60",
+                cx.listener(|this: &mut Self, _, _| {
+                    if let Some(list) = &this.list {
+                        list.scroll_to_index(60, 0.5, 0.0, true);
+                    }
+                }),
+            ))
+            .child(link(
+                "End",
+                cx.listener(|this: &mut Self, _, _| {
+                    if let Some(list) = &this.list {
+                        list.scroll_to_end(true);
+                    }
+                }),
+            ));
+        view().flex_1().child(
+            virtual_list(90, |id, _| {
                 view()
-                    .flex_row()
+                    .h(px(70.0 + (id % 4) as f32 * 20.0))
+                    .rounded(px(10.0))
+                    .bg(rgb(TINTS[id % TINTS.len()]))
                     .items_center()
-                    .gap_3()
-                    .px_3()
-                    .pt_3()
-                    .pb_1()
+                    .justify_center()
                     .child(
-                        text(format!("Visible {}", self.visible))
-                            .flex_1()
-                            .text_color(colors::muted()),
+                        text(id.to_string())
+                            .text_size(px(17.0))
+                            .font_weight(FontWeight::SEMIBOLD),
                     )
-                    .child(link(
-                        "Item 60",
-                        cx.listener(|this: &mut Self, _, _| {
-                            if let Some(list) = &this.list {
-                                list.scroll_to_index(60, 0.5, 0.0, true);
-                            }
-                        }),
-                    ))
-                    .child(link(
-                        "End",
-                        cx.listener(|this: &mut Self, _, _| {
-                            if let Some(list) = &this.list {
-                                list.scroll_to_end(true);
-                            }
-                        }),
-                    )),
+            })
+            .columns(3)
+            .estimated_item_size(90.0)
+            .content_padding(12.0)
+            .row_gap(8.0)
+            .column_gap(8.0)
+            .viewability(Viewability {
+                item_visible_percent: Some(50.0),
+                ..Viewability::default()
+            })
+            .on_viewable_items_changed(cx.listener(|this: &mut Self, rows: &ViewableItems, cx| {
+                this.visible = match rows.viewable {
+                    Some((first, last)) => format!("{first}–{last}"),
+                    None => String::new(),
+                };
+                cx.notify();
+            }))
+            .header(header)
+            .footer(
+                text("— the end —")
+                    .text_center()
+                    .text_color(colors::muted())
+                    .p_3(),
             )
-            .child(
-                virtual_list(90, |id, _| {
-                    view()
-                        .h(px(70.0 + (id % 4) as f32 * 20.0))
-                        .rounded(px(10.0))
-                        .bg(rgb(TINTS[id % TINTS.len()]))
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            text(id.to_string())
-                                .text_size(px(17.0))
-                                .font_weight(FontWeight::SEMIBOLD),
-                        )
-                })
-                .columns(3)
-                .estimated_item_size(90.0)
-                .content_padding(12.0)
-                .row_gap(8.0)
-                .column_gap(8.0)
-                .flex_1()
-                .element_ref(&list),
-            )
+            .flex_1()
+            .element_ref(&list),
+        )
     }
 }
 
@@ -150,6 +153,10 @@ impl Component for Contacts {
 
     fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let rows = self.rows.clone();
+        // The headers' rows stick.
+        let headers: Vec<usize> = (0..rows.len())
+            .filter(|&i| matches!(rows[i], ContactRow::Header(_)))
+            .collect();
         view().flex_1().child(
             virtual_list(rows.len(), move |i, _| match &rows[i] {
                 ContactRow::Header(letter) => view().bg(separator()).px_4().py(px(6.0)).child(
@@ -163,6 +170,7 @@ impl Component for Contacts {
                     .when(!last, |v| v.border_b_1().border_color(separator()))
                     .child(text(*name).text_size(px(17.0))),
             })
+            .sticky_header_indices(headers)
             .estimated_item_size(44.0)
             .flex_1()
             .bg(colors::surface()),
@@ -262,7 +270,9 @@ impl Component for Chat {
         .content_padding(12.0)
         .row_gap(6.0)
         .flex_1()
-        .on_end_reached(load_older);
+        .keyboard_dismiss_mode(KeyboardDismissMode::Interactive)
+        .on_end_reached(load_older)
+        .end_reached_threshold(0.5);
         let bar = view()
             .flex_row()
             .gap_2()
@@ -359,33 +369,21 @@ impl Component for More {
         .row_gap(10.0)
         .h(px(120.0));
         let items = self.items.clone();
-        let box_style = |v: View| {
-            v.h(px(180.0))
-                .mx_3()
-                .rounded(px(10.0))
-                .bg(colors::surface())
-        };
-        // `ListEmptyComponent`: the text instead of the list while it is
-        // empty; `ItemSeparatorComponent`: a border above every row but
-        // the first.
-        let list = if items.is_empty() {
-            box_style(view()).child(
-                text("Nothing here yet: tap Add")
-                    .p_6()
-                    .text_center()
-                    .text_color(colors::muted()),
-            )
-        } else {
-            box_style(view()).overflow_hidden().child(
-                virtual_list(items.len(), move |i, at| {
-                    view()
-                        .when(!at.is_first(), |v| v.border_t_1().border_color(separator()))
-                        .child(text(format!("Item {}", items[i])).p_3())
-                })
-                .estimated_item_size(44.0)
-                .flex_1(),
-            )
-        };
+        let list = virtual_list(items.len(), move |i, _| {
+            text(format!("Item {}", items[i])).p_3()
+        })
+        .estimated_item_size(44.0)
+        .empty(
+            text("Nothing here yet: tap Add")
+                .p_6()
+                .text_center()
+                .text_color(colors::muted()),
+        )
+        .separator(|| view().h(px(1.0)).bg(separator()))
+        .h(px(180.0))
+        .mx_3()
+        .rounded(px(10.0))
+        .bg(colors::surface());
         view().flex_1().child(
             scroll()
                 .flex_1()

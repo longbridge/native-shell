@@ -37,6 +37,11 @@ pub struct Screen {
     pub gestures: std::collections::HashMap<u32, GestureValues>,
     /// The commands sent, in order.
     pub commands: Vec<(u32, Command)>,
+    /// Scroll views' and lists' settings, as last sent.
+    pub scrolls: std::collections::HashMap<u32, MountItem>,
+    pub behaviors: std::collections::HashMap<u32, nsh_core::ScrollBehavior>,
+    /// Lists with sticky cells.
+    pub sticky: std::collections::HashSet<u32>,
 }
 
 impl Screen {
@@ -70,6 +75,15 @@ impl Screen {
                 MountItem::Command { id, command } => {
                     self.commands.push((*id, command.clone()));
                 }
+                MountItem::ScrollConfig { id, .. } => {
+                    self.scrolls.insert(*id, item.clone());
+                }
+                MountItem::ScrollBehavior { id, behavior } => {
+                    self.behaviors.insert(*id, (**behavior).clone());
+                }
+                MountItem::StickyCells { id, cells } if !cells.is_empty() => {
+                    self.sticky.insert(*id);
+                }
                 MountItem::Delete { id } => {
                     self.texts.retain(|t| t.0 != *id);
                     self.blocks.retain(|t| t.0 != *id);
@@ -95,6 +109,16 @@ impl Screen {
     /// The pressable node around text `label` (the text or a parent).
     pub fn find(&self, label: &str) -> Option<u32> {
         self.texts.iter().find(|t| t.1 == label).map(|t| t.0)
+    }
+
+    /// The scroll view or list `id` is in (its nearest one).
+    pub fn scroll_of(&self, mut id: u32) -> Option<u32> {
+        loop {
+            id = *self.parents.get(&id)?;
+            if self.scrolls.contains_key(&id) || self.behaviors.contains_key(&id) {
+                return Some(id);
+            }
+        }
     }
 
     /// The text block showing `text`.

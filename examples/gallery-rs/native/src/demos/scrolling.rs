@@ -1,21 +1,11 @@
-//! Scrolling: paging, snapping, zooming, scroll events, prepending and
-//! taps with the keyboard up (as the TSX gallery's `demos/Scrolling.tsx`).
-//!
-//! Not ported, for want of the API: `scrollEnabled`,
-//! `disableIntervalMomentum` and `bouncesZoom` (no setters on [`Scroll`];
-//! their toggles are left out), snapping on a recycled list (the cards are
-//! a scroll view: [`VirtualList`] has no snap setters), the zoom scale of
-//! `onScroll` ([`ScrollEvent`] has none: the label shows the zoom the demo
-//! asked for), tabular figures and continuous corners (no typed styles for
-//! `fontVariant` / `borderCurve`). The `on_scroll` and `on_layout`
-//! listeners are the port's, but the engine does not deliver them to Rust
-//! components yet (throttled scroll events and the core's own events only
-//! go to JS), so the offset label and the pager's width wait for that.
+//! Scrolling: paging, snapping on a recycled list, zooming, scroll events,
+//! prepending and taps with the keyboard up (as the TSX gallery's
+//! `demos/Scrolling.tsx`).
 
 use std::rc::Rc;
 
 use nsh_core::{
-    Checked, KeyboardTaps, Rect, SnapAlignment,
+    Checked, Rect,
     ui::{AnyElement, View, prelude::*},
 };
 
@@ -220,10 +210,12 @@ impl Component for Pager {
     }
 }
 
-/// Cards that snap.
+/// Cards that snap to the center; a fling can pass several unless limited
+/// to one.
 #[derive(Debug, Default)]
 struct Cards {
     align: Option<SnapAlignment>,
+    one_step: bool,
 }
 
 impl Component for Cards {
@@ -235,7 +227,7 @@ impl Component for Cards {
         const CARD: f32 = 220.0;
         const GAP: f32 = 12.0;
         let align = self.align.unwrap_or(SnapAlignment::Center);
-        let cards = (0..20).map(|i| {
+        let cards = virtual_list(20, |i, _| {
             view()
                 .w(px(CARD))
                 .h(px(120.0))
@@ -249,19 +241,20 @@ impl Component for Cards {
                         .text_size(px(22.0))
                         .font_weight(FontWeight::BOLD),
                 )
-        });
+        })
+        .horizontal()
+        .estimated_item_size(CARD + GAP)
+        .snap_interval(CARD + GAP)
+        .snap_alignment(align)
+        // `decelerationRate="fast"`.
+        .deceleration(0.99)
+        .disable_interval_momentum(self.one_step)
+        .shows_indicator(false)
+        .h(px(120.0))
+        .row_gap(GAP);
         view()
             .gap(px(10.0))
-            .child(
-                scroll()
-                    .horizontal()
-                    .snap_interval(CARD + GAP)
-                    .snap_alignment(align)
-                    .deceleration(0.99)
-                    .shows_indicator(false)
-                    .h(px(120.0))
-                    .child(view().flex_row().gap(px(GAP)).children(cards)),
-            )
+            .child(cards)
             .child(choice(
                 &[
                     (SnapAlignment::Start, "start"),
@@ -274,16 +267,25 @@ impl Component for Cards {
                     cx.notify();
                 }),
             ))
+            .child(toggle(
+                "One card per fling",
+                self.one_step,
+                cx.listener(|this: &mut Self, on: &bool, cx| {
+                    this.one_step = *on;
+                    cx.notify();
+                }),
+            ))
     }
 }
 
-/// `onScroll` (throttled), drag and momentum events, bounces, content
-/// insets.
+/// `onScroll` (throttled), drag and momentum events, `scrollEnabled`,
+/// bounces, content insets.
 #[derive(Debug)]
 struct Events {
     offset: Option<ScrollEvent>,
     /// The latest drag and momentum events, newest first.
     log: Vec<String>,
+    enabled: bool,
     bounces: bool,
     inset: bool,
     /// Milliseconds between `onScroll` events.
@@ -295,6 +297,7 @@ impl Default for Events {
         Self {
             offset: None,
             log: Vec::new(),
+            enabled: true,
             bounces: true,
             inset: false,
             throttle: 100,
@@ -337,6 +340,7 @@ impl Component for Events {
                     .h(px(180.0))
                     .rounded(px(10.0))
                     .bg(rgb(0xf6f8fa))
+                    .scroll_enabled(self.enabled)
                     .bounces(self.bounces)
                     .when(self.inset, |s| {
                         s.content_inset(EdgeInsets {
@@ -356,7 +360,7 @@ impl Component for Events {
                     .on_momentum_scroll_end(note("momentum end"))
                     .child(view().p_3().gap(px(6.0)).children(lines)),
             )
-            .child(text(offset))
+            .child(text(offset).tabular_nums())
             .child(text(log).text_color(colors::muted()).text_size(px(13.0)))
             .child(
                 view()
@@ -374,6 +378,14 @@ impl Component for Events {
                     ))
                     .child(text("ms")),
             )
+            .child(toggle(
+                "Scroll enabled",
+                self.enabled,
+                cx.listener(|this: &mut Self, on: &bool, cx| {
+                    this.enabled = *on;
+                    cx.notify();
+                }),
+            ))
             .child(toggle(
                 "Bounces",
                 self.bounces,
@@ -397,8 +409,9 @@ impl Component for Events {
 #[derive(Debug)]
 struct Zoom {
     scroll: Option<ElementRef>,
-    /// The zoom the demo last asked for (pinches are not reported).
+    /// The zoom, as the scroll view reports it.
     scale: f32,
+    bounces: bool,
 }
 
 impl Default for Zoom {
@@ -406,18 +419,17 @@ impl Default for Zoom {
         Self {
             scroll: None,
             scale: 1.0,
+            bounces: true,
         }
     }
 }
 
 impl Zoom {
     /// Zooms to `scale`, around `center` (content points) or the middle.
-    fn zoom_to(&mut self, scale: f32, center: Option<(f32, f32)>, cx: &mut Context<'_, Self>) {
+    fn zoom_to(&self, scale: f32, center: Option<(f32, f32)>) {
         if let Some(scroll) = &self.scroll {
             scroll.zoom_to(scale, center, true);
         }
-        self.scale = scale;
-        cx.notify();
     }
 }
 
@@ -437,15 +449,16 @@ impl Component for Zoom {
                 .w(px(74.0))
                 .h(px(50.0))
                 .rounded(px(8.0))
+                .border_curve(BorderCurve::Continuous)
                 .bg(rgb(PALETTE[i % PALETTE.len()]))
                 .items_center()
                 .justify_center()
-                .on_press(cx.listener(move |this: &mut Self, _, cx| {
+                .on_press(cx.listener(move |this: &mut Self, _, _| {
                     // The tile's middle, in the content's (unzoomed) points.
                     let x = 6.0 + (i % 4) as f32 * 80.0 + 37.0;
                     let y = 6.0 + (i / 4) as f32 * 56.0 + 25.0;
                     let scale = if this.scale < 2.5 { 3.0 } else { 1.0 };
-                    this.zoom_to(scale, Some((x, y)), cx);
+                    this.zoom_to(scale, Some((x, y)));
                 }))
                 .child(
                     text(format!("Tile {}", i + 1))
@@ -455,7 +468,7 @@ impl Component for Zoom {
         });
         let zoom_button = |label: &'static str, scale: f32| {
             button(label, colors::accent())
-                .on_press(cx.listener(move |this: &mut Self, _, cx| this.zoom_to(scale, None, cx)))
+                .on_press(cx.listener(move |this: &mut Self, _, _| this.zoom_to(scale, None)))
         };
         view()
             .gap(px(10.0))
@@ -465,7 +478,15 @@ impl Component for Zoom {
                     .rounded(px(10.0))
                     .bg(rgb(0x0d1117))
                     .zoom_range(0.5, 5.0)
+                    .bounces_zoom(self.bounces)
                     .center_content(true)
+                    .event_throttle(50.0)
+                    .on_scroll(cx.listener(|this: &mut Self, e: &ScrollEvent, cx| {
+                        if this.scale != e.zoom_scale {
+                            this.scale = e.zoom_scale;
+                            cx.notify();
+                        }
+                    }))
                     .element_ref(&scroll_ref)
                     .child(
                         view()
@@ -476,7 +497,7 @@ impl Component for Zoom {
                             .children(tiles),
                     ),
             )
-            .child(text(format!("Zoom {:.2}×", self.scale)))
+            .child(text(format!("Zoom {:.2}×", self.scale)).tabular_nums())
             .child(
                 view()
                     .flex_row()
@@ -485,6 +506,14 @@ impl Component for Zoom {
                     .child(zoom_button("2×", 2.0))
                     .child(zoom_button("0.5×", 0.5)),
             )
+            .child(toggle(
+                "Bounces past the limits",
+                self.bounces,
+                cx.listener(|this: &mut Self, on: &bool, cx| {
+                    this.bounces = *on;
+                    cx.notify();
+                }),
+            ))
     }
 }
 
