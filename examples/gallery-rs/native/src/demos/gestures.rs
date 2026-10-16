@@ -1,6 +1,7 @@
-//! Gestures: a card dragged natively, a ball dragged through touch events,
-//! raw touches, press events, hit slop, pointer events and accessibility
-//! labels (as the TSX gallery's `demos/Gestures.tsx`).
+//! Gestures: a card dragged, pinched and rotated natively, a ball dragged
+//! as the touch responder, raw touches, press events, hit slop, pointer
+//! events and accessibility labels (as the TSX gallery's
+//! `demos/Gestures.tsx`).
 
 use nsh_core::{
     Ripple, TouchPhase, TouchPoint,
@@ -28,23 +29,24 @@ fn fingers(touch: &TouchEvent) -> (Vec<&TouchPoint>, Option<&TouchPoint>) {
     (down, touch.points.iter().find(|p| p.changed))
 }
 
-/// A card dragged with one finger, natively: the drag moves its values on
-/// the UI thread.
-///
-/// TS also pinches and rotates it (`pinch={{ scale }}`, `rotation={{ angle
-/// }}`); the Rust API has no way to give a view those values.
+/// Drag, pinch and rotate one card at the same time, all on the UI thread.
 #[derive(Debug, Default)]
 struct Card {
-    x: Option<NativeValue>,
-    y: Option<NativeValue>,
+    values: Option<CardValues>,
+}
+
+/// The card's native values: where it is, its scale and its angle.
+#[derive(Debug)]
+struct CardValues {
+    x: NativeValue,
+    y: NativeValue,
+    scale: NativeValue,
+    angle: NativeValue,
 }
 
 impl Card {
-    fn values(&self) -> (&NativeValue, &NativeValue) {
-        match (&self.x, &self.y) {
-            (Some(x), Some(y)) => (x, y),
-            _ => unreachable!("set up"),
-        }
+    fn values(&self) -> &CardValues {
+        self.values.as_ref().expect("set up")
     }
 }
 
@@ -54,12 +56,16 @@ impl Component for Card {
     type Event = NoEvent;
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        self.x = Some(cx.native_value(0.0));
-        self.y = Some(cx.native_value(0.0));
+        self.values = Some(CardValues {
+            x: cx.native_value(0.0),
+            y: cx.native_value(0.0),
+            scale: cx.native_value(1.0),
+            angle: cx.native_value(0.0),
+        });
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let (x, y) = self.values();
+        let CardValues { x, y, scale, angle } = self.values();
         view()
             .gap_3()
             .items_center()
@@ -77,88 +83,39 @@ impl Component for Card {
                             .rounded(px(14.0))
                             .overflow_hidden()
                             .pan_values(Some(x), Some(y))
+                            .pinch_value(scale)
+                            .rotation_value(angle)
                             .bind_translate_x(x)
                             .bind_translate_y(y)
+                            .bind_scale(scale)
+                            .bind_rotate(angle)
                             .child(image("https://picsum.photos/seed/nsh-card/400/300").flex_1()),
                     ),
             )
             .child(note(
-                "Drag with one finger (pinch and rotation are not in the Rust API yet).",
+                "Drag with one finger; pinch and rotate with two (Option-drag in the simulator).",
             ))
             .child(button("Reset", colors::gray()).on_press(cx.listener(
                 |this: &mut Self, _, _| {
-                    let (x, y) = this.values();
+                    let CardValues { x, y, scale, angle } = this.values();
                     x.spring(0.0, Spring::default());
                     y.spring(0.0, Spring::default());
+                    scale.spring(1.0, Spring::default());
+                    angle.spring(0.0, Spring::default());
                 },
             )))
     }
 }
 
-/// A drag followed through touch events (TS: `PanResponder`'s gesture
-/// state): the translation of the fingers' centroid since the drag began
-/// and its velocity, smoothed over a few samples.
-#[derive(Debug, Default)]
-struct Drag {
-    dx: f32,
-    dy: f32,
-    /// Points per millisecond.
-    vx: f32,
-    vy: f32,
-    /// The centroid, time and number of fingers of the last update.
-    last: (f32, f32, f64, usize),
-}
-
-impl Drag {
-    fn centroid(down: &[&TouchPoint]) -> (f32, f32) {
-        let n = down.len().max(1) as f32;
-        let x = down.iter().map(|p| p.page_x).sum::<f32>() / n;
-        let y = down.iter().map(|p| p.page_y).sum::<f32>() / n;
-        (x, y)
-    }
-
-    /// Starts a drag at the fingers `down`.
-    fn begin(down: &[&TouchPoint], timestamp: f64) -> Self {
-        let (x, y) = Self::centroid(down);
-        Self {
-            last: (x, y, timestamp, down.len()),
-            ..Self::default()
-        }
-    }
-
-    /// Follows the fingers to `down` (a finger going down or up makes the
-    /// centroid jump, which is no movement).
-    fn update(&mut self, down: &[&TouchPoint], timestamp: f64) {
-        let (lx, ly, lt, ln) = self.last;
-        let (x, y) = Self::centroid(down);
-        if timestamp == lt && down.len() == ln {
-            return;
-        }
-        if down.len() == ln {
-            let dt = (timestamp - lt).max(1.0) as f32;
-            self.dx += x - lx;
-            self.dy += y - ly;
-            self.vx = self.vx * 0.3 + (x - lx) / dt * 0.7;
-            self.vy = self.vy * 0.3 + (y - ly) / dt * 0.7;
-        }
-        self.last = (x, y, timestamp, down.len());
-    }
-}
-
-/// A ball dragged through touch events (positions go through Rust, a
-/// render per move).
-///
-/// TS's `PanResponder` becomes the responder and blocks the page from
-/// scrolling while it drags; the Rust API cannot claim the touches, so
-/// a vertical drag may be taken over by the page.
+/// A ball dragged as the touch responder (positions go through Rust, a
+/// render per move). It claims the touches, so the page does not scroll
+/// while it is dragged.
 #[derive(Debug)]
 struct Ball {
     /// Where the ball is, from where it started.
     pos: (f32, f32),
     /// Where it was when the drag began.
     start: (f32, f32),
-    /// The drag going on.
-    drag: Option<Drag>,
     /// What happened last.
     state: String,
 }
@@ -168,35 +125,7 @@ impl Default for Ball {
         Self {
             pos: (0.0, 0.0),
             start: (0.0, 0.0),
-            drag: None,
             state: "idle".into(),
-        }
-    }
-}
-
-impl Ball {
-    fn touch(&mut self, touch: &TouchEvent) {
-        let (down, _) = fingers(touch);
-        match touch.phase {
-            TouchPhase::Start if self.drag.is_none() => {
-                self.start = self.pos;
-                self.drag = Some(Drag::begin(&down, touch.timestamp));
-                self.state = "dragging".into();
-            }
-            TouchPhase::Start | TouchPhase::Move | TouchPhase::End => {
-                let Some(drag) = &mut self.drag else { return };
-                drag.update(&down, touch.timestamp);
-                self.pos = (self.start.0 + drag.dx, self.start.1 + drag.dy);
-                if down.is_empty() {
-                    self.state = format!("released at {:.2}, {:.2} pt/ms", drag.vx, drag.vy);
-                    self.drag = None;
-                }
-            }
-            TouchPhase::Cancel => {
-                if self.drag.take().is_some() {
-                    self.state = "taken over".into();
-                }
-            }
         }
     }
 }
@@ -225,8 +154,29 @@ impl Component for Ball {
                             .bg(colors::accent())
                             .translate_x(self.pos.0)
                             .translate_y(self.pos.1)
-                            .on_touch(cx.listener(|this: &mut Self, touch: &TouchEvent, cx| {
-                                this.touch(touch);
+                            .claim_touches(TouchClaim::on_start())
+                            .on_responder_grant(cx.listener(|this: &mut Self, _, cx| {
+                                this.start = this.pos;
+                                this.state = "dragging".into();
+                                cx.notify();
+                            }))
+                            .on_responder_move(cx.listener(
+                                |this: &mut Self, e: &ResponderEvent, cx| {
+                                    let g = e.gesture;
+                                    this.pos = (this.start.0 + g.dx, this.start.1 + g.dy);
+                                    cx.notify();
+                                },
+                            ))
+                            .on_responder_release(cx.listener(
+                                |this: &mut Self, e: &ResponderEvent, cx| {
+                                    let g = e.gesture;
+                                    this.state =
+                                        format!("released at {:.2}, {:.2} pt/ms", g.vx, g.vy);
+                                    cx.notify();
+                                },
+                            ))
+                            .on_responder_terminate(cx.listener(|this: &mut Self, _, cx| {
+                                this.state = "taken over".into();
                                 cx.notify();
                             })),
                     ),
@@ -419,18 +369,17 @@ impl Component for Gestures {
                         ),
                 )
                 .child(
-                    // TS draws the border dashed; `Styled` has no border
-                    // style.
                     view()
                         .absolute()
                         .inset(px(0.0))
                         .rounded(px(10.0))
                         .border(3.0)
                         .border_color(rgb(0xbf8700))
+                        .border_dashed()
                         .pointer_events(PointerEvents::None),
                 )
                 .into_element(),
-            note("The bordered overlay has pointer_events(None): taps reach the button.")
+            note("The dashed overlay has pointerEvents=\"none\": taps reach the button.")
                 .into_element(),
         ];
         let accessibility =
@@ -448,9 +397,13 @@ impl Component for Gestures {
                     .into_element()
             });
         view().flex_1().child(page([
-            section("Pan on the UI thread", [Card::element(()).into_element()]).into_element(),
             section(
-                "Touch events driving a drag (drag the ball)",
+                "Pan, pinch and rotation",
+                [Card::element(()).into_element()],
+            )
+            .into_element(),
+            section(
+                "PanResponder (drag the ball; the page does not scroll)",
                 [Ball::element(()).into_element()],
             )
             .into_element(),

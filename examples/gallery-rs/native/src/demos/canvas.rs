@@ -8,8 +8,11 @@ use std::{
 };
 
 use nsh_core::{
-    Rect, TouchEvent, TouchPhase,
-    canvas::{CanvasGradient, CanvasTextAlign, CanvasTextBaseline, Composite, LineCap, LineJoin},
+    Rect,
+    canvas::{
+        CanvasGradient, CanvasTextAlign, CanvasTextBaseline, Composite, FillRule, LineCap,
+        LineJoin, svg_path,
+    },
     nsh_anim::{Curve, EaseMode},
     ui::{AnyElement, prelude::*},
 };
@@ -77,9 +80,11 @@ impl Component for ProgressRing {
             .begin_path()
             .arc(x, y, r, 0.0, TAU)
             .stroke()
-            // TS strokes a conic gradient (#22d3ee to #6366f1): `Painter`
-            // has no gradient strokes nor conic gradients.
-            .stroke_color(rgb(0x6366f1))
+            .stroke_style(
+                CanvasGradient::conic(-FRAC_PI_2, x, y)
+                    .add_color_stop(0.0, rgb(0x22d3ee))
+                    .add_color_stop(1.0, rgb(0x6366f1)),
+            )
             .begin_path();
         if let Some(progress) = &self.progress {
             // The end angle reads the native value on every frame.
@@ -123,7 +128,7 @@ impl Component for ProgressRing {
     }
 }
 
-/// A chart: gradient area, a line, labels.
+/// A chart: gradient area, a line, labels measured with `measure_text`.
 #[derive(Debug)]
 struct Chart {
     data: Vec<f32>,
@@ -141,7 +146,7 @@ impl Default for Chart {
 }
 
 impl Chart {
-    fn draw(&self, width: f32, height: f32) -> Painter {
+    fn draw(&self, cx: &RenderCx<'_, Self>, width: f32, height: f32) -> Painter {
         let values = &self.data;
         let (left, right, top, bottom) = (32.0, 12.0, 12.0, 24.0);
         let (w, h) = (width - left - right, height - top - bottom);
@@ -149,26 +154,26 @@ impl Chart {
         let x = |i: usize| left + i as f32 / (values.len() - 1) as f32 * w;
         let y = |v: f32| top + h - v / max * h;
         let blue = rgb(0x3b82f6);
+        let font = "11px system-ui";
         let mut p = Painter::new()
-            .font("11px system-ui")
+            .font(font)
             .fill_color(colors::muted())
             .stroke_color(rgb(0xe5e7eb))
-            .line_width(1.0)
-            // TS places each label at its measured width (`measureText`),
-            // which `Painter` lacks; right-aligned text lands the same.
-            .text_align(CanvasTextAlign::Right);
+            .line_width(1.0);
         for v in [0.0, 25.0, 50.0, 75.0, 100.0] {
+            let label = format!("{v}");
             p = p
                 .begin_path()
                 .move_to(left, y(v))
                 .line_to(width - right, y(v))
                 .stroke()
-                .fill_text(&format!("{v}"), left - 6.0, y(v) + 4.0);
+                .fill_text(
+                    &label,
+                    left - 6.0 - cx.measure_text(font, &label),
+                    y(v) + 4.0,
+                );
         }
-        p = p
-            .text_align(CanvasTextAlign::Start)
-            .begin_path()
-            .move_to(x(0), y(values[0]));
+        p = p.begin_path().move_to(x(0), y(values[0]));
         for (i, v) in values.iter().enumerate().skip(1) {
             p = p.line_to(x(i), y(*v));
         }
@@ -217,7 +222,7 @@ impl Component for Chart {
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let height = 180.0;
         let drawing = if self.width > 0.0 {
-            self.draw(self.width, height)
+            self.draw(cx, self.width, height)
         } else {
             Painter::new()
         };
@@ -338,7 +343,7 @@ impl Component for Clock {
     }
 }
 
-/// SVG path data: icons.
+/// SVG path data (TS: `Path2D`): icons.
 fn icons() -> AnyElement {
     let icons = [
         (
@@ -356,20 +361,15 @@ fn icons() -> AnyElement {
     ];
     let icons = icons.map(|(name, d, color)| {
         let p = Painter::new().scale(40.0 / 24.0, 40.0 / 24.0);
+        let path = svg_path(d);
         let p = if name == "check" {
-            // TS strokes the `Path2D` of the data; `Painter` only fills SVG
-            // data, so the check is drawn with the same path's segments.
             p.stroke_color(color)
                 .line_width(2.5)
                 .line_cap(LineCap::Round)
                 .line_join(LineJoin::Round)
-                .begin_path()
-                .move_to(20.0, 6.0)
-                .line_to(9.0, 17.0)
-                .line_to(4.0, 12.0)
-                .stroke()
+                .stroke_path(&path)
         } else {
-            p.fill_color(color).fill_svg(d)
+            p.fill_color(color).fill_path(&path, FillRule::NonZero)
         };
         view()
             .items_center()
@@ -416,10 +416,9 @@ impl Compositing {
             .arc(185.0, 61.0, 22.0, 0.0, TAU)
             .fill()
             .composite(Composite::SourceOver)
-            // Dashes and a gradient: TS fills a radial gradient, which
-            // `Painter` lacks; a linear one has the same colors.
+            // Dashes and a radial gradient.
             .fill_style(
-                CanvasGradient::linear(width - 50.0, 20.0, width - 50.0, 100.0)
+                CanvasGradient::radial(width - 50.0, 50.0, 4.0, width - 50.0, 50.0, 44.0)
                     .add_color_stop(0.0, rgb(0xfde68a))
                     .add_color_stop(1.0, rgb(0xf97316)),
             )
@@ -459,7 +458,8 @@ impl Component for Compositing {
     }
 }
 
-/// Touch drawing: each move draws again.
+/// Touch drawing: each move draws again. The canvas claims the touches
+/// and keeps them: the page around it does not scroll while drawing.
 #[derive(Debug, Default)]
 struct Sketch {
     strokes: Vec<Vec<(f32, f32)>>,
@@ -487,28 +487,21 @@ impl Component for Sketch {
             }
             p = p.stroke();
         }
-        // TS takes the touches as the responder and refuses to give them
-        // up (`onResponderTerminationRequest`), so the page does not
-        // scroll while drawing; a Rust component cannot claim them: a
-        // vertical drag may scroll the page instead.
         let sketch = canvas(p)
             .h(px(180.0))
             .bg(rgb(0xf8fafc))
             .rounded(px(10.0))
-            .on_touch(cx.listener(|this: &mut Self, touch: &TouchEvent, cx| {
-                let Some(point) = touch.points.iter().find(|p| p.changed) else {
-                    return;
-                };
-                let at = (point.location_x, point.location_y);
-                match touch.phase {
-                    TouchPhase::Start => this.strokes.push(vec![at]),
-                    TouchPhase::Move => match this.strokes.last_mut() {
-                        Some(stroke) => stroke.push(at),
-                        None => this.strokes.push(vec![at]),
-                    },
-                    TouchPhase::End | TouchPhase::Cancel => return,
-                }
+            .claim_touches(TouchClaim::on_start())
+            .keep_touches(true)
+            .on_responder_grant(cx.listener(|this: &mut Self, e: &ResponderEvent, cx| {
+                this.strokes.push(vec![(e.location_x, e.location_y)]);
                 cx.notify();
+            }))
+            .on_responder_move(cx.listener(|this: &mut Self, e: &ResponderEvent, cx| {
+                if let Some(stroke) = this.strokes.last_mut() {
+                    stroke.push((e.location_x, e.location_y));
+                    cx.notify();
+                }
             }));
         view().child(section(
             "Sketch (touch → draw)",

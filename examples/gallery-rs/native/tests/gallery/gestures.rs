@@ -1,28 +1,11 @@
 //! The Gestures demo on a headless engine: press events are logged, taps
 //! reach the button under the overlay, touches are logged with their
-//! fingers.
+//! fingers, the ball is dragged as the touch responder, the card takes
+//! pinches and rotations.
 
-use nsh_core::{EventKind, EventPayload, TouchEvent, TouchPhase, TouchPoint};
+use nsh_core::{Command, ROOT_ID, TouchPhase};
 
-use crate::common::shows;
-
-/// A touch of one finger on `target` at `(x, y)`.
-fn touch(phase: TouchPhase, target: u32, x: f32, y: f32) -> EventPayload {
-    EventPayload::Touch(Box::new(TouchEvent {
-        phase,
-        timestamp: 1000.0,
-        points: vec![TouchPoint {
-            id: 1,
-            target,
-            path: vec![target],
-            page_x: x + 100.0,
-            page_y: y + 200.0,
-            location_x: x,
-            location_y: y,
-            changed: true,
-        }],
-    }))
-}
+use crate::common::{shows, touch};
 
 #[test]
 fn gestures_log_presses_and_touches() {
@@ -58,29 +41,107 @@ fn gestures_log_presses_and_touches() {
 
     let label = screen.find("Touch here (try two fingers)").unwrap();
     let area = screen.parents[&label];
-    engine.control().dispatch_event(
-        area,
-        EventKind::Touch,
-        touch(TouchPhase::Start, area, 10.4, 20.6),
+    let at = (10.4, 20.6);
+    touch(
+        &engine,
+        &rx,
+        &mut screen,
+        TouchPhase::Start,
+        &[area],
+        at,
+        1000.0,
     );
-    crate::common::drain(&rx, &mut screen);
     assert!(
-        shows(&screen, "start at 10,21 (page 110,221), 1 down"),
+        shows(&screen, "start at 10,21 (page 110,121), 1 down"),
         "{:?}",
         screen.texts
     );
-    engine.control().dispatch_event(
-        area,
-        EventKind::Touch,
-        touch(TouchPhase::End, area, 12.0, 22.0),
+    let at = (12.0, 22.0);
+    touch(
+        &engine,
+        &rx,
+        &mut screen,
+        TouchPhase::End,
+        &[area],
+        at,
+        1016.0,
     );
-    crate::common::drain(&rx, &mut screen);
     assert!(
         shows(
             &screen,
-            "end at 12,22 (page 112,222), 0 down\nstart at 10,21 (page 110,221), 1 down"
+            "end at 12,22 (page 112,122), 0 down\nstart at 10,21 (page 110,121), 1 down"
         ),
         "{:?}",
         screen.texts
+    );
+}
+
+#[test]
+fn the_ball_claims_its_touches_and_the_card_pinches_and_rotates() {
+    let (engine, rx, mut screen) = crate::common::open("Gestures");
+    for text in [
+        "PAN, PINCH AND ROTATION",
+        "PANRESPONDER (DRAG THE BALL; THE PAGE DOES NOT SCROLL)",
+        "Drag with one finger; pinch and rotate with two (Option-drag in the simulator).",
+        "The dashed overlay has pointerEvents=\"none\": taps reach the button.",
+    ] {
+        assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
+    }
+    // The card: drags, pinches and rotations drive its values natively.
+    let card = screen
+        .gestures
+        .values()
+        .find(|g| g.pan_x.is_some())
+        .expect("the card's gesture values");
+    assert!(card.pinch.is_some() && card.rotation.is_some(), "{card:?}");
+
+    // The ball: the touch listener that is not the touch log's area.
+    let area = screen.parents[&screen.find("Touch here (try two fingers)").unwrap()];
+    let ball = *screen
+        .touch_listeners()
+        .iter()
+        .find(|&&id| id != area)
+        .expect("the ball listens to touches");
+    touch(
+        &engine,
+        &rx,
+        &mut screen,
+        TouchPhase::Start,
+        &[ball],
+        (30.0, 30.0),
+        0.0,
+    );
+    assert!(shows(&screen, "dragging"), "{:?}", screen.texts);
+    assert_eq!(
+        screen.commands.last(),
+        Some(&(ball, Command::SetJsResponder { block: true })),
+        "the page stops scrolling"
+    );
+    touch(
+        &engine,
+        &rx,
+        &mut screen,
+        TouchPhase::Move,
+        &[ball],
+        (50.0, 30.0),
+        16.0,
+    );
+    touch(
+        &engine,
+        &rx,
+        &mut screen,
+        TouchPhase::End,
+        &[ball],
+        (50.0, 30.0),
+        32.0,
+    );
+    assert!(
+        shows(&screen, "released at 0.88, 0.00 pt/ms"),
+        "{:?}",
+        screen.texts
+    );
+    assert_eq!(
+        screen.commands.last(),
+        Some(&(ROOT_ID, Command::ClearJsResponder))
     );
 }

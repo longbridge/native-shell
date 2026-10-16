@@ -7,7 +7,8 @@ use std::{sync::Arc, time::Duration};
 
 use crossbeam_channel::Receiver;
 use nsh_core::{
-    ApproxTextEngine, AttributedText, EventKind, EventPayload, MountBatch, MountItem, Size,
+    ApproxTextEngine, AttributedText, Command, EventKind, EventMask, EventPayload, GestureValues,
+    MountBatch, MountItem, ROOT_ID, Size, TouchEvent, TouchPhase, TouchPoint, canvas::Drawing,
     ui::Root,
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment, MountSink};
@@ -28,6 +29,14 @@ pub struct Screen {
     pub blocks: Vec<(u32, Arc<AttributedText>)>,
     pub titles: Vec<(u32, String)>,
     pub parents: std::collections::HashMap<u32, u32>,
+    /// The native events each view listens to.
+    pub events: std::collections::HashMap<u32, EventMask>,
+    /// Each canvas's drawing.
+    pub drawings: std::collections::HashMap<u32, Arc<Drawing>>,
+    /// The native values gestures drive, by view.
+    pub gestures: std::collections::HashMap<u32, GestureValues>,
+    /// The commands sent, in order.
+    pub commands: Vec<(u32, Command)>,
 }
 
 impl Screen {
@@ -49,6 +58,18 @@ impl Screen {
                 MountItem::Insert { parent, child, .. } => {
                     self.parents.insert(*child, *parent);
                 }
+                MountItem::Events { id, events } => {
+                    self.events.insert(*id, *events);
+                }
+                MountItem::Canvas { id, drawing } => {
+                    self.drawings.insert(*id, drawing.clone());
+                }
+                MountItem::Gestures { id, values } => {
+                    self.gestures.insert(*id, *values);
+                }
+                MountItem::Command { id, command } => {
+                    self.commands.push((*id, command.clone()));
+                }
                 MountItem::Delete { id } => {
                     self.texts.retain(|t| t.0 != *id);
                     self.blocks.retain(|t| t.0 != *id);
@@ -57,6 +78,18 @@ impl Screen {
                 _ => {}
             }
         }
+    }
+
+    /// The views listening to touches.
+    pub fn touch_listeners(&self) -> Vec<u32> {
+        let mut ids: Vec<u32> = self
+            .events
+            .iter()
+            .filter(|(_, e)| e.contains(EventKind::Touch))
+            .map(|(id, _)| *id)
+            .collect();
+        ids.sort();
+        ids
     }
 
     /// The pressable node around text `label` (the text or a parent).
@@ -184,5 +217,44 @@ pub fn press_link(
     engine
         .control()
         .dispatch_event(link, kind, EventPayload::None);
+    drain(rx, screen);
+}
+
+/// One finger at `(x, y)` in the view it went down on (`path[0]`; the
+/// surface position is 100 pt further right and down), reported on the
+/// root as the platform does, with the listening views around it
+/// (`path`, innermost first); waits for what it changes.
+pub fn touch(
+    engine: &Engine,
+    rx: &Receiver<MountBatch>,
+    screen: &mut Screen,
+    phase: TouchPhase,
+    path: &[u32],
+    (x, y): (f32, f32),
+    timestamp: f64,
+) {
+    let event = TouchEvent {
+        phase,
+        timestamp,
+        points: vec![TouchPoint {
+            id: 1,
+            target: path[0],
+            path: if phase == TouchPhase::Start {
+                path.to_vec()
+            } else {
+                Vec::new()
+            },
+            page_x: x + 100.0,
+            page_y: y + 100.0,
+            location_x: x,
+            location_y: y,
+            changed: true,
+        }],
+    };
+    engine.control().dispatch_event(
+        ROOT_ID,
+        EventKind::Touch,
+        EventPayload::Touch(Box::new(event)),
+    );
     drain(rx, screen);
 }
