@@ -3,11 +3,16 @@
 //! pan / pinch / rotation values, and routing mouse wheel, trackpad,
 //! mouse drag and keyboard scrolling to the scroll views.
 //!
-//! The root view takes every mouse event over an app's views (its
-//! `hitTest:` returns itself there) and hands it to [`event`]; hosted
-//! AppKit views (text fields, web views) get their own events, so presses,
-//! pans and scroll drags never start on them. Wheel events a hosted view
-//! does not use come up the responder chain to the root as well.
+//! The root view takes every mouse event inside it (its `hitTest:`
+//! returns itself) and hands it to [`event`], except where nsh's own hit
+//! testing lands on a hosted AppKit view (text fields, web views): those
+//! get their own events, so presses, pans and scroll drags never start on
+//! them. AppKit's hit testing does not decide: it would hand a web view
+//! clicks meant for a menu outside its parent's frame or a transformed
+//! view nsh draws over it, and clicks on web views whose layers are
+//! hidden, that animate out or that are under `pointerEvents: "none"`.
+//! Wheel events a hosted view does not use come up the responder chain to
+//! the root as well.
 //!
 //! Hit testing walks the views itself: AppKit's knows nothing of
 //! `overflow: hidden`, `pointerEvents`, hit slop or layer transforms.

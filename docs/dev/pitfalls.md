@@ -227,6 +227,9 @@ Things that were found the hard way. Read the section of the area you change bef
   not, and Core Image is not even loaded (`CIFilter` is missing) unless something links it. Backdrop blur is an
   `NSVisualEffectView` with within-window blending; it needs `wantsLayer` set when created, or it has no layer to order
   and clip until AppKit makes one.
+- `NSView.hitTest:` works on frames: it ignores layer transforms and hidden layers, and does not look into subviews
+  outside their superview's frame. The root's `hitTest:` lets nsh's own picking decide inside the surface
+  (`input.rs` `native_at`), or a hosted web view gets clicks on what nsh draws over it.
 - In `define_class!` methods, an early `return` of a `bool` or `Option<Retained<_>>` does not compile (the macro wraps
   the return type): write the body as one expression.
 - In-process screenshots (`cacheDisplayInRect:`, `renderInContext:`) ignore `maskedCorners`, `shadowPath`, Core Image

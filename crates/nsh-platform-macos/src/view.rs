@@ -401,10 +401,14 @@ define_class!(
             let hit: Option<Retained<NSView>> = unsafe { msg_send![super(self), hitTest: point] };
             // The root takes every event over the app's own views and
             // picks the view itself (`crate::input`); hosted AppKit views
-            // get theirs.
+            // get theirs when nsh's picking lands on them. Not when
+            // AppKit's does: it skips subviews outside their superview's
+            // frame (an absolutely positioned menu over a web view),
+            // ignores layer transforms and hidden layers, and reaches
+            // views animating out or under `pointerEvents: "none"`.
             let root = self.ivars().surface.borrow().strong_count() > 0;
             match hit {
-                Some(v) if root && is_ours(&v) => Some(self.root_hit(point)),
+                Some(_) if root => Some(self.root_hit(point)),
                 other => other,
             }
         }
@@ -595,9 +599,9 @@ impl ViewObj {
         self.ivars().surface.borrow().upgrade()
     }
 
-    /// What the root's `hitTest:` returns over an app view: a hosted
-    /// AppKit view nsh's picking lands on (past overlays that let the
-    /// pointer through), else the root itself. `point` is in the root's
+    /// What the root's `hitTest:` returns inside it: a hosted AppKit view
+    /// nsh's picking lands on (past overlays that let the pointer
+    /// through), else the root itself. `point` is in the root's
     /// superview's coordinates.
     fn root_hit(&self, point: NSPoint) -> Retained<NSView> {
         let me = || Retained::from(&**self);
