@@ -19,9 +19,6 @@ use nsh_core::{
 
 use crate::ui::{button, colors, page, section};
 
-/// The gallery's logo, as the TSX gallery imports it (`../logo@2x.png`).
-const LOGO: &str = "asset:/logo@2x.png";
-
 /// A number in `0..1` (TS: `Math.random()`): xorshift, seeded by the clock.
 fn random() -> f32 {
     thread_local! {
@@ -401,7 +398,7 @@ impl Compositing {
             .begin_path()
             .arc(60.0, 60.0, 48.0, 0.0, TAU)
             .clip()
-            .draw_image(LOGO, 12.0, 12.0, 96.0, 96.0)
+            .draw_image(crate::assets::LOGO.uri, 12.0, 12.0, 96.0, 96.0)
             .restore()
             // A shadowed card with a cut-out hole (destination-out).
             .save()

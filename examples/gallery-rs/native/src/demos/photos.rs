@@ -1,9 +1,6 @@
 //! Photos: a long recycled list of rows with images, pull to refresh,
 //! loading more at the end, and a header that fades and lifts as the list
 //! scrolls, natively (as the TSX gallery's `demos/Photos.tsx`).
-//!
-//! Not ported: the header's logo (Rust components have no asset imports:
-//! `logo@2x.png` is bundled only when JS imports it).
 
 use std::{rc::Rc, time::Duration};
 
@@ -109,6 +106,7 @@ impl Component for Photos {
                     .gap(px(10.0))
                     .bind_opacity(&scroll_y.interpolate(&[0.0, 120.0], &[1.0, 0.35]))
                     .bind_translate_y(&scroll_y.interpolate(&[0.0, 120.0], &[0.0, -6.0]))
+                    .child(image(crate::assets::LOGO))
                     .child(
                         text(format!("{} photos", self.photos.len()))
                             .text_size(px(22.0))
