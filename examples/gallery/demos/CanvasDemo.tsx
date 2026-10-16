@@ -2,14 +2,14 @@ import { type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing, type NativeValue } from "nsh/animated";
 import { Canvas, type CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 import logo from "../logo@2x.png";
-import { Appear, Button, Caption, Card, colors, Figure, finish, Legend, Segmented, Stat } from "../ui";
+import { alpha, Appear, Button, Caption, Card, colors, Figure, finish, isDark, Legend, type Palette, Segmented, Stat } from "../ui";
 
 const TAU = Math.PI * 2;
 const SANS = (size: number, weight = "400") => `${weight} ${size}px system-ui`;
 
 /** The accent as rgba, for low-alpha fills. */
-const accentA = (a: number) => `rgba(200,242,109,${a})`;
-const infoA = (a: number) => `rgba(126,168,255,${a})`;
+const accentA = (a: number) => alpha(colors.accent, a);
+const infoA = (a: number) => alpha(colors.info, a);
 
 /** A small seeded random generator, so the fictional data is stable. */
 function seeded(seed: number) {
@@ -99,11 +99,11 @@ function Dial() {
           ctx.arc(cx, cy, r - 20, a1, at(85), true);
           ctx.closePath();
           ctx.clip();
-          ctx.fillStyle = "rgba(255,97,112,0.08)";
+          ctx.fillStyle = alpha(colors.danger, 0.08);
           // The zone sits right of the hub, from just above it to 45° below.
           const zx = cx + 0.6 * r, zy = cy - 0.2 * r, zw = 0.4 * r + 4, zh = r;
           ctx.fillRect(zx, zy, zw, zh);
-          hatch(ctx, zx, zy, zw, zh, "rgba(255,97,112,0.55)", 5);
+          hatch(ctx, zx, zy, zw, zh, alpha(colors.danger, 0.55), 5);
           ctx.restore();
           // The tick ring.
           for (let i = 0; i <= 50; i++) {
@@ -156,7 +156,7 @@ function Dial() {
           ctx.save();
           ctx.translate(cx, cy);
           ctx.rotate(angle);
-          ctx.shadowColor = "rgba(0,0,0,0.6)";
+          ctx.shadowColor = isDark() ? "rgba(0,0,0,0.6)" : "rgba(20,20,10,0.3)";
           ctx.shadowBlur = 6;
           ctx.fillStyle = colors.text;
           ctx.beginPath();
@@ -234,7 +234,7 @@ function AreaChart() {
           ctx.beginPath();
           ctx.rect(wx, pad.top, ww, h);
           ctx.clip();
-          hatch(ctx, wx, pad.top, ww, h, "rgba(255,181,71,0.28)", 6);
+          hatch(ctx, wx, pad.top, ww, h, alpha(colors.warn, 0.28), 6);
           ctx.restore();
           ctx.fillStyle = colors.warn;
           ctx.textBaseline = "alphabetic";
@@ -384,7 +384,8 @@ function Ridgeline() {
 // ---------------------------------------------------------------------------
 // A dot matrix: uptime per hour block, a pulse on the newest dot (native loop).
 
-const levels = [colors.raised, accentA(0.22), accentA(0.45), accentA(0.7), colors.accent];
+/** The dot levels, from none to full (call in a reactive scope). */
+const levels = () => [colors.raised, accentA(0.22), accentA(0.45), accentA(0.7), colors.accent];
 
 function DotMatrix() {
   const pulse = createNativeValue(0);
@@ -406,7 +407,7 @@ function DotMatrix() {
             for (let r = 0; r < rows; r++) {
               const n = rand();
               const incident = (c === 6 && r === 2) || (c === 17 && r === 5) || (c === cols - 4 && r === 3);
-              ctx.fillStyle = incident ? colors.danger : levels[Math.min(4, Math.floor(n * n * 5 + (c / cols) * 1.6))];
+              ctx.fillStyle = incident ? colors.danger : levels()[Math.min(4, Math.floor(n * n * 5 + (c / cols) * 1.6))];
               ctx.beginPath();
               ctx.arc(ox + c * gap, oy + r * gap, 3.6, 0, TAU);
               ctx.fill();
@@ -427,7 +428,7 @@ function DotMatrix() {
       />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Text style={{ fontSize: 13, color: colors.muted }}>Less</Text>
-        <Each of={levels}>{(c) => <View style={{ width: 9, height: 9, borderRadius: 2.5, backgroundColor: c() }} />}</Each>
+        <Each of={levels()}>{(c) => <View style={{ width: 9, height: 9, borderRadius: 2.5, backgroundColor: c() }} />}</Each>
         <Text style={{ flex: 1, fontSize: 13, color: colors.muted }}>More</Text>
         <Legend color={colors.danger} label="Incident" />
       </View>
@@ -488,7 +489,7 @@ function Dumbbell() {
             ctx.fillStyle = colors.muted;
             ctx.textBaseline = "middle";
             ctx.fillText(r.name, 0, cy);
-            ctx.strokeStyle = worse ? "rgba(255,97,112,0.5)" : accentA(0.45);
+            ctx.strokeStyle = worse ? alpha(colors.danger, 0.5) : accentA(0.45);
             ctx.lineWidth = 3;
             ctx.lineCap = "round";
             ctx.beginPath();
@@ -598,11 +599,11 @@ function Clock() {
 // ---------------------------------------------------------------------------
 // Path2D: SVG path data, filled or stroked.
 
-const glyphs: { name: string; d: string; color: string; stroke?: boolean }[] = [
-  { name: "Heart", d: "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z", color: colors.danger },
-  { name: "Star", d: "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z", color: colors.warn },
-  { name: "Bolt", d: "M13 2L3 14h7l-1 8 10-12h-7z", color: colors.info },
-  { name: "Check", d: "M20 6L9 17l-5-5", color: colors.accent, stroke: true },
+const glyphs: { name: string; d: string; color: keyof Palette; stroke?: boolean }[] = [
+  { name: "Heart", d: "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z", color: "danger" },
+  { name: "Star", d: "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z", color: "warn" },
+  { name: "Bolt", d: "M13 2L3 14h7l-1 8 10-12h-7z", color: "info" },
+  { name: "Check", d: "M20 6L9 17l-5-5", color: "accent", stroke: true },
 ];
 
 function Glyphs() {
@@ -633,13 +634,13 @@ function Glyphs() {
                     draw={(ctx) => {
                       ctx.scale(30 / 24, 30 / 24);
                       if (glyph().stroke) {
-                        ctx.strokeStyle = glyph().color;
+                        ctx.strokeStyle = colors[glyph().color];
                         ctx.lineWidth = 2.5;
                         ctx.lineCap = "round";
                         ctx.lineJoin = "round";
                         ctx.stroke(path);
                       } else {
-                        ctx.fillStyle = glyph().color;
+                        ctx.fillStyle = colors[glyph().color];
                         ctx.fill(path);
                       }
                     }}
@@ -682,11 +683,11 @@ function Compositing() {
           // A shadowed card with a hole punched through (destination-out).
           const cx = width / 2;
           ctx.save();
-          ctx.shadowColor = "rgba(0,0,0,0.7)";
+          ctx.shadowColor = isDark() ? "rgba(0,0,0,0.7)" : "rgba(20,20,10,0.25)";
           ctx.shadowBlur = 14;
           ctx.shadowOffsetY = 6;
           const g = ctx.createLinearGradient(cx - 46, 0, cx + 46, height);
-          g.addColorStop(0, colors.accent);
+          g.addColorStop(0, colors.accentFill);
           g.addColorStop(1, "#7fbf3a");
           ctx.fillStyle = g;
           ctx.beginPath();
@@ -703,7 +704,7 @@ function Compositing() {
           const rg = ctx.createRadialGradient(rx - 10, cy - 12, 4, rx, cy, 40);
           rg.addColorStop(0, "#ffe2a8");
           rg.addColorStop(0.55, colors.warn);
-          rg.addColorStop(1, "rgba(255,97,112,0.2)");
+          rg.addColorStop(1, alpha(colors.danger, 0.2));
           ctx.fillStyle = rg;
           ctx.beginPath();
           ctx.arc(rx, cy, 38, 0, TAU);

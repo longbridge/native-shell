@@ -135,7 +135,7 @@ export function parse(md: string, previous?: readonly Block[], streaming = false
 /** Plain text of a reply (for copying). */
 export const plain = (md: string) => md.replace(/[*`#>|]/g, "").replace(/\n{3,}/g, "\n\n");
 
-const body = { fontSize: 15, lineHeight: 22, color: colors.text } as const;
+const body = () => ({ fontSize: 15, lineHeight: 22, color: colors.text }) as const;
 
 /** Bold, italic and inline code as spans. */
 function inline(text: string): JSX.Element[] {
@@ -144,7 +144,7 @@ function inline(text: string): JSX.Element[] {
     .filter((s) => s)
     .map((s) => {
       if (s.startsWith("**") && s.endsWith("**") && s.length > 4) return <Text style={{ fontWeight: "600" }}>{s.slice(2, -2)}</Text>;
-      if (s.startsWith("`") && s.endsWith("`") && s.length > 2) return <Text style={{ fontFamily: mono, fontSize: 14, color: "#d9dde3" }}>{s.slice(1, -1)}</Text>;
+      if (s.startsWith("`") && s.endsWith("`") && s.length > 2) return <Text style={{ fontFamily: mono, fontSize: 14, color: colors.code }}>{s.slice(1, -1)}</Text>;
       if (s.startsWith("*") && s.endsWith("*") && s.length > 2) return <Text style={{ fontStyle: "italic" }}>{s.slice(1, -1)}</Text>;
       return <Text>{s}</Text>;
     });
@@ -179,7 +179,7 @@ function CodeBlock(props: { block: () => Extract<Block, { type: "code" }>; copie
       </View>
       <Scroll horizontal showsIndicator={false}>
         <View style={{ padding: 12 }}>
-          <Text selectable style={{ fontFamily: mono, fontSize: 13, lineHeight: 19, color: "#d9dde3" }}>
+          <Text selectable style={{ fontFamily: mono, fontSize: 13, lineHeight: 19, color: colors.code }}>
             {props.block().text}
             {props.tail()}
           </Text>
@@ -249,7 +249,7 @@ export function Markdown(props: {
             case "p": {
               const b = block as () => Extract<Block, { type: "p" }>;
               return (
-                <Text selectable style={body}>
+                <Text selectable style={body()}>
                   <Text>{inline(b().text)}</Text>
                   {tail()}
                 </Text>
@@ -270,7 +270,7 @@ export function Markdown(props: {
                         >
                           <Text style={{ width: 16, fontSize: 15, lineHeight: 22, color: colors.muted, fontVariant: ["tabular-nums"] }}>{i() + 1}.</Text>
                         </If>
-                        <Text selectable style={[body, { flex: 1 }]}>
+                        <Text selectable style={[body(), { flex: 1 }]}>
                           <Text>{inline(b().items[i()] ?? "")}</Text>
                           <If when={i() === b().items.length - 1}>{tail()}</If>
                         </Text>
@@ -294,7 +294,7 @@ export function Markdown(props: {
               return (
                 <View style={{ flexDirection: "row", gap: 12 }}>
                   <View style={{ width: 3, borderRadius: 1.5, backgroundColor: colors.border }} />
-                  <Text selectable style={[body, { flex: 1, color: colors.muted }]}>
+                  <Text selectable style={[body(), { flex: 1, color: colors.muted }]}>
                     <Text>{inline(b().text)}</Text>
                     {tail()}
                   </Text>

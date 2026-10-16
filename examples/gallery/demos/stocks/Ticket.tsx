@@ -1,7 +1,7 @@
 import { effect, signal, Text, untracked, View } from "nsh";
 import { Animated, createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
 import { Icon } from "../../icons";
-import { Button, colors, Press, radius, Segmented, tints } from "../../ui";
+import { Button, colors, isDark, Press, radius, Segmented, tints } from "../../ui";
 import { grouped, type Stock, price } from "./market";
 
 export type Side = "buy" | "sell";
@@ -58,11 +58,11 @@ export function createBanner() {
           backgroundColor: message().side === "buy" ? colors.up : colors.down,
         }}
       >
-        <Icon name="check" size={18} tint="#111214" />
+        <Icon name="check" size={18} tint={isDark() ? "#111214" : "#ffffff"} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111214" }}>{message().title}</Text>
-        <Text numberOfLines={1} style={{ fontSize: 13, color: "#4a4e55" }}>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>{message().title}</Text>
+        <Text numberOfLines={1} style={{ fontSize: 13, color: isDark() ? "#4a4e55" : "#a4a8ae" }}>
           {message().detail}
         </Text>
       </View>

@@ -280,7 +280,7 @@ function Chat() {
                 borderCurve: "continuous",
                 borderBottomRightRadius: m().mine ? 6 : 18,
                 borderBottomLeftRadius: m().mine ? 18 : 6,
-                backgroundColor: m().mine ? colors.accent : colors.raised,
+                backgroundColor: m().mine ? colors.accentFill : colors.raised,
                 ...(m().mine ? finish.accent : finish.raised),
                 borderWidth: m().mine ? 0 : 1,
                 borderColor: colors.border,
@@ -389,7 +389,7 @@ function More() {
                           borderColor: colors.border,
                         }}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: range() === label() ? "#111214" : colors.muted }}>{label()}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: range() === label() ? colors.onLight : colors.muted }}>{label()}</Text>
                       </View>
                     </Press>
                   )}

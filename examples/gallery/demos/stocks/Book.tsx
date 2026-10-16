@@ -3,7 +3,7 @@ import { LayoutAnimation } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { colors, Legend, Press, radius } from "../../ui";
 import { compact, type Level, LEVELS, type Market, price, type Stock, toneOf } from "./market";
-import { alpha, Block, calm, Head, hatch, SpringBar } from "./parts";
+import { alpha, Block, calm, grid, Head, hatch, SpringBar } from "./parts";
 
 const ROW = 26;
 /** Ticks either side of the mid price the depth chart spans. */
@@ -53,7 +53,7 @@ export function Depth(props: { market: Market; stock: Stock }) {
           const h = height - pad.top - pad.bottom;
           const X = (p: number) => ((p - lo) / (hi - lo)) * width;
           const Y = (v: number) => pad.top + h - (v / ymax) * h;
-          ctx.strokeStyle = colors.line;
+          ctx.strokeStyle = grid();
           ctx.lineWidth = 1;
           for (let k = 1; k <= 3; k++) {
             ctx.beginPath();
@@ -116,11 +116,11 @@ export function Depth(props: { market: Market; stock: Stock }) {
 /** One level: its label, price, size and running total, over a bar of
  * the running total from the right edge (a depth ladder). */
 function LevelRow(props: { stock: Stock; level: () => Level | undefined; total: () => number; side: "bid" | "ask"; n: number; max: () => number }) {
-  const tint = alpha(props.side === "bid" ? colors.up : colors.down, 0.1);
+  const tint = () => alpha(props.side === "bid" ? colors.up : colors.down, 0.1);
   const share = () => Math.min(1, props.total() / props.max());
   return (
     <View style={{ height: ROW, flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <View style={{ position: "absolute", right: 0, top: 1, bottom: 1, width: `${share() * 100}%`, backgroundColor: tint }} />
+      <View style={{ position: "absolute", right: 0, top: 1, bottom: 1, width: `${share() * 100}%`, backgroundColor: tint() }} />
       <Text style={{ width: 28, fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"] }}>
         {props.side === "bid" ? "B" : "A"}
         {props.n}

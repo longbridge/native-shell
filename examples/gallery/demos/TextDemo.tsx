@@ -3,13 +3,13 @@ import { fontScale } from "nsh/device";
 import { Image } from "nsh/image";
 import pacifico from "../fonts/Pacifico-Regular.ttf";
 import logo from "../logo@2x.png";
-import { Appear, Caption, Card, colors, finish, mono, Press, radius, tints } from "../ui";
+import { alpha, Appear, Caption, Card, colors, finish, isDark, mono, Press, radius, tints } from "../ui";
 
 const LOREM =
   "Native text, typeset once on the engine thread with CoreText and drawn on the main thread without any layout work.";
 
-const body = { fontSize: 15, lineHeight: 22, color: colors.text } as const;
-const link = { color: colors.accent, textDecorationLine: "underline", textDecorationColor: "rgba(200,242,109,0.5)" } as const;
+const body = () => ({ fontSize: 15, lineHeight: 22, color: colors.text }) as const;
+const link = () => ({ color: colors.accent, textDecorationLine: "underline", textDecorationColor: alpha(colors.accent, 0.5) }) as const;
 
 /** A labeled specimen: a quiet label (and the prop it shows, in code) above the text. */
 function Specimen(props: { label: string; code?: string; first?: boolean; children: JSX.Element }) {
@@ -32,19 +32,19 @@ function Links() {
   const tapped = signal("nothing yet");
   return (
     <Card icon="text" title="Spans and links" subtitle="Nested spans with presses of their own">
-      <Text style={{ ...body, fontSize: 16, lineHeight: 25 }} onPress={() => tapped.set("the sentence (not a link)")}>
+      <Text style={{ ...body(), fontSize: 16, lineHeight: 25 }} onPress={() => tapped.set("the sentence (not a link)")}>
         {"By continuing you agree to the "}
-        <Text style={link} onPress={() => tapped.set("Terms of service")} onLongPress={() => tapped.set("Terms (long press)")}>
+        <Text style={link()} onPress={() => tapped.set("Terms of service")} onLongPress={() => tapped.set("Terms (long press)")}>
           Terms of service
         </Text>
         {" and the "}
-        <Text style={link} onPress={() => tapped.set("Privacy policy")}>
+        <Text style={link()} onPress={() => tapped.set("Privacy policy")}>
           Privacy policy
         </Text>
         {", which mention "}
         <Text style={{ fontWeight: "700" }}>
           nested{" "}
-          <Text style={link} onPress={() => tapped.set("a link inside bold text")}>
+          <Text style={link()} onPress={() => tapped.set("a link inside bold text")}>
             links
           </Text>{" "}
           too
@@ -60,7 +60,7 @@ function Inline() {
   const likes = signal(3);
   return (
     <Card icon="image" title="Inline views and images" subtitle="They wrap with the line">
-      <Text style={{ ...body, fontSize: 16, lineHeight: 28 }}>
+      <Text style={{ ...body(), fontSize: 16, lineHeight: 28 }}>
         {"Made with "}
         <Image src={logo} style={{ width: 18, height: 18, borderRadius: 5 }} />
         {" nsh. Status "}
@@ -125,7 +125,7 @@ function Fonts() {
               fontSize: 26,
               fontWeight: "800",
               color: colors.accent,
-              textShadowColor: "rgba(200,242,109,0.6)",
+              textShadowColor: alpha(colors.accent, isDark() ? 0.6 : 0.3),
               textShadowOffset: { width: 0, height: 0 },
               textShadowRadius: 10,
             }}
@@ -150,7 +150,7 @@ function Fonts() {
                 fontSize: 26,
                 fontWeight: "800",
                 color: colors.info,
-                textShadowColor: "rgba(0,0,0,0.9)",
+                textShadowColor: isDark() ? "rgba(0,0,0,0.9)" : "rgba(20,20,10,0.22)",
                 textShadowOffset: { width: 2, height: 3 },
                 textShadowRadius: 3,
               }}
@@ -168,15 +168,15 @@ function Scaling() {
   return (
     <Card icon="search" title="System text size" subtitle="fontScale and its limits" right={<Text style={{ fontSize: 15, fontWeight: "500", color: colors.accent, fontVariant: ["tabular-nums"] }}>{`${fontScale().toFixed(2)}×`}</Text>}>
       <Specimen label="Default" first>
-        <Text style={{ ...body, fontSize: 17 }}>Scales with the system setting</Text>
+        <Text style={{ ...body(), fontSize: 17 }}>Scales with the system setting</Text>
       </Specimen>
       <Specimen label="Fixed" code="allowFontScaling={false}">
-        <Text allowFontScaling={false} style={{ ...body, fontSize: 17 }}>
+        <Text allowFontScaling={false} style={{ ...body(), fontSize: 17 }}>
           Fixed size
         </Text>
       </Specimen>
       <Specimen label="Capped" code="maxFontSizeMultiplier={1.2}">
-        <Text maxFontSizeMultiplier={1.2} style={{ ...body, fontSize: 17 }}>
+        <Text maxFontSizeMultiplier={1.2} style={{ ...body(), fontSize: 17 }}>
           At most 1.2×
         </Text>
       </Specimen>
@@ -188,27 +188,27 @@ function Truncation() {
   return (
     <Card icon="lists" title="Truncation" subtitle="numberOfLines and ellipsizeMode">
       <Specimen label="Two lines, tail" code="numberOfLines={2}" first>
-        <Text numberOfLines={2} style={body}>
+        <Text numberOfLines={2} style={body()}>
           {LOREM}
         </Text>
       </Specimen>
       <Specimen label="One line, head" code={`ellipsizeMode="head"`}>
-        <Text numberOfLines={1} ellipsizeMode="head" style={body}>
+        <Text numberOfLines={1} ellipsizeMode="head" style={body()}>
           {LOREM}
         </Text>
       </Specimen>
       <Specimen label="One line, middle" code={`ellipsizeMode="middle"`}>
-        <Text numberOfLines={1} ellipsizeMode="middle" style={body}>
+        <Text numberOfLines={1} ellipsizeMode="middle" style={body()}>
           {LOREM}
         </Text>
       </Specimen>
       <Specimen label="One line, clip" code={`ellipsizeMode="clip"`}>
-        <Text numberOfLines={1} ellipsizeMode="clip" style={body}>
+        <Text numberOfLines={1} ellipsizeMode="clip" style={body()}>
           {LOREM}
         </Text>
       </Specimen>
       <Specimen label="Centered, three lines" code={`textAlign="center"`}>
-        <Text numberOfLines={3} style={{ ...body, textAlign: "center", color: colors.muted }}>
+        <Text numberOfLines={3} style={{ ...body(), textAlign: "center", color: colors.muted }}>
           {LOREM} {LOREM}
         </Text>
       </Specimen>

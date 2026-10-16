@@ -477,7 +477,7 @@ function MessageBar() {
                       borderCurve: "continuous",
                       borderBottomRightRadius: m().mine ? 6 : 18,
                       borderBottomLeftRadius: m().mine ? 18 : 6,
-                      backgroundColor: m().mine ? colors.accent : colors.raised,
+                      backgroundColor: m().mine ? colors.accentFill : colors.raised,
                       ...(m().mine ? finish.accent : finish.raised),
                     }}
                   >

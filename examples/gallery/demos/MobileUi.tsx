@@ -5,7 +5,7 @@
 // keeps the color they give it.
 import { signal, Text, View } from "nsh";
 import { Button, Group, ListView, SelectList, Sheet, Stepper, type StepperRef, TextField } from "nsh/ui/mobile";
-import { Appear, Badge, Caption, Card, colors, mono, Row, Toggle } from "../ui";
+import { Appear, Badge, Caption, Card, colors, isDark, mono, Row, Toggle } from "../ui";
 
 const inset = signal(false);
 
@@ -153,7 +153,7 @@ export function MobileUi() {
               backgroundColor: stock().change >= 0 ? colors.up : colors.down,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.inset, fontVariant: ["tabular-nums"] }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: isDark() ? colors.inset : "#ffffff", fontVariant: ["tabular-nums"] }}>
               {(stock().change >= 0 ? "+" : "") + stock().change.toFixed(2)}%
             </Text>
           </View>

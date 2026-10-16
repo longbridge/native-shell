@@ -3,7 +3,7 @@ import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { colors, Legend, tints } from "../../ui";
 import { BLOCK, buckets, compact, type Market, price, type Stock, type Trade, time } from "./market";
-import { Block, Head, SpringBar } from "./parts";
+import { Block, grid, Head, SpringBar } from "./parts";
 
 const SHOWN = 8;
 
@@ -77,7 +77,7 @@ export function Tape(props: { market: Market; stock: Stock }) {
               ctx.roundRect(0, i * ROW + 2, width, ROW - 4, 8);
               ctx.fill();
             } else if (i) {
-              ctx.strokeStyle = colors.line;
+              ctx.strokeStyle = grid();
               ctx.lineWidth = 1;
               ctx.beginPath();
               ctx.moveTo(0, i * ROW);

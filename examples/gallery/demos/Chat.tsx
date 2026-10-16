@@ -4,7 +4,7 @@ import { Clipboard } from "nsh/clipboard";
 import { List } from "nsh/list";
 import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
-import { Appear, Badge, colors, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
+import { alpha, Appear, Badge, colors, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
 import { Glyph } from "./chat/glyphs";
 import { type Block, Markdown, parse } from "./chat/markdown";
 import { ActionButton, Avatar, Caret, DateSeparator, ErrorRow, FileChip, Photo, Spinner, ToolCard } from "./chat/parts";
@@ -575,7 +575,7 @@ export function Chat() {
                 backgroundColor: colors.surface,
                 ...finish.card,
                 borderWidth: 1,
-                borderColor: bannerKind() === "offline" ? "rgba(255,181,71,0.35)" : "rgba(69,212,154,0.35)",
+                borderColor: alpha(bannerKind() === "offline" ? colors.warn : colors.up, 0.35),
               }}
             >
               <View
@@ -744,7 +744,7 @@ export function Chat() {
               >
                 <Press onPress={stop} scale={0.9} accessibilityLabel="Stop generating">
                   <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.light, ...finish.light }}>
-                    <Glyph name="stop" size={16} tint="#111214" />
+                    <Glyph name="stop" size={16} tint={colors.onLight} />
                   </View>
                 </Press>
               </If>

@@ -4,7 +4,7 @@ import { BackHandler } from "nsh/android";
 import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
-import { Appear, Badge, Button, Card, colors, Figure, header, finish, IconTile, Inset, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";
+import { Appear, Badge, Button, Card, colors, Figure, header, finish, IconTile, Inset, isDark, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";
 
 const edges = ["top", "bottom", "left", "right"] as const;
 
@@ -101,7 +101,7 @@ function LargeTitle() {
 function Transparent() {
   return (
     <Screen title="Transparent" headerTransparent headerTintColor={colors.text} headerTitleColor={colors.text}>
-      <View style={{ flex: 1, backgroundColor: "#11170c", overflow: "hidden", padding: 16, paddingBottom: 56, justifyContent: "flex-end", gap: 16 }}>
+      <View style={{ flex: 1, backgroundColor: isDark() ? "#11170c" : "#eef3e2", overflow: "hidden", padding: 16, paddingBottom: 56, justifyContent: "flex-end", gap: 16 }}>
         <View style={{ position: "absolute", top: -90, right: -70, width: 320, height: 320, borderRadius: 160, backgroundColor: tints.accent }} />
         <View style={{ position: "absolute", top: 150, left: -110, width: 260, height: 260, borderRadius: 130, backgroundColor: tints.info }} />
         <Appear>
@@ -131,7 +131,7 @@ function CustomHeader() {
     <Screen
       title="Custom"
       headerTintColor={colors.onAccent}
-      headerBackgroundColor={colors.accent}
+      headerBackgroundColor={colors.accentFill}
       headerTitleColor={colors.onAccent}
       headerBackVisible={false}
       headerLeft={
@@ -282,7 +282,7 @@ function Deep(props: { depth: number }) {
                     justifyContent: "center",
                     borderWidth: level() === props.depth ? 0 : 1,
                     borderColor: colors.border,
-                    backgroundColor: level() === props.depth ? colors.accent : colors.raised,
+                    backgroundColor: level() === props.depth ? colors.accentFill : colors.raised,
                     ...(level() === props.depth ? finish.accent : finish.raised),
                   }}
                 >

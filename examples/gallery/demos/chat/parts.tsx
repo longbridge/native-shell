@@ -1,7 +1,7 @@
 import { type JSX, Text, View } from "nsh";
 import { Image } from "nsh/image";
 import { Icon } from "../../icons";
-import { Badge, colors, finish, mono, Press, radius, type Tone, toneColor, toneTint } from "../../ui";
+import { alpha, Badge, colors, finish, isDark, mono, Press, radius, type Tone, toneColor, toneTint } from "../../ui";
 import { Glyph, type GlyphName } from "./glyphs";
 import type { FileRef, Source, Tool, ToolState } from "./scripts";
 
@@ -148,7 +148,7 @@ export function ToolCard(props: { tool: Tool }) {
         borderRadius: radius.inset,
         borderCurve: "continuous",
         borderWidth: 1,
-        borderColor: t().state === "running" ? "#33405a" : colors.border,
+        borderColor: t().state === "running" ? (isDark() ? "#33405a" : alpha(colors.info, 0.4)) : colors.border,
         transitionProperty: "colors",
         transitionDuration: 250,
         overflow: "hidden",
@@ -238,7 +238,7 @@ function ToolBody(props: { tool: Tool }) {
   return (
     <View style={{ borderTopWidth: 1, borderTopColor: colors.line }}>
       <View style={{ padding: 12, backgroundColor: colors.inset }}>
-        <Text selectable style={{ fontFamily: mono, fontSize: 12, lineHeight: 18, color: "#c9cdd3" }}>{code().code}</Text>
+        <Text selectable style={{ fontFamily: mono, fontSize: 12, lineHeight: 18, color: isDark() ? "#c9cdd3" : colors.code }}>{code().code}</Text>
       </View>
       <If when={code().state === "done"}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, height: 44, borderTopWidth: 1, borderTopColor: colors.line }}>
@@ -281,7 +281,7 @@ export function ErrorRow(props: { message: string; onRetry: () => void }) {
         borderCurve: "continuous",
         backgroundColor: toneTint("danger"),
         borderWidth: 1,
-        borderColor: "rgba(255,97,112,0.32)",
+        borderColor: alpha(colors.danger, 0.32),
       }}
     >
       <Glyph name="alert" size={18} tint={colors.danger} />
@@ -299,8 +299,8 @@ export function ErrorRow(props: { message: string; onRetry: () => void }) {
             ...finish.light,
           }}
         >
-          <Glyph name="regenerate" size={14} tint="#111214" />
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111214" }}>Retry</Text>
+          <Glyph name="regenerate" size={14} tint={colors.onLight} />
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onLight }}>Retry</Text>
         </View>
       </Press>
     </View>

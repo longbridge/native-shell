@@ -14,6 +14,7 @@ import {
   Figure,
   finish,
   IconTile,
+  isDark,
   Inset,
   Legend,
   Meter,
@@ -45,7 +46,7 @@ function SafeAreaDiagram() {
         borderColor: colors.border,
         backgroundColor: colors.surface,
         backgroundImage: finish.card.backgroundImage,
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+        boxShadow: isDark() ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "inset 0 1px 0 #ffffff",
         overflow: "hidden",
       }}
     >
@@ -100,7 +101,9 @@ function Environment() {
 type BarStyle = "light-content" | "dark-content" | "default";
 
 function StatusBarCard() {
-  const barStyle = signal<BarStyle>("light-content");
+  // Until one is picked, the style follows the appearance (light text on the dark page).
+  const picked = signal<BarStyle | null>(null);
+  const barStyle = () => picked() ?? (isDark() ? "light-content" : "dark-content");
   const barHidden = signal(false);
   return (
     <Card icon="mobile" title="Status bar" subtitle="StatusBar: style and visibility, animated">
@@ -112,7 +115,7 @@ function StatusBarCard() {
           { value: "default", label: "Default" },
         ]}
         value={barStyle()}
-        onChange={(v) => barStyle.set(v)}
+        onChange={(v) => picked.set(v)}
       />
       <Row>
         <View style={{ flex: 1, gap: 2 }}>

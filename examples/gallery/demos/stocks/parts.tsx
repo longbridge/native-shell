@@ -2,18 +2,15 @@ import { effect, type JSX, type PanActivation, Text, type TouchProps, untracked,
 import { Animated, createNativeValue, Easing, type NativeNode } from "nsh/animated";
 import type { CanvasRenderingContext2D } from "nsh/canvas";
 import { PanResponder } from "nsh/gesture";
-import { colors } from "../../ui";
+import { alpha, colors, isDark } from "../../ui";
 import type { Quote } from "./market";
-
-/** The flash colors: a strong tint at ±1 that fades to clear at 0. */
-const FLASH_UP = "rgba(69,212,154,0.34)";
-const FLASH_DOWN = "rgba(255,97,112,0.34)";
 
 /**
  * A background that flashes green or red when the quote changes and fades
- * on the UI thread: JS only kicks the value, it never animates it.
+ * on the UI thread: JS only kicks the value, it never animates it. Read it
+ * in the style: the colors follow the appearance.
  */
-export function flash(quote: () => Quote): NativeNode {
+export function flash(quote: () => Quote): () => NativeNode {
   const v = createNativeValue(0);
   let seen = untracked(quote).changedAt;
   effect(() => {
@@ -23,10 +20,12 @@ export function flash(quote: () => Quote): NativeNode {
     v.set(q.dir);
     v.timing(0, { duration: 700, easing: Easing.out(Easing.quad) });
   });
-  return v.interpolate({
-    inputRange: [-1, -0.01, 0.01, 1],
-    outputRange: [FLASH_DOWN, "rgba(255,97,112,0)", "rgba(69,212,154,0)", FLASH_UP],
-  });
+  // A strong tint at ±1 that fades to clear at 0.
+  return () =>
+    v.interpolate({
+      inputRange: [-1, -0.01, 0.01, 1],
+      outputRange: [alpha(colors.down, 0.34), alpha(colors.down, 0), alpha(colors.up, 0), alpha(colors.up, 0.34)],
+    });
 }
 
 /**
@@ -132,11 +131,10 @@ export function dashed(ctx: CanvasRenderingContext2D, x0: number, x1: number, y:
   ctx.setLineDash([]);
 }
 
-/** `rgba()` of a `#rrggbb` color. */
-export function alpha(hex: string, a: number) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
+export { alpha };
+
+/** Grid lines of charts: the hairline color, a step darker on the light page. */
+export const grid = () => (isDark() ? colors.line : colors.border);
 
 /**
  * A bar that grows from one edge of its track to `share()` (0..1) with a

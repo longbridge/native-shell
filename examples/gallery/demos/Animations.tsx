@@ -2,9 +2,12 @@ import { cleanup, Scroll, signal, Text, View } from "nsh";
 import { Animated, type CompositeAnimation, createNativeValue, Easing, LayoutAnimation, type LayoutAnimationConfig, type NativeNode } from "nsh/animated";
 import { Canvas, type CanvasRenderingContext2D } from "nsh/canvas";
 import { Icon } from "../icons";
-import { Appear, Badge, Button, Caption, Card, colors, finish, Legend, mono, Press, radius, Segmented, tints } from "../ui";
+import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, isDark, Legend, mono, type Palette, Press, radius, Segmented, tints } from "../ui";
 
-const tones = [colors.accent, colors.info, colors.warn, colors.danger, colors.up];
+/** The tones of the demos' dots and tiles (call in a reactive scope). */
+const tones = () => [colors.accent, colors.info, colors.warn, colors.danger, colors.up];
+/** Text on a tone's fill. */
+const onTone = () => (isDark() ? colors.onAccent : "#ffffff");
 
 /** A plain label with the API it uses, in code type. */
 function Api(props: { label: string; api: string }) {
@@ -15,9 +18,6 @@ function Api(props: { label: string; api: string }) {
     </View>
   );
 }
-
-/** The highlight and shadow of a small colored knob. */
-const knob = { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.45)" } as const;
 
 /** The width of a track, measured once laid out (the dots move by it). */
 function useWidth() {
@@ -64,7 +64,7 @@ function Hero() {
         transform: [{ rotate: angle }],
       }}
     >
-      <View style={{ position: "absolute", left: size / 2 - dot / 2, top: -dot / 2, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color, ...knob }} />
+      <View style={{ position: "absolute", left: size / 2 - dot / 2, top: -dot / 2, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color, ...finish.knob }} />
     </View>
   );
   return (
@@ -106,7 +106,7 @@ function Hero() {
               borderRadius: 26,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: breathe.interpolate({ inputRange: [0, 1], outputRange: [colors.accent, colors.up] }),
+              backgroundColor: breathe.interpolate({ inputRange: [0, 1], outputRange: [colors.accentFill, colors.up] }),
               boxShadow: finish.accent.boxShadow,
               transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.08] }) }],
             }}
@@ -171,7 +171,7 @@ function hatch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
-  ctx.strokeStyle = "rgba(236,238,241,0.06)";
+  ctx.strokeStyle = alpha(colors.text, 0.06);
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let i = -h; i < w; i += 7) {
@@ -262,7 +262,7 @@ function EasingPlot() {
           // The playhead and the dot, from native values.
           const hx = px.mul(r - l).add(l);
           const hy = py.mul(-(b - t) / (hi - lo)).add(b + (lo * (b - t)) / (hi - lo));
-          ctx.strokeStyle = "rgba(236,238,241,0.22)";
+          ctx.strokeStyle = alpha(colors.text, 0.22);
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(hx, t);
@@ -337,8 +337,8 @@ function EasingRace() {
                     width: 12,
                     height: 12,
                     borderRadius: 6,
-                    backgroundColor: tones[i() % tones.length],
-                    ...knob,
+                    backgroundColor: tones()[i() % tones().length],
+                    ...finish.knob,
                     transform: [{ translateX: dots[i()].mul(Math.max(0, width() - 12)) }],
                   }}
                 />
@@ -369,7 +369,7 @@ function Chip(props: { label: string; active?: boolean; onPress: () => void }) {
           borderColor: colors.border,
         }}
       >
-        <Text style={{ fontSize: 13, fontWeight: "500", color: props.active ? "#111214" : colors.text }}>{props.label}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "500", color: props.active ? colors.onLight : colors.text }}>{props.label}</Text>
       </View>
     </Press>
   );
@@ -379,7 +379,7 @@ function Chip(props: { label: string; active?: boolean; onPress: () => void }) {
 
 /** sequence, parallel, stagger and loop, with stop and reset. */
 function Composition() {
-  const ys = tones.map(() => createNativeValue(0));
+  const ys = tones().map(() => createNativeValue(0));
   const spin = createNativeValue(0);
   const fade = createNativeValue(1);
   const state = signal<{ label: string; tone: "neutral" | "accent" | "warn" | "info" }>({ label: "idle", tone: "neutral" });
@@ -421,7 +421,7 @@ function Composition() {
           pointerEvents="none"
           style={{ position: "absolute", left: 0, right: 0, bottom: 14, borderTopWidth: 1, borderColor: colors.border, borderStyle: "dashed" }}
         />
-        <Each of={tones}>
+        <Each of={tones()}>
           {(color, i) => (
             <View
               style={{
@@ -430,7 +430,7 @@ function Composition() {
                 borderRadius: 12,
                 borderCurve: "continuous",
                 backgroundColor: color(),
-                ...knob,
+                ...finish.knob,
                 opacity: fade,
                 transform: [
                   { translateY: ys[i()] },
@@ -466,10 +466,10 @@ function Composition() {
 
 // --- Springs ----------------------------------------------------------------
 
-const springs = [
-  { label: "Gentle", stiffness: 120, damping: 14, color: colors.info },
-  { label: "Wobbly", stiffness: 180, damping: 8, color: colors.warn },
-  { label: "Stiff", stiffness: 400, damping: 30, color: colors.accent },
+const springs: { label: string; stiffness: number; damping: number; tone: keyof Palette }[] = [
+  { label: "Gentle", stiffness: 120, damping: 14, tone: "info" },
+  { label: "Wobbly", stiffness: 180, damping: 8, tone: "warn" },
+  { label: "Stiff", stiffness: 400, damping: 30, tone: "accent" },
 ];
 const SPRING_MS = 1800;
 
@@ -532,7 +532,7 @@ function Springs() {
           const fromEnd = !there();
           springs.forEach((s, i) => {
             const pts = response(s.stiffness, s.damping, n);
-            ctx.strokeStyle = s.color;
+            ctx.strokeStyle = colors[s.tone];
             ctx.lineWidth = 1.75;
             ctx.beginPath();
             pts.forEach((p, k) => {
@@ -543,7 +543,7 @@ function Springs() {
             });
             ctx.stroke();
             // The live spring value, at the clock's x.
-            ctx.fillStyle = s.color;
+            ctx.fillStyle = colors[s.tone];
             ctx.beginPath();
             ctx.arc(clock.mul(r - l).add(l), xs[i].div(w).mul(-(b - t) / 1.5).add(b), 4, 0, Math.PI * 2);
             ctx.fill();
@@ -551,7 +551,7 @@ function Springs() {
         }}
       />
       <View style={{ flexDirection: "row", gap: 14, flexWrap: "wrap" }}>
-        <Each of={springs}>{(s) => <Legend color={s().color} label={s().label} value={`${s().stiffness} / ${s().damping}`} />}</Each>
+        <Each of={springs}>{(s) => <Legend color={colors[s().tone]} label={s().label} value={`${s().stiffness} / ${s().damping}`} />}</Each>
       </View>
       <View style={{ gap: 8 }}>
         <Each of={springs}>
@@ -565,8 +565,8 @@ function Springs() {
                   width: 24,
                   height: 24,
                   borderRadius: 12,
-                  backgroundColor: s().color,
-                  ...knob,
+                  backgroundColor: colors[s().tone],
+                  ...finish.knob,
                   transform: [{ translateX: xs[i()] }],
                 }}
               />
@@ -793,11 +793,11 @@ function Layout() {
                 borderCurve: "continuous",
                 paddingHorizontal: 10,
                 justifyContent: "center",
-                backgroundColor: tones[id() % tones.length],
-                ...knob,
+                backgroundColor: tones()[id() % tones().length],
+                ...finish.knob,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onAccent, fontVariant: ["tabular-nums"] }}>{id()}</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: onTone(), fontVariant: ["tabular-nums"] }}>{id()}</Text>
             </View>
           )}
         </Each>

@@ -2,16 +2,16 @@ import { Scroll, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 import { WebView, type WebViewNavigation } from "nsh/webview";
 import { Icon } from "../icons";
-import { Appear, Badge, Button, Caption, Card, colors, finish, Meter, Press, radius, RoundButton, Segmented } from "../ui";
+import { Appear, Badge, Button, Caption, Card, colors, finish, isDark, Meter, Press, radius, RoundButton, Segmented } from "../ui";
 
-/** An inline page in the gallery's colors. */
-const page = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+/** An inline page in the gallery's colors (for the appearance shown: the page reloads when it changes). */
+const page = () => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; padding: 16px; background: ${colors.inset}; color: ${colors.text}; font-family: -apple-system, system-ui, sans-serif; font-size: 15px; line-height: 1.4; }
   h3 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
   p { margin: 0 0 12px; color: ${colors.muted}; font-size: 15px; }
-  button { height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: linear-gradient(180deg, #dbf893, #b3dd4e); color: ${colors.onAccent}; font-family: inherit; font-size: 15px; font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  button { height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: ${finish.accent.backgroundImage}; color: ${colors.onAccent}; font-family: inherit; font-size: 15px; font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,${isDark() ? 0.45 : 0.6}); }
   #got { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid ${colors.border}; color: ${colors.muted}; font-size: 15px; }
 </style></head>
 <body>
@@ -22,7 +22,7 @@ const page = `<!doctype html><html><head><meta name="viewport" content="width=de
 <script>window.addEventListener('message', (e) => { document.getElementById('got').textContent = 'From the app: ' + e.data; });</script>
 </body></html>`;
 
-const frame = { borderRadius: radius.control, overflow: "hidden", borderWidth: 1, borderColor: colors.border } as const;
+const frame = () => ({ borderRadius: radius.control, overflow: "hidden", borderWidth: 1, borderColor: colors.border }) as const;
 
 function Messaging() {
   const message = signal("");
@@ -30,7 +30,7 @@ function Messaging() {
   let web!: YNode;
   return (
     <Card icon="media" title="Web view" subtitle="Inline HTML, with messages both ways">
-      <WebView ref={web} source={{ html: page }} style={{ height: 210, backgroundColor: colors.inset, ...frame }} onMessage={(e) => message.set(e.data)} />
+      <WebView ref={web} source={{ html: page() }} style={{ height: 210, backgroundColor: colors.inset, ...frame() }} onMessage={(e) => message.set(e.data)} />
       <Caption label="From the page" note={message() || "—"} />
       <Caption label="To the page" note={sent() ? `hi #${sent()}` : "—"} />
       <Button
@@ -104,7 +104,7 @@ function Site() {
       <WebView
         ref={site}
         source={{ uri: "https://native-shell.com" }}
-        style={{ height: 340, backgroundColor: colors.inset, ...frame }}
+        style={{ height: 340, backgroundColor: colors.inset, ...frame() }}
         onNavigationStateChange={(v) => state.set(v)}
       />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -140,7 +140,7 @@ function Player() {
         muted
         repeat
         controls={controls() === "system"}
-        style={{ height: 200, backgroundColor: "#000000", ...frame }}
+        style={{ height: 200, backgroundColor: "#000000", ...frame() }}
         onLoad={(e) => duration.set(e.duration)}
         onBuffer={(e) => buffering.set(e.isBuffering)}
         onProgress={(e) => {

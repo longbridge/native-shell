@@ -17,6 +17,7 @@ import {
   header,
   IconTile,
   Inset,
+  isDark,
   mono,
   Press,
   radius,
@@ -108,7 +109,7 @@ function LayoutAnimations() {
                 borderRadius: 14,
                 borderCurve: "continuous",
                 backgroundColor: toneTint(tileTones[n() % tileTones.length]),
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                boxShadow: isDark() ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "inset 0 1px 0 #ffffff",
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -172,15 +173,16 @@ function Tile(props: { title: string; note: string; children?: JSX.Element }) {
   );
 }
 
-const tile = {
-  borderRadius: radius.control,
-  borderCurve: "continuous",
-  borderWidth: 1,
-  borderColor: colors.border,
-  backgroundColor: colors.surface,
-  // The raised highlight without its gradient, so an underlay color shows.
-  boxShadow: finish.raised.boxShadow,
-} as const;
+const tile = () =>
+  ({
+    borderRadius: radius.control,
+    borderCurve: "continuous",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    // The raised highlight without its gradient, so an underlay color shows.
+    boxShadow: finish.raised.boxShadow,
+  }) as const;
 
 /** Press feedback is native: opacity, an underlay, classes; `disabled` takes no presses. */
 function PressFeedback() {
@@ -188,13 +190,13 @@ function PressFeedback() {
   const disabled = signal(false);
   return (
     <UiCard icon="gestures" title="Press feedback" subtitle="Drawn natively while the finger is down">
-      <View style={tile} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
+      <View style={tile()} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
         <Tile title="Fades while pressed" note="activeOpacity={0.4}" />
       </View>
-      <View style={tile} underlayColor={colors.raised} onPress={() => last.set("Underlay tile")}>
+      <View style={tile()} underlayColor={colors.raised} onPress={() => last.set("Underlay tile")}>
         <Tile title="Lights up while pressed" note="underlayColor" />
       </View>
-      <View style={tile} disabled={disabled()} underlayColor={tints.danger} class="disabled:opacity-40" onPress={() => last.set("Enabled tile")}>
+      <View style={tile()} disabled={disabled()} underlayColor={tints.danger} class="disabled:opacity-40" onPress={() => last.set("Enabled tile")}>
         <Tile title={disabled() ? "Takes no presses" : "Enabled"} note="disabled + disabled:opacity-40">
           <Badge label={disabled() ? "Off" : "On"} tone={disabled() ? "neutral" : "up"} />
         </Tile>
@@ -297,7 +299,7 @@ function ModalOptions() {
         ios={{ supportedOrientations: ["portrait", "landscape"] }}
         onRequestClose={() => visible.set(false)}
       >
-        <View style={{ flex: 1, backgroundColor: "#16200d" }}>
+        <View style={{ flex: 1, backgroundColor: isDark() ? "#16200d" : "#eef5dc" }}>
           <SafeAreaView style={{ flex: 1, padding: 16, gap: 12 }}>
             <View style={{ flexDirection: "row", paddingTop: 8 }}>
               <Badge label={translucent() ? "translucent" : "opaque bar"} tone="accent" />

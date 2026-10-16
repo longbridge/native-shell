@@ -4,7 +4,7 @@ import { Canvas } from "nsh/canvas";
 import { PanResponder } from "nsh/gesture";
 import { Image } from "nsh/image";
 import { Icon, type IconName } from "../icons";
-import { Appear, Badge, Button, Caption, Card, colors, finish, IconTile, mono, Press, radius, Row, Stat, tints } from "../ui";
+import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, IconTile, isDark, mono, Press, radius, Row, Stat, tints } from "../ui";
 
 /** A dot matrix behind a stage, drawn once. */
 function Dots() {
@@ -20,19 +20,20 @@ function Dots() {
   );
 }
 
-/** A stage: the darker surface a demo plays on. */
-const stage = {
-  borderRadius: radius.control,
-  borderCurve: "continuous",
-  overflow: "hidden",
-  backgroundColor: colors.background,
-  borderWidth: 1,
-  borderColor: colors.line,
-  ...finish.track,
-} as const;
+/** A stage: the darker surface a demo plays on (call in a reactive scope). */
+const stage = () =>
+  ({
+    borderRadius: radius.control,
+    borderCurve: "continuous",
+    overflow: "hidden",
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.line,
+    ...finish.track,
+  }) as const;
 
-/** The highlight and shadow of a small colored knob. */
-const knob = { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), 0 3px 10px rgba(0,0,0,0.45)" } as const;
+/** The highlight and shadow of a small colored knob (call in a reactive scope). */
+const knob = () => (isDark() ? { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), 0 3px 10px rgba(0,0,0,0.45)" } : finish.knob);
 
 /** A plain label with the API it uses, in code type. */
 function Api(props: { label: string; api: string }) {
@@ -60,7 +61,7 @@ function Transformable() {
   };
   return (
     <Card icon="gestures" title="Pan, pinch and rotation" subtitle="Three recognizers on one view, driven natively">
-      <View style={{ ...stage, height: 260, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ ...stage(), height: 260, alignItems: "center", justifyContent: "center" }}>
         <Dots />
         <View
           pointerEvents="none"
@@ -125,7 +126,7 @@ function Ball() {
   });
   return (
     <Card icon="scroll" title="PanResponder" subtitle="Positions go through JS; the page does not scroll" right={<Badge label={state().label} tone={state().tone} />}>
-      <View style={{ ...stage, height: 200 }}>
+      <View style={{ ...stage(), height: 200 }}>
         <Dots />
         <View
           {...pan.panHandlers}
@@ -139,8 +140,8 @@ function Ball() {
             borderRadius: 30,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: grab.interpolate({ inputRange: [0, 1], outputRange: [colors.info, colors.accent] }),
-            ...knob,
+            backgroundColor: grab.interpolate({ inputRange: [0, 1], outputRange: [colors.info, colors.accentFill] }),
+            ...knob(),
             transform: [{ translateX: pos().x }, { translateY: pos().y }, { scale: grab.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) }],
           }}
         >
@@ -176,7 +177,7 @@ function TouchPad() {
         onTouchMove={note("move")}
         onTouchEnd={note("end")}
         onTouchCancel={note("cancel")}
-        style={{ ...stage, height: 150, alignItems: "center", justifyContent: "center" }}
+        style={{ ...stage(), height: 150, alignItems: "center", justifyContent: "center" }}
       >
         <Dots />
         <If when={fingers().length === 0}>
@@ -253,7 +254,7 @@ function PressEvents() {
           justifyContent: "center",
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111214" }}>Tap, hold, or slide off</Text>
+        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>Tap, hold, or slide off</Text>
       </View>
       <View style={{ flexDirection: "row", gap: 6 }}>
         <Each of={[...names]}>
@@ -267,7 +268,7 @@ function PressEvents() {
                 justifyContent: "center",
                 borderWidth: 1,
                 borderColor: colors.border,
-                backgroundColor: flashes[i()].interpolate({ inputRange: [0, 1], outputRange: [colors.raised, colors.accent] }),
+                backgroundColor: flashes[i()].interpolate({ inputRange: [0, 1], outputRange: [colors.raised, colors.accentFill] }),
                 boxShadow: finish.raised.boxShadow,
               }}
             >
@@ -285,7 +286,7 @@ function PressEvents() {
           onLongPress={() => fire("fast long press")}
           delayLongPress={250}
           underlayColor={colors.border}
-          android={{ ripple: { color: "rgba(200,242,109,0.25)" } }}
+          android={{ ripple: { color: alpha(colors.accentFill, 0.25) } }}
           style={{
             flex: 1,
             height: 56,
@@ -335,7 +336,7 @@ function HitSlop() {
   cleanup(() => breathe.stop());
   return (
     <Card icon="search" title="Hit slop" subtitle="A 12 pt dot that takes taps 30 pt around it" right={<Badge label={`${taps()} taps`} tone={taps() ? "accent" : "neutral"} />}>
-      <View style={{ ...stage, height: 140, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ ...stage(), height: 140, alignItems: "center", justifyContent: "center" }}>
         <Dots />
         <View
           pointerEvents="none"
@@ -353,7 +354,7 @@ function HitSlop() {
           }}
         />
         <Press hitSlop={30} scale={0.8} onPress={() => taps.set(taps() + 1)} accessibilityLabel="Tiny dot">
-          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger, ...knob }} />
+          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: colors.danger, ...knob() }} />
         </Press>
       </View>
       <Api label="The dashed ring is the touch area" api="hitSlop={30}" />
@@ -392,7 +393,7 @@ function PointerEvents() {
             ctx.beginPath();
             ctx.rect(width * 0.18, 0, width * 0.64, height);
             ctx.clip();
-            ctx.strokeStyle = "rgba(255,181,71,0.28)";
+            ctx.strokeStyle = alpha(colors.warn, 0.28);
             ctx.lineWidth = 1;
             ctx.beginPath();
             for (let i = -height; i < width; i += 8) {

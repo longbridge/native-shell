@@ -1,74 +1,203 @@
 import type { JSX, ViewStyle } from "nsh";
 import { effect, signal, Text, View } from "nsh";
+import { colorScheme } from "nsh/device";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Icon, type IconName } from "./icons";
 
+/** Whether the gallery shows its dark palette (reactive: reading it subscribes). */
+export const isDark = () => colorScheme() !== "light";
+
 /**
- * The gallery's look: a graphite page, cards with a darker inset surface,
- * tabular numbers and one citrus accent. Sizes are for phones: 16 pt
- * gutters, 44 pt touch targets, 15 pt body text.
+ * An object with `dark`'s keys whose getters read `dark` or `light` by the
+ * appearance shown: every read in a reactive scope (JSX, a `draw`, an
+ * effect) follows appearance changes, and spreads into components keep the
+ * getters.
  */
-export const colors = {
+function themed<T extends object>(dark: T, light: T): T {
+  const out = {} as T;
+  for (const key of Object.keys(dark) as (keyof T)[]) {
+    Object.defineProperty(out, key, { enumerable: true, get: () => (isDark() ? dark : light)[key] });
+  }
+  return out;
+}
+
+/** The roles of the palette. */
+export interface Palette {
   /** The page behind the cards. */
-  background: "#101113",
+  background: string;
   /** A card. */
-  surface: "#18191c",
+  surface: string;
   /** A surface inside a card. */
-  inset: "#0c0d0f",
+  inset: string;
   /** A control on a card (buttons, fields, tracks). */
-  raised: "#24262a",
-  border: "#2c2e33",
+  raised: string;
+  border: string;
   /** Hairlines inside insets. */
-  line: "#1f2124",
-  text: "#eceef1",
-  muted: "#8d9198",
-  faint: "#5a5e65",
-  accent: "#c8f26d",
-  /** Text on the accent. */
-  onAccent: "#13160c",
-  /** A light button (the main action). */
-  light: "#eef0f2",
-  info: "#7ea8ff",
-  warn: "#ffb547",
-  danger: "#ff6170",
-  up: "#45d49a",
-  down: "#ff6170",
-} as const;
+  line: string;
+  text: string;
+  muted: string;
+  faint: string;
+  /** The accent as a foreground: text, icons, lines, small marks. */
+  accent: string;
+  /** The accent as a fill (buttons, bubbles), with `onAccent` on it. */
+  accentFill: string;
+  /** Text on the accent fill. */
+  onAccent: string;
+  /** The main action's button: light on the dark page, dark on the light one. */
+  light: string;
+  /** Text on `light`. */
+  onLight: string;
+  /** A switch's track when off. */
+  track: string;
+  /** A switch's knob when off. */
+  knob: string;
+  /** Code inside insets. */
+  code: string;
+  info: string;
+  warn: string;
+  danger: string;
+  up: string;
+  down: string;
+}
+
+/**
+ * The gallery's look: a graphite page (or a paper one in light
+ * appearance), cards with an inset surface, tabular numbers and one citrus
+ * accent. Sizes are for phones: 16 pt gutters, 44 pt touch targets, 15 pt
+ * body text.
+ */
+export const colors: Palette = themed<Palette>(
+  {
+    background: "#101113",
+    surface: "#18191c",
+    inset: "#0c0d0f",
+    raised: "#24262a",
+    border: "#2c2e33",
+    line: "#1f2124",
+    text: "#eceef1",
+    muted: "#8d9198",
+    faint: "#5a5e65",
+    accent: "#c8f26d",
+    accentFill: "#c8f26d",
+    onAccent: "#13160c",
+    light: "#eef0f2",
+    onLight: "#111214",
+    track: "#24262a",
+    knob: "#8d9198",
+    code: "#d9dde3",
+    info: "#7ea8ff",
+    warn: "#ffb547",
+    danger: "#ff6170",
+    up: "#45d49a",
+    down: "#ff6170",
+  },
+  {
+    background: "#f4f4f2",
+    surface: "#ffffff",
+    inset: "#f0f0ec",
+    raised: "#fbfbf9",
+    border: "#e2e2dd",
+    line: "#ecece8",
+    text: "#16171a",
+    muted: "#5f636a",
+    faint: "#9a9ea4",
+    accent: "#4f6e0c",
+    accentFill: "#c8f26d",
+    onAccent: "#13160c",
+    light: "#16171a",
+    onLight: "#ffffff",
+    track: "#e2e2dd",
+    knob: "#ffffff",
+    code: "#2a2d33",
+    info: "#3d63d1",
+    warn: "#b26a00",
+    danger: "#d43a4a",
+    up: "#138a5a",
+    down: "#d43a4a",
+  },
+);
+
+/** `rgba()` of a `#rrggbb` color. */
+export function alpha(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 
 /** Translucent tints of the tones, for fills behind text. */
-export const tints = {
-  accent: "rgba(200,242,109,0.14)",
-  info: "rgba(126,168,255,0.16)",
-  warn: "rgba(255,181,71,0.16)",
-  danger: "rgba(255,97,112,0.16)",
-  up: "rgba(69,212,154,0.16)",
-  down: "rgba(255,97,112,0.16)",
-} as const;
+export const tints = themed(
+  {
+    accent: "rgba(200,242,109,0.14)",
+    info: "rgba(126,168,255,0.16)",
+    warn: "rgba(255,181,71,0.16)",
+    danger: "rgba(255,97,112,0.16)",
+    up: "rgba(69,212,154,0.16)",
+    down: "rgba(255,97,112,0.16)",
+  },
+  {
+    accent: "rgba(124,170,20,0.14)",
+    info: "rgba(61,99,209,0.10)",
+    warn: "rgba(178,106,0,0.11)",
+    danger: "rgba(212,58,74,0.10)",
+    up: "rgba(19,138,90,0.10)",
+    down: "rgba(212,58,74,0.10)",
+  },
+);
+
+/** A surface's finish: a gradient over its color and its shadows. */
+export interface Finish {
+  backgroundImage?: string;
+  boxShadow: string;
+}
 
 /**
  * Light and depth: gentle top-to-bottom gradients, a highlight along top
  * edges and soft shadows, so cards, controls and buttons read as surfaces.
  */
-export const finish = {
-  card: {
-    backgroundImage: "linear-gradient(180deg, #1d1e22 0%, #17181b 100%)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 28px rgba(0,0,0,0.38)",
+export const finish = themed<Record<"card" | "inset" | "raised" | "light" | "accent" | "track" | "knob", Finish>>(
+  {
+    card: {
+      backgroundImage: "linear-gradient(180deg, #1d1e22 0%, #17181b 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 28px rgba(0,0,0,0.38)",
+    },
+    inset: { boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" },
+    raised: {
+      backgroundImage: "linear-gradient(180deg, #2d2f34 0%, #222428 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)",
+    },
+    light: {
+      backgroundImage: "linear-gradient(180deg, #fbfbfc 0%, #d4d6d9 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
+    },
+    accent: {
+      backgroundImage: "linear-gradient(180deg, #dbf893 0%, #b3dd4e 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45), 0 3px 12px rgba(200,242,109,0.22)",
+    },
+    track: { boxShadow: "inset 0 1px 3px rgba(0,0,0,0.6)" },
+    /** A knob or handle over a track. */
+    knob: { boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.45)" },
   },
-  inset: { boxShadow: "inset 0 1px 3px rgba(0,0,0,0.55)" },
-  raised: {
-    backgroundImage: "linear-gradient(180deg, #2d2f34 0%, #222428 100%)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.45)",
+  {
+    card: {
+      backgroundImage: "linear-gradient(180deg, #ffffff 0%, #fafaf8 100%)",
+      boxShadow: "inset 0 1px 0 #ffffff, 0 6px 20px rgba(20,20,10,0.08)",
+    },
+    inset: { boxShadow: "inset 0 1px 2px rgba(20,20,10,0.07)" },
+    raised: {
+      backgroundImage: "linear-gradient(180deg, #ffffff 0%, #f2f2ee 100%)",
+      boxShadow: "inset 0 1px 0 #ffffff, 0 1px 2px rgba(20,20,10,0.12)",
+    },
+    light: {
+      backgroundImage: "linear-gradient(180deg, #2c2e33 0%, #16171a 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.14), 0 3px 10px rgba(20,20,10,0.22)",
+    },
+    accent: {
+      backgroundImage: "linear-gradient(180deg, #d8f88f 0%, #bde65a 100%)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6), 0 3px 10px rgba(110,150,20,0.25)",
+    },
+    track: { boxShadow: "inset 0 1px 2px rgba(20,20,10,0.10)" },
+    knob: { boxShadow: "inset 0 1px 0 #ffffff, 0 1px 4px rgba(20,20,10,0.28)" },
   },
-  light: {
-    backgroundImage: "linear-gradient(180deg, #fbfbfc 0%, #d4d6d9 100%)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 3px 10px rgba(0,0,0,0.4)",
-  },
-  accent: {
-    backgroundImage: "linear-gradient(180deg, #dbf893 0%, #b3dd4e 100%)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45), 0 3px 12px rgba(200,242,109,0.22)",
-  },
-  track: { boxShadow: "inset 0 1px 3px rgba(0,0,0,0.6)" },
-} as const;
+);
 
 export type Tone = "neutral" | "accent" | "info" | "warn" | "danger" | "up" | "down";
 
@@ -84,10 +213,16 @@ export const radius = { card: 16, inset: 12, control: 10 } as const;
 
 /** Header props of every screen. */
 export const header = {
-  headerBackgroundColor: colors.background,
-  headerTitleColor: colors.text,
-  headerTintColor: colors.accent,
-} as const;
+  get headerBackgroundColor() {
+    return colors.background;
+  },
+  get headerTitleColor() {
+    return colors.text;
+  },
+  get headerTintColor() {
+    return colors.accent;
+  },
+};
 
 /** The motion every control shares: quick, slightly springy. */
 export const motion = {
@@ -353,8 +488,8 @@ export function Button(props: {
 }) {
   const variant = () => props.variant ?? "primary";
   const bg = () =>
-    props.color ?? (variant() === "primary" ? colors.light : variant() === "accent" ? colors.accent : variant() === "ghost" ? "transparent" : colors.raised);
-  const fg = () => (props.color ? "#ffffff" : variant() === "primary" ? "#111214" : variant() === "accent" ? colors.onAccent : colors.text);
+    props.color ?? (variant() === "primary" ? colors.light : variant() === "accent" ? colors.accentFill : variant() === "ghost" ? "transparent" : colors.raised);
+  const fg = () => (props.color ? "#ffffff" : variant() === "primary" ? colors.onLight : variant() === "accent" ? colors.onAccent : colors.text);
   return (
     <Press onPress={props.onPress} disabled={props.disabled} accessibilityLabel={props.label} style={props.flex ? { flex: props.flex } : undefined}>
       <View
@@ -414,7 +549,7 @@ export function RoundButton(props: {
           borderColor: colors.border,
         }}
       >
-        <Icon name={props.icon} size={size * 0.42} tint={primary() ? "#111214" : colors.text} />
+        <Icon name={props.icon} size={size * 0.42} tint={primary() ? colors.onLight : colors.text} />
       </View>
     </Press>
   );
@@ -468,7 +603,7 @@ export function Toggle(props: { value: boolean; onChange: (value: boolean) => vo
         height: 30,
         borderRadius: 15,
         padding: 3,
-        backgroundColor: t.interpolate({ inputRange: [0, 1], outputRange: [colors.raised, colors.accent] }),
+        backgroundColor: t.interpolate({ inputRange: [0, 1], outputRange: [colors.track, colors.accentFill] }),
         borderWidth: 1,
         borderColor: colors.border,
         ...finish.track,
@@ -479,7 +614,8 @@ export function Toggle(props: { value: boolean; onChange: (value: boolean) => vo
           width: 22,
           height: 22,
           borderRadius: 11,
-          backgroundColor: props.value ? colors.onAccent : colors.muted,
+          backgroundColor: props.value ? colors.onAccent : colors.knob,
+          boxShadow: props.value || isDark() ? undefined : finish.knob.boxShadow,
           transform: [{ translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) }],
         }}
       />

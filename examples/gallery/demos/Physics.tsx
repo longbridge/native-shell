@@ -176,7 +176,7 @@ export function Physics() {
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
-            backgroundColor: pressed.interpolate({ inputRange: [0, 1], outputRange: [colors.accent, colors.info] }),
+            backgroundColor: pressed.interpolate({ inputRange: [0, 1], outputRange: [colors.accentFill, colors.info] }),
             // The accent's highlight and glow; the color itself animates.
             boxShadow: finish.accent.boxShadow,
             transform: [

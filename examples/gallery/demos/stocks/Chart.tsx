@@ -3,7 +3,7 @@ import { createNativeValue } from "nsh/animated";
 import { Canvas, type CanvasRenderingContext2D } from "nsh/canvas";
 import { colors, Legend, radius, Segmented } from "../../ui";
 import { type Candle, compact, OPEN, price, SESSION, type Stock, signed, time, toneOf } from "./market";
-import { alpha, calm, dashed, hatch, pulse, scrub } from "./parts";
+import { alpha, calm, dashed, grid, hatch, pulse, scrub } from "./parts";
 
 export type Period = "intraday" | "1m" | "5m" | "15m" | "1D";
 const periods: { value: Period; label: string }[] = [
@@ -14,9 +14,24 @@ const periods: { value: Period; label: string }[] = [
   { value: "1D", label: "1D" },
 ];
 const averages = [
-  { n: 5, color: colors.accent },
-  { n: 10, color: colors.info },
-  { n: 20, color: colors.warn },
+  {
+    n: 5,
+    get color() {
+      return colors.accent;
+    },
+  },
+  {
+    n: 10,
+    get color() {
+      return colors.info;
+    },
+  },
+  {
+    n: 20,
+    get color() {
+      return colors.warn;
+    },
+  },
 ];
 /** Candle bodies (points) by period. */
 const bodies: Record<Period, number> = { intraday: 1, "1m": 5, "5m": 7, "15m": 9, "1D": 5 };
@@ -159,7 +174,7 @@ export function Chart(props: { stock: Stock; running: () => boolean }) {
     const now = X(d.length - 1);
     const last = d[d.length - 1].c;
     const tone = toneOf(last - prevClose());
-    hatch(ctx, now + 4, pad.top, pad.left + plotW - now - 4, f.mainH, colors.line, 7);
+    hatch(ctx, now + 4, pad.top, pad.left + plotW - now - 4, f.mainH, grid(), 7);
     dashed(ctx, pad.left, pad.left + plotW, Y(prevClose()), colors.faint);
     // The price area and line.
     const fill = ctx.createLinearGradient(0, pad.top, 0, pad.top + f.mainH);
@@ -318,7 +333,7 @@ export function Chart(props: { stock: Stock; running: () => boolean }) {
             for (let k = 0; k <= 4; k++) {
               const v = f.hi - ((f.hi - f.lo) * k) / 4;
               const y = Y(v);
-              ctx.strokeStyle = colors.line;
+              ctx.strokeStyle = grid();
               ctx.beginPath();
               ctx.moveTo(pad.left, y);
               ctx.lineTo(pad.left + plotW, y);
@@ -327,7 +342,7 @@ export function Chart(props: { stock: Stock; running: () => boolean }) {
               ctx.textAlign = "right";
               ctx.fillText(intraday() ? `${signed(((v - prevClose()) / prevClose()) * 100)}%` : p(v), width, y);
             }
-            ctx.strokeStyle = colors.line;
+            ctx.strokeStyle = grid();
             ctx.beginPath();
             ctx.moveTo(pad.left, volTop + volH);
             ctx.lineTo(pad.left + plotW, volTop + volH);

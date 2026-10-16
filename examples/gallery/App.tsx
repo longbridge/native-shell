@@ -21,7 +21,7 @@ import { Tailwind } from "./demos/Tailwind";
 import { TextDemo } from "./demos/TextDemo";
 import { Icon } from "./icons";
 import { type DemoEntry, nav } from "./nav";
-import { Appear, colors, header, IconTile, mono, Press, radius } from "./ui";
+import { Appear, colors, header, IconTile, isDark, mono, Press, radius } from "./ui";
 
 /** The demos, by what they show. */
 const groups: { title: string; demos: DemoEntry[] }[] = [
@@ -138,7 +138,7 @@ function Home() {
 function App() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark() ? "light-content" : "dark-content"} />
       <Stack navigator={nav} style={{ flex: 1 }}>
         {(route) => {
           switch (route.name) {

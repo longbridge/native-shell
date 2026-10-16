@@ -3,7 +3,7 @@ import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
 import { windowSize } from "nsh/device";
 import { List } from "nsh/list";
-import { Badge, Button, Caption, colors, Figure, finish, Meter, mono, Press, radius, Section, Segmented, Toggle as Switch, type Tone, toneColor, toneTint } from "../ui";
+import { Badge, Button, Caption, colors, Figure, finish, isDark, Meter, mono, Press, radius, Section, Segmented, Toggle as Switch, type Tone, toneColor, toneTint } from "../ui";
 
 const tones: Tone[] = ["accent", "info", "warn", "up", "danger"];
 
@@ -452,8 +452,8 @@ export function Scrolling() {
                 gap: 8,
               }}
             >
-              <Text style={{ fontSize: 15, fontWeight: "600", color: "#111214" }}>Tap me</Text>
-              <Text style={{ fontSize: 15, color: "#55595f", fontVariant: ["tabular-nums"] }}>{presses()}</Text>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>Tap me</Text>
+              <Text style={{ fontSize: 15, color: isDark() ? "#55595f" : "#9a9ea4", fontVariant: ["tabular-nums"] }}>{presses()}</Text>
             </View>
           </Press>
           <View style={{ height: 300 }} />

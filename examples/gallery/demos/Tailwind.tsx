@@ -5,69 +5,77 @@ import { Icon, type IconName } from "../icons";
 import { Appear, colors } from "../ui";
 
 /**
- * The gallery's dark design built from class strings alone: the graphite
- * surfaces and the citrus accent are `nsh.json` theme colors
- * (`graphite-*`, `citrus`), the light and depth (`finish` in ui.tsx) are
- * gradients and arbitrary shadows, everything else is stock Tailwind.
+ * The gallery's design built from class strings alone: the surfaces and the
+ * citrus accent are `nsh.json` theme colors (`paper-*` in light appearance,
+ * `dark:` `graphite-*`, `citrus`), the light and depth (`finish` in ui.tsx)
+ * are gradients and arbitrary shadows, everything else is stock Tailwind.
  */
 const photo = "https://picsum.photos/seed/nsh-tailwind/600/400";
 
 /** The finishes of ui.tsx as classes: a top-lit gradient, a highlight along the top edge, a soft shadow. */
 const finish = {
-  card: "bg-linear-to-b from-[#1d1e22] to-[#17181b] inset-shadow-[0_1px_0_rgba(255,255,255,0.06)] shadow-[0_10px_28px_rgba(0,0,0,0.38)]",
-  inset: "inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)]",
-  raised: "bg-linear-to-b from-[#2d2f34] to-[#222428] inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] shadow-[0_1px_2px_rgba(0,0,0,0.45)]",
-  light: "bg-linear-to-b from-[#fbfbfc] to-[#d4d6d9] inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] shadow-[0_3px_10px_rgba(0,0,0,0.4)]",
-  accent: "bg-linear-to-b from-[#dbf893] to-[#b3dd4e] inset-shadow-[0_1px_0_rgba(255,255,255,0.45)] shadow-[0_3px_12px_rgba(200,242,109,0.22)]",
+  card:
+    "bg-linear-to-b from-white to-[#fafaf8] inset-shadow-[0_1px_0_#ffffff] shadow-[0_6px_20px_rgba(20,20,10,0.08)] " +
+    "dark:from-[#1d1e22] dark:to-[#17181b] dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.06)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.38)]",
+  inset: "inset-shadow-[0_1px_2px_rgba(20,20,10,0.07)] dark:inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)]",
+  raised:
+    "bg-linear-to-b from-white to-[#f2f2ee] inset-shadow-[0_1px_0_#ffffff] shadow-[0_1px_2px_rgba(20,20,10,0.12)] " +
+    "dark:from-[#2d2f34] dark:to-[#222428] dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.45)]",
+  light:
+    "bg-linear-to-b from-[#2c2e33] to-[#16171a] inset-shadow-[0_1px_0_rgba(255,255,255,0.14)] shadow-[0_3px_10px_rgba(20,20,10,0.22)] " +
+    "dark:from-[#fbfbfc] dark:to-[#d4d6d9] dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.9)] dark:shadow-[0_3px_10px_rgba(0,0,0,0.4)]",
+  accent:
+    "bg-linear-to-b from-[#d8f88f] to-[#bde65a] inset-shadow-[0_1px_0_rgba(255,255,255,0.6)] shadow-[0_3px_10px_rgba(110,150,20,0.25)] " +
+    "dark:from-[#dbf893] dark:to-[#b3dd4e] dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.45)] dark:shadow-[0_3px_12px_rgba(200,242,109,0.22)]",
 };
 
 /** A card: an icon tile, a title and the classes it shows, over a darker inset. */
 function Card(props: { icon: IconName; title: string; subtitle: string; children: JSX.Element }) {
   return (
-    <View class={`rounded-2xl border border-graphite-border bg-graphite-card p-[5px] ${finish.card}`}>
+    <View class={`rounded-2xl border border-paper-border bg-paper-card p-[5px] dark:border-graphite-border dark:bg-graphite-card ${finish.card}`}>
       <View class="flex-row items-center gap-3 px-[11px] pb-3 pt-[11px]">
-        <View class={`size-10 items-center justify-center rounded-xl border border-graphite-border bg-graphite-raised ${finish.raised}`}>
+        <View class={`size-10 items-center justify-center rounded-xl border border-paper-border bg-paper-raised dark:border-graphite-border dark:bg-graphite-raised ${finish.raised}`}>
           <Icon name={props.icon} size={20} tint={colors.text} />
         </View>
         <View class="flex-1 gap-0.5">
-          <Text class="text-[17px] font-semibold text-zinc-100">{props.title}</Text>
-          <Text numberOfLines={2} class="font-mono text-xs leading-4 text-zinc-400">
+          <Text class="text-[17px] font-semibold text-zinc-900 dark:text-zinc-100">{props.title}</Text>
+          <Text numberOfLines={2} class="font-mono text-xs leading-4 text-zinc-500 dark:text-zinc-400">
             {props.subtitle}
           </Text>
         </View>
       </View>
-      <View class={`gap-3 rounded-xl border border-graphite-line bg-graphite-inset p-3.5 ${finish.inset}`}>{props.children}</View>
+      <View class={`gap-3 rounded-xl border border-paper-line bg-paper-inset p-3.5 dark:border-graphite-line dark:bg-graphite-inset ${finish.inset}`}>{props.children}</View>
     </View>
   );
 }
 
 function Label(props: { children: string }) {
-  return <Text class="text-center text-xs text-zinc-400 tabular-nums">{props.children}</Text>;
+  return <Text class="text-center text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">{props.children}</Text>;
 }
 
 /** A gradient hero lit by a citrus glow, with a big tabular figure and two badges. */
 function Hero() {
   return (
     <View
-      class={`overflow-hidden rounded-2xl border border-graphite-border bg-linear-to-br from-[#26282d] via-graphite-card to-graphite-inset p-5 inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] shadow-[0_10px_28px_rgba(0,0,0,0.38)]`}
+      class="overflow-hidden rounded-2xl border border-paper-border bg-linear-to-br from-white via-[#fafaf8] to-paper-inset p-5 inset-shadow-[0_1px_0_#ffffff] shadow-[0_6px_20px_rgba(20,20,10,0.08)] dark:border-graphite-border dark:from-[#26282d] dark:via-graphite-card dark:to-graphite-inset dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.08)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.38)]"
     >
       <View class="absolute -right-20 -top-24 size-72 rounded-full bg-radial from-citrus/20 to-transparent to-70%" />
       <View class="flex-row flex-wrap items-center gap-2">
-        <View class="h-[26px] flex-row items-center gap-1.5 rounded-full bg-white/10 px-2.5 ring-1 ring-inset ring-white/10">
+        <View class="h-[26px] flex-row items-center gap-1.5 rounded-full bg-black/5 px-2.5 ring-1 ring-inset ring-black/10 dark:bg-white/10 dark:ring-white/10">
           <View class="size-2 items-center justify-center">
             <View class="absolute size-2 rounded-full bg-citrus animate-ping" />
             <View class="size-1.5 rounded-full bg-citrus" />
           </View>
-          <Text class="text-xs font-medium text-zinc-100">Resolved natively</Text>
+          <Text class="text-xs font-medium text-zinc-900 dark:text-zinc-100">Resolved natively</Text>
         </View>
         <View class="h-[26px] justify-center rounded-full bg-zinc-200 px-2.5 dark:bg-white/10">
           <Text class="font-mono text-xs text-zinc-900 dark:text-zinc-100">dark:</Text>
         </View>
       </View>
-      <Text class="mt-6 text-[13px] text-zinc-400">This screen, styled with classes</Text>
-      <Text class="text-5xl font-semibold tracking-tight text-zinc-100 tabular-nums">
+      <Text class="mt-6 text-[13px] text-zinc-500 dark:text-zinc-400">This screen, styled with classes</Text>
+      <Text class="text-5xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 tabular-nums">
         {String(sections.length)}
-        <Text class="text-[17px] font-normal tracking-normal text-zinc-400"> cards</Text>
+        <Text class="text-[17px] font-normal tracking-normal text-zinc-500 dark:text-zinc-400"> cards</Text>
       </Text>
       <Text class="mt-2 font-mono text-xs text-zinc-500">bg-linear-to-br · bg-radial · inset-shadow-[…]</Text>
     </View>
@@ -77,19 +85,19 @@ function Hero() {
 /** A grid of figures, each with a tinted note. */
 function Stats() {
   const stats = [
-    { label: "Swatches", value: String(palette.length * shades.length), note: `${palette.length} hues × ${shades.length} shades`, tone: "text-citrus" },
-    { label: "Gradients", value: "4", note: "Linear, radial, conic", tone: "text-emerald-400" },
-    { label: "Animations", value: "4", note: "Spin, ping, pulse, bounce", tone: "text-sky-400" },
-    { label: "Unknown classes", value: "0", note: "Checked at build", tone: "text-amber-400" },
+    { label: "Swatches", value: String(palette.length * shades.length), note: `${palette.length} hues × ${shades.length} shades`, tone: "text-citrus-deep dark:text-citrus" },
+    { label: "Gradients", value: "4", note: "Linear, radial, conic", tone: "text-emerald-600 dark:text-emerald-400" },
+    { label: "Animations", value: "4", note: "Spin, ping, pulse, bounce", tone: "text-sky-600 dark:text-sky-400" },
+    { label: "Unknown classes", value: "0", note: "Checked at build", tone: "text-amber-600 dark:text-amber-400" },
   ];
   return (
     <Card icon="stocks" title="Stat grid" subtitle="grid grid-cols-2 gap-2">
       <View class="grid grid-cols-2 gap-2">
         <Each of={stats}>
           {(s) => (
-            <View class="gap-1 rounded-[10px] border border-graphite-line bg-linear-to-b from-[#1d1e22] to-[#17181b] p-3 inset-shadow-[0_1px_0_rgba(255,255,255,0.05)]">
+            <View class="gap-1 rounded-[10px] border border-paper-line bg-linear-to-b from-white to-[#fafaf8] p-3 inset-shadow-[0_1px_0_#ffffff] dark:border-graphite-line dark:from-[#1d1e22] dark:to-[#17181b] dark:inset-shadow-[0_1px_0_rgba(255,255,255,0.05)]">
               <Text class="text-xs text-zinc-500">{s().label}</Text>
-              <Text class="text-[26px] font-semibold tracking-tight text-zinc-100 tabular-nums">{s().value}</Text>
+              <Text class="text-[26px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 tabular-nums">{s().value}</Text>
               <Text numberOfLines={1} class={`text-xs tabular-nums ${s().tone}`}>
                 {s().note}
               </Text>
@@ -102,7 +110,7 @@ function Stats() {
           {(c, i) => (
             <View class="flex-row items-center gap-1.5">
               <View class={`size-2.5 rounded-[3px] ${c()}`} />
-              <Text class="text-[13px] text-zinc-400">{["Palette", "Gradients", "Motion", "Checks"][i()]}</Text>
+              <Text class="text-[13px] text-zinc-500 dark:text-zinc-400">{["Palette", "Gradients", "Motion", "Checks"][i()]}</Text>
             </View>
           )}
         </Each>
@@ -119,16 +127,16 @@ function Buttons() {
     <Card icon="components" title="Buttons" subtitle="active: hover: transition disabled: bg-linear-to-b">
       <View
         onPress={() => count.set(count() + 1)}
-        class={`h-11 flex-row items-center justify-center rounded-[10px] bg-zinc-100 ${finish.light} transition duration-150 active:scale-[0.97] active:opacity-90`}
+        class={`h-11 flex-row items-center justify-center rounded-[10px] bg-zinc-900 dark:bg-zinc-100 ${finish.light} transition duration-150 active:scale-[0.97] active:opacity-90`}
       >
-        <Text class="text-[15px] font-semibold text-zinc-900">Pressed {count()}×</Text>
+        <Text class="text-[15px] font-semibold text-white dark:text-zinc-900">Pressed {count()}×</Text>
       </View>
       <View class="flex-row gap-2">
         <View
           onPress={() => count.set(0)}
-          class={`h-11 flex-1 items-center justify-center rounded-[10px] border border-graphite-border bg-graphite-raised ${finish.raised} transition active:scale-95 active:opacity-80`}
+          class={`h-11 flex-1 items-center justify-center rounded-[10px] border border-paper-border bg-paper-raised dark:border-graphite-border dark:bg-graphite-raised ${finish.raised} transition active:scale-95 active:opacity-80`}
         >
-          <Text class="text-[15px] font-semibold text-zinc-100">Reset</Text>
+          <Text class="text-[15px] font-semibold text-zinc-900 dark:text-zinc-100">Reset</Text>
         </View>
         <View
           onPress={() => busy.set(!busy())}
@@ -138,8 +146,8 @@ function Buttons() {
           <Text class="text-[15px] font-semibold text-citrus-ink">{busy() ? "Disabled" : "Disable me"}</Text>
         </View>
       </View>
-      <View onPress={() => busy.set(false)} class="min-h-11 justify-center self-start rounded-lg px-1 active:bg-white/5">
-        <Text class="text-sm text-citrus underline decoration-dotted underline-offset-4">Enable again</Text>
+      <View onPress={() => busy.set(false)} class="min-h-11 justify-center self-start rounded-lg px-1 active:bg-black/5 dark:active:bg-white/5">
+        <Text class="text-sm text-citrus-deep underline dark:text-citrus decoration-dotted underline-offset-4">Enable again</Text>
       </View>
     </Card>
   );
@@ -148,20 +156,20 @@ function Buttons() {
 /** Cards: a group press row, tinted badges, an inner ring. */
 function Cards() {
   const badges = [
-    "bg-emerald-400/15 text-emerald-400",
-    "bg-sky-400/15 text-sky-400",
-    "bg-amber-400/15 text-amber-400",
-    "border border-rose-400 text-rose-400",
+    "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-400",
+    "bg-sky-500/15 text-sky-700 dark:bg-sky-400/15 dark:text-sky-400",
+    "bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-400",
+    "border border-rose-500 text-rose-600 dark:border-rose-400 dark:text-rose-400",
   ];
   return (
     <Card icon="styles" title="Cards and badges" subtitle="group-active: ring-inset shadow-*">
-      <View class="group flex-row items-center gap-3 rounded-xl bg-linear-to-b from-[#2d2f34] to-[#222428] p-3 shadow-md shadow-black/40 ring-1 ring-inset ring-white/10 transition-transform duration-200 active:scale-[0.98]">
+      <View class="group flex-row items-center gap-3 rounded-xl bg-linear-to-b from-white to-[#f2f2ee] p-3 shadow-md shadow-black/10 ring-1 ring-inset ring-black/5 dark:from-[#2d2f34] dark:to-[#222428] dark:shadow-black/40 dark:ring-white/10 transition-transform duration-200 active:scale-[0.98]">
         <Image src={logo} class="size-12 rounded-[10px]" />
         <View class="flex-1 gap-0.5">
-          <Text class="text-base font-semibold text-zinc-100">Group press</Text>
-          <Text class="text-[13px] text-zinc-400 group-active:text-citrus">Press the card: this line changes color</Text>
+          <Text class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Group press</Text>
+          <Text class="text-[13px] text-zinc-500 dark:text-zinc-500 dark:text-zinc-400 group-active:text-citrus-deep dark:group-active:text-citrus">Press the card: this line changes color</Text>
         </View>
-        <Text class="text-2xl text-zinc-600 transition-transform group-active:translate-x-1">›</Text>
+        <Text class="text-2xl text-zinc-400 dark:text-zinc-600 transition-transform group-active:translate-x-1">›</Text>
       </View>
       <View class="flex-row flex-wrap gap-2">
         <Each of={badges}>
@@ -186,7 +194,7 @@ function Layout() {
       </View>
       <View class="grid grid-cols-3 gap-2">
         <View class="col-span-2 h-12 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/15">
-          <Text class="font-mono text-xs text-violet-300">col-span-2</Text>
+          <Text class="font-mono text-xs text-violet-600 dark:text-violet-300">col-span-2</Text>
         </View>
         <View class="h-12 rounded-lg bg-violet-500/25" />
         <View class="h-12 rounded-lg bg-violet-500/35" />
@@ -216,7 +224,7 @@ function Colors() {
         <Each of={palette}>
           {(name) => (
             <View class="flex-row items-center gap-1.5">
-              <Text class="w-16 text-xs text-zinc-400">{name()}</Text>
+              <Text class="w-16 text-xs text-zinc-500 dark:text-zinc-400">{name()}</Text>
               <Each of={shades}>{(shade) => <View class={`h-6 flex-1 rounded-md bg-${name()}-${shade()}`} />}</Each>
             </View>
           )}
@@ -234,7 +242,7 @@ function Shadows() {
         <Each of={sizes}>
           {(s) => (
             <View class="items-center gap-2">
-              <View class={`size-12 rounded-xl bg-graphite-raised shadow-black ${s()}`} />
+              <View class={`size-12 rounded-xl bg-paper-raised shadow-black dark:bg-graphite-raised ${s()}`} />
               <Label>{s().slice(7)}</Label>
             </View>
           )}
@@ -242,15 +250,15 @@ function Shadows() {
       </View>
       <View class="flex-row justify-between px-1 pb-1">
         <View class="items-center gap-2">
-          <View class="size-12 rounded-xl bg-black inset-shadow-sm inset-shadow-white/10 ring-1 ring-inset ring-white/10" />
+          <View class="size-12 rounded-xl bg-paper-inset inset-shadow-sm inset-shadow-black/10 ring-1 ring-inset ring-black/5 dark:bg-black dark:inset-shadow-white/10 dark:ring-white/10" />
           <Label>Inset</Label>
         </View>
         <View class="items-center gap-2">
-          <View class="size-12 rounded-xl bg-graphite-raised ring-2 ring-sky-400 ring-offset-2 ring-offset-graphite-inset" />
+          <View class="size-12 rounded-xl bg-paper-raised ring-2 ring-sky-400 ring-offset-2 ring-offset-paper-inset dark:bg-graphite-raised dark:ring-offset-graphite-inset" />
           <Label>Ring</Label>
         </View>
         <View class="items-center gap-2">
-          <View class="size-12 rounded-full bg-graphite-raised outline-2 outline-offset-2 outline-dashed outline-pink-400" />
+          <View class="size-12 rounded-full bg-paper-raised dark:bg-graphite-raised outline-2 outline-offset-2 outline-dashed outline-pink-400" />
           <Label>Outline</Label>
         </View>
         <View class="items-center gap-2">
@@ -288,16 +296,16 @@ function Gradients() {
 function Typography() {
   return (
     <Card icon="text" title="Typography" subtitle="font-* tracking-* decoration-* line-clamp-*">
-      <Text class="text-3xl font-black tracking-tight text-zinc-100">Display</Text>
-      <Text class="text-lg font-light text-zinc-300">Light, large and relaxed</Text>
-      <Text class="font-serif text-lg italic text-zinc-300">Serif italic</Text>
-      <Text class="font-mono text-sm text-zinc-300 tabular-nums">font-mono 0123456789</Text>
-      <View class="flex-row flex-wrap gap-x-4 gap-y-1 text-[15px] text-zinc-200">
+      <Text class="text-3xl font-black tracking-tight text-zinc-900 dark:text-zinc-100">Display</Text>
+      <Text class="text-lg font-light text-zinc-700 dark:text-zinc-300">Light, large and relaxed</Text>
+      <Text class="font-serif text-lg italic text-zinc-700 dark:text-zinc-300">Serif italic</Text>
+      <Text class="font-mono text-sm text-zinc-700 dark:text-zinc-300 tabular-nums">font-mono 0123456789</Text>
+      <View class="flex-row flex-wrap gap-x-4 gap-y-1 text-[15px] text-zinc-800 dark:text-zinc-200">
         <Text class="underline decoration-wavy decoration-rose-400">wavy</Text>
         <Text class="underline decoration-double decoration-sky-400">double</Text>
         <Text class="underline decoration-dashed decoration-2">dashed</Text>
         <Text class="line-through decoration-zinc-500">struck</Text>
-        <Text class="text-xs font-semibold uppercase tracking-widest text-citrus">caps</Text>
+        <Text class="text-xs font-semibold uppercase tracking-widest text-citrus-deep dark:text-citrus">caps</Text>
       </View>
       <Text class="truncate text-[13px] text-zinc-500">truncate: a single line that is far too long to fit in the card cut with an ellipsis</Text>
       <Text class="line-clamp-2 text-[13px] leading-relaxed text-zinc-500">
@@ -349,7 +357,7 @@ function Motion() {
           <Label>Ping</Label>
         </View>
         <View class="items-center gap-2.5">
-          <View class="h-8 w-14 rounded-lg bg-graphite-raised animate-pulse" />
+          <View class="h-8 w-14 rounded-lg bg-paper-border dark:bg-graphite-raised animate-pulse" />
           <Label>Pulse</Label>
         </View>
         <View class="items-center gap-2.5">
@@ -369,12 +377,12 @@ function Lists() {
   const items = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
   return (
     <Card icon="lists" title="Structural variants" subtitle="first: even: last: active:">
-      <View class="overflow-hidden rounded-xl border border-graphite-line">
+      <View class="overflow-hidden rounded-xl border border-paper-line dark:border-graphite-line">
         <Each of={items}>
           {(item) => (
-            <View class="min-h-12 flex-row items-center justify-between border-t border-graphite-line px-3.5 first:border-t-0 even:bg-white/5 last:bg-rose-500/10 active:bg-citrus/10">
-              <Text class="text-[15px] text-zinc-200 last:text-rose-300">{item()}</Text>
-              <Text class="text-base text-zinc-600">›</Text>
+            <View class="min-h-12 flex-row items-center justify-between border-t border-paper-line px-3.5 first:border-t-0 even:bg-black/3 last:bg-rose-500/10 active:bg-citrus/10 dark:border-graphite-line dark:even:bg-white/5 dark:active:bg-citrus/10">
+              <Text class="text-[15px] text-zinc-800 last:text-rose-600 dark:text-zinc-200 dark:last:text-rose-300">{item()}</Text>
+              <Text class="text-base text-zinc-400 dark:text-zinc-600">›</Text>
             </View>
           )}
         </Each>
@@ -388,7 +396,7 @@ function Inputs() {
     <Card icon="form" title="Inputs" subtitle="focus: placeholder: caret-*">
       <Input
         placeholder="Focus me"
-        class="h-11 rounded-[10px] border border-graphite-border bg-graphite-card px-3.5 inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)] text-[15px] text-zinc-100 placeholder:text-zinc-600 caret-citrus focus:border-citrus focus:ring-2 focus:ring-citrus/25"
+        class="h-11 rounded-[10px] border border-paper-border bg-paper-card px-3.5 inset-shadow-[0_1px_2px_rgba(20,20,10,0.07)] text-[15px] text-zinc-900 placeholder:text-zinc-400 caret-citrus-deep focus:border-citrus-deep focus:ring-2 focus:ring-citrus/40 dark:border-graphite-border dark:bg-graphite-card dark:inset-shadow-[0_1px_3px_rgba(0,0,0,0.55)] dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:caret-citrus dark:focus:border-citrus dark:focus:ring-citrus/25"
       />
       <Label>Focus adds a border and a ring; the placeholder and caret colors are classes too.</Label>
     </Card>
@@ -399,7 +407,7 @@ const sections: (() => JSX.Element)[] = [Hero, Stats, Buttons, Cards, Layout, Sh
 
 export function Tailwind() {
   return (
-    <Scroll class="flex-1 bg-graphite-page">
+    <Scroll class="flex-1 bg-paper-page dark:bg-graphite-page">
       <View class="gap-4 p-4 pb-10">
         <Each of={sections}>
           {(section, i) => {

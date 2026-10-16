@@ -3,14 +3,14 @@ import { Image } from "nsh/image";
 import bounce from "../bounce.gif";
 import logo from "../logo@2x.png";
 import spinner from "../spinner.webp";
-import { Appear, Badge, Button, Caption, Card, colors, finish, Meter, mono, radius } from "../ui";
+import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, Meter, mono, radius } from "../ui";
 
 // Fixed photos (in color), large enough to stay sharp at 3x.
 const wide = "https://picsum.photos/id/1015/1200/600";
 const photo = (id: number, w: number, h: number) => `https://picsum.photos/id/${id}/${w}/${h}`;
 
 /** Every photo's frame: rounded, a hairline border, a raised fill while it loads. */
-const frame = { borderRadius: radius.control, borderCurve: "continuous", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.raised } as const;
+const frame = () => ({ borderRadius: radius.control, borderCurve: "continuous", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.raised }) as const;
 
 /** A quiet label under a tile (`code` for API values). */
 function Note(props: { children: string; code?: boolean }) {
@@ -59,7 +59,7 @@ function ResizeModes() {
             <Each of={row()}>
               {(mode) => (
                 <View style={{ flex: 1, gap: 8 }}>
-                  <Image src={wide} resizeMode={mode()} style={{ ...frame, height: 140 }} />
+                  <Image src={wide} resizeMode={mode()} style={{ ...frame(), height: 140 }} />
                   <Note code>{mode()}</Note>
                 </View>
               )}
@@ -72,20 +72,20 @@ function ResizeModes() {
 }
 
 function Corners() {
-  const square = { ...frame, width: 88, height: 88 } as const;
+  const square = () => ({ ...frame(), width: 88, height: 88 }) as const;
   return (
     <Card icon="styles" title="Corners and borders" subtitle="Radii per corner, borders on the image">
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <View style={{ alignItems: "center", gap: 8 }}>
-          <Image src={wide} style={{ ...square, borderRadius: 44 }} />
+          <Image src={wide} style={{ ...square(), borderRadius: 44 }} />
           <Note>Circle</Note>
         </View>
         <View style={{ alignItems: "center", gap: 8 }}>
-          <Image src={wide} style={{ ...square, borderRadius: 18, borderWidth: 2, borderColor: colors.accent }} />
+          <Image src={wide} style={{ ...square(), borderRadius: 18, borderWidth: 2, borderColor: colors.accent }} />
           <Note>Border</Note>
         </View>
         <View style={{ alignItems: "center", gap: 8 }}>
-          <Image src={wide} style={{ ...square, borderRadius: 0, borderTopLeftRadius: 40, borderBottomRightRadius: 40 }} />
+          <Image src={wide} style={{ ...square(), borderRadius: 0, borderTopLeftRadius: 40, borderBottomRightRadius: 40 }} />
           <Note>Two corners</Note>
         </View>
       </View>
@@ -95,10 +95,10 @@ function Corners() {
 
 function Assets() {
   const tints = [
-    { label: "Accent", color: colors.accent },
-    { label: "Info", color: colors.info },
-    { label: "Danger", color: colors.danger },
-  ];
+    { label: "Accent", tone: "accent" },
+    { label: "Info", tone: "info" },
+    { label: "Danger", tone: "danger" },
+  ] as const;
   return (
     <Card icon="star" title="Assets and tint" subtitle="logo@2x.png, tinted natively">
       <View style={{ flexDirection: "row", gap: 12 }}>
@@ -108,7 +108,7 @@ function Assets() {
         <Each of={tints}>
           {(tint) => (
             <Tile note={tint().label}>
-              <Image src={logo} style={{ tintColor: tint().color }} />
+              <Image src={logo} style={{ tintColor: colors[tint().tone] }} />
             </Tile>
           )}
         </Each>
@@ -161,7 +161,7 @@ function Placeholders() {
                 defaultSource={logo}
                 fadeDuration={fade().ms}
                 resizeMode="cover"
-                style={{ ...frame, height: 100 }}
+                style={{ ...frame(), height: 100 }}
               />
               <Note>{`${fade().ms} ms`}</Note>
             </View>
@@ -181,7 +181,7 @@ function Blur() {
         <Each of={radii}>
           {(r) => (
             <View style={{ flex: 1, gap: 8 }}>
-              <Image src={wide} blurRadius={r()} style={{ ...frame, height: 76 }} />
+              <Image src={wide} blurRadius={r()} style={{ ...frame(), height: 76 }} />
               <Note>{r() === 0 ? "None" : `${r()} pt`}</Note>
             </View>
           )}
@@ -244,7 +244,7 @@ function Info() {
               else status.set("loaded");
               progress.set(1);
             }}
-            style={{ ...frame, height: 170 }}
+            style={{ ...frame(), height: 170 }}
           />
         </Appear>
       </If>
@@ -257,7 +257,7 @@ function Events() {
   const log = (line: string) => events.set([...events(), line]);
   const loaded = signal("…");
   const failed = signal("Loading…");
-  const thumb = { ...frame, width: 96, height: 64 } as const;
+  const thumb = () => ({ ...frame(), width: 96, height: 64 }) as const;
   return (
     <Card icon="bell" title="Events" subtitle="Load start, load, error, load end">
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
@@ -270,7 +270,7 @@ function Events() {
           }}
           onError={(e) => loaded.set(e.message)}
           onLoadEnd={() => log("onLoadEnd")}
-          style={thumb}
+          style={thumb()}
         />
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={{ fontSize: 15, color: colors.text }}>picsum.photos</Text>
@@ -278,8 +278,8 @@ function Events() {
         </View>
       </View>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center", borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 12 }}>
-        <View style={{ ...thumb, alignItems: "center", justifyContent: "center", borderColor: "rgba(255,97,112,0.4)" }}>
-          <Image src="https://example.invalid/missing.png" onError={(e) => failed.set(e.message)} style={{ ...thumb, position: "absolute", left: -1, top: -1, borderWidth: 0 }} />
+        <View style={{ ...thumb(), alignItems: "center", justifyContent: "center", borderColor: alpha(colors.danger, 0.4) }}>
+          <Image src="https://example.invalid/missing.png" onError={(e) => failed.set(e.message)} style={{ ...thumb(), position: "absolute", left: -1, top: -1, borderWidth: 0 }} />
           <Text style={{ fontSize: 20, color: colors.danger }}>×</Text>
         </View>
         <View style={{ flex: 1, gap: 4 }}>
