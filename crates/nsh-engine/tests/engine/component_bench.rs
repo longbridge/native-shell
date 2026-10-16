@@ -36,12 +36,16 @@ fn bytecode(entry: &str) -> Vec<u8> {
         ui_sets: vec![nsh_ui_mobile::registry()],
     })
     .unwrap();
-    nsh_js::compile_bytecode(&bundle.code, true).unwrap()
+    nsh_js::compile_bytecode_with(&bundle.code, true, &[nsh_ui_mobile::registry()]).unwrap()
 }
 
 impl App {
     fn new() -> Self {
-        let host = Host::new().unwrap();
+        let host = Host::with_options(nsh_js::HostOptions {
+            ui_sets: vec![nsh_ui_mobile::registry()],
+            ..Default::default()
+        })
+        .unwrap();
         // The runtime reads the environment while it loads.
         host.set_environment(&nsh_js::Environment {
             window: (390.0, 844.0),
