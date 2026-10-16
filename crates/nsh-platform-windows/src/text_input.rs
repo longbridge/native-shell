@@ -83,3 +83,21 @@ pub(crate) fn ime(
 pub(crate) fn window_focus(surface: &Rc<Surface>, focused: bool) {
     let _ = (surface, focused);
 }
+
+/// A pointer event on input `view` (its coordinates); true when handled.
+pub(crate) fn pointer(surface: &Rc<Surface>, view: &NshView, event: &crate::view::ItemPointer) -> bool {
+    let _ = (surface, view, event);
+    false
+}
+
+/// A key for the focused field; true when handled.
+pub(crate) fn key(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool {
+    let _ = (surface, event);
+    false
+}
+
+/// The field that has the keyboard focus.
+pub(crate) fn focused(surface: &Surface) -> Option<NshView> {
+    let _ = surface;
+    None
+}

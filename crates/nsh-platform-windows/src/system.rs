@@ -15,9 +15,22 @@ use windows::{
 
 use crate::surface::Surface;
 
+thread_local! {
+    /// The system appearance a script switched to (`dark` / `light`).
+    static SIMULATED: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Makes the system look dark (or light) from now on (`--script`).
+pub(crate) fn simulate_system_scheme(dark: bool) {
+    SIMULATED.with(|s| s.set(Some(dark)));
+}
+
 /// True when the system's apps use the dark theme (Settings >
 /// Personalization > Colors).
 pub(crate) fn system_dark() -> bool {
+    if let Some(dark) = SIMULATED.with(std::cell::Cell::get) {
+        return dark;
+    }
     let mut value: u32 = 1;
     let mut size = std::mem::size_of::<u32>() as u32;
     // SAFETY: a DWORD out value of the size given.
@@ -109,4 +122,11 @@ pub(crate) fn surface_resized(surface: &Surface, width: f32, height: f32) {
 /// The app stopped: dialogs and toasts go.
 pub(crate) fn clear(surface: &Surface) {
     let _ = surface;
+}
+
+/// Keys for a dialog shown over the app (Enter, Escape, Tab); true when
+/// handled.
+pub(crate) fn key(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool {
+    let _ = (surface, event);
+    false
 }

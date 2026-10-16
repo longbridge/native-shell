@@ -188,3 +188,15 @@ pub(crate) fn style_changed(view: &NshView) {
 pub(crate) fn command(surface: &Rc<Surface>, id: NodeId, command: &Command) {
     let _ = (surface, id, command);
 }
+
+/// Sets (or clears) interaction state `bit` of `view` (pressed, hovered,
+/// focused), reporting it when tracked.
+pub(crate) fn set_state(surface: &Surface, view: &NshView, bit: u8, on: bool) {
+    let _ = surface;
+    let mut s = view.state_mut();
+    if on {
+        s.states |= bit;
+    } else {
+        s.states &= !bit;
+    }
+}

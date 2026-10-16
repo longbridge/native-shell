@@ -246,3 +246,35 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
         );
     }
 }
+
+/// True when the text can be selected (`selectable`).
+pub(crate) fn selectable(state: &ViewState) -> bool {
+    state.text.as_ref().is_some_and(|t| t.text.selectable)
+}
+
+/// The UTF-16 offset of the character at `(x, y)` (view coordinates), if
+/// any (presses on nested text links).
+pub(crate) fn char_at(state: &ViewState, x: f32, y: f32) -> Option<u32> {
+    let _ = (state, x, y);
+    None
+}
+
+/// A pointer event on selectable text `view` (selecting with the mouse);
+/// true when handled.
+pub(crate) fn pointer(
+    surface: &std::rc::Rc<crate::surface::Surface>,
+    view: &NshView,
+    event: &crate::view::ItemPointer,
+) -> bool {
+    let _ = (surface, view, event);
+    false
+}
+
+/// Keys for the text selection (Ctrl+C, Ctrl+A); true when handled.
+pub(crate) fn key(
+    surface: &std::rc::Rc<crate::surface::Surface>,
+    event: &crate::input::KeyEvent,
+) -> bool {
+    let _ = (surface, event);
+    false
+}

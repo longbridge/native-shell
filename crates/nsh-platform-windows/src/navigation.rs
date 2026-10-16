@@ -67,3 +67,16 @@ pub(crate) fn surface_resized(surface: &Surface, width: f32, height: f32) {
 pub(crate) fn end_batch(surface: &Rc<Surface>) {
     let _ = surface;
 }
+
+/// Goes back natively: pops the top stack (inside the newest modal first)
+/// or asks that modal to close; true when something went back.
+pub(crate) fn go_back(surface: &Rc<Surface>) -> bool {
+    let _ = surface;
+    false
+}
+
+/// Back keys (Escape, Alt+Left, Browser Back); true when handled.
+pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool {
+    let _ = (surface, event);
+    false
+}
