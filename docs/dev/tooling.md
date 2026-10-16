@@ -146,5 +146,8 @@ the entry (matched in any case: `crates/nsh-cli/src/entry.rs`). `cargo run` is `
 member): the gallery in the Mac Catalyst host through `nsh run`, in a process group of its own that is stopped and
 started again when a source under `crates/` changes (`crates/xtask/src/run.rs`). The first two lines (`Finished`,
 `Running`) are the outer `cargo run`'s own, which only a global `term.quiet` would hide (it would hide `cargo build`'s
-too); `cargo xtask [run] [<app>]` is the same task through the alias in `.cargo/config.toml` (`run -q`), without them.
+too); `cargo xtask [run] [<app>]` is the same task through the alias in `.cargo/config.toml` (`run -q`), without them. xtask
+drops the variables `cargo run` sets for it (`CARGO_MANIFEST_DIR`, `CARGO_PKG_*`, ...) first: the builds it and `nsh`
+start would inherit them, and since some crates' builds depend on them, every `cargo run` rebuilt ring, taffy and the
+rest of what a plain `cargo build` had built.
 `.cargo/config.toml` sets `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.

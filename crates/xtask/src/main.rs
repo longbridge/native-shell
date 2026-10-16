@@ -76,6 +76,7 @@ enum Task {
 }
 
 fn main() -> std::process::ExitCode {
+    forget_cargo_run();
     let cli = Cli::parse();
     term::init(cli.verbose);
     match task(cli.task.unwrap_or(Task::Run(cli.run))) {
@@ -84,6 +85,33 @@ fn main() -> std::process::ExitCode {
             term::report(&e);
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+/// Drops what `cargo run` tells xtask about its own package
+/// (`CARGO_MANIFEST_DIR`, `CARGO_PKG_NAME`, ...): the cargo builds xtask
+/// and `nsh` start would inherit them, and some crates' builds (ring's,
+/// for one) depend on them, so each `cargo run` rebuilt what a plain
+/// `cargo build` had built, and the other way round.
+fn forget_cargo_run() {
+    let names: Vec<_> = std::env::vars_os()
+        .map(|(name, _)| name)
+        .filter(|name| {
+            let name = name.to_string_lossy();
+            name.starts_with("CARGO_PKG_")
+                || matches!(
+                    &*name,
+                    "CARGO_MANIFEST_DIR"
+                        | "CARGO_MANIFEST_PATH"
+                        | "CARGO_CRATE_NAME"
+                        | "CARGO_BIN_NAME"
+                        | "CARGO_PRIMARY_PACKAGE"
+                )
+        })
+        .collect();
+    for name in names {
+        // SAFETY: first thing in `main`, before any other thread exists.
+        unsafe { std::env::remove_var(name) };
     }
 }
 
