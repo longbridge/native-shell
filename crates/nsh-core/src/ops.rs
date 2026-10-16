@@ -758,9 +758,9 @@ pub enum ScreenProp {
     /// `headerShown`: the header shows (default true).
     #[prop(js = "headerShown", default = true, on = SCREEN)]
     HeaderShown(bool),
-    /// `headerLargeTitle` (iOS): a large title; the content scrolls under the
-    /// header.
-    #[prop(ios = "headerLargeTitle", on = SCREEN)]
+    /// `headerLargeTitle` (iOS, desktop): a large title; the content scrolls under
+    /// the header.
+    #[prop(ios = "headerLargeTitle", desktop = "headerLargeTitle", on = SCREEN)]
     HeaderLargeTitle(bool),
     /// `headerTransparent`: the content extends under the header.
     #[prop(js = "headerTransparent", on = SCREEN)]
@@ -774,9 +774,9 @@ pub enum ScreenProp {
     /// `headerTitleColor`.
     #[prop(js = "headerTitleColor", on = SCREEN)]
     HeaderTitleColor(Option<Color>),
-    /// `headerBackTitle` (iOS): the label of the back button leading back to this
-    /// screen.
-    #[prop(ios = "headerBackTitle", on = SCREEN)]
+    /// `headerBackTitle` (iOS, desktop): the label of the back button leading back
+    /// to this screen.
+    #[prop(ios = "headerBackTitle", desktop = "headerBackTitle", on = SCREEN)]
     HeaderBackTitle(Option<Arc<str>>),
     /// `headerBackVisible`: the back button shows (default true).
     #[prop(js = "headerBackVisible", default = true, on = SCREEN)]
@@ -809,7 +809,7 @@ pub enum ModalAnimation {
     None,
 }
 
-/// How a modal covers the screen (`presentationStyle`, iOS).
+/// How a modal covers the screen (`presentationStyle`, iOS and desktop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum ModalPresentation {
     /// Covers the whole screen (default).
@@ -827,9 +827,9 @@ pub enum ModalProp {
     /// `animationType`: how the modal appears.
     #[prop(js = "animationType", on = MODAL)]
     Animation(ModalAnimation),
-    /// `presentationStyle` (iOS): `"pageSheet"` / `"formSheet"` keep what is behind
-    /// visible.
-    #[prop(ios = "presentationStyle", on = MODAL)]
+    /// `presentationStyle` (iOS, desktop): `"pageSheet"` / `"formSheet"` keep what is
+    /// behind visible (on a desktop: a card centered in the window).
+    #[prop(ios = "presentationStyle", desktop = "presentationStyle", on = MODAL)]
     Presentation(ModalPresentation),
     /// `transparent`: the background shows what is behind.
     #[prop(js = "transparent", on = MODAL)]

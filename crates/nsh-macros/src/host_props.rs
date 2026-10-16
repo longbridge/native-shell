@@ -10,7 +10,8 @@ use crate::ts_doc;
 /// One JS name of a variant.
 struct Name {
     name: String,
-    /// `ios = …` / `android = …`: inside `ios={{…}}` / `android={{…}}`.
+    /// `ios = …` / `android = …` / `desktop = …`: inside `ios={{…}}` /
+    /// `android={{…}}` / `desktop={{…}}`.
     platform: TokenStream2,
 }
 
@@ -35,6 +36,7 @@ fn variant_attrs(attrs: &[syn::Attribute]) -> syn::Result<VariantAttrs> {
     let platform = |p: &str| match p {
         "ios" => quote!(::nsh_core::js::host::Platform::Ios),
         "android" => quote!(::nsh_core::js::host::Platform::Android),
+        "desktop" => quote!(::nsh_core::js::host::Platform::Desktop),
         _ => quote!(::nsh_core::js::host::Platform::All),
     };
     for attr in attrs {
@@ -48,7 +50,7 @@ fn variant_attrs(attrs: &[syn::Attribute]) -> syn::Result<VariantAttrs> {
                 .map(|i| i.to_string())
                 .unwrap_or_default();
             match key.as_str() {
-                "js" | "ios" | "android" => out.names.push(Name {
+                "js" | "ios" | "android" | "desktop" => out.names.push(Name {
                     name: meta.value()?.parse::<LitStr>()?.value(),
                     platform: platform(&key),
                 }),
@@ -65,7 +67,7 @@ fn variant_attrs(attrs: &[syn::Attribute]) -> syn::Result<VariantAttrs> {
                 "once" => out.once = true,
                 _ => {
                     return Err(meta.error(
-                        "expected `js`, `ios`, `android`, `default`, `min`, `max`, `on`, `ts`, \
+                        "expected `js`, `ios`, `android`, `desktop`, `default`, `min`, `max`, `on`, `ts`, \
                          `with`, `reset`, `required`, `nested`, `internal` or `once`",
                     ));
                 }
@@ -135,7 +137,14 @@ pub(crate) fn host_props(input: DeriveInput) -> syn::Result<TokenStream2> {
             reset_arms.push(quote! { #pattern => #reset, });
             continue;
         }
-        let names: Vec<&String> = a.names.iter().map(|n| &n.name).collect();
+        // A name several platforms share (`ios = "x", desktop = "x"`) is
+        // decoded once.
+        let mut names: Vec<&String> = Vec::new();
+        for n in &a.names {
+            if !names.contains(&&n.name) {
+                names.push(&n.name);
+            }
+        }
         // The value, then the prop.
         let decode = if let Some(with) = &a.with {
             quote! { ::core::option::Option::Some(#with(input, cx)) }

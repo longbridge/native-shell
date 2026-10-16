@@ -159,6 +159,11 @@ mod tests {
                 "IOSModalHostProps",
                 "  presentationStyle?: ModalPresentation;",
             ),
+            (
+                "DesktopModalHostProps",
+                "  presentationStyle?: ModalPresentation;",
+            ),
+            ("DesktopScreenHostProps", "  headerBackTitle?: string;"),
             ("ModalHostProps", "  onRequestClose?: () => void;"),
         ] {
             let at = elements

@@ -134,6 +134,7 @@ export interface ScreenProps extends ScreenHostProps {
   style?: StyleProp<ViewStyle>;
   children?: JSX.Element;
   ios?: IOSScreenHostProps;
+  desktop?: DesktopScreenHostProps;
 }
 
 export interface ModalProps extends ModalHostProps {
@@ -143,6 +144,7 @@ export interface ModalProps extends ModalHostProps {
   children?: JSX.Element;
   ios?: IOSModalHostProps;
   android?: AndroidModalHostProps;
+  desktop?: DesktopModalHostProps;
 }
 "#;
 
