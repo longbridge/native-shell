@@ -61,7 +61,7 @@ mount(Browser);
 | `scrollEnabled` | `boolean` | `true` | The user can scroll the page. |
 | `javaScriptEnabled` | `boolean` | `true` | Pages run scripts. |
 | `ios` | `{ allowsBackForwardNavigationGestures?: boolean }` | | iOS only: swipe from the edges to go back and forward. |
-| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | macOS only: two-finger trackpad swipes go back and forward. |
+| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | macOS: two-finger trackpad swipes go back and forward; Windows: touchscreen swipes. |
 
 ## Events
 

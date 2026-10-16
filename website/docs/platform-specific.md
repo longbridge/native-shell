@@ -57,7 +57,7 @@ What exists today:
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | Swipe back and forward in the page history. |
 | `desktop={{ headerLargeTitle }}`, `desktop={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`: a card centered in the window. |
-| `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history (ignored on Windows and Linux). |
+| `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history; Windows: touchscreen swipes (ignored on Linux). |
 
 `desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 

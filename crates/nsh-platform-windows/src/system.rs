@@ -621,6 +621,10 @@ fn place(surface: &Surface, kind: &OverlayKind, width: f32, height: f32) {
 
 /// Hosts a new overlay over `surface`'s views and fades it in.
 fn add_overlay(surface: &Rc<Surface>, serial: u64, kind: OverlayKind) {
+    if matches!(kind, OverlayKind::Dialog(_)) {
+        // Its keys (Return, Escape) are the window's, not a page's.
+        crate::native::take_keyboard(surface);
+    }
     let env = surface.environment.get();
     place(surface, &kind, env.window.0, env.window.1);
     OVERLAYS.with(|o| {

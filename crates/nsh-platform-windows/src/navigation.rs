@@ -2147,6 +2147,8 @@ pub(crate) fn present(surface: &Rc<Surface>, view: &NshView) {
     m.view = Some(view.clone());
     m.closed = false;
     m.reported = None;
+    // Escape asks the modal to close: the keyboard is the window's.
+    crate::native::take_keyboard(surface);
     view.insert_before(&surface.root, None);
     nav.order.push(id);
     nav.style_modal(crate::system::dark(surface), id);

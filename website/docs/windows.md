@@ -134,8 +134,9 @@ what React Native reports: the typed text, `"Enter"`, `"Backspace"`, and `"Escap
 
 Different, or not supported:
 
-- **`WebView`** is a WebView2 child window: nsh content drawn over it (a dialog, a sheet) is hidden under it.
-  `source.baseUrl` for HTML, `scrollEnabled` and `allowsBackForwardNavigationGestures` are not supported.
+- **`WebView`**: a page inside a view with a 3D transform (perspective) is not shown, and a `backdropFilter` over a
+  page does not blur it. `source.baseUrl` takes `http(s)` URLs. A native component that brings a window of its own
+  stays above everything nsh draws.
 - **Video**: the formats the installed codecs decode; no poster; the control bar always shows with `controls`.
 - **Zooming scroll views** (`zoomTo`, the zoom props); the scroll indicator cannot be dragged.
 - **`mixBlendMode` and `backdropFilter`** are drawn, but not inside a view that has a `filter` or a 3D transform;

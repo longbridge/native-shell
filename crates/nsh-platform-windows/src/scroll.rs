@@ -996,6 +996,15 @@ pub(crate) fn drag_end(surface: &Rc<Surface>, view: &NshView, vx: f32, vy: f32) 
     release(surface, view, v, 0.0);
 }
 
+/// True when [`draw_indicator`] may draw something for `state` (its
+/// indicator shows, or it is pulled down).
+pub(crate) fn indicates(state: &ViewState) -> bool {
+    state
+        .scroll
+        .as_ref()
+        .is_some_and(|s| (s.indicator && s.live.alpha > 0.0) || s.y < 0.0)
+}
+
 /// Draws a scroll view's indicator, over its content (inside its clip),
 /// and the refresh spinner; the context is in the view's coordinates.
 pub(crate) fn draw_indicator(cx: &mut DrawCx<'_>, state: &ViewState) {

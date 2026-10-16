@@ -61,7 +61,7 @@ mount(Browser);
 | `scrollEnabled` | `boolean` | `true` | 用户可以滚动页面。 |
 | `javaScriptEnabled` | `boolean` | `true` | 页面可以运行脚本。 |
 | `ios` | `{ allowsBackForwardNavigationGestures?: boolean }` | | 仅 iOS：从边缘轻扫以后退和前进。 |
-| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | 仅 macOS：双指在触控板上轻扫以后退和前进。 |
+| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | macOS：双指在触控板上轻扫以后退和前进；Windows：在触摸屏上轻扫。 |
 
 ## 事件
 

@@ -124,8 +124,8 @@ QuickJS 字节码是受信任的输入，只能从你自己应用的文件中加
 
 不同之处或不支持的功能：
 
-- **`WebView`** 是一个 WebView2 子窗口：绘制在它上方的 nsh 内容（对话框、sheet）会被它遮住。不支持 HTML 的
-  `source.baseUrl`、`scrollEnabled` 和 `allowsBackForwardNavigationGestures`。
+- **`WebView`**：位于 3D 变换（透视）视图内的网页不显示；网页上方的 `backdropFilter` 不会模糊网页。`source.baseUrl`
+  只接受 `http(s)` 地址。自带窗口的原生组件始终位于 nsh 绘制的所有内容之上。
 - **视频**：只能播放已安装解码器支持的格式；没有封面图（poster）；开启 `controls` 时控制栏始终显示。
 - **可缩放的滚动视图**（`zoomTo`、缩放相关属性）；滚动条不能拖动。
 - **`mixBlendMode` 和 `backdropFilter`** 会绘制，但在带 `filter` 或 3D 变换的视图内部不生效；`borderCurve: "continuous"`

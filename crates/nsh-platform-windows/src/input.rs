@@ -219,6 +219,8 @@ pub(crate) enum Cursor {
     Help,
     /// No cursor (`cursor: none`).
     Hidden,
+    /// A cursor of the system's or a page's (an `HCURSOR`): a web view's.
+    Native(isize),
 }
 
 /// Which device a pointer is.
@@ -253,6 +255,10 @@ pub(crate) struct Input {
     hovered: RefCell<Vec<NshView>>,
     /// The hosted item under the mouse (it gets moves and a leave).
     hover_item: RefCell<Option<Item>>,
+    /// The [`crate::view::Hosted::raw`] items (web views) pointers went
+    /// down on, with the buttons held: they get those pointers until
+    /// released.
+    raw: RefCell<Vec<(Key, Item, u8)>>,
     /// Native gesture values by view.
     gestures: RefCell<FxHashMap<NodeId, (NshView, GestureValues)>>,
     /// Running `activeOpacity` fades.
@@ -352,6 +358,10 @@ impl Item {
             y: ly,
             clicks,
             modifiers,
+            button: 0,
+            pointer: 1,
+            touch: false,
+            pen: false,
         };
         match self {
             Item::Hosted(_, native) => {
@@ -578,6 +588,7 @@ pub(crate) fn reset(surface: &Surface) {
     input.hover_tracked.borrow_mut().clear();
     input.hovered.borrow_mut().clear();
     input.hover_item.borrow_mut().take();
+    input.raw.borrow_mut().clear();
     input.gestures.borrow_mut().clear();
     // Running fades stop on their next frame: their generation is gone.
     input.fades.borrow_mut().clear();
@@ -757,6 +768,9 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     } else {
         Key::Mouse
     };
+    if raw_pointer(surface, key, &event) {
+        return;
+    }
     let (x, y) = (event.x, event.y);
     let time = event.time * 1000.0;
     let mouse = key == Key::Mouse;
@@ -802,9 +816,110 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     }
 }
 
+/// Gives `event` to the raw item (a web view) its pointer went down on, or
+/// the one it goes down on: every button, moves and the release, as they
+/// come. False when no raw item takes it (moves of the mouse over one
+/// reach it as hover moves, [`set_hover_item`]).
+fn raw_pointer(surface: &Rc<Surface>, key: Key, event: &PointerEvent) -> bool {
+    let input = &surface.input;
+    let (x, y) = (event.x, event.y);
+    let captured = input
+        .raw
+        .borrow()
+        .iter()
+        .find(|(k, _, _)| *k == key)
+        .map(|(_, item, buttons)| (item.clone(), *buttons));
+    let (item, buttons) = match captured {
+        Some(c) => c,
+        None => {
+            if event.kind != PointerKind::Down {
+                return false;
+            }
+            let Some(hit) = pick(&surface.root, x, y, true) else {
+                return false;
+            };
+            match hit.item {
+                Some(native) if native.item.raw() => (Item::Hosted(hit.view, native), 0),
+                _ => return false,
+            }
+        }
+    };
+    let Item::Hosted(view, native) = &item else {
+        return false;
+    };
+    if event.kind == PointerKind::Down {
+        // A press anywhere clears a text selection.
+        crate::text::window_pressed(surface, x, y);
+    }
+    let (lx, ly) = local(view, x, y);
+    native.item.pointer(&ItemPointer {
+        kind: event.kind,
+        x: lx - native.rect.x,
+        y: ly - native.rect.y,
+        clicks: event.clicks,
+        modifiers: event.modifiers,
+        button: event.button,
+        pointer: event.pointer,
+        touch: event.touch,
+        pen: event.pen,
+    });
+    let bit = 1u8 << event.button.min(7);
+    let held = match event.kind {
+        PointerKind::Down => buttons | bit,
+        PointerKind::Up => buttons & !bit,
+        PointerKind::Cancel | PointerKind::Leave => 0,
+        PointerKind::Move => buttons,
+    };
+    let mut raw = input.raw.borrow_mut();
+    raw.retain(|(k, _, _)| *k != key);
+    if held != 0 {
+        raw.push((key, item, held));
+    }
+    true
+}
+
+/// True when a press at `(x, y)` (root coordinates) goes to a raw item (a
+/// web view), which takes the keyboard focus itself.
+pub(crate) fn raw_at(surface: &Rc<Surface>, x: f32, y: f32) -> bool {
+    pick(&surface.root, x, y, true)
+        .and_then(|hit| hit.item)
+        .is_some_and(|n| n.item.raw())
+}
+
+/// Gives a wheel or touchpad scroll to the raw item (a web view) under the
+/// pointer, unless a scroll of nsh's scroll views is going on (one scroll
+/// stays on its view, as in browsers). False when none takes it.
+fn raw_wheel(surface: &Rc<Surface>, event: &WheelEvent) -> bool {
+    let input = &surface.input;
+    let time = event.time * 1000.0;
+    let horizontal = event.dx.abs() > event.dy.abs();
+    let latched = input.wheel.borrow().is_some()
+        || input
+            .latch
+            .borrow()
+            .as_ref()
+            .is_some_and(|(view, h, last)| latch_holds(*h, *last, horizontal, time) && shown(view));
+    if latched {
+        return false;
+    }
+    let Some(hit) = pick(&surface.root, event.x, event.y, true) else {
+        return false;
+    };
+    let Some(native) = hit.item.filter(|n| n.item.raw()) else {
+        return false;
+    };
+    let (lx, ly) = local(&hit.view, event.x, event.y);
+    native
+        .item
+        .wheel(lx - native.rect.x, ly - native.rect.y, event)
+}
+
 /// A wheel event from the window.
 pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
     let (x, y) = (event.x, event.y);
+    if raw_wheel(surface, &event) {
+        return;
+    }
     surface.input.last.set(Some((x, y)));
     let (mut dx, mut dy) = (event.dx, event.dy);
     // Mice have no pinch: Ctrl + wheel pinches, as it zooms on desktops

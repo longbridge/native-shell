@@ -252,8 +252,16 @@ Things that were found the hard way. Read the section of the area you change bef
 - **Win32 timers tick at ~15.6 ms** (the default timer resolution) and wake-ups come late on a loaded machine: tests
   must not assume two timers a few milliseconds apart run in separate turns (chain them instead), and `--script`
   `wait`s need slack.
-- **Web views are child windows**: whatever nsh draws over one (a dialog, a sheet) is under it (the "airspace" limit),
-  and offscreen screenshots (`--script`'s `shot`) do not have them. Check web views on screen.
+- **Child windows cover everything a window draws** (the "airspace" limit): web views are WebView2 composition
+  controllers in the window's DirectComposition tree for this reason (`compose.rs`); native components that bring an
+  `HWND` of their own still cover nsh content. Offscreen screenshots (`--script`'s `shot`) have no web views:
+  `screen` captures them (`PrintWindow` with `PW_RENDERFULLCONTENT`).
+- **`IDCompositionVisual::AddVisual(visual, TRUE, NULL)` puts the visual below all its siblings**, not on top: to
+  stack bottom to top, insert each one above the one added before it (`compose.rs`).
+- **A focused WebView2 page has the keyboard in a window of its own** (`Chrome_WidgetWin_0`, a child of the
+  surface's window): the surface's window gets no keys until it takes the focus back, so dialogs and modals take it
+  (`native::take_keyboard`), and `--script`'s `type` / `key` post to that window while it has the focus. A
+  `MoveFocus` right after the click needs a few hundred milliseconds before typed characters reach the page.
 - **`std::fs::canonicalize` returns verbatim paths** (`\\?\C:\…`), which rolldown and path prefix comparisons do not
   take: the bundler and the CLI canonicalize with `dunce::canonicalize`, which keeps plain paths when they are valid.
 - **Git Bash sets `LANG`** whatever the user's settings: the Windows backend's locale is the user's regional format

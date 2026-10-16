@@ -5,8 +5,10 @@
 //!   its frame. A surface's window draws the whole tree with Direct2D into
 //!   a flip-model swap chain ([`render`]): shadows and background, the
 //!   content (text, image, canvas), the children, the border, then the
-//!   items the view hosts (text editors, headers). There are no child
-//!   windows, so nothing drawn by nsh is ever covered by another HWND.
+//!   items the view hosts (text editors, headers). nsh content needs no
+//!   child windows. A window with web views composes them with
+//!   DirectComposition between layers of what nsh draws before and after
+//!   each one ([`compose`]), so nsh content drawn over a page covers it.
 //! - The engine runs on its own thread ([`nsh_engine::Engine`]); each
 //!   commit is one message posted to the window ([`surface`]).
 //! - Text is shaped and broken into lines by DirectWrite on the engine
@@ -24,6 +26,7 @@ mod access;
 mod animation;
 mod app;
 mod canvas;
+mod compose;
 mod decor;
 #[cfg(feature = "dev")]
 pub mod dev;

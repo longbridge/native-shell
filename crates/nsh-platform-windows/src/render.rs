@@ -19,6 +19,14 @@
 //!
 //! Coordinates are points (Direct2D DIPs: the context's DPI is the
 //! window's scale times 96).
+//!
+//! A window with web views draws the same single pass, split at each web
+//! view ([`crate::compose`]): reaching one records where it goes
+//! ([`DrawCx::compose`]), and the next thing drawn first moves the context
+//! to the next layer above it ([`DrawCx::realize`]: the clips and opacity
+//! layers pushed so far are popped, the target changes, and they are
+//! pushed again). Without a composition, `realize` is one test of an
+//! `Option`: the frame is the one swap chain, as before.
 
 use std::rc::Rc;
 
@@ -48,6 +56,7 @@ use windows::{
 use windows_numerics::Matrix3x2;
 
 use crate::{
+    compose::{Composition, Placement},
     geom::Mat4,
     gfx::{self, Gfx},
     surface::Surface,
@@ -127,6 +136,38 @@ pub(crate) struct DrawCx<'a> {
     /// backdrop filters can read it ([`crate::decor`]); false in passes
     /// drawn offscreen for a filtered or 3D-transformed view.
     pub(crate) backdrop: bool,
+    /// The opacity of what is drawn now (the views' around it, multiplied).
+    pub(crate) alpha: f32,
+    /// The composed items (web views) reached in this pass, in paint
+    /// order, with where they go.
+    pub(crate) composed: Vec<Composed>,
+    /// The window's pass of a surface with a composition: what is drawn
+    /// after a composed item goes into the next layer.
+    pub(crate) split: Option<Split<'a>>,
+    /// The clip of the passes around this one (DIPs of the window), for
+    /// a pass drawn offscreen in window coordinates.
+    clip_base: Option<D2D_RECT_F>,
+}
+
+/// A composed item reached by a pass.
+pub(crate) struct Composed {
+    /// The item.
+    pub(crate) item: Rc<dyn Hosted>,
+    /// Where it goes.
+    pub(crate) at: Placement,
+}
+
+/// The layers a window's pass draws into ([`DrawCx::realize`]).
+pub(crate) struct Split<'a> {
+    composition: &'a Composition,
+    /// The window's size in pixels.
+    size: (u32, u32),
+    /// For each layer started, how many composed items are below it.
+    pub(crate) layers: Vec<usize>,
+    /// A composed item was reached: the next drawing starts a layer.
+    pending: bool,
+    /// Ending the draw into a target failed.
+    pub(crate) error: Option<windows::core::Error>,
 }
 
 impl<'a> DrawCx<'a> {
@@ -163,6 +204,10 @@ impl<'a> DrawCx<'a> {
             drawn: Vec::new(),
             offscreen: false,
             backdrop: true,
+            alpha: 1.0,
+            composed: Vec::new(),
+            split: None,
+            clip_base: None,
         })
     }
 
@@ -181,7 +226,137 @@ impl<'a> DrawCx<'a> {
         let mut cx = DrawCx::with_dc(self.gfx, dc, scale, self.dark, self.now)?;
         cx.offscreen = self.offscreen;
         cx.backdrop = false;
+        cx.alpha = self.alpha;
+        cx.clip_base = Some(self.clip_bounds());
         Ok(cx)
+    }
+
+    /// What the clips pushed so far leave visible, in DIPs of the target
+    /// (and of the passes around it).
+    fn clip_bounds(&self) -> D2D_RECT_F {
+        let mut r = self.clip_base.unwrap_or(INFINITE);
+        for p in &self.pushed {
+            let b = match p {
+                Pushed::Clip { transform, rect } => crate::compose::map_bounds(transform, rect),
+                Pushed::Layer {
+                    transform,
+                    mask: Some(mask),
+                    ..
+                } => {
+                    // SAFETY: a COM call on a live geometry.
+                    match unsafe { mask.GetBounds(Some(transform)) } {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    }
+                }
+                Pushed::Layer { .. } => continue,
+            };
+            r = crate::compose::intersect(r, b);
+        }
+        r
+    }
+
+    /// A composed item (`item`, `size` points with `radii`, at `m`) is
+    /// drawn here: records where it goes, and what follows goes into the
+    /// next layer.
+    fn compose(&mut self, item: &Rc<dyn Hosted>, m: Mat4, size: (f32, f32), radii: [f32; 4]) {
+        let s = self.scale;
+        let t = m.to_3x2();
+        // The page's pixels are the view's points times the scale: the
+        // linear part stays, the translation is in pixels.
+        let mut matrix = Matrix3x2 {
+            M31: t.M31 * s,
+            M32: t.M32 * s,
+            ..t
+        };
+        if t.M11 == 1.0 && t.M22 == 1.0 && t.M12 == 0.0 && t.M21 == 0.0 {
+            // Only moved: on whole pixels, so that the page stays sharp.
+            matrix.M31 = matrix.M31.round();
+            matrix.M32 = matrix.M32.round();
+        }
+        let c = self.clip_bounds();
+        let clip = D2D_RECT_F {
+            left: (c.left * s).max(0.0),
+            top: (c.top * s).max(0.0),
+            right: (c.right * s).min(1.0e7),
+            bottom: (c.bottom * s).min(1.0e7),
+        };
+        let size_px = ((size.0 * s).round() as i32, (size.1 * s).round() as i32);
+        let bounds = crate::compose::map_bounds(
+            &matrix,
+            &rect_f(0.0, 0.0, size_px.0 as f32, size_px.1 as f32),
+        );
+        if size_px.0 <= 0
+            || size_px.1 <= 0
+            || crate::compose::is_empty(&crate::compose::intersect(bounds, clip))
+        {
+            return;
+        }
+        self.composed.push(Composed {
+            item: item.clone(),
+            at: Placement {
+                matrix,
+                size: size_px,
+                clip,
+                radii: radii.map(|r| r * s),
+                alpha: self.alpha,
+            },
+        });
+        if let Some(split) = &mut self.split {
+            split.pending = true;
+        }
+    }
+
+    /// Something is about to be drawn: after a composed item, the pass
+    /// goes on in the next layer (made as needed), with its clips and
+    /// layers pushed again there.
+    pub(crate) fn realize(&mut self) {
+        let Some(split) = &mut self.split else { return };
+        if !split.pending {
+            return;
+        }
+        split.pending = false;
+        let index = split.layers.len();
+        let target = split
+            .composition
+            .layer_target(self.gfx, index, split.size, self.scale);
+        let target = match target {
+            Ok(t) => t,
+            Err(err) => {
+                // Drawn on below the web view instead.
+                log::warn!("compose: no layer above the web view: {err}");
+                return;
+            }
+        };
+        split.layers.push(self.composed.len());
+        let ended = self.flatten(|dc| {
+            // SAFETY: COM calls on the live context between its pushes:
+            // the draw into the previous target ends, one into the layer
+            // begins.
+            unsafe {
+                let ended = dc.EndDraw(None, None);
+                dc.SetTarget(&target);
+                dc.BeginDraw();
+                dc.SetTransform(&Matrix3x2::identity());
+                dc.Clear(Some(&color_f(Color::TRANSPARENT)));
+                ended
+            }
+        });
+        if let (Err(err), Some(split)) = (ended, &mut self.split) {
+            split.error.get_or_insert(err);
+        }
+    }
+
+    /// Takes the composed items a nested pass reached (in window
+    /// coordinates): what follows them goes above them.
+    pub(crate) fn adopt_composed(&mut self, mut composed: Vec<Composed>) {
+        if composed.is_empty() {
+            return;
+        }
+        self.composed.append(&mut composed);
+        if let Some(split) = &mut self.split {
+            split.pending = true;
+        }
     }
 
     /// The pass's solid brush, set to `color`.
@@ -422,6 +597,8 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
     if crate::decor::backface_away(&state, &world) {
         return;
     }
+    // Drawn above a web view reached before it, if any.
+    cx.realize();
     if !world.is_affine() {
         drop(state);
         return draw_projected(cx, view, world, opacity);
@@ -432,6 +609,8 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
     if opacity < 1.0 {
         cx.push_opacity(opacity);
     }
+    let alpha = cx.alpha;
+    cx.alpha *= opacity;
     if layered {
         // Filters, a shadow of the content or a blend mode: the view is
         // drawn offscreen and composited as one image.
@@ -439,6 +618,7 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
     } else {
         draw_content(cx, view, world);
     }
+    cx.alpha = alpha;
     if opacity < 1.0 {
         cx.pop();
     }
@@ -482,6 +662,15 @@ pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
     for native in &natives {
         let r = native.rect;
         let m = Mat4::new().translate(r.x, r.y).then(&world);
+        if native.item.composed() {
+            let radii = {
+                let s = view.state();
+                if s.clips() { s.radii() } else { [0.0; 4] }
+            };
+            cx.compose(&native.item, m, (r.width, r.height), radii);
+            continue;
+        }
+        cx.realize();
         cx.set_transform(m);
         native.item.draw(cx, (r.width, r.height));
         if let Some((x, y, bw, bh)) = m.bounds(0.0, 0.0, r.width, r.height) {
@@ -495,8 +684,15 @@ pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
             cx.drawn.push((native.item.clone(), rect));
         }
     }
-    cx.set_transform(world);
     let state = view.state();
+    let above = crate::scroll::indicates(&state)
+        || state.borders().is_visible()
+        || state.style.outline.is_visible();
+    if above {
+        // A scroll indicator, a border over a web view.
+        cx.realize();
+    }
+    cx.set_transform(world);
     crate::scroll::draw_indicator(cx, &state);
     if clip {
         cx.pop();
@@ -571,9 +767,13 @@ fn draw_projected(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4, opacity: f32
     // another context: layers pushed on this one stay as they are.
     let base = Mat4::new().translate(-area.x, -area.y);
     let mut flat = view.clone();
+    let composed = cx.composed.len();
     let drawn = crate::decor::layer::draw_into(cx, &image, scale, true, |inner| {
         draw_flat(inner, &mut flat, base);
     });
+    // Web views in it were placed in the bitmap's coordinates, not the
+    // window's: they are not shown (a visual takes no perspective).
+    cx.composed.truncate(composed);
     if !drawn {
         return;
     }
@@ -664,9 +864,20 @@ pub(crate) fn frame(surface: &Rc<Surface>) {
             return;
         }
     };
-    let drawn = draw_into(surface, &gfx, &target, scale, false);
+    // Only a window with web views has a composition: without one the
+    // frame is the one swap chain, drawn and presented as always.
+    let composition = surface.composition();
+    let drawn = draw_into(surface, &gfx, &target, scale, false, composition.as_deref());
     match drawn {
         Ok(drawn) => {
+            if let Some(c) = &composition
+                && let Err(err) = c.present(drawn.layers.len())
+            {
+                log::warn!("present failed: {err}");
+                drop(swap);
+                device_lost(surface);
+                return;
+            }
             if let Err(err) = chain.present() {
                 log::warn!("present failed: {err}");
                 drop(swap);
@@ -674,7 +885,8 @@ pub(crate) fn frame(surface: &Rc<Surface>) {
                 return;
             }
             drop(swap);
-            surface.items_placed(drawn);
+            surface.items_placed(drawn.items);
+            surface.composed_placed(composition.as_deref(), drawn.composed, &drawn.layers);
         }
         Err(err) if err.code() == D2DERR_RECREATE_TARGET => {
             drop(swap);
@@ -686,19 +898,33 @@ pub(crate) fn frame(surface: &Rc<Surface>) {
 
 fn device_lost(surface: &Rc<Surface>) {
     *surface.swap.borrow_mut() = None;
+    if let Some(c) = surface.composition() {
+        c.device_lost();
+    }
     gfx::lost();
     surface.invalidate();
 }
 
-/// Draws the tree into `target` (its DPI set for `scale`); returns the
-/// hosted items drawn and their window rectangles.
+/// What a pass drew besides pixels.
+struct Drawn {
+    /// The hosted items drawn and their window rectangles.
+    items: Vec<(Rc<dyn Hosted>, RECT)>,
+    /// The composed items (web views) and where they go.
+    composed: Vec<Composed>,
+    /// The layers drawn: how many composed items are below each.
+    layers: Vec<usize>,
+}
+
+/// Draws the tree into `target` (its DPI set for `scale`), and into the
+/// layers of `composition` above its web views.
 fn draw_into(
     surface: &Rc<Surface>,
     gfx: &Gfx,
     target: &ID2D1Bitmap1,
     scale: f32,
     offscreen: bool,
-) -> windows::core::Result<Vec<(Rc<dyn Hosted>, RECT)>> {
+    composition: Option<&Composition>,
+) -> windows::core::Result<Drawn> {
     let dc = &gfx.dc;
     // SAFETY: COM calls on the live context and target; `EndDraw` always
     // follows `BeginDraw`.
@@ -718,16 +944,35 @@ fn draw_into(
         }
     };
     cx.offscreen = offscreen;
+    cx.split = composition.map(|composition| Split {
+        composition,
+        size: surface.pixel_size(),
+        layers: Vec::new(),
+        pending: false,
+        error: None,
+    });
     let root = surface.root.clone();
     draw_view(&mut cx, &root, Mat4::new(), (0.0, 0.0));
-    let drawn = std::mem::take(&mut cx.drawn);
+    let items = std::mem::take(&mut cx.drawn);
+    let composed = std::mem::take(&mut cx.composed);
+    let (layers, error) = match cx.split.take() {
+        Some(s) => (s.layers, s.error),
+        None => (Vec::new(), None),
+    };
     drop(cx);
-    // SAFETY: closes the `BeginDraw` above; the target is unset so that
-    // the swap chain can be resized later.
+    // SAFETY: closes the last `BeginDraw` (above, or a layer's); the target
+    // is unset so that the swap chains can be resized later.
     let result = unsafe { dc.EndDraw(None, None) };
     // SAFETY: as above.
     unsafe { dc.SetTarget(None) };
-    result.map(|()| drawn)
+    if let Some(err) = error {
+        return Err(err);
+    }
+    result.map(|()| Drawn {
+        items,
+        composed,
+        layers,
+    })
 }
 
 /// Pixels of a snapshot: BGRA, premultiplied, `width * 4` bytes per row.
@@ -772,7 +1017,8 @@ pub(crate) fn snapshot(surface: &Rc<Surface>, scale: f32) -> windows::core::Resu
                 colorContext: std::mem::ManuallyDrop::new(None),
             },
         )?;
-        let drawn = draw_into(surface, &gfx, &target, scale, true)?;
+        // Web views are not in it: their pages are composed by the system.
+        let drawn = draw_into(surface, &gfx, &target, scale, true, None)?;
         drop(drawn);
         let read = gfx.dc.CreateBitmap(
             size,

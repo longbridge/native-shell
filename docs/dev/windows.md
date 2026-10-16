@@ -42,9 +42,26 @@ server client, log forwarding, the error overlay: `dev.rs`). The host turns on `
 - **One retained view per node, one window per surface.** Each node is an `NshView` (`view.rs`): an `Rc` node with
   its `ViewState` (frame, style, animated values, content), its children in drawing order and a weak parent. A
   surface's window draws its whole tree with Direct2D into a flip-model swap chain (`render.rs`); nsh content needs
-  no child windows. Only web views and native components that bring a window of their own are child `HWND`s, and
-  they sit above everything nsh draws (the "airspace" limit, below). Changing a view (`changed` / `moved`)
-  invalidates the window; `WM_PAINT` draws the tree once, however many views changed.
+  no child windows. Changing a view (`changed` / `moved`) invalidates the window; `WM_PAINT` draws the tree once,
+  however many views changed. Only native components that bring a window of their own are child `HWND`s, and they
+  sit above everything nsh draws (the "airspace" limit, below).
+- **Window composition for web views** (`compose.rs`). A window without web views has no composition: one swap
+  chain, drawn and presented as above. The first web view makes a DirectComposition target on the window (above
+  its swap chain, below its child windows) whose root holds, bottom to top, each web view's visual (the WebView2
+  composition controller's root visual target) and after each one a layer: a composition swap chain the size of
+  the window (premultiplied alpha) with what nsh paints after that web view. The tree is still drawn in one pass:
+  reaching a web view records where it goes (`DrawCx::compose`: its transform in window pixels, its clipping
+  ancestors' clip, its own rounded corners, its opacity), and the next thing drawn first moves the context to the
+  next layer (`DrawCx::realize`: the pushed clips and opacity layers are popped, the target changes, they are
+  pushed again, as `flatten` does for backdrops). So what is painted before a web view is below it, and what is
+  painted after it (later siblings, modals, sheets, dialogs and toasts, the dev overlay: everything the root
+  hosts later) is above it, for any number of web views. A layer nothing is drawn into is neither drawn, presented
+  nor shown; the layers are presented unsynchronized (`Present(0)`) and the window's own swap chain waits for the
+  vertical blank once for all; the root is re-arranged only when the order of its visuals changes, and a frame's
+  changes are one `Commit`. Without a composition, `realize` is one `Option` test per view: no extra surface, copy
+  or per-frame work (the cost of composing one full-window layer in DWM is not paid by windows that do not need
+  it, which is why the single swap chain path stays rather than composing every window). The composition lives as
+  long as a web view holds it (`Surface::compose`), and goes with the last one.
 - **Drawing a view** (`render::draw_view`): shadows and background (`decor.rs`), the content clipped to the bounds
   (text, image, canvas), the children (clipped to the rounded bounds when the view clips), the items the view hosts
   (`ViewState::natives`: text editors, headers, dialogs, overlays, videos — the `Hosted` trait), the scroll
@@ -92,8 +109,8 @@ server client, log forwarding, the error overlay: `dev.rs`). The host turns on `
 | Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close; Tab stays inside the newest modal, and the field that had the focus when a modal opened leaves it and gets it back when the modal closes |
 | Dialogs, toasts | `system.rs` | Drawn in the surface as items the root hosts, in Windows 11's content dialog style (a rounded card, the default button in the system's accent color), not `MessageBox` / `TaskDialog`: they stay with an embedded surface and never run a modal loop of their own |
 | Video | `native/video.rs` | Media Foundation's media engine in frame-server mode on the thread's Direct3D 11 device (a DXGI device manager); each frame is copied into a texture Direct2D draws, so a video clips, transforms and is covered like any view; `controls` draws nsh's own control bar (play / pause, scrubber, time) |
-| Web views | `native/web.rs` | WebView2 (`webview2-com`, the loader linked statically: apps ship no `WebView2Loader.dll`) in a child window that follows its view after every frame, clipped with a window region; one environment per thread and profile folder (`%LOCALAPPDATA%\<app id>\WebView2`); a placeholder without the WebView2 Runtime |
-| Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent` draws with Direct2D in the view (`draw`) or brings a child window (`window`), placed as a web view's; `ComponentContext::emit` / `set_size` / `redraw` from any thread |
+| Web views | `native/web.rs`, `compose.rs` | WebView2 composition controllers (`webview2-com`, the loader linked statically: apps ship no `WebView2Loader.dll`) drawing into a visual of the window's composition, between the layers of what nsh draws before and after them, so nsh content covers them; the visual is transformed like the view (affine), clipped to its clipping ancestors (axis-aligned bounds) and its own rounded corners, faded with its and its ancestors' opacity, and out of the tree while the view is not drawn (hidden, concealed screens); a deleted view's page stays while a removal animation keeps the view on screen. Input is nsh's: hit testing gives a point over the page to it only when no nsh content covers it there (`Hosted::raw`), and mouse buttons, moves and wheels go through `SendMouseInput`, touch and pen contacts through `SendPointerInput` (synthesized ones as the mouse); the page's cursor comes from `CursorChanged`; a click gives the page the keyboard focus (`MoveFocus`, WebView2 then takes keys and the IME itself, nsh's fields blur), a click on nsh content or Tab out of the page (`MoveFocusRequested`) gives it back. Rasterized at the window's scale (`RasterizationScale`, monitor changes not followed by WebView2 itself); bounds are the view's window pixels (pop-ups and IME candidates are placed from them). `source.baseUrl` navigates to the base URL and answers that document's request with the HTML (`WebResourceRequested`); `scrollEnabled={false}` gives the wheel to the scroll views around and keeps the page's viewport from scrolling (`overflow: hidden` on its root, scripts still scroll); `desktop={{ allowsBackForwardNavigationGestures }}` is `IsSwipeNavigationEnabled` (touchscreen swipes). One environment per thread and profile folder (`%LOCALAPPDATA%\<app id>\WebView2`); a placeholder without the WebView2 Runtime |
+| Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent` draws with Direct2D in the view (`draw`) or brings a child window (`window`) that follows its view after every frame, clipped with a window region, above everything nsh draws; `ComponentContext::emit` / `set_size` / `redraw` from any thread |
 | Accessibility | `access.rs`, `access/uia.rs` | UI Automation: a server-side provider tree answered on `WM_GETOBJECT`, one provider per exposed view (holding only the surface key and node id); control types from `accessibilityRole` / text / press handlers / labelled images; `testID` as the automation id; Invoke, Toggle, ExpandCollapse, SelectionItem, RangeValue, Value and Scroll patterns; `accessible={true}` groups its content as on iOS and Android; property, structure and live-region notification events only while a client listens |
 | Environment | `system.rs` | Re-read on `WM_SETTINGCHANGE` (and theme / DWM color changes). Color scheme: the app's appearance (`nsh.json` `"appearance"`, `setColorScheme`) when it forces one, else `AppsUseLightTheme`, live; the title bar (DWM's immersive dark mode) and the root's background follow it. The locale (`Intl`) from `GetUserDefaultLocaleName` (not `LANG` / `LC_*`); font scale from `TextScaleFactor` (Settings > Accessibility > Text size); reduce motion from `SPI_GETCLIENTAREAANIMATION`; right to left from the UI language's reading direction; the screen reader from `SPI_GETSCREENREADER`; the pixel ratio the window's DPI over 96; `Platform.OS` `"windows"`, idiom `desktop`, OS version `RtlGetVersion`'s major.minor (10.0 on Windows 11 too); the accent palette for dialogs; safe area and keyboard height 0 |
 | Clipboard | `system.rs` | The Win32 clipboard (`CF_UNICODETEXT`); reads are synchronous, so `Clipboard.getString` is answered at once |
@@ -135,19 +152,20 @@ under non-Latin layouts (Cyrillic, Greek), so Ctrl+C is the same key on all of t
 `nsh-windows-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or
 new lines (`script.rs`), so a change can be checked without touching the screen. Steps run on a thread of their own and
 each one on the main thread; input is synthesized at the input module's entry points, so it works while the window is
-in the background or covered.
+in the background or covered (and goes through nsh's hit testing to web views, as real input does).
 
 | Step | Does |
 |---|---|
 | `wait <ms>` | Waits. |
-| `shot <file.png>` | Draws the window's content offscreen at scale 1 into a PNG, whatever covers the window. Web views and component windows (child windows) are not in it. |
-| `tap <x> <y>` | Presses and releases the mouse at a point (points, root coordinates). |
+| `shot <file.png>` | Draws the window's content offscreen at scale 1 into a PNG, whatever covers the window. Web views (composed by the system) and component windows (child windows) are not in it. |
+| `screen <file.png>` | Captures what the window shows, web views and their layers included, at the window's scale: `PrintWindow` with `PW_RENDERFULLCONTENT`, which composes the window's swap chain and DirectComposition content as DWM does, whatever covers the window. |
+| `tap <x> <y>` | Presses and releases the mouse at a point (points, root coordinates); over a web view the page gets it. |
 | `drag <x0> <y0> <x1> <y1> [ms]` | Presses, moves in steps over `ms` (default 300), releases; `touch` the same with a finger. |
 | `wheel <x> <y> <dx> <dy>` | A wheel scroll (points, positive toward the end); `pad` a precision touchpad's. |
 | `hover <x> <y>` | Moves the pointer. |
-| `type <text>` | Types into the focused field. |
 | `mark <text>` | An IME's composition in the focused field, as the IME messages make it (`mark` alone ends it). |
-| `key <name>` | Presses a key (`Return`, `BackSpace`, `Tab`, `Escape`, `Left`, `Home`, `Page_Down`, `F5`, a letter; `ctrl+` / `shift+` / `alt+` prefixes); `selectall` is Ctrl+A. |
+| `type <text>` | Types into the focused field, or into the page of a web view that has the focus (posted to its window as `WM_CHAR`s). |
+| `key <name>` | Presses a key (`Return`, `BackSpace`, `Tab`, `Escape`, `Left`, `Home`, `Page_Down`, `F5`, a letter; `ctrl+` / `shift+` / `alt+` prefixes); `selectall` is Ctrl+A. Keys without modifiers go to a focused page. |
 | `dark` / `light` | Switches the system's appearance (an app that forces one keeps it). |
 | `resize <w> <h>` | Resizes the window's client area (points). |
 | `quit` | Closes the window. |
@@ -162,10 +180,20 @@ Without `--bundle` the host connects to the dev server on this machine (`--dev-s
 
 ## Not implemented, or different
 
-- **Web views** are WebView2 child windows: they cover nsh content drawn over them (a dialog, a sheet, a menu) and are
-  not in `--script` screenshots (which are drawn offscreen). `source.baseUrl` for HTML, `scrollEnabled` and
-  `allowsBackForwardNavigationGestures` are not supported. Without the WebView2 Runtime (it comes with Windows 11;
-  Windows 10 gets it with Edge) a web view shows a neutral placeholder.
+- **Web views** are composed (above), with these limits: a web view inside a view drawn with a projective transform
+  (perspective) is not shown (a visual takes no perspective), and one inside a filtered view is placed but not
+  filtered; ancestors' rounded clips clip it to their bounds (only its own corners are rounded); a `backdropFilter`
+  or `mixBlendMode` drawn over a page does not see it (the layer above starts transparent); the image a leaving
+  screen or modal slides out as has no page (its web view closed with its views). The layers are presented
+  unsynchronized with the window's swap chain, so for a frame nsh content above and below a page may come from
+  consecutive frames while both animate. `source.baseUrl` answers only the document's request: other requests
+  (images, scripts, links) go to the network, and `http(s)` base URLs are the ones WebView2 lets the app answer.
+  Touch and pen input reaches pages as pointer input when it comes from the system (swipe navigation needs it);
+  `--script`'s `touch` drags reach them as the mouse. `shot` has no pages (`screen` does). Without the WebView2
+  Runtime (it comes with Windows 11; Windows 10 gets it with Edge) a web view shows a neutral placeholder.
+- **Native components with a window of their own** (`NativeComponent::window`) stay child windows: they cover nsh
+  content drawn over them and are not in `shot` screenshots. Hosting an arbitrary `HWND` in a composition is not
+  possible (only content made for it, such as a swap chain or a WebView2 composition controller, can be a visual).
 - **Video**: which formats play depends on the installed Media Foundation codecs; there is no poster; the control bar
   always shows while `controls` is on. Unlike GTK, `rate` works.
 - **Zooming scroll views**: `zoomTo` and the zoom props are ignored. The scroll indicator cannot be dragged; notched

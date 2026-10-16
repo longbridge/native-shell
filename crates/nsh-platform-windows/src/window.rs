@@ -559,12 +559,15 @@ fn handle(
                 unsafe { SetCapture(hwnd) };
             }
             data.buttons.set(data.buttons.get() | (1 << button));
-            // The window takes the keyboard when clicked (an embedded
-            // child window does not get it by itself).
-            // SAFETY: plain call.
-            let _ = unsafe { SetFocus(Some(hwnd)) };
             let clicks = count_clicks(data, lparam);
             let (x, y) = point(lparam);
+            // The window takes the keyboard when clicked (an embedded
+            // child window does not get it by itself), unless a web view
+            // is clicked: it takes the keyboard itself.
+            if !crate::input::raw_at(surface, x, y) {
+                // SAFETY: plain call.
+                let _ = unsafe { SetFocus(Some(hwnd)) };
+            }
             crate::input::pointer(
                 surface,
                 mouse_event(PointerKind::Down, x, y, button, clicks, surface),
@@ -802,7 +805,7 @@ fn mouse_event(
 }
 
 /// Lines one wheel notch scrolls (the user's setting, 3 by default).
-fn lines_per_notch() -> f32 {
+pub(crate) fn lines_per_notch() -> f32 {
     thread_local! {
         static LINES: Cell<Option<f32>> = const { Cell::new(None) };
     }
@@ -836,6 +839,12 @@ pub(crate) fn set_cursor(cursor: crate::input::Cursor) {
         Cursor::Hidden => {
             // SAFETY: plain call; no cursor is shown over the window.
             unsafe { SetCursor(None) };
+            return;
+        }
+        Cursor::Native(handle) => {
+            // SAFETY: a cursor handle WebView2 gave (system cursors and its
+            // own stay valid while it shows them).
+            unsafe { SetCursor(Some(HCURSOR(handle as *mut _))) };
             return;
         }
         Cursor::Arrow => IDC_ARROW,
