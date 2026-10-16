@@ -13,7 +13,10 @@ mod imp {
     use std::{
         cell::RefCell,
         rc::Rc,
-        sync::{Arc, atomic::AtomicBool},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
     };
 
     use nsh_core::{EventKind, EventPayload, NodeId, Op, TextEngine, time::Instant};
@@ -28,6 +31,9 @@ mod imp {
     pub(crate) struct Script {
         host: Host,
         symbolicator: Rc<RefCell<Symbolicator>>,
+        /// Set when the engine stops: what JS was running is interrupted
+        /// on purpose, which is not the app's error.
+        stop: Arc<AtomicBool>,
     }
 
     impl Script {
@@ -55,10 +61,13 @@ mod imp {
                     return None;
                 }
             };
-            host.set_stop_flag(stop);
+            host.set_stop_flag(stop.clone());
             let symbolicator = Rc::new(RefCell::new(Symbolicator::new(bundle.source_map.clone())));
-            let (map, errors) = (symbolicator.clone(), sink.clone());
+            let (map, errors, stopping) = (symbolicator.clone(), sink.clone(), stop.clone());
             host.set_error_handler(Box::new(move |err| {
+                if stopping.load(Ordering::Relaxed) {
+                    return;
+                }
                 let message = map.borrow_mut().rewrite(&err.message);
                 log::error!(target: "js", "uncaught exception: {message}");
                 errors.report_error(&message);
@@ -68,7 +77,11 @@ mod imp {
                 nsh_core::canvas::measure_line(&*text_engine, font, text)
             }));
             host.set_environment(environment);
-            let script = Script { host, symbolicator };
+            let script = Script {
+                host,
+                symbolicator,
+                stop,
+            };
             let start = Instant::now();
             let loaded: Result<(), JsError> = match &bundle.code {
                 BundleCode::Bytecode(bytes) => script.host.eval_bytecode(bytes),
@@ -83,6 +96,9 @@ mod imp {
 
         /// Reports an error of the app, its stack mapped to the sources.
         pub(crate) fn report(&self, sink: &dyn MountSink, what: &str, message: &str) {
+            if self.stop.load(Ordering::Relaxed) {
+                return;
+            }
             let message = self.symbolicator.borrow_mut().rewrite(message);
             log::error!(target: "js", "{what}: {message}");
             sink.report_error(&message);

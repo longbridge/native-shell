@@ -1,23 +1,31 @@
 //! Stopping an engine never waits for a long-running script: platforms drop
-//! engines on their main thread.
+//! engines on their main thread. The interrupted script is not reported as
+//! an error of the app.
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use nsh_core::{ApproxTextEngine, MountBatch, Size};
 use nsh_engine::{Bundle, Engine, EngineConfig, MountSink};
 
-struct NullSink;
+/// Records the errors reported.
+struct Sink(Arc<Mutex<Vec<String>>>);
 
-impl MountSink for NullSink {
+impl MountSink for Sink {
     fn submit(&self, _batch: MountBatch) {}
+
+    fn report_error(&self, message: &str) {
+        self.0.lock().unwrap().push(message.to_owned());
+    }
 }
 
-#[test]
-fn dropping_an_engine_aborts_running_js() {
+/// Runs `code`, lets it spin, drops the engine: returns how long dropping
+/// took and the errors reported.
+fn stop_spinning(code: &str) -> (Duration, Vec<String>) {
     let config = EngineConfig {
-        app: nsh_engine::App::Js(Bundle::source(
-            "let n = 0; while (true) { n++; }".to_owned(),
-        )),
+        app: nsh_engine::App::Js(Bundle::source(code.to_owned())),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -28,14 +36,28 @@ fn dropping_an_engine_aborts_running_js() {
         ui_sets: Vec::new(),
         runtime: None,
     };
-    let engine = Engine::start(config, || ApproxTextEngine, NullSink).unwrap();
+    let errors = Arc::new(Mutex::new(Vec::new()));
+    let engine = Engine::start(config, || ApproxTextEngine, Sink(errors.clone())).unwrap();
     // Let the script start spinning.
     std::thread::sleep(Duration::from_millis(200));
     let start = Instant::now();
     drop(engine);
-    assert!(
-        start.elapsed() < Duration::from_millis(500),
-        "{:?}",
-        start.elapsed()
-    );
+    let elapsed = start.elapsed();
+    let errors = errors.lock().unwrap().clone();
+    (elapsed, errors)
+}
+
+#[test]
+fn dropping_an_engine_aborts_running_js() {
+    let (elapsed, errors) = stop_spinning("let n = 0; while (true) { n++; }");
+    assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");
+    assert_eq!(errors, Vec::<String>::new());
+}
+
+#[test]
+fn dropping_an_engine_aborts_a_running_timer_quietly() {
+    let (elapsed, errors) =
+        stop_spinning("setTimeout(() => { let n = 0; while (true) { n++; } }, 0);");
+    assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");
+    assert_eq!(errors, Vec::<String>::new());
 }
