@@ -43,12 +43,14 @@ fn bundles_errors_and_logs_round_trip() {
     .unwrap();
     match next_non_status(&rx) {
         DevEvent::Bundle {
+            session,
             version: 1,
             format: BundleFormat::Bytecode,
             bytes,
             source_map,
             capabilities,
         } => {
+            assert_ne!(session, 0, "the server names its run");
             assert_eq!(bytes, [1, 2, 3]);
             assert_eq!(source_map.as_deref(), Some("{\"version\":3}"));
             assert_eq!(capabilities.as_deref(), Some("{\"statusBar\":true}"));
@@ -82,6 +84,7 @@ fn bundles_errors_and_logs_round_trip() {
             base: 1,
             code,
             source_map,
+            ..
         } => {
             assert_eq!(code, "patch v2");
             assert_eq!(source_map.as_deref(), Some("{}"));
@@ -124,4 +127,31 @@ fn bundles_errors_and_logs_round_trip() {
         _ => None,
     });
     assert_eq!(gone.as_deref(), Some("test-device"));
+}
+
+/// Build numbers start at 1 in each run of the server: a host still running
+/// build 1 of an earlier run tells the new run's build 1 apart by its
+/// session.
+#[test]
+fn each_run_of_the_server_has_its_own_session() {
+    let session_of = || {
+        let server =
+            DevServer::start("127.0.0.1:0".parse().unwrap(), "bc-1", None, |_| {}).unwrap();
+        server.publish(vec![1], "v1".into(), None, None, None);
+        let url = format!("ws://{}{WS_PATH}", server.local_addr());
+        let (tx, rx) = mpsc::channel();
+        let _client = DevClient::start(url, "test-device".into(), "bc-1".into(), move |e| {
+            let _ = tx.send(e);
+        })
+        .unwrap();
+        match next_non_status(&rx) {
+            DevEvent::Bundle {
+                session,
+                version: 1,
+                ..
+            } => session,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_ne!(session_of(), session_of());
 }

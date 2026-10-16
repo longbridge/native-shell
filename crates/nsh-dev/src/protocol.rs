@@ -50,6 +50,11 @@ pub enum ServerMessage {
     Hello {
         /// [`PROTOCOL_VERSION`] of the server.
         protocol: u32,
+        /// This run of the server: build numbers start at 1 in each run, so
+        /// a host still running a build of an earlier run tells them apart
+        /// by it.
+        #[serde(default)]
+        session: u64,
     },
     /// A rebuild started.
     Building,

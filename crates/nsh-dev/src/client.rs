@@ -24,6 +24,9 @@ pub enum DevEvent {
     /// A hot update for hosts running bundle `base` (see
     /// [`ServerMessage::Patch`]); the bundle of `version` follows.
     Patch {
+        /// The server run the build numbers are of
+        /// ([`ServerMessage::Hello`]).
+        session: u64,
         /// Build number after the update.
         version: u64,
         /// Build number the update applies to.
@@ -35,6 +38,8 @@ pub enum DevEvent {
     },
     /// A new bundle.
     Bundle {
+        /// The server run the build number is of.
+        session: u64,
         /// Build number.
         version: u64,
         /// Payload format.
@@ -140,6 +145,7 @@ fn session(
         bytes: Option<Vec<u8>>,
     }
     let mut pending: Option<Pending> = None;
+    let mut server_session = 0;
     loop {
         loop {
             match logs.try_recv() {
@@ -159,7 +165,7 @@ fn session(
         };
         match msg {
             Message::Text(text) => match serde_json::from_str::<ServerMessage>(&text) {
-                Ok(ServerMessage::Hello { .. }) => {}
+                Ok(ServerMessage::Hello { session, .. }) => server_session = session,
                 Ok(ServerMessage::Building) => on_event(DevEvent::Building),
                 Ok(ServerMessage::BuildFailed { message }) => {
                     on_event(DevEvent::BuildFailed(message))
@@ -212,6 +218,7 @@ fn session(
                 match p.base {
                     Some(base) => match String::from_utf8(bytes) {
                         Ok(code) => on_event(DevEvent::Patch {
+                            session: server_session,
                             version: p.version,
                             base,
                             code,
@@ -220,6 +227,7 @@ fn session(
                         Err(_) => log::warn!("dev server sent a non-UTF-8 patch"),
                     },
                     None => on_event(DevEvent::Bundle {
+                        session: server_session,
                         version: p.version,
                         format: p.format,
                         bytes,

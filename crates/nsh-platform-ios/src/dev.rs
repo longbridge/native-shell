@@ -146,8 +146,9 @@ impl DevSession {
 
 #[derive(Default)]
 struct DevUi {
-    /// Build the app runs (loaded, or reached by hot updates).
-    running: Option<u64>,
+    /// Build the app runs (loaded, or reached by hot updates): the server
+    /// run it came from and its number.
+    running: Option<(u64, u64)>,
     /// The latest bundle, for reloads.
     latest: Option<Bundle>,
     status: Option<Retained<UILabel>>,
@@ -201,6 +202,7 @@ fn handle(view: &Rc<Inner>, ui: &Rc<RefCell<DevUi>>, event: DevEvent) {
         DevEvent::Building => {}
         DevEvent::BuildFailed(message) => show_error(ui, container, "Build failed", &message),
         DevEvent::Bundle {
+            session,
             version,
             format,
             bytes,
@@ -236,10 +238,10 @@ fn handle(view: &Rc<Inner>, ui: &Rc<RefCell<DevUi>>, event: DevEvent) {
             let running = {
                 let mut ui = ui.borrow_mut();
                 ui.latest = Some(bundle.clone());
-                ui.running.replace(version)
+                ui.running.replace((session, version))
             };
             // Already there through a hot update.
-            if running == Some(version) {
+            if running == Some((session, version)) {
                 return;
             }
             log::info!("loading build {version}");
@@ -247,12 +249,13 @@ fn handle(view: &Rc<Inner>, ui: &Rc<RefCell<DevUi>>, event: DevEvent) {
             Inner::load(view, bundle.into());
         }
         DevEvent::Patch {
+            session,
             version,
             base,
             code,
             source_map,
         } => {
-            if ui.borrow().running != Some(base) {
+            if ui.borrow().running != Some((session, base)) {
                 return;
             }
             let update = nsh_engine::HotUpdate {
@@ -262,7 +265,7 @@ fn handle(view: &Rc<Inner>, ui: &Rc<RefCell<DevUi>>, event: DevEvent) {
             };
             if view.hot_update(update) {
                 log::info!("updating to build {version}");
-                ui.borrow_mut().running = Some(version);
+                ui.borrow_mut().running = Some((session, version));
                 hide_error(ui);
             }
         }

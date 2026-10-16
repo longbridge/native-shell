@@ -90,9 +90,20 @@ struct Shared {
     latest: Mutex<Option<Event>>,
     events: broadcast::Sender<Event>,
     bytecode_version: String,
+    /// This run of the server ([`ServerMessage::Hello`]).
+    session: u64,
     /// Hosts connected now.
     clients: AtomicUsize,
     on_event: Box<dyn Fn(ClientEvent) + Send + Sync>,
+}
+
+/// An id for this run of the server, different from earlier runs' (the
+/// clock and the process).
+fn new_session() -> u64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    nanos ^ (u64::from(std::process::id()) << 40)
 }
 
 /// The dev server: serves the latest bundle to dev hosts and pushes
@@ -126,6 +137,7 @@ impl DevServer {
             latest: Mutex::new(None),
             events: broadcast::channel(16).0,
             bytecode_version: bytecode_version.into(),
+            session: new_session(),
             clients: AtomicUsize::new(0),
             on_event: Box::new(on_event),
         });
@@ -319,6 +331,7 @@ async fn serve_client(mut socket: WebSocket, shared: Arc<Shared>) -> Result<(), 
         &mut socket,
         &ServerMessage::Hello {
             protocol: PROTOCOL_VERSION,
+            session: shared.session,
         },
     )
     .await?;

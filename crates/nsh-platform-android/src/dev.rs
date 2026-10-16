@@ -37,8 +37,9 @@ pub(crate) struct DevSession {
 
 #[derive(Default)]
 struct DevState {
-    /// Build the app runs (loaded, or reached by hot updates).
-    running: Option<u64>,
+    /// Build the app runs (loaded, or reached by hot updates): the server
+    /// run it came from and its number.
+    running: Option<(u64, u64)>,
     /// The latest bundle, for reloads.
     latest: Option<Bundle>,
 }
@@ -108,6 +109,7 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
         DevEvent::Building => {}
         DevEvent::BuildFailed(message) => host.dev_error(Some(("Build failed", &message))),
         DevEvent::Bundle {
+            session,
             version,
             format,
             bytes,
@@ -141,10 +143,10 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
             let running = {
                 let mut state = state.lock().expect("dev state");
                 state.latest = Some(bundle.clone());
-                state.running.replace(version)
+                state.running.replace((session, version))
             };
             // Already there through a hot update.
-            if running == Some(version) {
+            if running == Some((session, version)) {
                 return;
             }
             log::info!("loading build {version}");
@@ -152,13 +154,14 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
             host.load(bundle);
         }
         DevEvent::Patch {
+            session,
             version,
             base,
             code,
             source_map,
         } => {
             let mut state = state.lock().expect("dev state");
-            if state.running != Some(base) {
+            if state.running != Some((session, base)) {
                 return;
             }
             let update = nsh_engine::HotUpdate {
@@ -168,7 +171,7 @@ fn handle(host: &Arc<Host>, state: &Mutex<DevState>, event: DevEvent) {
             };
             if host.hot_update(update) {
                 log::info!("updating to build {version}");
-                state.running = Some(version);
+                state.running = Some((session, version));
                 host.dev_error(None);
             }
         }
