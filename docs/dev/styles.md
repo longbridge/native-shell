@@ -11,7 +11,9 @@
   `landscape:`, `ios:` / `android:`, `rtl:` / `ltr:`, `motion-safe:` / `motion-reduce:`, `active:` / `hover:` /
   `focus:` / `focus-within:` / `disabled:` / `enabled:`, `group-*:` (named groups `group/name`), `first:` / `last:` /
   `odd:` / `even:` / `only:`, `placeholder:`, `!` (important). `disabled` (any element) applies `disabled:` and drops
-  the node's press listeners from what is mounted, so it shows no press feedback either. The theme is Tailwind 4's
+  the node's press listeners from what is mounted, so it shows no press feedback either. `dark:` follows the appearance
+  shown: the app's own when it set one (`nsh.json` `"appearance"`, `setColorScheme`; `Core::set_appearance`), else the
+  system's. The theme is Tailwind 4's
   extended by `nsh.json` `"tailwind"` (`colors`, `spacing`, `breakpoints`, `fontSize`, `radius`, `shadow`, ...; unknown
   keys are build errors). Rust components do not use classes: their typed styles (`ui/style.rs`, every utility group has its
   methods, tested against the classes) lower into the same rules and their
@@ -26,7 +28,11 @@
   components: `SafeAreaView`, `KeyboardAvoidingView`) are added to the resolved padding / margin, so classes and
   styles keep their own.
 - **Effects** (styles and classes; `effects.rs`): `boxShadow` (CSS syntax, several, `inset`; also `shadow-*` / `ring-*`),
-  `experimental_backgroundImage` / `backgroundImage` (linear / radial / conic gradients), `filter` (`brightness`, `contrast`,
+  `experimental_backgroundImage` / `backgroundImage` (linear / radial / conic gradients, drawn over `backgroundColor` as in
+  CSS; but press feedback must show, so a background color an interaction state sets (`active:` / `hover:` / `focus:` /
+  `focus-within:` / `group-*:` classes, Rust components' `.active(..)`, `underlayColor` while pressed) or a native
+  animation drives (`Animated` `backgroundColor`) replaces the gradients, unless that state sets a gradient of its own:
+  done in the core, so every platform shows it alike), `filter` (`brightness`, `contrast`,
   `grayscale`, `hue-rotate`, `invert`, `saturate`, `sepia`, `opacity`, `blur`, `drop-shadow`; color filters are composed into one
   matrix), `backdropFilter` (blur), `mixBlendMode`, `outline*`, `visibility`, `cursor`, `transition*` (CSS: property groups,
   duration, delay, easing) and `animation*` (Tailwind's `spin` / `ping` / `pulse` / `bounce`), `display: grid` with

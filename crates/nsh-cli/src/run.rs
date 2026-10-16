@@ -153,6 +153,7 @@ fn run_android(
                 version_code: 1,
                 activity: "com.longbridge.nsh.DevActivity",
                 dev: true,
+                dark: false,
                 runtime: &runtime,
                 icon: None,
                 assets: Vec::new(),

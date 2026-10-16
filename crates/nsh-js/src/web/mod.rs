@@ -1,7 +1,8 @@
 //! The web platform APIs of TS apps, natively: events and abort signals,
 //! URLs, text encoding, blobs and form data, streams, and `fetch` with its
-//! `Headers`, `Request` and `Response`. They are JS globals only: Rust code
-//! uses crates of its choice.
+//! `Headers`, `Request` and `Response`; and ECMAScript's `Intl`, which
+//! QuickJS lacks (`intl/`). They are JS globals only: Rust code uses
+//! crates of its choice.
 //!
 //! Every object of these classes is one QuickJS class (functions made in
 //! Rust, [`js::closure`], another, callable one) whose opaque is the Rust
@@ -17,6 +18,7 @@ mod blob;
 mod encoding;
 mod event;
 mod fetch;
+mod intl;
 mod iterator;
 mod streams;
 mod url;
@@ -86,9 +88,11 @@ pub(crate) enum Class {
     Headers,
     Request,
     Response,
+    NumberFormat,
+    DateTimeFormat,
 }
 
-const CLASS_COUNT: usize = Class::Response as usize + 1;
+const CLASS_COUNT: usize = Class::DateTimeFormat as usize + 1;
 
 /// A method key: a name or a well-known symbol.
 pub(crate) enum Key {
@@ -148,6 +152,7 @@ fn specs() -> impl Iterator<Item = &'static Spec> {
         encoding::SPECS,
         blob::SPECS,
         fetch::SPECS,
+        intl::SPECS,
     ]
     .into_iter()
     .flatten()
@@ -613,6 +618,9 @@ fn make_class(ctx: Ctx, spec: &Spec, protos: &[Option<V>], ctors: &[Option<V>]) 
 /// The value of global `name` (a class or a function).
 fn global_value(ctx: Ctx, name: &CStr) -> R<V> {
     build(ctx)?;
+    if name == INTL {
+        return intl::namespace(ctx);
+    }
     if let Some(spec) = specs().find(|s| s.global && s.name == name) {
         return constructor(ctx, spec.class);
     }
@@ -622,11 +630,20 @@ fn global_value(ctx: Ctx, name: &CStr) -> R<V> {
     js::function(ctx, f.name, f.native, f.length)
 }
 
+/// `Intl`: a namespace, not a class.
+const INTL: &CStr = c"Intl";
+
+/// The globals TypeScript's ECMAScript library declares (`globals.d.ts`
+/// does not).
+#[cfg(test)]
+pub(crate) const ECMASCRIPT_GLOBALS: &[&str] = &["Intl"];
+
 fn global_names() -> impl Iterator<Item = &'static CStr> {
     specs()
         .filter(|s| s.global)
         .map(|s| s.name)
         .chain(functions().map(|f| f.name))
+        .chain([INTL])
 }
 
 /// Replaces the lazy accessors still in place with the values.
@@ -730,6 +747,7 @@ pub(crate) fn forget_dropped_fetches(ctx: Ctx) {
 /// Defines the globals as accessors that make the classes on first use
 /// (an app that uses none pays nothing).
 pub(crate) fn install(ctx: Ctx) -> rquickjs::Result<()> {
+    intl::install(ctx).map_err(|Throw| rquickjs::Error::Exception)?;
     let g = js::global(ctx);
     for (i, name) in global_names().enumerate() {
         // SAFETY: new functions the property takes.

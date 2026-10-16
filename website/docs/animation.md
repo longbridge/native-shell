@@ -118,7 +118,15 @@ function App() {
 mount(App);
 ```
 
-**What can be bound:** `opacity`, `backgroundColor` (through an interpolation to colors), and the `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY` and `rotateZ` steps of `transform`. Native values also drive [canvas drawings](./canvas.md#animating-with-native-values), receive scroll offsets ([`scrollValue`](./scrolling.md#scroll-linked-effects-scrollvalue)) and gestures ([`pan`, `pinch`, `rotation`](./touch-and-gestures.md#native-gestures-pan-pinch-and-rotation)).
+**What can be bound:** `opacity`; `backgroundColor`, `borderColor` (every side) and a `Text`'s `color` (the whole text), through an interpolation to colors; `shadowColor`, `shadowOpacity` and `shadowRadius`; and the `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateX`, `rotateY` and `rotateZ` steps of `transform`. A focus ring or a price that flashes green is a color interpolation bound to `borderColor` or `color`:
+
+```tsx
+const flash = createNativeValue(0);
+const color = flash.interpolate({ inputRange: [0, 1], outputRange: ["#1f2328", "#1a7f37"] });
+
+<Text style={{ color }}>{price()}</Text>
+// On a new price: flash.set(1); flash.timing(0, { duration: 600 });
+``` Native values also drive [canvas drawings](./canvas.md#animating-with-native-values), receive scroll offsets ([`scrollValue`](./scrolling.md#scroll-linked-effects-scrollvalue)) and gestures ([`pan`, `pinch`, `rotation`](./touch-and-gestures.md#native-gestures-pan-pinch-and-rotation)).
 
 The value is kept alive by the views bound to it, so a binding never breaks because a JS variable went out of scope. Create native values in the component that owns them (not at module level when every instance needs its own).
 
@@ -127,10 +135,14 @@ The value is kept alive by the views bound to it, so a binding never breaks beca
 | Method | Description |
 |---|---|
 | `set(value)` | Jumps to `value`, stopping any animation. |
-| `stop()` | Stops the running animation where it is. |
+| `stop()` | Stops the running animation where it is; resolves with the value there. |
+| `getValue()` | A promise of the current value, read on the UI thread where it moves (it settles within a frame). |
+| `setOffset(offset)` | Adds `offset` to what the value shows: bindings see value + offset, while `set`, animations and drags move the value. |
+| `flattenOffset()` | Adds the offset to the value and makes the offset 0. |
+| `extractOffset()` | Moves the value into the offset and makes the value 0: a drag then starts from 0, on top of where the last one left it. |
 | `timing(to, { duration?, easing?, delay? })` | Animates to `to` over `duration` ms (default 300, easing `"easeInOut"`). |
 | `spring(to, { stiffness?, damping?, mass?, velocity? })` | Springs to `to` (defaults: stiffness 170, damping 26, mass 1). |
-| `decay({ velocity?, deceleration? })` | Coasts from `velocity` (units per second) and slows down (deceleration 0.998 per ms by default). |
+| `decay({ velocity?, deceleration?, clamp?, bounce? })` | Coasts from `velocity` (units per second) and slows down (deceleration 0.998 per ms by default). With `clamp: [min, max]` it stops at a bound, or bounces back from it keeping `bounce` (0..1) of its speed. |
 
 Each animation returns a `Promise<boolean>`: `true` when it finished, `false` when something stopped it (`stop()`, `set()`, or a new animation on the same value). Starting a new animation on a moving value interrupts the old one smoothly: a `spring` or `decay` without `velocity` continues with the value's current velocity.
 
@@ -141,6 +153,12 @@ x.spring(200, { stiffness: 400, damping: 30 });  // stiff, no overshoot
 
 // A fling that coasts to a stop, from a pan's release velocity.
 <View pan={{ x }} onPanEnd={(e) => x.decay({ velocity: e.velocityX })} />
+
+// A fling that stays on its track and bounces softly off its ends.
+x.decay({ velocity: e.velocityX, clamp: [0, 300], bounce: 0.3 });
+
+// Where a value is now (it moves on the UI thread, so the answer is async).
+const where = await x.getValue();
 ```
 
 ### Interpolation
@@ -221,7 +239,7 @@ hop.start(({ finished }) => console.log(finished ? "landed" : "stopped"));
 |---|---|
 | `Animated.timing(value, { toValue, duration?, easing?, delay? })` | A timing step. |
 | `Animated.spring(value, { toValue, stiffness?, damping?, mass?, velocity? })` | A spring step. |
-| `Animated.decay(value, { velocity?, deceleration? })` | A decay step. |
+| `Animated.decay(value, { velocity?, deceleration?, clamp?, bounce? })` | A decay step. |
 | `Animated.sequence(list)` | One after another. |
 | `Animated.parallel(list, { stopTogether? })` | All at once. |
 | `Animated.stagger(ms, list)` | All at once, each starting `ms` after the previous one. |
@@ -229,6 +247,8 @@ hop.start(({ finished }) => console.log(finished ? "landed" : "stopped"));
 | `Animated.loop(animation, { iterations?, resetBeforeIteration? })` | Repeats (forever by default). |
 
 A `CompositeAnimation` has `start(callback?)` (also a promise of `finished`; calling it again runs it again), `stop()` (stops where it is) and `reset()` (stops and puts its values back where they were when it started). The callback runs once for the whole tree.
+
+A running animation does not keep its values alive: when the component that owns them goes (its views and variables), an endless `Animated.loop` stops with them, and its promise resolves with `false`.
 
 ## Easing
 
@@ -251,6 +271,13 @@ Anywhere an easing is accepted you can also pass a name (`"linear"`, `"ease"`, `
 x.timing(1, { easing: Easing.out(Easing.back()) });
 x.timing(1, { easing: "easeOut" });
 x.timing(1, { easing: [0.2, 0.8, 0.2, 1] });
+```
+
+`Easing.sample(easing, count)` returns the curve at `count` evenly spaced points from 0 to 1, and `Animated.sampleSpring(config, fps?)` / `Animated.sampleDecay(config, fps?)` the values a spring or decay moves through, one per frame (60 per second by default) from `config.from` (0) until it ends. They are computed by the same native code the animations run, so a chart of a curve shows exactly what the animation does:
+
+```ts
+const curve = Easing.sample(Easing.out(Easing.back()), 50); // 50 progress values
+const spring = Animated.sampleSpring({ toValue: 1, stiffness: 180, damping: 8 });
 ```
 
 ## LayoutAnimation

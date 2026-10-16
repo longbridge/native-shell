@@ -5,11 +5,14 @@
 //! reads them while replaying, so animations redraw on the UI thread
 //! without JS.
 
+mod hit;
+
 use std::sync::Arc;
 
+pub use self::hit::{point_in_path, point_in_stroke};
 use crate::{
     js::{canvas::*, ops::JsOps},
-    style::Color,
+    style::{Color, FontVariant},
     ui::PropEnum,
 };
 
@@ -303,6 +306,10 @@ pub struct CanvasFont {
     /// The first family; `None` is the system font (also for
     /// `system-ui` / `sans-serif`).
     pub family: Option<Arc<str>>,
+    /// OpenType features: `small-caps` and (beyond CSS, which only has
+    /// them in `font-variant-numeric`) `tabular-nums`, `oldstyle-nums`,
+    /// `lining-nums` and `proportional-nums` in the shorthand.
+    pub variant: FontVariant,
 }
 
 impl Default for CanvasFont {
@@ -313,14 +320,15 @@ impl Default for CanvasFont {
             weight: 400,
             italic: false,
             family: None,
+            variant: FontVariant::default(),
         }
     }
 }
 
 impl CanvasFont {
     /// Parses the CSS `font` shorthand (`italic bold 14px Inter`,
-    /// `600 12px/1.2 system-ui`); `None` if it is invalid (canvas keeps
-    /// the previous font then).
+    /// `600 12px/1.2 system-ui`, `tabular-nums 13px system-ui`); `None` if
+    /// it is invalid (canvas keeps the previous font then).
     pub fn parse(s: &str) -> Option<CanvasFont> {
         let mut font = CanvasFont {
             size: 0.0,
@@ -340,7 +348,8 @@ impl CanvasFont {
             }
             match word {
                 "italic" | "oblique" => font.italic = true,
-                "normal" | "small-caps" | "condensed" | "expanded" => {}
+                "normal" | "condensed" | "expanded" => {}
+                w if let Some(v) = FontVariant::parse(w) => font.variant.0 |= v.0,
                 "bold" | "bolder" => font.weight = 700,
                 "lighter" => font.weight = 300,
                 w => match w.parse::<u16>() {
@@ -383,12 +392,23 @@ fn font_size(word: &str) -> Option<f32> {
 }
 
 impl CanvasFont {
+    /// This font with the numeric forms of `numeric` (`fontVariantNumeric`)
+    /// in place of its own, unless `numeric` is `normal`.
+    pub fn with_numeric(&self, numeric: FontVariant) -> CanvasFont {
+        let mut font = self.clone();
+        if numeric.0 != 0 {
+            font.variant = FontVariant(font.variant.0 & FontVariant::SMALL_CAPS | numeric.0);
+        }
+        font
+    }
+
     /// The text style of this font.
     pub fn text_style(&self) -> crate::text::ResolvedTextStyle {
         crate::text::ResolvedTextStyle {
             font_size: self.size,
             font_weight: self.weight,
             italic: self.italic,
+            font_variant: self.variant,
             font_family: self.family.as_deref().map(crate::style::FontFamily::new),
             ..Default::default()
         }
@@ -556,6 +576,16 @@ pub enum CanvasOp {
     /// or rem).
     #[op(code = CV_FONT, property = "font", initial = "\"10px sans-serif\"")]
     Font(CanvasFont),
+    /// `fontVariantNumeric` (CSS's `font-variant-numeric`, which HTML
+    /// Canvas lacks): `"tabular-nums"` for figures of equal width,
+    /// `oldstyle-nums`, `lining-nums`, `proportional-nums` or `"normal"`
+    /// (the font's own); kept apart from `font`, which does not reset it.
+    #[op(
+        code = CV_FONT_VARIANT_NUMERIC,
+        property = "fontVariantNumeric",
+        initial = "\"normal\""
+    )]
+    FontVariantNumeric(FontVariant),
     /// `textAlign`: where text sits horizontally relative to its x.
     #[op(code = CV_TEXT_ALIGN, property = "textAlign", initial = "\"start\"")]
     TextAlign(CanvasTextAlign),
@@ -604,12 +634,12 @@ pub struct Drawing {
     /// The operations, in order.
     pub ops: Vec<CanvasOp>,
     /// The native values the operations read, by slot.
-    pub slots: Vec<nsh_anim::NodeId>,
+    pub slots: Vec<nsh_animation::NodeId>,
 }
 
 impl Drawing {
     /// The slot of native value `node`, adding it if new.
-    pub fn slot(&mut self, node: nsh_anim::NodeId) -> u16 {
+    pub fn slot(&mut self, node: nsh_animation::NodeId) -> u16 {
         match self.slots.iter().position(|&n| n == node) {
             Some(i) => i as u16,
             None => {
@@ -1035,6 +1065,18 @@ mod tests {
         assert_eq!(f.family.as_deref(), Some("Inter"));
         let f = CanvasFont::parse("600 12px/1.5 system-ui").unwrap();
         assert_eq!((f.size, f.weight, f.family), (12.0, 600, None));
+        let f = CanvasFont::parse("small-caps tabular-nums 13px system-ui").unwrap();
+        assert_eq!(
+            f.variant.0,
+            FontVariant::SMALL_CAPS | FontVariant::TABULAR_NUMS
+        );
+        let numeric = f.with_numeric(FontVariant(FontVariant::OLDSTYLE_NUMS));
+        assert_eq!(
+            numeric.variant.0,
+            FontVariant::SMALL_CAPS | FontVariant::OLDSTYLE_NUMS
+        );
+        assert_eq!(f.with_numeric(FontVariant::default()), f);
+        assert!(CanvasFont::parse("wide 13px system-ui").is_none());
         assert!(CanvasFont::parse("bold").is_none());
         assert!(CanvasFont::parse("14px").is_none());
     }

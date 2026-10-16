@@ -2,11 +2,11 @@
 //! passes them (`Easing.quad`, `LayoutAnimation.Presets.spring`): their
 //! names, parameters and defaults in one table each, from which they are
 //! decoded, `nsh/animated` is made (`nsh-js` `animated.rs`) and
-//! `anim.gen.ts` (the declarations) is generated.
+//! `animation.gen.ts` (the declarations) is generated.
 
 use std::fmt::Write as _;
 
-use nsh_anim::{Curve, EaseMode, Easing};
+use nsh_animation::{Curve, EaseMode, Easing};
 
 use super::host::{HostCx, HostInput, HostList, HostValue, field};
 use crate::{LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition, ui::TsTypes};
@@ -204,9 +204,9 @@ impl HostValue for LayoutAnimation {
                 union(&mut LAYOUT_PROPERTIES.iter().map(|p| p.0))
             )
         });
-        types.declare("LayoutAnimationAnim", |_| {
+        types.declare("LayoutAnimationAnimation", |_| {
             format!(
-                "/** How one kind of change animates. */\nexport interface LayoutAnimationAnim {{\n  \
+                "/** How one kind of change animates. */\nexport interface LayoutAnimationAnimation {{\n  \
                  type?: {curve};\n  /** What appearing and disappearing views animate. */\n  \
                  property?: {property};\n  /** Milliseconds (the config's by default). */\n  \
                  duration?: number;\n  delay?: number;\n  /** The `spring`'s damping ratio, 0..1 \
@@ -216,8 +216,8 @@ impl HostValue for LayoutAnimation {
         types.declare("LayoutAnimationConfig", |_| {
             "/** What the next commit's changes animate: views inserted (`create`), moved or \
              resized (`update`) and removed (`delete`). */\nexport interface LayoutAnimationConfig {\n  \
-             /** Milliseconds. */\n  duration: number;\n  create?: LayoutAnimationAnim;\n  \
-             update?: LayoutAnimationAnim;\n  delete?: LayoutAnimationAnim;\n}"
+             /** Milliseconds. */\n  duration: number;\n  create?: LayoutAnimationAnimation;\n  \
+             update?: LayoutAnimationAnimation;\n  delete?: LayoutAnimationAnimation;\n}"
                 .into()
         })
     }

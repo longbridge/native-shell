@@ -175,6 +175,18 @@ impl Condition {
         true
     }
 
+    /// Applies only while the view (or its group) is pressed, hovered or
+    /// focused: press feedback.
+    fn interactive(&self) -> bool {
+        const INTERACTION: u8 =
+            state::PRESSED | state::HOVERED | state::FOCUSED | state::FOCUS_WITHIN;
+        self.states & INTERACTION != 0
+            || self
+                .group
+                .as_ref()
+                .is_some_and(|(_, states)| states & INTERACTION != 0)
+    }
+
     fn deps(&self) -> u16 {
         let mut d = 0;
         if self.dark.is_some() {
@@ -343,6 +355,11 @@ impl ClassList {
                 }
             }
         }
+        // A background color of an interaction state (`active:bg-*`) hides
+        // the gradients unless that state sets one too: drawn over the
+        // color, they would hide the feedback (CSS would keep them).
+        let mut state_background = false;
+        let mut state_image = false;
         for rule in &self.rules {
             if rule.cond.placeholder || !rule.cond.matches(cx) {
                 continue;
@@ -351,7 +368,19 @@ impl ClassList {
             for decl in &rule.decls {
                 decl.apply(cx.env.dark, style, props, &mut parts);
             }
+            let background = rule.decls.iter().any(Decl::sets_background_color);
+            if rule.cond.interactive() {
+                if background {
+                    state_background = true;
+                    state_image = false;
+                }
+                state_image |= rule.decls.iter().any(Decl::sets_background_image);
+            } else if background {
+                // A later rule's color (`dark:bg-*`) is not feedback.
+                state_background = false;
+            }
         }
+        let state_color = style.view.background_color;
         // `placeholder:` rules only carry a color.
         for rule in self.rules.iter().filter(|r| r.cond.placeholder) {
             if !rule.cond.matches(cx) {
@@ -384,6 +413,10 @@ impl ClassList {
                 }
             }
             parts.finish(style, props, theme, cx.window, parts.touched);
+        }
+        // Unless the inline style replaced the state's color.
+        if state_background && !state_image && style.view.background_color == state_color {
+            style.view.clear_background_images();
         }
     }
 }

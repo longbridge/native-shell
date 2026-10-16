@@ -69,6 +69,7 @@ fn touch(phase: TouchPhase, path: &[u32], x: f32, y: f32, t: f64) -> EventPayloa
     EventPayload::Touch(Box::new(TouchEvent {
         phase,
         timestamp: t,
+        activated: None,
         points: vec![TouchPoint {
             id: 1,
             target: path[0],

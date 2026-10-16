@@ -117,6 +117,9 @@ pub(crate) struct Apk<'a> {
     pub(crate) activity: &'a str,
     /// Development builds: debuggable, cleartext HTTP (the dev server).
     pub(crate) dev: bool,
+    /// `nsh.json` `"appearance": "dark"`: the window's theme is dark from
+    /// the start (no light flash before the first frame).
+    pub(crate) dark: bool,
     /// `classes.dex` and `lib/<abi>/libnsh.so`.
     pub(crate) runtime: &'a Path,
     /// Launcher icon (square PNG).
@@ -223,7 +226,7 @@ fn manifest_xml(apk: &Apk<'_>) -> String {
         android:extractNativeLibs="false"
         android:enableOnBackInvokedCallback="true"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material{theme}.NoActionBar">
         <activity android:name="{activity}" android:exported="true"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection">
@@ -237,6 +240,7 @@ fn manifest_xml(apk: &Apk<'_>) -> String {
 "#,
         package = apk.package,
         activity = apk.activity,
+        theme = if apk.dark { "" } else { ".Light" },
     )
 }
 

@@ -375,7 +375,7 @@ public class NshView extends FrameLayout {
             Build.VERSION.SDK_INT,
             (c.uiMode & Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION ? 3
                     : c.smallestScreenWidthDp >= 600 ? 1 : 0,
-        }, dark);
+        }, dark, java.util.Locale.getDefault().toLanguageTag());
     }
 
     private android.view.accessibility.AccessibilityManager accessibility() {

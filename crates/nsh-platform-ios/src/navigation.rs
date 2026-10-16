@@ -26,11 +26,11 @@ use objc2_foundation::{NSArray, NSObject, NSObjectProtocol, NSString};
 use objc2_quartz_core::{CAMediaTiming, CATransition};
 use objc2_ui_kit::{
     NSForegroundColorAttributeName, UIAdaptivePresentationControllerDelegate, UIBarButtonItem,
-    UIColor, UIGestureRecognizer, UIGestureRecognizerDelegate, UIInterfaceOrientationMask,
-    UIModalPresentationStyle, UIModalTransitionStyle, UINavigationBar, UINavigationBarAppearance,
-    UINavigationController, UINavigationControllerDelegate, UINavigationItem,
-    UINavigationItemLargeTitleDisplayMode, UIPresentationController, UIResponder, UIView,
-    UIViewAutoresizing, UIViewController,
+    UIBehavioralStyle, UIColor, UIGestureRecognizer, UIGestureRecognizerDelegate,
+    UIInterfaceOrientationMask, UIModalPresentationStyle, UIModalTransitionStyle, UINavigationBar,
+    UINavigationBarAppearance, UINavigationController, UINavigationControllerDelegate,
+    UINavigationItem, UINavigationItemLargeTitleDisplayMode, UIPresentationController, UIResponder,
+    UIView, UIViewAutoresizing, UIViewController,
 };
 
 use crate::{mount::SharedMounter, native_view::NshView};
@@ -54,6 +54,11 @@ pub(crate) struct ScreenIvars {
     control: EngineControl,
     /// Height of the header area the core laid the content out below.
     padded: Cell<f32>,
+    /// The core lays the content out below the header: it gets the header's
+    /// real height (`set_screen_header`).
+    measure: Cell<bool>,
+    /// The header height last reported to the core.
+    measured: Cell<Option<f32>>,
     insets: Cell<Option<EdgeInsets>>,
 }
 
@@ -75,11 +80,35 @@ define_class!(
 );
 
 impl ScreenController {
+    /// Reports the top of the view's safe area (the bottom of the header UIKit
+    /// shows, wherever it put it) as the header the content starts below.
+    /// The core's estimate (the bar's height plus the status bar) is wrong
+    /// on Mac Catalyst, where the bar can sit in the window's title bar.
+    fn report_header(&self, view: &UIView, top: f32) {
+        let ivars = self.ivars();
+        let header = if !ivars.measure.get() {
+            None
+        } else if view.window().is_some()
+            && let Some(nav) = self.navigationController()
+            && !nav.isNavigationBarHidden()
+        {
+            Some(top)
+        } else {
+            // Off screen or between headers: keep what was measured.
+            return;
+        };
+        if ivars.measured.replace(header) != header {
+            ivars.control.set_screen_header(ivars.id, header);
+        }
+    }
+
     fn new(mtm: MainThreadMarker, id: NodeId, control: EngineControl) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(ScreenIvars {
             id,
             control,
             padded: Cell::new(0.0),
+            measure: Cell::new(false),
+            measured: Cell::new(None),
             insets: Cell::new(None),
         });
         // SAFETY: UIViewController's designated initializer.
@@ -93,10 +122,12 @@ impl ScreenController {
     }
 
     /// The screen's insets not covered by system UI or its header, for
-    /// `useSafeAreaInsets()` inside it.
+    /// `useSafeAreaInsets()` inside it; and where its content starts below
+    /// the header.
     pub(crate) fn report_insets(&self) {
         let Some(view) = self.view() else { return };
         let s = view.safeAreaInsets();
+        self.report_header(&view, s.top as f32);
         let insets = EdgeInsets {
             top: (s.top as f32 - self.ivars().padded.get()).max(0.0),
             right: s.right as f32,
@@ -399,6 +430,7 @@ impl StackHost {
         let delegate = StackDelegate::new(mtm, id, mounter);
         // SAFETY: the delegate lives as long as the stack.
         unsafe { nav.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
+        keep_in_window(&nav.navigationBar());
         if let Some(pop) = nav.interactivePopGestureRecognizer() {
             pop.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
         }
@@ -527,43 +559,98 @@ impl ScreenHost {
         } else {
             UINavigationItemLargeTitleDisplayMode::Never
         });
-        if c.background_color.is_some() || c.title_color.is_some() || c.header_transparent {
-            let appearance = UINavigationBarAppearance::new(mtm);
-            if c.header_transparent {
-                appearance.configureWithTransparentBackground();
-            } else if let Some(bg) = c.background_color {
-                appearance.configureWithOpaqueBackground();
-                appearance.setBackgroundColor(Some(&ui_color(bg)));
-            } else {
-                appearance.configureWithDefaultBackground();
-            }
-            if let Some(color) = c.title_color {
-                let attributes = objc2_foundation::NSDictionary::from_retained_objects(
-                    // SAFETY: an immutable UIKit constant.
-                    &[unsafe { NSForegroundColorAttributeName }],
-                    &[Retained::into_super(Retained::into_super(ui_color(color)))],
-                );
-                // SAFETY: a valid title attributes dictionary.
-                unsafe {
-                    appearance.setTitleTextAttributes(&attributes);
-                    appearance.setLargeTitleTextAttributes(&attributes);
-                }
-            }
-            nav_item.setStandardAppearance(Some(&appearance));
-            nav_item.setScrollEdgeAppearance(Some(&appearance));
-            nav_item.setCompactAppearance(Some(&appearance));
-        } else {
-            nav_item.setStandardAppearance(None);
-            nav_item.setScrollEdgeAppearance(None);
-            nav_item.setCompactAppearance(None);
+        let appearance = header_appearance(mtm, c);
+        nav_item.setStandardAppearance(appearance.as_deref());
+        nav_item.setScrollEdgeAppearance(appearance.as_deref());
+        nav_item.setCompactAppearance(appearance.as_deref());
+        // The bar of the screen on top, too (Catalyst does not always take
+        // the item's appearance).
+        if let Some(nav) = self.controller.navigationController()
+            && nav
+                .topViewController()
+                .is_some_and(|top| std::ptr::eq::<UIViewController>(&*top, &**self.controller))
+        {
+            style_bar(&nav.navigationBar(), c);
         }
         let padded = if c.header_transparent || c.large_title {
             0.0
         } else {
             c.header_height
         };
-        self.controller.ivars().padded.set(padded);
+        let ivars = self.controller.ivars();
+        ivars.padded.set(padded);
+        ivars
+            .measure
+            .set(c.header_shown && !c.header_transparent && !c.large_title);
         self.controller.report_insets();
+    }
+}
+
+/// Keeps `bar` in the window with the iPad style: in Mac Catalyst's Mac
+/// idiom UIKit otherwise moves a navigation bar's contents into the window's
+/// toolbar (the back button next to the traffic lights), where the title,
+/// the header's colors and the core's layout do not apply.
+pub(crate) fn keep_in_window(bar: &UINavigationBar) {
+    // `preferredBehavioralStyle` is iOS 16+ (nsh supports iOS 15, where
+    // bars always stay in the window).
+    if bar.respondsToSelector(objc2::sel!(setPreferredBehavioralStyle:)) {
+        bar.setPreferredBehavioralStyle(UIBehavioralStyle::Pad);
+    }
+}
+
+/// The header's appearance from the screen's options (`None`: UIKit's).
+fn header_appearance(
+    mtm: MainThreadMarker,
+    c: &ScreenConfig,
+) -> Option<Retained<UINavigationBarAppearance>> {
+    if c.background_color.is_none() && c.title_color.is_none() && !c.header_transparent {
+        return None;
+    }
+    let appearance = UINavigationBarAppearance::new(mtm);
+    if c.header_transparent {
+        appearance.configureWithTransparentBackground();
+    } else if let Some(bg) = c.background_color {
+        appearance.configureWithOpaqueBackground();
+        appearance.setBackgroundColor(Some(&ui_color(bg)));
+    } else {
+        appearance.configureWithDefaultBackground();
+    }
+    if let Some(color) = c.title_color {
+        let attributes = objc2_foundation::NSDictionary::from_retained_objects(
+            // SAFETY: an immutable UIKit constant.
+            &[unsafe { NSForegroundColorAttributeName }],
+            &[Retained::into_super(Retained::into_super(ui_color(color)))],
+        );
+        // SAFETY: a valid title attributes dictionary.
+        unsafe {
+            appearance.setTitleTextAttributes(&attributes);
+            appearance.setLargeTitleTextAttributes(&attributes);
+        }
+    }
+    Some(appearance)
+}
+
+/// Styles a stack's navigation bar for the screen it shows: the screen's
+/// navigation item carries the same appearance, but Mac Catalyst does not
+/// always apply it, so the bar gets it as well.
+pub(crate) fn style_bar(bar: &UINavigationBar, c: &ScreenConfig) {
+    let mtm = bar.mtm();
+    bar.setPrefersLargeTitles(c.large_title);
+    let tint = c.tint_color.map(ui_color);
+    // SAFETY: a plain setter; `None` restores the default tint.
+    unsafe { bar.setTintColor(tint.as_deref()) };
+    match header_appearance(mtm, c) {
+        Some(appearance) => {
+            bar.setStandardAppearance(&appearance);
+            bar.setScrollEdgeAppearance(Some(&appearance));
+            bar.setCompactAppearance(Some(&appearance));
+        }
+        None => {
+            let appearance = UINavigationBarAppearance::new(mtm);
+            bar.setStandardAppearance(&appearance);
+            bar.setScrollEdgeAppearance(None);
+            bar.setCompactAppearance(None);
+        }
     }
 }
 
@@ -664,6 +751,9 @@ impl ModalHost {
             // presentation.
             unsafe { p.setDelegate(Some(ProtocolObject::from_ref(&**controller))) };
         }
+        // Presented outside the surface: the app's appearance is set on
+        // it too.
+        controller.setOverrideUserInterfaceStyle(crate::system::appearance());
         presenter.presentViewController_animated_completion(
             controller,
             c.animation != ModalAnimation::None,

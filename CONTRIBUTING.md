@@ -65,7 +65,7 @@ Commit subjects and pull request titles name the area first, then say what chang
 <area>: <What the change does>
 ```
 
-- The area is the part of nsh the change is about, in lower case: a crate without its `nsh-` prefix (`core`, `anim`,
+- The area is the part of nsh the change is about, in lower case: a crate without its `nsh-` prefix (`core`, `animation`,
   `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`), a JS layer or module
   (`runtime`, `list`, `animated`, `mobile`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. Name two or
   three areas separated by commas when a change spans them (`ios, android: …`); a change everywhere names its

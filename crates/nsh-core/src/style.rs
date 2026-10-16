@@ -585,6 +585,21 @@ impl FontVariant {
 }
 
 impl ViewStyle {
+    /// Drops the gradient backgrounds, so the background color shows: what
+    /// press feedback and animated background colors do (a gradient is
+    /// drawn over the color and would hide them).
+    pub(crate) fn clear_background_images(&mut self) {
+        if let Some(e) = self
+            .effects
+            .as_deref()
+            .filter(|e| !e.background_images.is_empty())
+        {
+            let mut effects = e.clone();
+            effects.background_images.clear();
+            self.effects = crate::effects::shared(effects);
+        }
+    }
+
     /// The radius of each corner (before fitting them to a size with
     /// [`CornerRadii::fit`]).
     pub fn radii(&self) -> CornerRadii {
@@ -730,7 +745,7 @@ pub struct Style {
     pub text: TextStyle,
     /// Visual properties driven by native animation nodes; they override
     /// the static values while bound.
-    pub animated: Vec<(nsh_anim::AnimProp, nsh_anim::NodeId)>,
+    pub animated: Vec<(nsh_animation::AnimationProp, nsh_animation::NodeId)>,
     /// `zIndex`: stacking order among siblings (higher on top).
     pub z_index: i32,
     /// `direction`: right to left (`Some(true)`), left to right, or
@@ -1055,10 +1070,10 @@ style_keys! {
     BorderTopRightRadius = "borderTopRightRadius": View "number",
     BorderBottomRightRadius = "borderBottomRightRadius": View "number",
     BorderBottomLeftRadius = "borderBottomLeftRadius": View "number",
-    ShadowColor = "shadowColor": View "ColorValue",
-    ShadowOpacity = "shadowOpacity": View "number",
-    ShadowRadius = "shadowRadius": View "number",
-    BorderColor = "borderColor": View "ColorValue",
+    ShadowColor = "shadowColor": View "ColorValue | NativeNode",
+    ShadowOpacity = "shadowOpacity": View "number | NativeNode",
+    ShadowRadius = "shadowRadius": View "number | NativeNode",
+    BorderColor = "borderColor": View "ColorValue | NativeNode",
     BorderTopColor = "borderTopColor": View "ColorValue",
     BorderRightColor = "borderRightColor": View "ColorValue",
     BorderBottomColor = "borderBottomColor": View "ColorValue",
@@ -1070,7 +1085,7 @@ style_keys! {
     TransformOrigin = "transformOrigin": View "string | (number | string)[]" "The point `transform` acts around: keywords, percentages and lengths (\"top left\", \"50% 0\", `[10, 20]`). Default the center.",
     Opacity = "opacity": View "number | NativeNode",
     Overflow = "overflow": View "\"visible\" | \"hidden\"",
-    Color = "color": Text "ColorValue",
+    Color = "color": Text "ColorValue | NativeNode",
     FontSize = "fontSize": Text "number",
     FontWeight = "fontWeight": Text "\"normal\" | \"bold\" | number | `${number}`" "`\"normal\"` (400), `\"bold\"` (700) or 100–900.",
     LineHeight = "lineHeight": Text "number",
@@ -1141,13 +1156,13 @@ pub enum StyleDecl {
     ClearTransform,
     /// Appends a `transform` entry, driven by a native value when given
     /// (the amount is then the identity until it is bound).
-    Transform(TransformKind, f32, Option<nsh_anim::NodeId>),
+    Transform(TransformKind, f32, Option<nsh_animation::NodeId>),
     /// `shadowOffset`; `None` restores the default.
     ShadowOffset(Option<(f32, f32)>),
     /// `textShadowOffset`.
     TextShadowOffset(Option<(f32, f32)>),
     /// A property driven by a native animation node.
-    Animated(nsh_anim::AnimProp, nsh_anim::NodeId),
+    Animated(nsh_animation::AnimationProp, nsh_animation::NodeId),
 }
 
 impl StyleDecl {
@@ -1157,9 +1172,9 @@ impl StyleDecl {
             StyleDecl::Set(key, value) => style.set_key(*key, value.as_value()),
             StyleDecl::ClearTransform => {
                 style.view.transform = Transform::IDENTITY;
-                style
-                    .animated
-                    .retain(|(prop, _)| !matches!(prop, nsh_anim::AnimProp::Transform(_)));
+                style.animated.retain(|(prop, _)| {
+                    !matches!(prop, nsh_animation::AnimationProp::Transform(_))
+                });
                 Ok(())
             }
             StyleDecl::Transform(kind, amount, node) => {
@@ -1171,7 +1186,7 @@ impl StyleDecl {
                 if let Some(node) = node {
                     style
                         .animated
-                        .push((nsh_anim::AnimProp::Transform(index), *node));
+                        .push((nsh_animation::AnimationProp::Transform(index), *node));
                 }
                 Ok(())
             }

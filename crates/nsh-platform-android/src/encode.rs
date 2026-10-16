@@ -3,7 +3,7 @@
 //! layouts. One JNI call per commit, no per-item crossings.
 //!
 //! Animation items (graph ops, bindings, drag and scroll values) are not
-//! encoded: they go to the UI-thread animator ([`crate::anim`]).
+//! encoded: they go to the UI-thread animator ([`crate::animation`]).
 //!
 //! The opcodes must match `Mounter.java`.
 //!
@@ -27,7 +27,7 @@ use nsh_core::{
 };
 
 use crate::{
-    anim::view_transform,
+    animation::view_transform,
     text::{AndroidLayout, argb},
 };
 
@@ -62,6 +62,9 @@ const TRACK_STATES: i32 = 27;
 const CANVAS: i32 = 28;
 const COMPONENT: i32 = 29;
 const COMPONENT_PROPS: i32 = 30;
+const OVERFLOW: i32 = 31;
+const ACCESSIBILITY_LABEL: i32 = 32;
+const APPEARANCE: i32 = 33;
 
 /// An entry of the object table.
 pub(crate) enum Obj {
@@ -75,7 +78,7 @@ pub(crate) struct Encoded {
     pub(crate) bytes: Vec<u8>,
     pub(crate) objects: Vec<Obj>,
     /// Items for the UI-thread animator, in order.
-    pub(crate) anim: Vec<MountItem>,
+    pub(crate) animation: Vec<MountItem>,
 }
 
 impl Encoded {
@@ -156,7 +159,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(DELETE);
                 e.int(id as i32);
                 // The animator forgets the view too.
-                e.anim.push(MountItem::Delete { id });
+                e.animation.push(MountItem::Delete { id });
             }
             MountItem::Frame { id, frame } => {
                 e.int(FRAME);
@@ -170,7 +173,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(id as i32);
                 view_style(&mut e, &style);
                 // The animator composes animated values with the static ones.
-                e.anim.push(MountItem::ViewStyle { id, style });
+                e.animation.push(MountItem::ViewStyle { id, style });
             }
             MountItem::Text {
                 id,
@@ -198,6 +201,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     e.int((l.events.bits() >> 32) as u32 as i32);
                 }
                 e.bool(text.selectable);
+                opt_color(&mut e, text.selection_color);
             }
             MountItem::Events { id, events } => {
                 e.int(EVENTS);
@@ -247,7 +251,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     KeyboardDismissMode::Interactive => 2,
                 });
                 e.bool(mirrored);
-                e.anim.push(MountItem::ScrollConfig {
+                e.animation.push(MountItem::ScrollConfig {
                     id,
                     horizontal,
                     shows_indicator,
@@ -276,10 +280,24 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(LAYOUT_DIRECTION);
                 e.bool(rtl);
             }
+            MountItem::Appearance { appearance } => {
+                e.int(APPEARANCE);
+                e.int(appearance as i32);
+            }
             MountItem::Canvas { id, drawing } => {
                 e.int(CANVAS);
                 e.int(id as i32);
                 canvas(&mut e, &drawing);
+            }
+            MountItem::Overflow { id, extent } => {
+                e.int(OVERFLOW);
+                e.int(id as i32);
+                e.bool(extent.is_some());
+                let r = extent.unwrap_or_default();
+                e.float(r.x);
+                e.float(r.y);
+                e.float(r.width);
+                e.float(r.height);
             }
             MountItem::TrackStates { id, states } => {
                 e.int(TRACK_STATES);
@@ -333,12 +351,13 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(id as i32);
                 e.bool(refreshing);
             }
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::AnimationBindings { id, bindings } => {
                 // Java restores the static style; the animator then writes
                 // the bound properties.
                 e.int(DYNAMIC);
                 e.int(id as i32);
-                e.anim.push(MountItem::AnimBindings { id, bindings });
+                e.animation
+                    .push(MountItem::AnimationBindings { id, bindings });
             }
             MountItem::Gestures { id, values } => {
                 e.int(GESTURES);
@@ -353,12 +372,17 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 });
                 e.bool(values.pinch.is_some());
                 e.bool(values.rotation.is_some());
-                e.anim.push(MountItem::Gestures { id, values });
+                e.animation.push(MountItem::Gestures { id, values });
             }
             MountItem::ViewProps { id, props } => {
                 e.int(VIEW_PROPS);
                 e.int(id as i32);
                 view_props(&mut e, &props);
+            }
+            MountItem::AccessibilityLabel { id, label } => {
+                e.int(ACCESSIBILITY_LABEL);
+                e.int(id as i32);
+                e.opt_string(label.as_deref());
             }
             MountItem::ScreenConfig { id, config } => {
                 e.int(SCREEN_CONFIG);
@@ -393,7 +417,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     layout_transition(&mut e, t);
                 }
             }
-            item @ MountItem::Anim(_) => e.anim.push(item),
+            item @ MountItem::Animation(_) => e.animation.push(item),
             MountItem::Input { id, config } => {
                 e.int(INPUT);
                 e.int(id as i32);
@@ -526,10 +550,20 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                         e.string(name.to_string());
                         e.string(args.to_string());
                     }
+                    Command::SetClipboard(text) => {
+                        e.int(22);
+                        e.string(text);
+                    }
+                    Command::ReadClipboard { id, has_only } => {
+                        e.int(23);
+                        e.int(id as i32);
+                        e.bool(has_only);
+                    }
                     // Turned into a mount item / `ScrollTo` by the core.
                     Command::LayoutAnimation(_)
                     | Command::SetStatusBar(_)
                     | Command::ScrollToIndex { .. }
+                    | Command::Measure { .. }
                     | Command::ScrollToEnd { .. } => e.int(-1),
                 }
             }
@@ -917,6 +951,20 @@ fn view_props(e: &mut Encoded, p: &ViewProps) {
         }
         None => e.int(0),
     }
+    match p.pan_activation {
+        Some(a) => {
+            e.int(1);
+            for v in [
+                a.active_offset_x,
+                a.active_offset_y,
+                a.fail_offset_x,
+                a.fail_offset_y,
+            ] {
+                e.float(v.unwrap_or(f32::NAN));
+            }
+        }
+        None => e.int(0),
+    }
 }
 
 /// Index of `role` in `A11y.java`'s class name table.
@@ -1004,6 +1052,8 @@ fn input(e: &mut Encoded, c: &InputConfig) {
         KeyboardType::Email => 3,
         KeyboardType::Phone => 4,
         KeyboardType::Url => 5,
+        KeyboardType::Numeric => 6,
+        KeyboardType::NumbersAndPunctuation => 7,
     });
     e.int(match c.return_key {
         ReturnKeyType::Default => 0,
@@ -1204,6 +1254,11 @@ fn canvas(e: &mut Encoded, d: &nsh_core::canvas::Drawing) {
                 e.int(f.weight as i32);
                 e.bool(f.italic);
                 e.opt_string(f.family.as_deref());
+                e.int(f.variant.0 as i32);
+            }
+            Op::FontVariantNumeric(v) => {
+                e.int(43);
+                e.int(v.0 as i32);
             }
             Op::TextAlign(a) => {
                 e.int(38);

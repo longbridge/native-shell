@@ -133,6 +133,10 @@ pub(super) struct ListState {
     pub(super) content: ListContentStyle,
     pub(super) horizontal: bool,
     pub(super) inverted: bool,
+    /// `maintainVisibleContentPosition`'s `autoscrollToBottomThreshold`:
+    /// a list that is not inverted follows the end of its content while
+    /// it is within this distance of it.
+    pub(super) follow_end: Option<f32>,
     /// `stickyHeaderIndices`, sorted.
     pub(super) sticky: Vec<u32>,
     /// Sticky ranges last sent to the platform.
@@ -152,8 +156,8 @@ pub(super) struct ListState {
     /// Cross-axis size the cells were last laid out at.
     pub(super) cells_cross: f32,
     end_reached_at: Option<u32>,
-    /// Inverted lists: `content_len - viewport` when the offset was last
-    /// anchored (NaN before the first layout).
+    /// `content_len - viewport` when the offset was last anchored
+    /// (inverted lists and `follow_end`; NaN before the first layout).
     anchored_end: f32,
     /// Scrolls issued to the platform (`ScrollBy` items and `ScrollTo`
     /// commands); platforms count the ones they applied.
@@ -183,6 +187,7 @@ impl ListState {
             content: ListContentStyle::default(),
             horizontal: false,
             inverted: false,
+            follow_end: None,
             sticky: Vec::new(),
             sent_sticky: Vec::new(),
             viewability: Viewability::default(),
@@ -550,6 +555,14 @@ impl ListState {
         }
     }
 
+    pub(super) fn set_follow_end(&mut self, threshold: Option<f32>) {
+        if threshold != self.follow_end {
+            self.follow_end = threshold;
+            self.anchored_end = f32::NAN;
+            self.dirty = true;
+        }
+    }
+
     pub(super) fn set_sticky(&mut self, mut sticky: Vec<u32>) {
         sticky.sort_unstable();
         sticky.dedup();
@@ -615,12 +628,27 @@ impl ListState {
 
     /// Inverted lists keep their distance from the end of the content:
     /// returns how far to scroll after content or viewport changes (and
-    /// starts at the end).
+    /// starts at the end). Other lists with `follow_end` stay at the end
+    /// when the end moves away while they are within the threshold of it
+    /// (a growing last item, a shrinking viewport); scrolled further up,
+    /// they keep what is visible (content grows below it).
     pub(super) fn anchor_end(&mut self) -> f32 {
-        if !self.inverted || self.viewport <= 0.0 {
+        if self.viewport <= 0.0 {
             return 0.0;
         }
         let end = (self.content_len() - self.viewport).max(0.0);
+        if !self.inverted {
+            let Some(threshold) = self.follow_end else {
+                return 0.0;
+            };
+            let was = std::mem::replace(&mut self.anchored_end, end);
+            if was.is_nan() || end <= was || was - self.offset > threshold {
+                return 0.0;
+            }
+            let delta = end - self.offset;
+            self.offset = end;
+            return delta;
+        }
         let delta = if self.anchored_end.is_nan() {
             end - self.offset
         } else {
@@ -1018,6 +1046,29 @@ mod tests {
         l.measured_extra(ExtraKind::Empty, 100.0);
         let b = l.blocks();
         assert_eq!(b.footer, b.body + 100.0 + 8.0);
+    }
+
+    #[test]
+    fn lists_follow_the_end_within_the_threshold() {
+        let mut l = list(100, 50.0, 400.0);
+        l.set_follow_end(Some(10.0));
+        assert_eq!(l.anchor_end(), 0.0, "starts where it is");
+        // At the end: the last item grows by 30, the list follows.
+        l.offset = 5000.0 - 400.0;
+        l.measured(99, 80.0);
+        assert_eq!(l.anchor_end(), 30.0);
+        assert_eq!(l.offset, 5030.0 - 400.0);
+        // Scrolled up: it grows below what is visible, which stays.
+        l.offset = 1000.0;
+        l.measured(99, 120.0);
+        assert_eq!(l.anchor_end(), 0.0);
+        assert_eq!(l.offset, 1000.0);
+        // Without the option, nothing follows.
+        let mut m = list(100, 50.0, 400.0);
+        m.anchor_end();
+        m.offset = 5000.0 - 400.0;
+        m.measured(99, 80.0);
+        assert_eq!(m.anchor_end(), 0.0);
     }
 
     #[test]

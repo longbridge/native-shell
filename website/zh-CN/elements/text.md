@@ -74,7 +74,8 @@ JSX 文本遵循 React 的规则：除文本首尾外，每行都会去掉首尾
 | `maxFontSizeMultiplier` | `number` | `0` | 系统缩放的上限；`0` 表示不限。 |
 | `adjustsFontSizeToFit` | `boolean` | `false` | 缩小字号，直到文本能放进其行数（`numberOfLines`）和盒子。 |
 | `minimumFontScale` | `number` | | `adjustsFontSizeToFit` 最多缩小到的比例（0..1；至少 0.1）。 |
-| `selectable` | `boolean` | `false` | 长按高亮整个文本块并提供“复制”。 |
+| `selectable` | `boolean` | `false` | 用户可以选择文本的任意范围：长按选中一个词，拖动选择柄扩展，编辑菜单复制。 |
+| `selectionColor` | `ColorValue` | | 可选文本的选区高亮（及选择柄）颜色；默认为平台的强调色。 |
 | `onTextLayout` | `(e: { lines: TextLayoutLine[] }) => void` | | 每次布局后给出排好的各行。 |
 
 Tailwind 类 `select-text` 等同于 `selectable`。
@@ -115,7 +116,7 @@ const lines = signal(0);
 
 ## 平台说明
 
-- `selectable` 复制的是整个文本块，不支持选择部分范围。iOS 显示编辑菜单，Android 显示浮动操作模式。
+- 选区只在一个文本块（一个 `<Text>` 及其片段）之内，不跨越多个文本块。iOS 显示其编辑菜单（拷贝、全选、查询、翻译、共享），Android 显示浮动工具栏（复制、全选、分享）。
 - 在 iOS 上，非实线单线的文本装饰线（`double`、`dotted`、`dashed`、`wavy`）由 nsh 自行绘制。
 - iOS 上的文本不绘制渐变背景和内阴影。
 - [`nsh/device`](../modules/nsh-device.md) 的 `fontScale()` 给出当前系统的文字缩放比例。

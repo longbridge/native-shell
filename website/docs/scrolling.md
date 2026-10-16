@@ -37,7 +37,17 @@ function App() {
 mount(App);
 ```
 
-`<Scroll>` has no `contentContainerStyle`: put padding and gaps on a single child view, as above. A horizontal scroll view takes `horizontal` and a row as its child:
+The child view above can also be the scroll view's own content container: `contentContainerStyle` (or `contentContainerClass`) wraps the children in a view with that style, which scrolls with them. `flexGrow: 1` makes it at least as tall as the viewport, so a short content can be centered and a long one still scrolls:
+
+```tsx
+<Scroll style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 16 }}>
+  <If when={messages().length > 0} else={<Text>No messages yet</Text>}>
+    <Each of={messages()}>{(m) => <Text>{m().text}</Text>}</Each>
+  </If>
+</Scroll>
+```
+
+A horizontal scroll view takes `horizontal` and a row as its child:
 
 ```tsx
 <Scroll horizontal showsIndicator={false}>

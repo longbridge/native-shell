@@ -71,12 +71,13 @@ mount(App);
 | `build` | number | `package`, `publish` | The build number (`CFBundleVersion`, Android `versionCode`). Signed packages require it to grow with every release. |
 | `icon` | string | `package` | A square PNG, ideally 1024×1024, relative to `nsh.json`. |
 | `tailwind` | object | every build | Extends the Tailwind theme your `class` strings resolve against ([Tailwind](./tailwind.md#theme)). |
+| `appearance` | string | every build, `package` | `"light"`, `"dark"` or `"system"` (the default): an app that is always light or dark says so here. `colorScheme()`, `dark:` classes, the components' theme and the platform's controls follow it from the start ([Device and environment](./device-and-environment.md#dark-mode)). |
 | `theme` | string or object | every build | The theme of the `nsh/ui/mobile` components: a theme file's path relative to `nsh.json`, or the theme inline ([Components](../components/index.md)). |
 | `capabilities` | object | every build | What the app may reach outside its VM: network hosts, web view hosts, the status bar ([Sandbox and capabilities](./sandbox-and-capabilities.md)). |
 
 The flags of `nsh package` and `nsh publish` (`--name`, `--id`, `--app-version`, `--build`, `--icon`) override the file's values ([CLI](./cli.md)).
 
-`tailwind`, `theme` and `capabilities` are checked when the app is built. A typo is a build error rather than a setting that silently does nothing:
+`tailwind`, `theme`, `appearance` and `capabilities` are checked when the app is built. A typo is a build error rather than a setting that silently does nothing:
 
 ```text
 error building App.tsx failed
@@ -142,7 +143,7 @@ nsh does not need `node_modules`. Instead, every command that builds the app (`i
 
 `lib` is `ES2023` without `DOM`: there is no `document` or `window`. The files are regenerated (only when their contents change), so do not edit them and do not commit them; `.gitignore` already excludes `.nsh/`. If your editor shows `nsh` as missing after cloning a project, run any build command once, e.g. `nsh trace App.tsx`.
 
-`jsxImportSource: "nsh"` and `jsx: "preserve"` only matter to the editor: nsh compiles JSX with its own compiler, whatever the `tsconfig.json` says. TypeScript is checked by your editor (or `tsc` if you have it); `nsh` strips types without checking them.
+`jsxImportSource: "nsh"` and `jsx: "preserve"` only matter to the editor: nsh compiles JSX with its own compiler, whatever the `tsconfig.json` says. TypeScript is checked by your editor or by `nsh check`; the other commands strip types without checking them.
 
 ## Modules
 

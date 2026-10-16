@@ -1,29 +1,37 @@
-//! The codes of the native animation graph's operations (`ANIM_*`), as
+//! The codes of the native animation graph's operations (`ANIMATION_*`), as
 //! `nsh/animated` encodes them for its decoder (`nsh-js` `protocol.rs`).
 
-codes! { ANIM:
+codes! { ANIMATION:
     /// node, value
-    ANIM_VALUE = 0,
+    ANIMATION_VALUE = 0,
     /// node, input, inputRange, outputRange, extrapolateLeft, extrapolateRight, easing
-    ANIM_INTERPOLATE = 1,
+    ANIMATION_INTERPOLATE = 1,
     /// node, op, a, b
-    ANIM_MATH = 2,
+    ANIMATION_MATH = 2,
     /// node, value
-    ANIM_SET = 3,
+    ANIMATION_SET = 3,
     /// node, animation id, config
-    ANIM_START = 4,
+    ANIMATION_START = 4,
     /// node
-    ANIM_STOP = 5,
+    ANIMATION_STOP = 5,
     /// node
-    ANIM_RELEASE = 6,
+    ANIMATION_RELEASE = 6,
     /// node, input, min, max
-    ANIM_DIFF_CLAMP = 7,
+    ANIMATION_DIFF_CLAMP = 7,
     /// animation id, composite key, spec
-    ANIM_START_COMPOSITE = 8,
+    ANIMATION_START_COMPOSITE = 8,
     /// animation id
-    ANIM_STOP_ANIMATION = 9,
+    ANIMATION_STOP_ANIMATION = 9,
     /// composite key
-    ANIM_RESET_COMPOSITE = 10,
+    ANIMATION_RESET_COMPOSITE = 10,
     /// composite key
-    ANIM_RELEASE_COMPOSITE = 11,
+    ANIMATION_RELEASE_COMPOSITE = 11,
+    /// node, offset
+    ANIMATION_SET_OFFSET = 12,
+    /// node
+    ANIMATION_FLATTEN_OFFSET = 13,
+    /// node
+    ANIMATION_EXTRACT_OFFSET = 14,
+    /// node, request id
+    ANIMATION_READ = 15,
 }

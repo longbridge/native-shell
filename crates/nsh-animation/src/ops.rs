@@ -3,15 +3,25 @@ pub type NodeId = u32;
 
 /// Identifier of one started animation, assigned by JS; reported back when
 /// the animation finishes.
-pub type AnimId = u32;
+pub type AnimationId = u32;
 
 /// A view property that an animation node can drive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnimProp {
+pub enum AnimationProp {
     /// `opacity`, 0..1.
     Opacity,
     /// `backgroundColor`, from a color interpolation.
     BackgroundColor,
+    /// `borderColor`: the color of every side.
+    BorderColor,
+    /// `color` of a text: the whole text takes it.
+    Color,
+    /// `shadowColor`.
+    ShadowColor,
+    /// `shadowOpacity`, 0..1.
+    ShadowOpacity,
+    /// `shadowRadius`, in points.
+    ShadowRadius,
     /// The value of entry `n` of the view's `transform` list (translations
     /// in points, rotations and skews in degrees).
     Transform(u8),
@@ -20,12 +30,17 @@ pub enum AnimProp {
     CanvasArg(u16),
 }
 
-impl AnimProp {
+impl AnimationProp {
     /// Parses a style key (transform entries are addressed by position).
-    pub fn from_name(name: &str) -> Option<AnimProp> {
+    pub fn from_name(name: &str) -> Option<AnimationProp> {
         Some(match name {
-            "opacity" => AnimProp::Opacity,
-            "backgroundColor" => AnimProp::BackgroundColor,
+            "opacity" => AnimationProp::Opacity,
+            "backgroundColor" => AnimationProp::BackgroundColor,
+            "borderColor" => AnimationProp::BorderColor,
+            "color" => AnimationProp::Color,
+            "shadowColor" => AnimationProp::ShadowColor,
+            "shadowOpacity" => AnimationProp::ShadowOpacity,
+            "shadowRadius" => AnimationProp::ShadowRadius,
             _ => return None,
         })
     }
@@ -116,6 +131,12 @@ pub enum Driver {
         velocity: Option<f32>,
         /// Fraction of velocity kept per millisecond, e.g. `0.998`.
         deceleration: f32,
+        /// Bounds `(min, max)` the value stays within: it stops at a bound,
+        /// or bounces back from it with `bounce`.
+        clamp: Option<(f32, f32)>,
+        /// The fraction of its speed the value keeps when it bounces off a
+        /// bound (0: it stops there).
+        bounce: f32,
     },
 }
 
@@ -166,7 +187,7 @@ pub enum Operand {
 
 /// A change to the animation graph, sent by JS.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnimOp {
+pub enum AnimationOp {
     /// A settable, animatable value.
     CreateValue {
         /// New node.
@@ -227,7 +248,7 @@ pub enum AnimOp {
         /// Value node.
         node: NodeId,
         /// Reported back on completion.
-        animation: AnimId,
+        animation: AnimationId,
         /// How to move.
         driver: Driver,
     },
@@ -235,7 +256,7 @@ pub enum AnimOp {
     /// loops) run natively, step after step.
     StartComposite {
         /// Reported back when the whole animation ends.
-        animation: AnimId,
+        animation: AnimationId,
         /// The composite (one JS object, run any number of times): the
         /// values it animates are recorded as they are now, for `Reset`.
         key: u32,
@@ -261,12 +282,41 @@ pub enum AnimOp {
     /// Stops a composite animation (its running steps stay where they are).
     StopAnimation {
         /// The animation.
-        animation: AnimId,
+        animation: AnimationId,
     },
     /// Frees a node.
     Release {
         /// Node.
         node: NodeId,
+    },
+    /// Sets the offset added to a value (React Native's `setOffset`): the
+    /// value evaluates to its own value plus the offset; animations, `Set`
+    /// and gestures move its own value.
+    SetOffset {
+        /// Value node.
+        node: NodeId,
+        /// The offset.
+        offset: f32,
+    },
+    /// Merges a value's offset into it and clears the offset (React
+    /// Native's `flattenOffset`).
+    FlattenOffset {
+        /// Value node.
+        node: NodeId,
+    },
+    /// Moves a value into its offset, leaving it 0 (React Native's
+    /// `extractOffset`: a drag then starts from 0).
+    ExtractOffset {
+        /// Value node.
+        node: NodeId,
+    },
+    /// Reports the current value of any node as a [`crate::Finished`] of
+    /// `request` (with its `value`), so JS can read it back.
+    Read {
+        /// The node.
+        node: NodeId,
+        /// Reported back with the value.
+        request: AnimationId,
     },
 }
 

@@ -1,10 +1,12 @@
 import { type JSX } from "nsh";
 import { createNavigator } from "nsh/ui/mobile";
+import type { IconName } from "./icons";
 
 /** A demo of the index. */
 export interface DemoEntry {
   name: string;
   detail: string;
+  icon: IconName;
   screen: () => JSX.Element;
 }
 

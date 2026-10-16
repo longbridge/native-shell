@@ -12,7 +12,7 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 | Accessor | Module | Value |
 |---|---|---|
 | `windowSize()` | `nsh/device` | `{ width, height }` of the surface, in points. |
-| `colorScheme()` | `nsh/device` | `"light"` or `"dark"`. |
+| `colorScheme()` | `nsh/device` | `"light"` or `"dark"`: the system's, or the app's own (`setColorScheme`). |
 | `fontScale()` | `nsh/device` | The user's preferred text size relative to the default (1 is the default). |
 | `safeArea()` | `nsh/ui/mobile` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
 | `useSafeAreaInsets()` | `nsh/ui/mobile` | The insets where the calling component renders (a screen, a modal). |
@@ -63,7 +63,7 @@ Often flexbox, percentages and `aspectRatio` do the job without reading the size
 
 ## Dark mode
 
-`colorScheme()` follows the system appearance. The simplest way to support dark mode is the `dark:` Tailwind variant, which applies when `colorScheme()` is `"dark"`:
+`colorScheme()` follows the system appearance unless the app sets its own. The simplest way to support dark mode is the `dark:` Tailwind variant, which applies when `colorScheme()` is `"dark"`:
 
 ```tsx
 <View class="flex-1 bg-white dark:bg-zinc-900 p-4">
@@ -89,6 +89,22 @@ const palette = computed(() =>
 ```
 
 The components of `nsh/ui/mobile` take their colors from the component theme, which has light and dark values (`nsh.json` `"theme"`), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../components/status-bar.md).
+
+### An app with its own appearance
+
+An app that is always dark (or always light) says so in `nsh.json`, and `colorScheme()`, `dark:` classes, the component theme, the status bar's default style and alerts follow it from the first frame (packaged apps also launch in it):
+
+```json
+{ "appearance": "dark" }
+```
+
+`setColorScheme` from `nsh/device` changes it at run time, for an in-app appearance setting; `"system"` follows the system again:
+
+```tsx
+import { colorScheme, setColorScheme } from "nsh/device";
+
+<Button title={colorScheme() === "dark" ? "Light" : "Dark"} onPress={() => setColorScheme(colorScheme() === "dark" ? "light" : "dark")} />
+```
 
 > [!TIP]
 > Test both appearances while developing: `xcrun simctl ui booted appearance dark` switches an iOS simulator, and Android has a dark theme toggle in Quick Settings. The change reaches your app at once, without a reload.

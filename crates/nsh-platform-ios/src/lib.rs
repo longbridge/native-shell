@@ -15,7 +15,7 @@
 
 #![cfg(target_os = "ios")]
 
-mod anim;
+mod animation;
 mod app;
 mod blur;
 mod canvas;
@@ -37,6 +37,7 @@ mod surface;
 mod system;
 mod target;
 mod text;
+mod text_selection;
 mod text_view;
 mod touch;
 mod video;

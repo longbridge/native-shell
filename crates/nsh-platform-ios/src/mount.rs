@@ -4,7 +4,7 @@
 use std::{cell::RefCell, sync::Arc};
 
 use dispatch2::{DispatchQueue, MainThreadBound};
-use nsh_anim::{AnimProp, AnimValue};
+use nsh_animation::{AnimationProp, AnimationValue};
 use nsh_core::{
     Color, Command, EventKind, EventMask, EventPayload, GestureValues, ImageSource,
     KeyboardDismissMode, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
@@ -26,7 +26,7 @@ use objc2_ui_kit::{
 };
 
 use crate::{
-    anim::Animator,
+    animation::Animator,
     decor::{self, Decor},
     image::{AssetBase, DecodedImage, ImageLoader, Request},
     input::Input,
@@ -136,6 +136,8 @@ struct Gestures {
     pan: Option<Retained<UIPanGestureRecognizer>>,
     pinch: Option<Retained<UIPinchGestureRecognizer>>,
     rotation: Option<Retained<UIRotationGestureRecognizer>>,
+    /// `panActivation`.
+    gate: Option<Retained<crate::touch::PanGate>>,
     refresh: Option<Refresh>,
 }
 
@@ -242,7 +244,7 @@ struct Slot {
     decor: Decor,
     events: EventMask,
     gestures: Gestures,
-    bindings: Vec<(AnimProp, nsh_anim::NodeId)>,
+    bindings: Vec<(AnimationProp, nsh_animation::NodeId)>,
     values: GestureValues,
     /// Values of the gesture nodes when the gesture began: pan x, pan y,
     /// pinch, rotation.
@@ -256,7 +258,7 @@ struct Slot {
     /// A cell of such a list: mirrored back.
     in_mirrored: bool,
     pressed: bool,
-    scroll_value: Option<nsh_anim::NodeId>,
+    scroll_value: Option<nsh_animation::NodeId>,
     /// How a scroll view scrolls (scroll views only).
     behavior: Option<Box<nsh_core::ScrollBehavior>>,
     horizontal: bool,
@@ -427,7 +429,7 @@ impl Mounter {
             layout_animation: None,
             created: Vec::new(),
             disappearing: Default::default(),
-            frame_link: crate::anim::frame_link(&target_for_link),
+            frame_link: crate::animation::frame_link(&target_for_link),
             hosts: Default::default(),
             dirty_stacks: Vec::new(),
             deferred_stacks: Vec::new(),
@@ -445,16 +447,16 @@ impl Mounter {
     }
 
     pub(crate) fn apply(&mut self, batch: MountBatch) {
-        let mut anim_changed = false;
+        let mut animation_changed = false;
         for item in batch.items {
-            anim_changed |= self.apply_item(item);
+            animation_changed |= self.apply_item(item);
         }
         if let Some(animation) = self.layout_animation.take() {
             self.animate_appearing(&animation);
         }
         self.created.clear();
         self.finish_navigation();
-        if anim_changed {
+        if animation_changed {
             self.apply_animations();
         }
         self.report_finished();
@@ -705,6 +707,16 @@ impl Mounter {
                 }
             }
             MountItem::TrackStates { id, states } => self.track_states(id, states),
+            MountItem::Overflow { id, extent } => {
+                if let Some(view) = self.slot(id).and_then(|s| s.native.nsh()) {
+                    view.set_overflow(extent.map(|e| {
+                        CGRect::new(
+                            CGPoint::new(e.x as CGFloat, e.y as CGFloat),
+                            CGSize::new(e.width as CGFloat, e.height as CGFloat),
+                        )
+                    }));
+                }
+            }
             MountItem::ViewStyle { id, style } => self.set_view_style(id, *style),
             MountItem::Text {
                 id,
@@ -728,6 +740,11 @@ impl Mounter {
                 }
             }
             MountItem::Events { id, events } => self.set_events(id, events),
+            MountItem::Appearance { appearance } => {
+                if let Some(root) = self.slot(nsh_core::ROOT_ID) {
+                    crate::system::set_appearance(appearance, root.native.view());
+                }
+            }
             MountItem::LayoutDirection { rtl } => {
                 self.rtl = rtl;
                 for s in self.views.iter().flatten() {
@@ -878,7 +895,7 @@ impl Mounter {
             }
             MountItem::Refreshing { id, refreshing } => self.set_refreshing(id, refreshing),
             MountItem::Canvas { id, drawing } => self.set_drawing(id, drawing),
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::AnimationBindings { id, bindings } => {
                 if let Some(s) = self.slot_mut(id) {
                     // Properties no longer animated fall back to the static style.
                     s.bindings = bindings;
@@ -905,6 +922,7 @@ impl Mounter {
                 }
             }
             MountItem::ViewProps { id, props } => self.set_view_props(id, *props),
+            MountItem::AccessibilityLabel { id, label } => self.set_accessibility_label(id, label),
             MountItem::LayoutAnimation(animation) => self.layout_animation = Some(animation),
             MountItem::ScreenConfig { id, config } => {
                 if let Some(Slot {
@@ -929,7 +947,7 @@ impl Mounter {
                     modal.configure(config);
                 }
             }
-            MountItem::Anim(op) => {
+            MountItem::Animation(op) => {
                 self.animator.apply(op);
                 return true;
             }
@@ -1073,6 +1091,22 @@ impl Mounter {
             (Command::Toast { .. }, _) => {}
             (Command::Announce(text), _) => crate::system::announce(&text),
             (Command::ImageInfo { id, uri }, _) => self.images.info(id, &uri),
+            (Command::SetClipboard(text), _) => crate::system::set_clipboard(&text),
+            (Command::ReadClipboard { id, has_only }, _) => {
+                let (has, text) = crate::system::read_clipboard(has_only);
+                let mut fields = vec![
+                    ("id", PayloadValue::Number(id as f64)),
+                    ("has", PayloadValue::Bool(has)),
+                ];
+                if let Some(text) = text {
+                    fields.push(("text", PayloadValue::Str(text)));
+                }
+                self.control.dispatch_event(
+                    nsh_core::ROOT_ID,
+                    EventKind::Clipboard,
+                    EventPayload::Map(fields),
+                );
+            }
             (Command::AccessibilityFocus, native) => {
                 crate::system::accessibility_focus(native.view())
             }
@@ -1561,14 +1595,18 @@ impl Mounter {
         };
         let background = dynamic_background(s, animator);
         let kind = s.native.kind();
+        let bound = bound_style(s, animator);
         s.decor.apply_animated(
             s.native.view(),
             kind,
-            &s.style,
+            bound.as_ref().unwrap_or(&s.style),
             background.0,
             background.1,
             mtm,
         );
+        if bound.is_some() {
+            apply_bound_decor(s, animator);
+        }
     }
 
     /// The core asked for the states of `id` it reads (`active:`, ...).
@@ -1618,16 +1656,26 @@ impl Mounter {
         let mut background = s.style.background_color;
         let mut animated = false;
         for &(prop, node) in &s.bindings {
-            if prop == AnimProp::BackgroundColor {
+            if prop == AnimationProp::BackgroundColor {
                 animated = true;
-                if let AnimValue::Color(c) = animator.eval(node) {
+                if let AnimationValue::Color(c) = animator.eval(node) {
                     background = Color(c);
                 }
             }
         }
         let kind = s.native.kind();
-        s.decor
-            .apply(s.native.view(), kind, &s.style, background, animated, mtm);
+        let bound = bound_style(s, animator);
+        s.decor.apply(
+            s.native.view(),
+            kind,
+            bound.as_ref().unwrap_or(&s.style),
+            background,
+            animated,
+            mtm,
+        );
+        if bound.is_some() {
+            apply_bound_decor(s, animator);
+        }
     }
 
     fn set_image(
@@ -2196,14 +2244,7 @@ impl Mounter {
         };
         let c = &screen.config;
         nav.setNavigationBarHidden_animated(!c.header_shown, animated);
-        let bar = nav.navigationBar();
-        bar.setPrefersLargeTitles(c.large_title);
-        let tint = c.tint_color.map(|t| {
-            let (r, g, b, a) = t.to_f64();
-            objc2_ui_kit::UIColor::colorWithRed_green_blue_alpha(r, g, b, a)
-        });
-        // SAFETY: a plain setter; `None` restores the default tint.
-        unsafe { bar.setTintColor(tint.as_deref()) };
+        crate::navigation::style_bar(&nav.navigationBar(), c);
     }
 
     /// A stack finished a transition: screens the user popped (back button,
@@ -2335,6 +2376,16 @@ impl Mounter {
         let Some(s) = self.slot_mut(id) else { return };
         let active = props.active_opacity;
         s.long_press_delay = props.long_press_delay;
+        let activation = props.pan_activation;
+        toggle(
+            &mut s.gestures.gate,
+            activation.is_some(),
+            s.native.view(),
+            || crate::touch::PanGate::new(mtm, activation.unwrap_or_default()),
+        );
+        if let (Some(gate), Some(a)) = (&s.gestures.gate, activation) {
+            gate.set_activation(a);
+        }
         if let Some(press) = &s.gestures.press {
             press.set_long_press_delay(props.long_press_delay);
         }
@@ -2362,6 +2413,20 @@ impl Mounter {
             s.active_opacity = active;
             let events = s.events;
             self.set_events(id, events);
+        }
+    }
+
+    /// Only the label of the view's props changed.
+    fn set_accessibility_label(&mut self, id: NodeId, label: Option<std::sync::Arc<str>>) {
+        let mtm = self.mtm;
+        let Some(s) = self.slot(id) else { return };
+        match s.native.nsh() {
+            Some(view) => view.set_accessibility_label(label),
+            None => {
+                use objc2_ui_kit::NSObjectUIAccessibility;
+                let label = label.as_deref().map(objc2_foundation::NSString::from_str);
+                s.native.view().setAccessibilityLabel(label.as_deref(), mtm);
+            }
         }
     }
 
@@ -2824,9 +2889,9 @@ fn dynamic_background(slot: &Slot, animator: &Animator) -> (Color, bool) {
     let mut background = slot.style.background_color;
     let mut animated = false;
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::BackgroundColor {
+        if prop == AnimationProp::BackgroundColor {
             animated = true;
-            if let AnimValue::Color(c) = animator.eval(node) {
+            if let AnimationValue::Color(c) = animator.eval(node) {
                 background = Color(c);
             }
         }
@@ -2837,7 +2902,7 @@ fn dynamic_background(slot: &Slot, animator: &Animator) -> (Color, bool) {
 fn dynamic_opacity(slot: &Slot, animator: &Animator) -> f32 {
     let mut opacity = slot.style.opacity * crate::visual::filter_opacity(&slot.style);
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::Opacity {
+        if prop == AnimationProp::Opacity {
             opacity = animator.eval(node).number().clamp(0.0, 1.0);
         }
     }
@@ -2851,7 +2916,7 @@ fn dynamic_opacity(slot: &Slot, animator: &Animator) -> f32 {
 fn dynamic_transform(slot: &Slot, animator: &Animator) -> CATransform3D {
     let mut overrides = [None; nsh_core::MAX_TRANSFORMS];
     for &(prop, node) in &slot.bindings {
-        if let AnimProp::Transform(i) = prop
+        if let AnimationProp::Transform(i) = prop
             && let Some(o) = overrides.get_mut(i as usize)
         {
             *o = Some(animator.eval(node).number());
@@ -2936,12 +3001,91 @@ fn scaled_transform(t: &CATransform3D, f: CGFloat) -> CATransform3D {
     out
 }
 
+/// The style to shape a view's decoration by when its border or shadow is
+/// bound: the bound values in place of the static ones, and the layers for
+/// them made even while they are transparent (they may not stay so).
+fn bound_style(slot: &Slot, animator: &Animator) -> Option<ViewStyle> {
+    let decor = |p: &AnimationProp| {
+        matches!(
+            p,
+            AnimationProp::BorderColor
+                | AnimationProp::ShadowColor
+                | AnimationProp::ShadowOpacity
+                | AnimationProp::ShadowRadius
+        )
+    };
+    if !slot.bindings.iter().any(|(p, _)| decor(p)) {
+        return None;
+    }
+    let mut style = slot.style.clone();
+    let (mut border, mut shadow) = (false, false);
+    for &(prop, node) in &slot.bindings {
+        let value = animator.eval(node);
+        match (prop, value) {
+            (AnimationProp::BorderColor, AnimationValue::Color(c)) => {
+                style.borders.colors = [Color(c); 4];
+                border = true;
+            }
+            (AnimationProp::ShadowColor, AnimationValue::Color(c)) => {
+                style.shadow.color = Color(c);
+                shadow = true;
+            }
+            (AnimationProp::ShadowOpacity, v) => {
+                style.shadow.opacity = v.number().clamp(0.0, 1.0);
+                shadow = true;
+            }
+            (AnimationProp::ShadowRadius, v) => {
+                style.shadow.radius = v.number().max(0.0);
+                shadow = true;
+            }
+            _ => {}
+        }
+    }
+    if border {
+        for c in &mut style.borders.colors {
+            c.0 |= 0xff;
+        }
+    }
+    if shadow {
+        style.shadow.color.0 |= 0xff;
+        style.shadow.opacity = style.shadow.opacity.max(f32::MIN_POSITIVE);
+    }
+    Some(style)
+}
+
+/// Bound border colors and shadows onto the layers made for them.
+fn apply_bound_decor(slot: &Slot, animator: &Animator) {
+    let view = slot.native.view();
+    let mut shadow = None;
+    for &(prop, node) in &slot.bindings {
+        let value = animator.eval(node);
+        match (prop, value) {
+            (AnimationProp::BorderColor, AnimationValue::Color(c)) => {
+                slot.decor.set_border_color(view, Color(c))
+            }
+            (AnimationProp::ShadowColor, AnimationValue::Color(c)) => {
+                shadow.get_or_insert(slot.style.shadow).color = Color(c)
+            }
+            (AnimationProp::ShadowOpacity, v) => {
+                shadow.get_or_insert(slot.style.shadow).opacity = v.number()
+            }
+            (AnimationProp::ShadowRadius, v) => {
+                shadow.get_or_insert(slot.style.shadow).radius = v.number()
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = shadow {
+        slot.decor.set_shadow(view, s.color, s.opacity, s.radius);
+    }
+}
+
 /// Opacity, background color and transform: static values overridden by
 /// animated bindings.
 fn apply_dynamic(slot: &Slot, animator: &Animator) {
     if let Native::Canvas(canvas) = &slot.native {
         for &(prop, node) in &slot.bindings {
-            if let AnimProp::CanvasArg(k) = prop {
+            if let AnimationProp::CanvasArg(k) = prop {
                 canvas.set_value(k, animator.eval(node));
             }
         }
@@ -2949,8 +3093,8 @@ fn apply_dynamic(slot: &Slot, animator: &Animator) {
     let view = slot.native.view();
     let mut background = slot.style.background_color;
     for &(prop, node) in &slot.bindings {
-        if prop == AnimProp::BackgroundColor
-            && let AnimValue::Color(c) = animator.eval(node)
+        if prop == AnimationProp::BackgroundColor
+            && let AnimationValue::Color(c) = animator.eval(node)
         {
             background = Color(c);
         }
@@ -2958,6 +3102,17 @@ fn apply_dynamic(slot: &Slot, animator: &Animator) {
     view.setAlpha(dynamic_opacity(slot, animator) as CGFloat);
     slot.decor.set_background(view, background);
     view.layer().setTransform(dynamic_transform(slot, animator));
+    apply_bound_decor(slot, animator);
+    if let Native::Text(text) = &slot.native {
+        let color = slot.bindings.iter().find_map(|&(prop, node)| match prop {
+            AnimationProp::Color => match animator.eval(node) {
+                AnimationValue::Color(c) => Some(Color(c)),
+                _ => None,
+            },
+            _ => None,
+        });
+        text.set_color(color);
+    }
 }
 
 /// Runs `f` in a UIKit animation following `t`.

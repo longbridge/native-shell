@@ -141,7 +141,7 @@ impl Component for Button {                // JS export: `Button`, the type's na
   | an error boundary (TS has none) | `fn catch_error(&mut self, error, cx) -> bool`: the nearest component above one whose code panicked (render, listener, method, task) handles it, typically keeping `error`, rendering a fallback and clearing it to try again; the failed one renders nothing until it renders again; unhandled errors are logged (`js` target) |
   | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
-  | `onStartShouldSetResponder`, `onMoveShouldSetResponder(Capture)`, `PanResponder.create` | `.claim_touches(TouchClaim::on_start())` (`::on_move()`, `.capture()`, `.ask(cx.listener(\|this, request: &ClaimRequest, cx\| request.claim()))` to decide with state and the gesture, `.block_native(false)`), `.keep_touches(true)` (`onResponderTerminationRequest` → false); `.on_responder_grant` / `_move` / `_release` / `_terminate` / `_start` / `_end` / `_reject` get a `ResponderEvent` (the finger's `location_x`, `page_x`, ... and `gesture: PanGesture`: `dx`, `dy`, `vx`, `vy`, the centroid; `PanGesture::begin` / `update` follow one from `on_touch`) |
+  | `onStartShouldSetResponder`, `onMoveShouldSetResponder(Capture)`, `PanResponder.create` | `.claim_touches(TouchClaim::on_start())` (`::on_move()`, `.capture()`, `.ask(cx.listener(\|this, request: &ClaimRequest, cx\| request.claim()))` to decide with state and the gesture, `.block_native(false)`; `TouchClaim::on_pan(PanActivation::horizontal(10.0, 10.0))` (`panActivation`) claims when the platform activates a pan, deciding on the main thread, `elements.md`), `.keep_touches(true)` (`onResponderTerminationRequest` → false); `.on_responder_grant` / `_move` / `_release` / `_terminate` / `_start` / `_end` / `_reject` get a `ResponderEvent` (the finger's `location_x`, `page_x`, ... and `gesture: PanGesture`: `dx`, `dy`, `vx`, `vy`, the centroid; `PanGesture::begin` / `update` follow one from `on_touch`) |
   | a ref to a component, `await stepper.value()`, `stepper.setValue(5)` | `cx.component_ref::<Stepper>()` (in `setup`, kept in a field), `Stepper::element(..).component_ref(&self.field)`, `self.field.update(\|s, cx\| s.set_value(5.0, cx))`: its `#[methods]` called directly, right after the listener; await the `Updated` for the result |
   | `<List ListHeaderComponent ListFooterComponent ListEmptyComponent ItemSeparatorComponent stickyHeaderIndices viewabilityConfig onViewableItemsChanged onEndReachedThreshold initialScrollIndex>` | `virtual_list(n, row).header(..).footer(..).empty(..).separator(\|\| ..).sticky_header_indices(..).viewability(..).minimum_view_time(..).on_viewable_items_changed(..).end_reached_threshold(..).initial_scroll_index(..)`: the header, footer and empty view are part of the render (the component's state and handlers), never recycled |
   | `<ListView each={rows} keyExtractor ListHeaderComponent={Header}>{row}</ListView>` | `ListView::element(props).items(virtual_list(n, row).keys(ids).header(..))` |
@@ -166,7 +166,7 @@ impl Component for Button {                // JS export: `Button`, the type's na
   `interpolate` each time) gets the live one, so bindings stay as they are. Bound style properties go into the
   element's inline style, before the app's `style` on a host (the core keeps the app's and composes the two). The
   animations' ends come back through `Core::animations_finished` (the engine hands JS the rest). An `Animation` is
-  sent whole as one `AnimOp::StartComposite` and runs in the graph step after step; its composite key (odd, JS's
+  sent whole as one `AnimationOp::StartComposite` and runs in the graph step after step; its composite key (odd, JS's
   even) is what `reset()` restores by, and dropping the last handle releases it (a run going on goes on).
 - **Element refs** (`ui/element_ref.rs`) hold the node of the element that carries them, set when the render is
   applied and cleared when the element goes; their commands go out through the executor, and an event's handling
@@ -271,7 +271,11 @@ parse and no `.class()`.
 
 - Theme colors are `AdaptiveColor`s (a light and a dark value) and lower into one declaration that picks by
   appearance (`Decl::Adaptive`): the platform's appearance switch restyles natively, without a render, and the app's
-  plain classes still win over it.
+  plain classes still win over it. The appearance is the app's own when it set one (`nsh.json` `"appearance"`, TS
+  `setColorScheme`, `cx.set_color_scheme`): the core keeps the system's and resolves `dark` for classes and
+  `RenderCx::dark` from both (`Core::set_appearance`), and tells the platform (`MountItem::Appearance`: iOS
+  `overrideUserInterfaceStyle` on the root view, presented modals and alerts, the status bar's default style; Android
+  the status bar's default style and alert themes; native widgets elsewhere keep the system's).
 - `.active(|s| ..)`, `.hover(..)`, `.focus(..)`, `.disabled_style(..)` lower into rules on the view's interaction
   states (Tailwind's ranks): press feedback is native. `.group()` makes a view a group and `.group_active(|s| ..)`
   (`_hover`, `_focus_within`, `_named` for `group/name`) styles what is inside it by the group's states;
@@ -339,6 +343,11 @@ never sees the expanded nodes; their events are the component's (below).
   and styles, so the list's own are left out). Each cell is then the placing component's row wrapper
   (`Inner::Row`) around a node rendering the row (`Inner::VirtualRow`), so each part's handlers run with its own
   component.
+- Lazy children (`#[prop(lazy)] children: Children`, `Sheet`'s): the JS face makes the app's children only while the
+  render places them, under a `cond` on a signal; the core tells it with a `$children` event (`true` / `false`) on
+  the host when the render starts or stops placing them (`ComponentSpec::lazy_children`), so they are made again on
+  each opening and released after. Until they are made, `Children::is_empty()` is true: a render that places them
+  only when they are present never asks for them.
 - Named slots: the JS face creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
   JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never
   releases it (it is JS's). Filling or emptying a holder renders the component again.

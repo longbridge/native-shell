@@ -36,7 +36,11 @@ Input                        native gestures -> EngineControl::dispatch_event ->
   `pipeThrough`, `TextEncoderStream` / `TextDecoderStream`), `Blob` / `File` / `FormData`, `URL` / `URLSearchParams`,
   `TextEncoder` / `TextDecoder`, `Event` / `CustomEvent` / `EventTarget`, `AbortController` / `AbortSignal`: native
   classes in `crates/nsh-js/src/web/` (module docs there), made on first use of any of those globals (zero startup cost
-  otherwise), as in browsers so libraries such as axios work (`fetch.rs` lists where they differ).
+  otherwise), as in browsers so libraries such as axios work (`fetch.rs` lists where they differ). `Intl`
+  (`NumberFormat`, `DateTimeFormat`) and the `toLocaleString`s of numbers, BigInts and dates, which QuickJS lacks, are
+  there too (`web/intl/`): formatted in Rust from hand-written tables of the common languages rather than CLDR (a few
+  kilobytes instead of ICU4X's megabytes; trade-offs and limits in its module doc), in `Environment::locale` by
+  default (the platform's region format: `NSLocale.currentLocale`, `Locale.getDefault()`).
 - **Networking**: requests go to the platform stack through `nsh_engine::Network`
   (NSURLSession, HttpURLConnection; ureq for `nsh trace`), streaming both ways: the stack reports the response head,
   then body chunks as they arrive (`FetchEvent`), and JS can pause reading (back pressure); a streamed request body is

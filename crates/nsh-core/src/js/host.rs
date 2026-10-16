@@ -42,10 +42,10 @@ pub trait HostInput: Sized {
     /// Truthy, as JS sees it.
     fn truthy(&self) -> bool;
     /// The native animation node this value is (`NativeNode.__nv`).
-    fn native_node(&self) -> Option<nsh_anim::NodeId> {
+    fn native_node(&self) -> Option<nsh_animation::NodeId> {
         self.field("__nv")
             .and_then(|v| v.as_number())
-            .map(|n| n as nsh_anim::NodeId)
+            .map(|n| n as nsh_animation::NodeId)
     }
 }
 
@@ -579,7 +579,7 @@ pub const EVENTS: &[(EventKind, u32, &str, &str)] = &[
 ];
 
 /// The events no element's props declare: the root's (`BackHandler`,
-/// dialogs, `Image.getSize`), the runtime's own (touches, insets, native
+/// dialogs, `Image.getSize`, clipboard reads), the runtime's own (touches, insets, native
 /// components' events) and those whose payload a module makes
 /// (`List`'s viewable items, with the app's items).
 pub const INTERNAL_EVENTS: &[EventKind] = &[
@@ -589,6 +589,7 @@ pub const INTERNAL_EVENTS: &[EventKind] = &[
     EventKind::Dialog,
     EventKind::BackPress,
     EventKind::ImageInfo,
+    EventKind::Clipboard,
     EventKind::ViewableItemsChanged,
 ];
 

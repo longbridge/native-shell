@@ -92,9 +92,16 @@ struct NodeData {
     handlers: Vec<(EventKind, JsValue)>,
     /// Touch and responder handlers, by `touch::TOUCH_PROPS` index (owned).
     touch: Vec<(u8, JsValue)>,
+    /// Has a `panActivation`: becomes the responder when the platform
+    /// activates its pan, and is not asked before.
+    pan_gated: bool,
     /// Values of props that may hold native animation nodes (`style`,
     /// `pan`, ...), kept alive with the view (owned).
     retained: Vec<(&'static str, JsValue)>,
+    /// A `<Scroll>`'s content container (`contentContainerStyle` /
+    /// `contentContainerClass`), one of `children` that takes the others
+    /// ([`DETACHED`]: none).
+    content: NodeId,
 }
 
 /// The renderer of `ctx`.
@@ -242,8 +249,8 @@ impl Dom {
 
     /// Queues the release of a collected animation node or composite (from
     /// a finalizer).
-    pub(crate) fn queue_anim_release(&self, op: nsh_anim::AnimOp) {
-        self.shared.anim_releases.borrow_mut().push(op);
+    pub(crate) fn queue_animation_release(&self, op: nsh_animation::AnimationOp) {
+        self.shared.animation_releases.borrow_mut().push(op);
     }
 
     /// The surface's layout direction (sent once something is mounted).
@@ -345,6 +352,12 @@ pub(crate) const NODE_METHODS: &[(&str, c_int, &str, &str)] = &[
         "(options?: { animated?: boolean }): void",
         "`List`: scrolls to the end of the content (the start of an inverted list).",
     ),
+    (
+        "measure",
+        0,
+        "(): Promise<{ x: number; y: number; width: number; height: number; pageX: number; pageY: number } | null>",
+        "Where the view is once this turn's changes are laid out: `x` / `y` / `width` / `height` its frame in its parent (as `onLayout`), `pageX` / `pageY` its top left corner in the root view it is in (the surface, or its modal), the coordinates of touches' `pageX` / `pageY`: `event.pageX - m.pageX` is a touch's position in the view. Scroll offsets and zoom scales of the scroll views and lists around it are applied, transforms (animations included) are not. `null` when the view is not in the tree.",
+    ),
     ("reload", 0, "(): void", "`WebView`: reloads the page."),
     (
         "goBack",
@@ -396,6 +409,9 @@ unsafe extern "C" fn node_method(
     let Some(id) = node_id(ctx, this) else {
         return throw_type(ctx, "nsh: not a node");
     };
+    if name == "measure" {
+        return crate::components::measure(ctx, id);
+    }
     let a0 = arg(argc, argv, 0);
     let number = |v: JsValue| -> JsValue {
         let mut n = 0f64;
@@ -484,10 +500,12 @@ fn new_node(ctx: *mut JsContext, id: NodeId, text: bool, tag: Option<Tag>) -> Js
         tag,
         popped: UNDEFINED,
         touch: Vec::new(),
+        pan_gated: false,
         retained: Vec::new(),
         parent: DETACHED,
         children: Vec::new(),
         handlers: Vec::new(),
+        content: DETACHED,
     }));
     // SAFETY: a registered class; the opaque is the boxed data, freed by
     // the finalizer.
@@ -804,6 +822,7 @@ fn insert_before(
     child: JsValue,
     before: Option<JsValue>,
 ) -> Result<(), JsValue> {
+    let parent = content_of(ctx, parent, child);
     let (p, c) = (node_ptr(ctx, parent), node_ptr(ctx, child));
     if p.is_null() || c.is_null() {
         return Err(throw_type(ctx, "nsh: not a node"));
@@ -868,8 +887,65 @@ fn insert_before(
     )
 }
 
+/// Where `parent`'s child `child` lives: the content container of a
+/// `<Scroll>` that has one (for any child but the container), else
+/// `parent` (borrowed values).
+fn content_of(ctx: *mut JsContext, parent: JsValue, child: JsValue) -> JsValue {
+    let p = node_ptr(ctx, parent);
+    // SAFETY: live node data, read briefly.
+    if p.is_null() || unsafe { (*p).content } == DETACHED {
+        return parent;
+    }
+    let content = unsafe { (*p).content };
+    if node_id(ctx, child) == Some(content) {
+        return parent;
+    }
+    unsafe { &(*p).children }
+        .iter()
+        .copied()
+        .find(|&v| node_id(ctx, v) == Some(content))
+        .unwrap_or(parent)
+}
+
+/// The content container of `<Scroll>` `node` (borrowed), made on first
+/// use: a view the scroll view's children move into, styled by
+/// `contentContainerStyle` / `contentContainerClass` (React Native's
+/// content container: `flexGrow: 1` with `justifyContent: "center"`
+/// centers what is shorter than the viewport and still scrolls what is
+/// longer).
+fn scroll_content(ctx: *mut JsContext, node: JsValue) -> Result<JsValue, JsValue> {
+    let p = node_ptr(ctx, node);
+    // SAFETY: live node data, read briefly.
+    let existing = unsafe { (*p).content };
+    if existing != DETACHED {
+        return Ok(content_of(ctx, node, UNDEFINED));
+    }
+    let id = next_id(ctx);
+    dom(ctx).push(ctx, Op::Create { id, tag: Tag::View })?;
+    let content = new_node(ctx, id, false, Some(Tag::View));
+    // The children so far move in, in order.
+    let children: Vec<JsValue> = unsafe { &(*p).children }
+        .iter()
+        // SAFETY: dups held while they move.
+        .map(|&v| unsafe { qjs::JS_DupValue(ctx, v) })
+        .collect();
+    let first = children.first().copied();
+    let mut result = insert_before(ctx, node, content, first);
+    unsafe { (*p).content = id };
+    for &child in &children {
+        if result.is_ok() {
+            result = insert_before(ctx, content, child, None);
+        }
+    }
+    free_values(ctx, children);
+    // The scroll view owns it now (as its child).
+    unsafe { qjs::JS_FreeValue(ctx, content) };
+    result.map(|()| content_of(ctx, node, UNDEFINED))
+}
+
 /// Removes node `child` from `parent` (nothing when it is not a child).
 fn remove_child(ctx: *mut JsContext, parent: JsValue, child: JsValue) -> Result<(), JsValue> {
+    let parent = content_of(ctx, parent, child);
     let (p, c) = (node_ptr(ctx, parent), node_ptr(ctx, child));
     if p.is_null() || c.is_null() {
         return Ok(());
@@ -992,10 +1068,25 @@ fn set_prop(
             return Ok(());
         }
         "ios" | "android" | "desktop" => return platform_props(ctx, node, name, value, prev),
+        "contentContainerStyle" | "contentContainerClass"
+            if unsafe { (*p).tag } == Some(Tag::Scroll) =>
+        {
+            let content = scroll_content(ctx, node)?;
+            let name = if name == "contentContainerStyle" {
+                "style"
+            } else {
+                "class"
+            };
+            return set_prop(ctx, content, name, value, prev);
+        }
         _ => {}
     }
     if let Some(prop) = crate::touch::touch_prop(name) {
         return set_touch(ctx, p, prop, value);
+    }
+    if name == "panActivation" {
+        // SAFETY: live node data; an inline check of a borrowed value.
+        unsafe { (*p).pan_gated = qjs::JS_IsObject(value) };
     }
     if name.len() > 2
         && name.starts_with("on")
@@ -1133,6 +1224,13 @@ pub(crate) fn listens_to_touches(ctx: *mut JsContext, id: NodeId) -> bool {
     let p = dom(ctx).by_id(id);
     // SAFETY: live node data.
     !p.is_null() && !unsafe { &(*p).touch }.is_empty()
+}
+
+/// Whether node `id` waits for its pan (`panActivation`).
+pub(crate) fn pan_gated(ctx: *mut JsContext, id: NodeId) -> bool {
+    let p = dom(ctx).by_id(id);
+    // SAFETY: live node data.
+    !p.is_null() && unsafe { (*p).pan_gated }
 }
 
 /// Whether `node` is `of` or an ancestor of it.
@@ -1565,10 +1663,18 @@ fn insert_value(
     marker: Option<JsValue>,
 ) -> Result<(), JsValue> {
     if is_dynamic(ctx, value, 0) {
+        // A run of children (`{a()}{b()}`, one insert): each function gets
+        // a memo of its own, so a change in one runs only that one and the
+        // others' nodes stay (not made again).
+        let memos = memoize_run(ctx, value);
+        let value = memos.unwrap_or(value);
         let mut data = [parent, marker.unwrap_or(UNDEFINED), value];
         // SAFETY: the function keeps dups of `data`.
         let func =
             unsafe { qjs::JS_NewCFunctionData(ctx, Some(insert_run), 1, 0, 3, data.as_mut_ptr()) };
+        if let Some(memos) = memos {
+            unsafe { qjs::JS_FreeValue(ctx, memos) };
+        }
         let r = reactive::render_effect(ctx, func);
         unsafe { qjs::JS_FreeValue(ctx, r) };
         // A throw in the effect is the round's error.
@@ -1596,6 +1702,37 @@ fn insert_value(
     });
     free_values(ctx, keep);
     result
+}
+
+/// For an array of children holding functions, a copy with a memo for each
+/// function (owned), made under the running owner; `None` otherwise.
+fn memoize_run(ctx: *mut JsContext, value: JsValue) -> Option<JsValue> {
+    // SAFETY: reads of a live value.
+    if unsafe { !qjs::JS_IsArray(value) } {
+        return None;
+    }
+    let items = array_items(ctx, value);
+    // SAFETY: borrowed values checked.
+    let functions = items
+        .iter()
+        .filter(|&&v| unsafe { qjs::JS_IsFunction(ctx, v) } && node_ptr(ctx, v).is_null())
+        .count();
+    if items.len() < 2 || functions == 0 {
+        free_values(ctx, items);
+        return None;
+    }
+    let items = items
+        .into_iter()
+        .map(|v| {
+            // SAFETY: an owned value; the memo takes the function.
+            if unsafe { qjs::JS_IsFunction(ctx, v) } {
+                reactive::memo(ctx, v, false)
+            } else {
+                v
+            }
+        })
+        .collect();
+    Some(new_array(ctx, items))
 }
 
 /// `insert(parent, value, marker)`: children before `marker` (or at the
@@ -1966,6 +2103,14 @@ unsafe extern "C" fn cond(
     reactive::finish_value(ctx, branch)
 }
 
+/// `cond(when, then)` (borrowed values): `then()` while `when()` is truthy,
+/// nothing otherwise (owned; an exception value when it throws).
+pub(crate) fn cond_value(ctx: *mut JsContext, when: JsValue, then: JsValue) -> JsValue {
+    let mut args = [when, then, UNDEFINED];
+    // SAFETY: borrowed arguments, as `cond` takes them.
+    unsafe { cond(ctx, UNDEFINED, 3, args.as_mut_ptr()) }
+}
+
 unsafe extern "C" fn cond_run(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -2076,8 +2221,9 @@ unsafe extern "C" fn each_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs:
 }
 
 /// `each(list, render, key)`: `render(item, index)` for each item of
-/// `list()` (both accessors), one row per key (`key(item)`, or the item
-/// itself) kept while the key stays.
+/// `list()` (both accessors), one row per key (`key(item, index)`, the
+/// index for `key` `"index"`, or the item itself) kept while the key
+/// stays.
 pub(crate) unsafe extern "C" fn each(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -2166,6 +2312,10 @@ unsafe extern "C" fn each_run(
     let items_v = array_items(ctx, items);
     unsafe { qjs::JS_FreeValue(ctx, items) };
     let keyed = unsafe { qjs::JS_IsFunction(ctx, key_fn) };
+    // SAFETY: a borrowed value, read when it is a string.
+    let by_index = !keyed
+        && unsafe { qjs::JS_IsString(key_fn) }
+        && to_string(ctx, key_fn).as_deref() == Some("index");
     let result = reactive::untracked_with(ctx, || {
         let p = each_data(ctx, rows);
         let old = std::mem::take(unsafe { &mut (*p).rows });
@@ -2180,9 +2330,11 @@ unsafe extern "C" fn each_run(
         for (i, &item) in items_v.iter().enumerate() {
             // SAFETY: calls of borrowed functions with live values; the
             // values got are owned by the row or freed.
-            let key_value = if keyed {
-                let mut args = [item];
-                let k = unsafe { qjs::JS_Call(ctx, key_fn, UNDEFINED, 1, args.as_mut_ptr()) };
+            let key_value = if by_index {
+                qjs::JS_NewFloat64(i as f64)
+            } else if keyed {
+                let mut args = [item, qjs::JS_NewFloat64(i as f64)];
+                let k = unsafe { qjs::JS_Call(ctx, key_fn, UNDEFINED, 2, args.as_mut_ptr()) };
                 if unsafe { qjs::JS_IsException(k) } {
                     failed = Some(k);
                     break;
@@ -2435,13 +2587,17 @@ pub(crate) unsafe extern "C" fn mount(
     if d.rtl.get().is_none() {
         d.send_direction();
     }
+    let (app, props) = (arg(argc, argv, 0), arg(argc, argv, 1));
+    // A hot update running the module again keeps what it mounted.
+    if let Some(dispose) = crate::hot::reuse(ctx, app, props) {
+        return dispose;
+    }
     let root = d.root.get();
     // SAFETY: reads of the root's children; dups for the dispose function.
     let before: Vec<JsValue> = unsafe { &(*node_ptr(ctx, root)).children }
         .iter()
         .map(|&v| unsafe { qjs::JS_DupValue(ctx, v) })
         .collect();
-    let (app, props) = (arg(argc, argv, 0), arg(argc, argv, 1));
     let (owner, result) = reactive::with_root(ctx, || {
         let props = if unsafe { qjs::JS_IsObject(props) } {
             unsafe { qjs::JS_DupValue(ctx, props) }
@@ -2470,7 +2626,7 @@ pub(crate) unsafe extern "C" fn mount(
     let dispose =
         unsafe { qjs::JS_NewCFunctionData(ctx, Some(unmount), 0, 0, 2, data.as_mut_ptr()) };
     unsafe { qjs::JS_FreeValue(ctx, data[1]) };
-    crate::hot::rendered(ctx, dispose);
+    crate::hot::rendered(ctx, app, dispose);
     reactive::finish_value(ctx, dispose)
 }
 
@@ -2507,8 +2663,9 @@ unsafe extern "C" fn unmount(
     result
 }
 
-/// `setup(tailwind, theme)`: the app's Tailwind theme and the theme of the
-/// Rust components (JSON strings, or null), before anything renders.
+/// `setup(tailwind, theme, appearance)`: the app's Tailwind theme and the
+/// theme of the Rust components (JSON strings, or null) and its
+/// appearance (`"light"` / `"dark"`, or null), before anything renders.
 unsafe extern "C" fn setup(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -2525,7 +2682,12 @@ unsafe extern "C" fn setup(
             return e;
         }
     }
-    UNDEFINED
+    let appearance =
+        crate::env::parse_appearance(&string_arg(ctx, arg(argc, argv, 2)).unwrap_or_default());
+    match appearance {
+        Some(a) => crate::env::set_appearance(ctx, a),
+        None => UNDEFINED,
+    }
 }
 
 // --- Events ---------------------------------------------------------------------
@@ -2723,7 +2885,7 @@ pub(crate) const RT_EXPORTS: &[crate::modules::Item] = &[
     ("each", Export::Function(each, 3), Ts::Internal),
     ("merge", Export::Function(merge, 2), Ts::Internal),
     ("list", Export::Function(crate::list::list, 1), Ts::Internal),
-    ("setup", Export::Function(setup, 2), Ts::Internal),
+    ("setup", Export::Function(setup, 3), Ts::Internal),
     ("font", Export::Function(font, 2), Ts::Internal),
 ];
 
@@ -2929,6 +3091,133 @@ mod tests {
                 "set text 8 \"a1\"",
             ]
         );
+    }
+
+    /// `key="index"` keeps rows by position: changed strings update their
+    /// rows in place; a key function gets the index too.
+    #[test]
+    fn rows_keyed_by_index() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { mount, signal } from "nsh";
+            import { element, insert, each } from "nsh:rt";
+            const lines = signal(["a"]);
+            globalThis.stream = (v) => lines.set(v);
+            const render = (item) => {
+                const t = element("text");
+                insert(t, () => item());
+                return t;
+            };
+            mount(() => {
+                const v = element("view");
+                insert(v, each(() => lines(), render, "index"));
+                const w = element("view");
+                insert(w, each(() => lines(), render, (item, i) => i));
+                insert(v, w);
+                return v;
+            });
+            "#,
+        )
+        .unwrap();
+        ops(&host, false);
+        host.eval_script("stream.js", "stream(['ab'])").unwrap();
+        assert_eq!(
+            ops(&host, false),
+            ["set text 6 \"ab\"", "set text 12 \"ab\""]
+        );
+        host.eval_script("stream.js", "stream(['ab', 'c'])")
+            .unwrap();
+        let grown = ops(&host, false);
+        assert_eq!(
+            grown.iter().filter(|l| l.starts_with("create")).count(),
+            2,
+            "{grown:?}"
+        );
+        assert!(!grown.iter().any(|l| l.starts_with("remove")), "{grown:?}");
+    }
+
+    /// A run of dynamic children (one insert): a change in one leaves the
+    /// others' nodes alone (`<Text>{spans()}{tail()}</Text>`).
+    #[test]
+    fn dynamic_siblings_run_alone() {
+        let host = Host::new().unwrap();
+        host.eval_source(&format!(
+            r#"{REPORT}
+            import {{ mount, signal }} from "nsh";
+            import {{ element, insert }} from "nsh:rt";
+            const words = signal(["a"]);
+            let tails = 0;
+            globalThis.grow = () => words.update((w) => [...w, "b"]);
+            globalThis.check = () => report(tails);
+            const tail = () => {{ tails++; return element("view"); }};
+            mount(() => {{
+                const t = element("text");
+                insert(t, [() => words().map((w) => text(w)), () => tail()]);
+                return t;
+            }});
+            "#
+        ))
+        .unwrap();
+        ops(&host, false);
+        host.eval_script("grow.js", "grow()").unwrap();
+        assert_eq!(
+            ops(&host, false),
+            [
+                "text 8 \"a\"",
+                "text 10 \"b\"",
+                "remove 4 from 2",
+                "insert 8 into 2 before 6",
+                "insert 10 into 2 before 6"
+            ]
+        );
+        host.eval_script("check.js", "check()").unwrap();
+        assert_eq!(reported(&host), ["1"]);
+    }
+
+    /// `contentContainerStyle` moves a scroll view's children into a view
+    /// it styles, whatever order props and children come in.
+    #[test]
+    fn scroll_content_container() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { mount, signal } from "nsh";
+            import { element, insert, prop, append, text } from "nsh:rt";
+            const show = signal(false);
+            globalThis.toggle = () => show.update((s) => !s);
+            mount(() => {
+                const v = element("view");
+                const s = element("scroll");
+                prop(s, "contentContainerStyle", { flexGrow: 1 });
+                append(s, text("a"));
+                insert(s, () => (show() ? text("b") : null));
+                append(v, s);
+                const t = element("scroll");
+                append(t, text("c"));
+                prop(t, "contentContainerClass", "grow");
+                append(v, t);
+                return v;
+            });
+            "#,
+        )
+        .unwrap();
+        let first = ops(&host, false);
+        for line in [
+            "create 4 Scroll",
+            "create 6 View",
+            "insert 6 into 4",
+            "style 6",
+            "insert 8 into 6",
+            "insert 12 into 10",
+            "create 14 View",
+            "insert 14 into 10 before 12",
+            "insert 12 into 14",
+        ] {
+            assert!(first.contains(&line.to_owned()), "{line}: {first:?}");
+        }
+        host.eval_script("toggle.js", "toggle()").unwrap();
+        assert_eq!(ops(&host, false), ["text 16 \"b\"", "insert 16 into 6"]);
     }
 
     /// The primitives and the globals `If` / `Each` as values: what

@@ -204,7 +204,8 @@ fn edits_replace_modules_and_keep_unrelated_state() {
     drain(&rx, &mut screen);
     assert_eq!(screen.texts(), ["app 2", "taps: 0"]);
 
-    // The entry renders again from scratch.
+    // An edit of the root component renders it again, and what it renders:
+    // their own state starts afresh.
     std::fs::write(dir.join("App.tsx"), APP.replace("app {n()}", "app! {n()}")).unwrap();
     control.hot_update(update(&dir, &mut bundle, 3).unwrap());
     drain(&rx, &mut screen);
@@ -238,4 +239,151 @@ fn edits_replace_modules_and_keep_unrelated_state() {
     let next = nsh_bundler::bundle_hot(&dir.join("App.tsx"), &[nsh_ui_mobile::registry()]).unwrap();
     assert!(matches!(next.patch(&bundle), nsh_bundler::HotPatch::Reload));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+const NAV_APP: &str = r#"
+import { mount, signal, Text, View } from "nsh";
+import { Screen, Stack, createNavigator } from "nsh/ui/mobile";
+
+type Route = { name: string };
+const nav = createNavigator<Route>({ name: "home" });
+const taps = signal(0);
+
+function Label(props: { route: string }) {
+  return <Text>label {props.route}</Text>;
+}
+
+function Local() {
+  const c = signal(0);
+  return <Text onPress={() => c.set(c() + 1)}>local {c()}</Text>;
+}
+
+function App() {
+  return (
+    <View style={{ flex: 1 }}>
+    <Local />
+    <Stack navigator={nav} style={{ flex: 1 }}>
+      {(route) => (
+        <Screen title={route.name}>
+          <View>
+            <Text onPress={() => nav.push({ name: `page${nav.routes().length}` })}>push {route.name}</Text>
+            <Text onPress={() => taps.set(taps() + 1)}>taps {taps()}</Text>
+            <Label route={route.name} />
+          </View>
+        </Screen>
+      )}
+    </Stack>
+    </View>
+  );
+}
+
+MOUNT
+"#;
+
+/// Edits of the entry keep the mounted tree, the top-level signals and the
+/// navigator's screens, with `mount(App)` and with an inline function.
+#[test]
+fn entry_edits_keep_navigation_and_state() {
+    for (n, mount) in ["mount(App);", "mount(() => <App />);"]
+        .into_iter()
+        .enumerate()
+    {
+        let app = NAV_APP.replace("MOUNT", mount);
+        let dir = std::env::temp_dir().join(format!("nsh-hot-nav-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("App.tsx"), &app).unwrap();
+        let sets = [nsh_ui_mobile::registry()];
+        let mut bundle = nsh_bundler::bundle_hot(&dir.join("App.tsx"), &sets).unwrap();
+        let (code, map) = bundle.script();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (failed_tx, failed) = crossbeam_channel::unbounded();
+        let (errors_tx, errors) = crossbeam_channel::unbounded();
+        let config = EngineConfig {
+            app: nsh_engine::App::Js(Bundle::source(code).with_source_map(map.unwrap())),
+            viewport: Size::new(390.0, 844.0),
+            trace: false,
+            network: None,
+            assets: None,
+            environment: Default::default(),
+            header_heights: (44.0, 96.0),
+            limits: nsh_engine::Limits::default(),
+            ui_sets: sets.to_vec(),
+            runtime: None,
+        };
+        let engine = Engine::start(
+            config,
+            || ApproxTextEngine,
+            ChannelSink(tx, failed_tx, errors_tx),
+        )
+        .unwrap();
+        let control = engine.control();
+        let mut screen = Screen::default();
+        drain(&rx, &mut screen);
+        assert_eq!(
+            screen.texts(),
+            ["label home", "local 0", "push home", "taps 0"],
+            "{mount}"
+        );
+
+        // A pushed screen and a top-level signal's state.
+        let press = |id| control.dispatch_event(id, EventKind::Press, EventPayload::None);
+        press(screen.find("push home").unwrap());
+        drain(&rx, &mut screen);
+        press(screen.find("taps").unwrap());
+        press(screen.find("local").unwrap());
+        drain(&rx, &mut screen);
+        let state = [
+            "label home",
+            "label page1",
+            "local 1",
+            "push home",
+            "push page1",
+            "taps 1",
+            "taps 1",
+        ];
+        assert_eq!(screen.texts(), state, "{mount}");
+
+        // An edit of another component of the entry: only it renders again
+        // (the state of the others stays).
+        let edited = app.replace("label {props.route}", "label: {props.route}");
+        std::fs::write(dir.join("App.tsx"), &edited).unwrap();
+        control.hot_update(update(&dir, &mut bundle, 1).unwrap());
+        drain(&rx, &mut screen);
+        let labelled = state.map(|t| t.replace("label ", "label: "));
+        assert_eq!(screen.texts(), labelled, "{mount}");
+
+        // An edit of the root component renders the tree again (its
+        // components' own state starts afresh), from the kept navigator and
+        // signal: the pushed screen stays.
+        let edited = edited.replace(
+            "<Stack navigator={nav} style={{ flex: 1 }}>",
+            "<Stack navigator={nav} style={{ flex: 1, gap: 1 }}>",
+        );
+        std::fs::write(dir.join("App.tsx"), &edited).unwrap();
+        control.hot_update(update(&dir, &mut bundle, 2).unwrap());
+        drain(&rx, &mut screen);
+        let fresh = labelled.map(|t| t.replace("local 1", "local 0"));
+        assert_eq!(screen.texts(), fresh, "{mount}");
+
+        // A changed initializer starts afresh.
+        let edited = edited.replace("signal(0)", "signal(10)");
+        std::fs::write(dir.join("App.tsx"), &edited).unwrap();
+        control.hot_update(update(&dir, &mut bundle, 3).unwrap());
+        drain(&rx, &mut screen);
+        assert!(
+            screen.texts().contains(&"taps 10".to_owned()),
+            "{:?}",
+            screen.texts()
+        );
+        assert!(
+            screen.texts().contains(&"push page1".to_owned()),
+            "{:?}",
+            screen.texts()
+        );
+
+        assert!(failed.try_recv().is_err(), "no update needed a reload");
+        assert!(errors.try_recv().is_err(), "no errors");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -93,7 +93,8 @@ release 构建（所有并非从开发服务器加载的代码）在加载时会
       "http": [{ "host": "quotes.example.com", "methods": ["GET"], "pathPrefix": "/v1/" }]
     },
     "webview": { "hosts": ["*.example.com"] },
-    "statusBar": true
+    "statusBar": true,
+    "clipboard": true
   }
 }
 ```
@@ -135,6 +136,10 @@ web view 内的顶层导航也会在加载前由平台的导航代理检查。�
 
 `"statusBar": true` 允许应用修改状态栏（[`nsh/ui/mobile`](../components/status-bar.md) 中的 `StatusBar` 组件及其函数）。
 
+### `clipboard`
+
+`"clipboard": true` 允许应用读写系统剪贴板（[`nsh/clipboard`](../modules/nsh-clipboard.md)）。从可选文本的编辑菜单复制是用户自己的操作，不需要这项能力。
+
 ### 被拒绝时的表现
 
 | 请求 | 结果 |
@@ -142,6 +147,7 @@ web view 内的顶层导航也会在加载前由平台的导航代理检查。�
 | `fetch` | Promise 被 reject；请求根本不会发到网络。 |
 | 远程图片 | 图片加载失败，触发 `onError`。 |
 | 视频源、web view 源、状态栏修改 | 不显示也不修改任何东西。 |
+| 剪贴板 | `setString` 不做任何事；`getString` 返回 `""`，`hasString` 返回 `false`。 |
 
 每种拒绝只记录一次日志，并说明需要添加哪个键：
 

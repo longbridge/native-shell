@@ -11,7 +11,12 @@
 //! `__nsh_hot.component(module, name, fn, signature)`, which returns a stable
 //! proxy. The signature changes when the component's own code, or the
 //! module's code outside components, changes. Top-level `context()`
-//! calls go through `__nsh_hot.context` so contexts keep their identity.
+//! calls go through `__nsh_hot.context` so contexts keep their identity;
+//! top-level `const`s made by `signal()` / `createNavigator()` go through
+//! `__nsh_hot.keep`, so a module that runs again keeps their state (and a
+//! navigator its screens) while their initializer's code is the same. A
+//! function passed to a top-level `mount()` is a component too (named
+//! `mount#<n>`), so the hot runtime can keep the mounted tree.
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -24,7 +29,7 @@ use oxc::{
         ast::{
             Argument, AssignmentOperator, AssignmentTarget, BindingPattern, Declaration,
             ExportDefaultDeclarationKind, Expression, IdentifierName, Program, Statement,
-            VariableDeclaration,
+            VariableDeclaration, VariableDeclarationKind,
         },
         builder::AstBuilder,
     },
@@ -34,6 +39,10 @@ use oxc::{
 
 /// Name of the hot runtime global.
 const HOT: &str = "__nsh_hot";
+
+/// Calls whose top-level `const` results keep their state across runs of
+/// their module (`__nsh_hot.keep`).
+const KEPT: &[&str] = &["signal", "createNavigator"];
 
 /// Whether a node contains JSX.
 #[derive(Default)]
@@ -96,6 +105,26 @@ enum Target {
         declarator: usize,
         name: String,
     },
+    /// `const name = signal(…)` (a [`KEPT`] call).
+    Keep {
+        index: usize,
+        declarator: usize,
+        name: String,
+        span: Span,
+    },
+    /// `mount(() => …)`: the function, argument 0 of the call at
+    /// statement `index`, the `n`th such call of the module.
+    Mount { index: usize, n: usize, span: Span },
+}
+
+fn callee<'a>(e: &'a Expression<'_>) -> Option<&'a str> {
+    match e {
+        Expression::CallExpression(call) => match &call.callee {
+            Expression::Identifier(c) => Some(c.name.as_str()),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn variable_targets(index: usize, v: &VariableDeclaration<'_>, out: &mut Vec<Target>) {
@@ -116,12 +145,21 @@ fn variable_targets(index: usize, v: &VariableDeclaration<'_>, out: &mut Vec<Tar
                     span: decl.span,
                 });
             }
-            Expression::CallExpression(call) if matches!(&call.callee, Expression::Identifier(c) if c.name == "context") =>
-            {
+            _ if callee(init) == Some("context") => {
                 out.push(Target::Context {
                     index,
                     declarator: d,
                     name: name.to_owned(),
+                });
+            }
+            _ if v.kind == VariableDeclarationKind::Const
+                && callee(init).is_some_and(|c| KEPT.contains(&c)) =>
+            {
+                out.push(Target::Keep {
+                    index,
+                    declarator: d,
+                    name: name.to_owned(),
+                    span: init.span(),
                 });
             }
             _ => {}
@@ -142,6 +180,34 @@ fn function_target(index: usize, f: &oxc::ast::ast::Function<'_>, out: &mut Vec<
     }
 }
 
+/// `mount(() => …)` / `mount(function () {…})` at statement `index`.
+fn mount_target(index: usize, statement: &Statement<'_>, n: &mut usize, out: &mut Vec<Target>) {
+    let Statement::ExpressionStatement(e) = statement else {
+        return;
+    };
+    let Expression::CallExpression(call) = &e.expression else {
+        return;
+    };
+    if !matches!(&call.callee, Expression::Identifier(c) if c.name == "mount") {
+        return;
+    }
+    let Some(arg) = call.arguments.first().and_then(Argument::as_expression) else {
+        return;
+    };
+    if matches!(
+        arg,
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+    ) && expression_has_jsx(arg)
+    {
+        out.push(Target::Mount {
+            index,
+            n: *n,
+            span: arg.span(),
+        });
+        *n += 1;
+    }
+}
+
 /// Makes the components and contexts of `program` hot. `key` identifies the
 /// module across builds (its path relative to the app root); `source` is
 /// the text the program was parsed from.
@@ -152,8 +218,12 @@ pub(crate) fn transform<'a>(
     key: &str,
 ) {
     let mut targets = Vec::new();
+    let mut mounts = 0;
     for (index, statement) in program.body.iter().enumerate() {
         match statement {
+            Statement::ExpressionStatement(_) => {
+                mount_target(index, statement, &mut mounts, &mut targets);
+            }
             Statement::FunctionDeclaration(f) => function_target(index, f, &mut targets),
             Statement::VariableDeclaration(v) => variable_targets(index, v, &mut targets),
             Statement::ExportDeclaration(e) => match &e.declaration {
@@ -178,8 +248,10 @@ pub(crate) fn transform<'a>(
     let mut spans: Vec<Span> = targets
         .iter()
         .filter_map(|t| match t {
-            Target::Function { span, .. } | Target::Arrow { span, .. } => Some(*span),
-            Target::Context { .. } => None,
+            Target::Function { span, .. }
+            | Target::Arrow { span, .. }
+            | Target::Mount { span, .. } => Some(*span),
+            Target::Context { .. } | Target::Keep { .. } => None,
         })
         .collect();
     spans.sort_by_key(|s| s.start);
@@ -260,6 +332,38 @@ pub(crate) fn transform<'a>(
                 wrap_init(&mut program.body[index], declarator, |init| {
                     call("context", vec![string(key), string(&name), init])
                 });
+            }
+            Target::Keep {
+                index,
+                declarator,
+                name,
+                span,
+            } => {
+                // The initializer's own code: an edit to it starts afresh.
+                let sig = hash(&[source
+                    .get(span.start as usize..span.end as usize)
+                    .unwrap_or_default()]);
+                wrap_init(&mut program.body[index], declarator, |init| {
+                    call("keep", vec![string(key), string(&name), string(&sig), init])
+                });
+            }
+            Target::Mount { index, n, span } => {
+                let sig = signature(span);
+                let Statement::ExpressionStatement(e) = &mut program.body[index] else {
+                    continue;
+                };
+                let Expression::CallExpression(c) = &mut e.expression else {
+                    continue;
+                };
+                let Some(first) = c.arguments.first_mut() else {
+                    continue;
+                };
+                let placeholder = Argument::from(Expression::new_null_literal(SPAN, &b));
+                let f = std::mem::replace(first, placeholder).into_expression();
+                *first = Argument::from(call(
+                    "component",
+                    vec![string(key), string(&format!("mount#{n}")), f, string(&sig)],
+                ));
             }
         }
     }

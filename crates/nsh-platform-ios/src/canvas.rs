@@ -11,9 +11,9 @@
 
 use std::{cell::RefCell, f64::consts::TAU, sync::Arc};
 
-use nsh_anim::AnimValue;
+use nsh_animation::AnimationValue;
 use nsh_core::{
-    Color,
+    Color, FontVariant,
     canvas::{
         CanvasFont, CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite,
         Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp, arc_sweep,
@@ -40,7 +40,7 @@ use crate::native_view::NshView;
 pub(crate) struct CanvasViewIvars {
     drawing: RefCell<Option<Arc<Drawing>>>,
     /// Current values of the drawing's native value slots.
-    values: RefCell<Vec<AnimValue>>,
+    values: RefCell<Vec<AnimationValue>>,
     /// Images it draws, by URI, once loaded.
     images: RefCell<FxHashMap<Arc<str>, Retained<UIImage>>>,
 }
@@ -110,11 +110,11 @@ impl CanvasView {
     }
 
     /// Sets slot `slot` to `value`; draws again if it changed.
-    pub(crate) fn set_value(&self, slot: u16, value: AnimValue) {
+    pub(crate) fn set_value(&self, slot: u16, value: AnimationValue) {
         let mut values = self.ivars().values.borrow_mut();
         let i = slot as usize;
         if values.len() <= i {
-            values.resize(i + 1, AnimValue::Number(0.0));
+            values.resize(i + 1, AnimationValue::Number(0.0));
         }
         if values[i] != value {
             values[i] = value;
@@ -181,6 +181,8 @@ struct State {
     composite: Composite,
     shadow: (Color, f64, f64, f64),
     font: CanvasFont,
+    /// `fontVariantNumeric`.
+    numeric: FontVariant,
     align: CanvasTextAlign,
     baseline: CanvasTextBaseline,
     ctm: Affine,
@@ -201,6 +203,7 @@ impl Default for State {
             composite: Composite::SourceOver,
             shadow: (Color::TRANSPARENT, 0.0, 0.0, 0.0),
             font: CanvasFont::default(),
+            numeric: FontVariant::default(),
             align: CanvasTextAlign::Start,
             baseline: CanvasTextBaseline::Alphabetic,
             ctm: Affine::IDENTITY,
@@ -210,7 +213,7 @@ impl Default for State {
 
 struct Replay<'a> {
     c: &'a CGContext,
-    values: &'a [AnimValue],
+    values: &'a [AnimationValue],
     images: &'a FxHashMap<Arc<str>, Retained<UIImage>>,
     state: State,
     stack: Vec<State>,
@@ -238,7 +241,7 @@ impl<'a> Replay<'a> {
         match paint {
             Paint::Color(c) => Some(*c),
             Paint::Slot(s) => match self.values.get(*s as usize) {
-                Some(AnimValue::Color(c)) => Some(Color(*c)),
+                Some(AnimationValue::Color(c)) => Some(Color(*c)),
                 _ => None,
             },
             Paint::Gradient(_) => None,
@@ -343,6 +346,7 @@ impl<'a> Replay<'a> {
                 self.state.shadow.3 = *y as f64;
             }
             CanvasOp::Font(f) => self.state.font = f.clone(),
+            CanvasOp::FontVariantNumeric(v) => self.state.numeric = *v,
             CanvasOp::TextAlign(a) => self.state.align = *a,
             CanvasOp::TextBaseline(b) => self.state.baseline = *b,
             CanvasOp::FillText {
@@ -666,7 +670,7 @@ impl<'a> Replay<'a> {
         }
         let c = self.ctx();
         let s = &self.state;
-        let font = crate::text::make_font(&s.font.text_style());
+        let font = crate::text::make_font(&s.font.with_numeric(s.numeric).text_style());
         let string =
             CFMutableAttributedString::new(None, 0).expect("CFAttributedStringCreateMutable");
         let whole = CFRange {

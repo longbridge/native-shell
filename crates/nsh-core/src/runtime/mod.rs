@@ -1,5 +1,5 @@
 //! The runtime's modules written in Rust: `nsh/android`'s `Toast`,
-//! `nsh/accessibility`'s commands, all of `nsh/image`. Their JS face is made
+//! `nsh/accessibility`'s commands, all of `nsh/image` and `nsh/clipboard`. Their JS face is made
 //! from their specs like a UI set's (`nsh-js` `components.rs`), and so are
 //! their declarations ([`crate::ui::declarations`]); `nsh-js` adds what has
 //! to run in JS (the app's listeners, reactive accessors).
@@ -10,6 +10,7 @@ use crate::ui::{Function, Registry};
 
 mod accessibility;
 mod android;
+mod clipboard;
 mod image;
 
 /// The runtime's Rust modules, one registry per JS module (its
@@ -26,7 +27,9 @@ pub fn registries() -> &'static [Registry] {
         accessibility.module::<accessibility::AccessibilityInfo>();
         let mut image = Registry::runtime("nsh/image");
         image.module::<image::Image>();
-        vec![android, accessibility, image]
+        let mut clipboard = Registry::runtime("nsh/clipboard");
+        clipboard.module::<clipboard::Clipboard>();
+        vec![android, accessibility, image, clipboard]
     })
 }
 

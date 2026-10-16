@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Every nsh subcommand and flag - init, build, trace, dev, run, package, and the signing commands keygen, certify, publish, verify and revoke.
+description: Every nsh subcommand and flag - init, build, trace, check, dev, run, package, and the signing commands keygen, certify, publish, verify and revoke.
 order: 5
 ---
 
@@ -14,6 +14,7 @@ nsh <COMMAND>
   init     Create an app
   build    Bundle an app and compile it to QuickJS bytecode
   trace    Run an app headless and print the mount instructions and timings
+  check    Type check an app with TypeScript's native compiler
   dev      Serve an app to dev hosts (simulators, devices) and push rebuilds
   run      Like dev, and also run the app in a development host
   package  Package an installable app from the prebuilt runtime
@@ -68,7 +69,7 @@ Creates an app in `DIR` (default: the current directory, created if missing): `A
 nsh run [ENTRY] [--target catalyst|ios|android] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
 ```
 
-Starts the dev server (as `nsh dev`), launches a development host that loads the app from it, and rebuilds on every save. Hot module replacement patches the running app in place; logs and errors from the app are printed in the terminal. Stop it with Ctrl-C (or by closing the Catalyst window).
+Starts the dev server (as `nsh dev`), launches a development host that loads the app from it, and rebuilds on every save. Hot module replacement patches the running app in place; logs and errors from the app are printed in the terminal. Stop it with Ctrl-C (or by closing the Catalyst window). However it ends (Ctrl-C, `kill` / `pkill`, an error), it stops the host it started: the Catalyst app, the development host in the simulator, or on the Android device.
 
 | Flag | Default | Description |
 |---|---|---|
@@ -99,10 +100,11 @@ Use it with hosts you start yourself, for example an app that embeds the develop
 ## nsh trace
 
 ```sh
-nsh trace [ENTRY] [--taps <N>] [--idle-ms <MS>] [--scroll <POINTS>] [--width <W>] [--height <H>]
+nsh trace [ENTRY] [--tap <SELECTOR>]... [--taps <N>] [--idle-ms <MS>] [--wait <MS>] [--duration <MS>]
+          [--scroll <POINTS>] [--width <W>] [--height <H>] [--safe-area <INSETS>]
 ```
 
-Runs the app headless, in the CLI's own process with the same core and runtime as a device but no views, and prints every mount instruction (create, insert, style, frame, text) and the time of each commit. Then it taps the first pressable view and prints what each tap changed. Use it to check that an app starts without errors, to count the work an interaction causes, and in CI ([Testing and trace](./testing-and-trace.md)).
+Runs the app headless, in the CLI's own process with the same core and runtime as a device but no views, and prints every mount instruction (create, insert, style, frame, text) and the time of each commit. Then it taps views (the ones `--tap` names, or the first pressable one) and prints what each tap changed. Use it to check that an app starts without errors, to count the work an interaction causes, and in CI ([Testing and trace](./testing-and-trace.md)).
 
 ```text
 ✓ bundled App.tsx (3255 B in 12.6 ms)
@@ -116,13 +118,30 @@ perf commit: 56 ops, 412µs (list js 6µs), 49 mount items, 21 nodes
 
 | Flag | Default | Description |
 |---|---|---|
-| `--taps <N>` | `2` | Taps sent to the first pressable view. A tap that changes nothing is an error (exit code 1). |
-| `--idle-ms <MS>` | `1200` | Idle time before tapping. The default lets the engine's idle garbage collection run first, so retention bugs show up. |
+| `--tap <SELECTOR>` | | Tap a view; repeat it for several taps, in order. `id:<testID>`, `label:<accessibilityLabel>`, `text:<text>`, `view:<id>` (a view id from the output), or a bare string, matched as a `testID`, then a label, then a text. The first match on screen is tapped, or its nearest pressable ancestor (the button around a text). No match is an error. |
+| `--taps <N>` | `2` | Without `--tap`: taps sent to the first pressable view. A tap that changes nothing is an error (exit code 1). |
+| `--idle-ms <MS>` | `1200` | Before tapping, wait until the app renders nothing for this long (at most 10 s, for apps with timers or animations). The default lets the engine's idle garbage collection run first, so retention bugs show up. |
+| `--wait <MS>` | | Run timers and animations exactly this long before the first tap and after each one, printing what they render, instead of waiting until the app is idle. |
+| `--duration <MS>` | `0` | Keep running this long after the last tap. |
+| `--safe-area <INSETS>` | `0` | Safe area insets in points, `top,right,bottom,left` (or one value for all four), e.g. `47,0,34,0` for a phone with a notch. |
 | `--scroll <POINTS>` | | Scrolls the first scroll view or list by this many points, 10 points per frame, and prints each frame's batch. |
 | `--width <W>` | `390` | Viewport width in points. |
 | `--height <H>` | `844` | Viewport height in points. |
 
 `nsh trace` behaves as iOS: `Platform.OS` is `"ios"`, and `ios:` classes and `ios={{…}}` props apply.
+
+## nsh check
+
+```sh
+nsh check [ENTRY] [--tsc <TSC>] [-- <TSC ARGS>...]
+```
+
+Type checks the app: refreshes `.nsh/types`, then runs `tsc -p <app directory> --noEmit` with the app's `tsconfig.json`. It uses TypeScript 7, the native compiler, which needs no Node: the first run downloads it from the npm registry (about 9 MB), checks it against the checksum nsh records, and keeps it in nsh's cache (`~/Library/Caches/nsh` on macOS, `~/.cache/nsh` on Linux, or `NSH_CACHE`). Type errors make it exit with a non-zero code.
+
+| Flag | Description |
+|---|---|
+| `--tsc <TSC>` | Run this `tsc` instead (also `NSH_TSC`), for example one from `node_modules` or a copy for machines without network. |
+| `-- <TSC ARGS>` | Passed on to `tsc`, e.g. `nsh check -- --pretty false`. |
 
 ## nsh build
 

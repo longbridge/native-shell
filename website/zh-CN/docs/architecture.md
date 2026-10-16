@@ -114,7 +114,7 @@ nsh 是一个 Rust workspace。编写应用时你永远不需要构建它（发�
 |---|---|
 | `nsh-core` | 平台无关的核心：影子树、样式、Taffy 布局、文本合并、列表虚拟化、mount item；CSS 值和 Tailwind；Rust 组件的框架和主题。 |
 | `nsh-ui-mobile` | `nsh/ui/mobile` 的组件和模块（`Button`、`Card`、`SafeAreaView`、`Alert` 等），用 Rust 编写。 |
-| `nsh-anim` | 原生动画图：值、插值、timing / spring / decay。 |
+| `nsh-animation` | 原生动画图：值、插值、timing / spring / decay。 |
 | `nsh-js` | QuickJS 宿主和 nsh 的运行时：响应式图、渲染器、所有原生模块、Web API、热模块替换、限制；以及这一切的 TypeScript 声明。 |
 | `nsh-engine` | 引擎线程：驱动 `nsh-js` 和 `nsh-core`，每帧向平台交付一个 batch。 |
 | `nsh-package` | 签名包：密钥、证书、吊销、信任库。 |

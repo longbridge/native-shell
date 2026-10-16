@@ -240,6 +240,35 @@ impl Decor {
         }
     }
 
+    /// Sets the color of every border side (an animated `borderColor`) on
+    /// the layers [`Decor::apply`] made for the borders.
+    pub(crate) fn set_border_color(&self, view: &UIView, color: Color) {
+        let cg = cg_color(color);
+        quiet(|| {
+            if let Some(s) = &self.stroke {
+                s.setStrokeColor(cg.as_deref());
+            }
+            for r in &self.ring {
+                r.setFillColor(cg.as_deref());
+            }
+            let layer = self
+                .content
+                .as_ref()
+                .map_or_else(|| view.layer(), |c| c.layer());
+            if layer.borderWidth() > 0.0 {
+                layer.setBorderColor(cg.as_deref());
+            }
+        });
+    }
+
+    /// Sets the shadow's color, opacity and radius (animated ones).
+    pub(crate) fn set_shadow(&self, view: &UIView, color: Color, opacity: f32, radius: f32) {
+        let layer = view.layer();
+        layer.setShadowColor(cg_color(color).as_deref());
+        layer.setShadowOpacity(opacity.clamp(0.0, 1.0));
+        layer.setShadowRadius(radius.max(0.0) as CGFloat);
+    }
+
     /// Shapes `view` after `style` at its current size. `background` is the
     /// current (possibly animated) background; `animated_background` tells
     /// whether it may change without a new style.

@@ -1,5 +1,5 @@
 [package]
-name = "nsh-anim"
+name = "nsh-animation"
 description = "Native animation graph: values, drivers (timing, spring, decay), interpolation and bindings."
 version.workspace = true
 edition.workspace = true

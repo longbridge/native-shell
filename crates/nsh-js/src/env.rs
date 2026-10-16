@@ -11,7 +11,7 @@ use std::{
     ptr,
 };
 
-use nsh_core::platform::{ColorScheme, Environment, Idiom, Os};
+use nsh_core::platform::{Appearance, ColorScheme, Environment, Idiom, Os};
 use rquickjs::qjs;
 
 use crate::{
@@ -50,6 +50,8 @@ pub(crate) struct Env {
     /// `I18nManager.allowRTL` / `forceRTL`.
     allow_rtl: Cell<bool>,
     force_rtl: Cell<bool>,
+    /// The app's appearance (`nsh.json`, `setColorScheme`).
+    appearance: Cell<Appearance>,
     /// The insets context (owned): screens and modals provide theirs.
     insets: Cell<JsValue>,
     /// `AccessibilityInfo.addEventListener` listeners: (id, screen reader
@@ -66,6 +68,7 @@ impl Default for Env {
             accessors: std::array::from_fn(|_| Cell::new(UNDEFINED)),
             allow_rtl: Cell::new(true),
             force_rtl: Cell::new(false),
+            appearance: Cell::new(Appearance::System),
             insets: Cell::new(UNDEFINED),
             listeners: RefCell::new(Vec::new()),
             next_listener: Cell::new(1),
@@ -161,6 +164,63 @@ fn rtl(e: &Env, env: &Environment) -> bool {
     (e.allow_rtl.get() && env.rtl) || e.force_rtl.get()
 }
 
+/// The color scheme shown: the app's, else the system's.
+fn scheme(e: &Env, env: &Environment) -> &'static str {
+    match e.appearance.get().resolve(env.color_scheme) {
+        ColorScheme::Light => "light",
+        ColorScheme::Dark => "dark",
+    }
+}
+
+/// Shows the surface in `appearance` (`nsh.json` `"appearance"`,
+/// `setColorScheme`): `colorScheme()` follows it at once, the core
+/// (`dark:` classes, the components' theme) and the platform's controls
+/// with the root's `appearance` prop.
+pub(crate) fn set_appearance(ctx: *mut JsContext, appearance: Appearance) -> JsValue {
+    let e = env(ctx);
+    e.appearance.set(appearance);
+    let op = nsh_core::Op::SetProp {
+        id: nsh_core::ROOT_ID,
+        prop: nsh_core::Prop::Appearance(appearance),
+    };
+    if let Err(err) = crate::dom::push_op(ctx, op) {
+        return err;
+    }
+    let value = string(ctx, scheme(e, &current(ctx)));
+    reactive::set_signal(ctx, e.signals[Part::ColorScheme as usize].get(), value);
+    reactive::finish_value(ctx, UNDEFINED)
+}
+
+/// `"light"` / `"dark"` / `"system"`.
+pub(crate) fn parse_appearance(name: &str) -> Option<Appearance> {
+    match name {
+        "system" => Some(Appearance::System),
+        "light" => Some(Appearance::Light),
+        "dark" => Some(Appearance::Dark),
+        _ => None,
+    }
+}
+
+/// `setColorScheme(scheme)`.
+unsafe extern "C" fn set_color_scheme(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let name = crate::dom::string_arg(ctx, arg(argc, argv, 0)).unwrap_or_default();
+    match parse_appearance(&name) {
+        Some(appearance) => set_appearance(ctx, appearance),
+        // SAFETY: throws on a live context.
+        None => unsafe {
+            qjs::JS_ThrowTypeError(
+                ctx,
+                c"setColorScheme: expected \"light\", \"dark\" or \"system\"".as_ptr(),
+            )
+        },
+    }
+}
+
 /// Takes in what the platform reports: writes the parts that changed.
 pub(crate) fn set_environment(ctx: *mut JsContext, next: &Environment) -> Result<(), ()> {
     let e = env(ctx);
@@ -203,11 +263,7 @@ pub(crate) fn set_environment(ctx: *mut JsContext, next: &Environment) -> Result
         ));
     }
     if changed(&|p| p.color_scheme == next.color_scheme) {
-        let scheme = match next.color_scheme {
-            ColorScheme::Light => "light",
-            ColorScheme::Dark => "dark",
-        };
-        writes.push((Part::ColorScheme, string(ctx, scheme)));
+        writes.push((Part::ColorScheme, string(ctx, scheme(e, next))));
     }
     if changed(&|p| p.font_scale == next.font_scale) {
         writes.push((Part::FontScale, number(next.font_scale)));
@@ -276,6 +332,12 @@ fn accessor(ctx: *mut JsContext, part: Part) -> JsValue {
 
 fn current(ctx: *mut JsContext) -> Environment {
     (*env(ctx).current.borrow()).unwrap_or_default()
+}
+
+/// The user's locale (`Intl`'s default), read where it is used: a change
+/// applies to what is formatted next.
+pub(crate) fn locale(ctx: *mut JsContext) -> nsh_core::platform::Locale {
+    current(ctx).locale
 }
 
 /// `useSafeAreaInsets()`: the insets of the nearest screen or modal (an
@@ -599,8 +661,16 @@ pub(crate) const DEVICE_EXPORTS: &[Item] = &[
         "colorScheme",
         Export::Value(|ctx| accessor(ctx, Part::ColorScheme)),
         Ts::Const(
-            "The system appearance (reactive).",
+            "The appearance shown (reactive): the system's, unless the app set its\nown (`nsh.json` `\"appearance\"`, `setColorScheme`).",
             "Accessor<\"light\" | \"dark\">",
+        ),
+    ),
+    (
+        "setColorScheme",
+        Export::Function(set_color_scheme, 1),
+        Ts::Function(
+            "Shows the app in `scheme` whatever the system's appearance, at once:\n`colorScheme()`, `dark:` classes, the components' theme and the\nplatform's controls (alerts, the status bar's default style) follow it;\n`\"system\"` follows the system again. `nsh.json` `\"appearance\"` sets it\nfrom the start.",
+            &["(scheme: \"light\" | \"dark\" | \"system\"): void"],
         ),
     ),
     (

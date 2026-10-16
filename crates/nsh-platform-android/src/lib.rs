@@ -7,7 +7,7 @@
 //!   `StaticLayout` (through JNI), and every commit is encoded into one
 //!   `byte[]` (+ an object array for strings and layouts) that a single JNI
 //!   call hands to the UI thread, where `Mounter.java` applies it.
-//! - Native animations (the `nsh-anim` graph) run on the UI thread in Rust:
+//! - Native animations (the `nsh-animation` graph) run on the UI thread in Rust:
 //!   `Choreographer` ticks call in, and changed values come back as a
 //!   compact array.
 //!
@@ -15,7 +15,7 @@
 
 #![cfg(target_os = "android")]
 
-mod anim;
+mod animation;
 #[cfg(feature = "dev")]
 mod dev;
 mod encode;

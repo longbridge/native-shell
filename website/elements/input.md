@@ -62,7 +62,7 @@ view styles apply):
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `keyboardType` | `"default" \| "number-pad" \| "numeric" \| "decimal-pad" \| "email-address" \| "phone-pad" \| "url"` | `"default"` | The keyboard layout. |
+| `keyboardType` | `"default" \| "number-pad" \| "decimal-pad" \| "numeric" \| "numbers-and-punctuation" \| "email-address" \| "phone-pad" \| "url"` | `"default"` | The keyboard layout ([the values](../docs/forms-and-keyboard.md#keyboards-and-autofill); `numbers-and-punctuation` has a minus sign on iOS). |
 | `returnKeyType` | `"default" \| "done" \| "go" \| "next" \| "search" \| "send"` | `"default"` | The label of the return key. |
 | `autoCapitalize` | `"none" \| "sentences" \| "words" \| "characters"` | `"sentences"` | Automatic capitalization. |
 | `autoCorrect` | `boolean` | `true` | The system's corrections. |
@@ -84,6 +84,7 @@ view styles apply):
 |---|---|---|
 | `textContentType` | `AutoComplete \| TextContentType` | iOS's names for `autoComplete` (`"oneTimeCode"`, `"newPassword"`, …). |
 | `inputAccessoryViewID` | `string` | The `nativeID` of an `InputAccessoryView` ([`nsh/ios`](../modules/nsh-ios.md)) shown over the keyboard while the input has focus. |
+| `keyboardAppearance` | `"default" \| "light" \| "dark"` | The keyboard's look; `"default"` follows the system's appearance. Android's keyboards follow the system's theme. |
 
 ```tsx
 <Input autoComplete="one-time-code" keyboardType="number-pad" ios={{ textContentType: "oneTimeCode" }} />

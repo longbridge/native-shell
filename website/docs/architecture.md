@@ -129,7 +129,7 @@ the names show up in logs and docs:
 |---|---|
 | `nsh-core` | The platform-independent core: shadow tree, styles, Taffy layout, text merging, list virtualization, mount items; CSS values and Tailwind; the Rust components' framework and theme. |
 | `nsh-ui-mobile` | The components and modules of `nsh/ui/mobile` (`Button`, `Card`, `SafeAreaView`, `Alert`, ...), written in Rust. |
-| `nsh-anim` | The native animation graph: values, interpolation, timing / spring / decay. |
+| `nsh-animation` | The native animation graph: values, interpolation, timing / spring / decay. |
 | `nsh-js` | The QuickJS host and nsh's runtime: the reactive graph, the renderer, every native module, the web APIs, hot module replacement, limits; and the TypeScript declarations of all of it. |
 | `nsh-engine` | The engine thread: drives `nsh-js` and `nsh-core` and hands one batch per frame to the platform. |
 | `nsh-package` | Signed packages: keys, certificates, revocation, the trust store. |

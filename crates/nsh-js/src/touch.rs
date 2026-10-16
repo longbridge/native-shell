@@ -6,14 +6,17 @@
 //! arrive with the path of listening views from the target outwards.
 //! Handlers then run as in React Native: touch handlers capture inwards and
 //! bubble outwards, and the responder is negotiated with the
-//! `…ShouldSetResponder` handlers.
+//! `…ShouldSetResponder` handlers, which also get the gesture since the
+//! first finger went down (`gestureState`, as `PanResponder`'s). A view with
+//! `panActivation` is not asked: it becomes the responder when the platform
+//! activates its pan (`TouchEvent::activated`).
 
 use std::{
     cell::{Cell, RefCell},
     ffi::{CStr, c_int},
 };
 
-use nsh_core::{Command, NodeId, Op, TouchEvent, TouchPhase, TouchPoint};
+use nsh_core::{Command, NodeId, Op, TouchEvent, TouchPhase, TouchPoint, ui::PanGesture};
 use rquickjs::qjs;
 use rustc_hash::FxHashMap;
 
@@ -57,22 +60,22 @@ pub(crate) const TOUCH_PROPS: [(&str, &str, &str); 20] = [
     ),
     (
         "onStartShouldSetResponder",
-        "(e: GestureResponderEvent) => boolean",
+        "(e: GestureResponderEvent, gestureState: ResponderGestureState) => boolean",
         "Become the responder when a finger goes down (asked from the target outwards).",
     ),
     (
         "onMoveShouldSetResponder",
-        "(e: GestureResponderEvent) => boolean",
-        "Become the responder when a finger moves.",
+        "(e: GestureResponderEvent, gestureState: ResponderGestureState) => boolean",
+        "Become the responder when a finger moves (`gestureState`: the gesture since the first finger went down, e.g. `Math.abs(g.dx) > 10`).",
     ),
     (
         "onStartShouldSetResponderCapture",
-        "(e: GestureResponderEvent) => boolean",
+        "(e: GestureResponderEvent, gestureState: ResponderGestureState) => boolean",
         "As above, asked from the outside in, before the bubbling ones.",
     ),
     (
         "onMoveShouldSetResponderCapture",
-        "(e: GestureResponderEvent) => boolean",
+        "(e: GestureResponderEvent, gestureState: ResponderGestureState) => boolean",
         "",
     ),
     (
@@ -127,6 +130,8 @@ pub(crate) struct Touches {
     blocks: Cell<bool>,
     /// `PanResponder` gesture state ids.
     pan_states: Cell<u32>,
+    /// The gesture since the first finger went down, for the negotiation.
+    gesture: Cell<PanGesture>,
 }
 
 fn touches<'a>(ctx: *mut JsContext) -> &'a Touches {
@@ -243,12 +248,22 @@ fn stopped(ctx: *mut JsContext, e: JsValue) -> bool {
 
 /// Calls node `id`'s handler `prop` with `e`; its result (owned).
 fn call(ctx: *mut JsContext, id: NodeId, prop: u8, e: JsValue) -> Result<JsValue, JsValue> {
+    call_with(ctx, id, prop, &mut [e])
+}
+
+/// Calls node `id`'s handler `prop` with `args` (borrowed); its result
+/// (owned).
+fn call_with(
+    ctx: *mut JsContext,
+    id: NodeId,
+    prop: u8,
+    args: &mut [JsValue],
+) -> Result<JsValue, JsValue> {
     let Some(f) = dom::touch_handler(ctx, id, prop) else {
         return Ok(UNDEFINED);
     };
-    let mut args = [e];
     // SAFETY: an owned function, called then freed.
-    let r = unsafe { qjs::JS_Call(ctx, f, UNDEFINED, 1, args.as_mut_ptr()) };
+    let r = unsafe { qjs::JS_Call(ctx, f, UNDEFINED, args.len() as c_int, args.as_mut_ptr()) };
     free(ctx, f);
     // SAFETY: an inline tag check.
     if unsafe { qjs::JS_IsException(r) } {
@@ -258,9 +273,9 @@ fn call(ctx: *mut JsContext, id: NodeId, prop: u8, e: JsValue) -> Result<JsValue
     }
 }
 
-/// Calls `prop` and tells whether it returned `true`.
-fn asks(ctx: *mut JsContext, id: NodeId, prop: u8, e: JsValue) -> Result<bool, JsValue> {
-    let r = call(ctx, id, prop, e)?;
+/// Calls `prop` with `args` and tells whether it returned `true`.
+fn asks(ctx: *mut JsContext, id: NodeId, prop: u8, args: &mut [JsValue]) -> Result<bool, JsValue> {
+    let r = call_with(ctx, id, prop, args)?;
     // SAFETY: an inline check of an owned value.
     let yes = unsafe { qjs::JS_IsBool(r) && qjs::JS_VALUE_GET_BOOL(r) };
     free(ctx, r);
@@ -297,7 +312,7 @@ fn command(ctx: *mut JsContext, id: NodeId, command: Command) -> Result<(), JsVa
 fn grant(ctx: *mut JsContext, id: NodeId, e: JsValue) -> Result<(), JsValue> {
     let t = touches(ctx);
     t.responder.set(Some(id));
-    let block = asks(ctx, id, index("onResponderGrant"), e)?;
+    let block = asks(ctx, id, index("onResponderGrant"), &mut [e])?;
     if block {
         command(ctx, id, Command::SetJsResponder { block: true })?;
     } else if t.blocks.get() {
@@ -316,10 +331,37 @@ fn release(ctx: *mut JsContext) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// The negotiation's `gestureState` (owned): the gesture since the first
+/// finger went down.
+fn gesture_state(ctx: *mut JsContext) -> JsValue {
+    let g = touches(ctx).gesture.get();
+    // SAFETY: a new object taking its fields.
+    let o = unsafe { qjs::JS_NewObject(ctx) };
+    for (k, v) in [
+        (c"moveX", g.move_x),
+        (c"moveY", g.move_y),
+        (c"x0", g.x0),
+        (c"y0", g.y0),
+        (c"dx", g.dx),
+        (c"dy", g.dy),
+        (c"vx", g.vx),
+        (c"vy", g.vy),
+    ] {
+        set(ctx, o, k, number(v as f64));
+    }
+    set(
+        ctx,
+        o,
+        c"numberActiveTouches",
+        number(g.active_touches as f64),
+    );
+    o
+}
+
 /// Asks `path` whether a view wants to become the responder (`kind`:
 /// `onStartShouldSetResponder` or `onMoveShouldSetResponder`), from the
 /// views around both the target and the current responder, the responder
-/// itself excluded.
+/// itself and views waiting for their pan excluded.
 fn negotiate(ctx: *mut JsContext, kind: &str, path: &[NodeId], e: JsValue) -> Result<(), JsValue> {
     let responder = touches(ctx).responder.get();
     let mut from = 0;
@@ -333,28 +375,61 @@ fn negotiate(ctx: *mut JsContext, kind: &str, path: &[NodeId], e: JsValue) -> Re
     }
     let capture = index(&format!("{kind}Capture"));
     let bubble = index(kind);
-    let mut wanting = None;
-    for &id in path[from.min(path.len())..].iter().rev() {
-        if asks(ctx, id, capture, e)? {
-            wanting = Some(id);
-            break;
+    let asked = &path[from.min(path.len())..];
+    // Made for the first handler asked.
+    let mut gs = UNDEFINED;
+    let mut ask = |id: NodeId, prop: u8| -> Result<bool, JsValue> {
+        if dom::pan_gated(ctx, id) || !dom::touch_handler_exists(ctx, id, prop) {
+            return Ok(false);
         }
-    }
-    if wanting.is_none() {
-        for &id in &path[from.min(path.len())..] {
-            if asks(ctx, id, bubble, e)? {
+        // SAFETY: an inline tag check.
+        if unsafe { qjs::JS_IsUndefined(gs) } {
+            gs = gesture_state(ctx);
+        }
+        asks(ctx, id, prop, &mut [e, gs])
+    };
+    let mut wanting = None;
+    let mut result = Ok(());
+    for &id in asked.iter().rev() {
+        match ask(id, capture) {
+            Ok(false) => {}
+            Ok(true) => {
                 wanting = Some(id);
+                break;
+            }
+            Err(x) => {
+                result = Err(x);
                 break;
             }
         }
     }
-    let Some(wanting) = wanting else {
-        return Ok(());
-    };
-    if Some(wanting) == responder {
-        return Ok(());
+    if wanting.is_none() && result.is_ok() {
+        for &id in asked {
+            match ask(id, bubble) {
+                Ok(false) => {}
+                Ok(true) => {
+                    wanting = Some(id);
+                    break;
+                }
+                Err(x) => {
+                    result = Err(x);
+                    break;
+                }
+            }
+        }
     }
-    if let Some(r) = responder {
+    free(ctx, gs);
+    result?;
+    match wanting {
+        Some(wanting) if Some(wanting) != responder => take_over(ctx, wanting, e),
+        _ => Ok(()),
+    }
+}
+
+/// View `wanting` wants the touches: it becomes the responder unless the
+/// current one refuses to let go.
+fn take_over(ctx: *mut JsContext, wanting: NodeId, e: JsValue) -> Result<(), JsValue> {
+    if let Some(r) = touches(ctx).responder.get() {
         let request = index("onResponderTerminationRequest");
         if dom::touch_handler_exists(ctx, r, request) {
             let r_ok = call(ctx, r, request, e)?;
@@ -386,6 +461,14 @@ pub(crate) fn dispatch(ctx: *mut JsContext, touch: &TouchEvent) -> Result<(), Js
         }
     }
     let lifted = matches!(phase, TouchPhase::End | TouchPhase::Cancel);
+    let mut gesture = t.gesture.get();
+    match phase {
+        // The gesture starts with the first finger.
+        TouchPhase::Start if touch.points.len() == 1 => gesture = PanGesture::begin(touch),
+        TouchPhase::Start | TouchPhase::Move => gesture.update(touch),
+        TouchPhase::End | TouchPhase::Cancel => {}
+    }
+    t.gesture.set(gesture);
     let down: Vec<&TouchPoint> = touch
         .points
         .iter()
@@ -406,6 +489,14 @@ pub(crate) fn dispatch(ctx: *mut JsContext, touch: &TouchEvent) -> Result<(), Js
         };
         two_phase(ctx, &path, raw, e)?;
         set(ctx, e, c"stopped", qjs::JS_FALSE);
+        // A pan the platform activated: its view takes the touches.
+        if let Some(id) = touch.activated
+            && dom::pan_gated(ctx, id)
+            && dom::listens_to_touches(ctx, id)
+            && touches(ctx).responder.get() != Some(id)
+        {
+            take_over(ctx, id, e)?;
+        }
         match phase {
             TouchPhase::Start => negotiate(ctx, "onStartShouldSetResponder", &path, e)?,
             TouchPhase::Move => negotiate(ctx, "onMoveShouldSetResponder", &path, e)?,
@@ -772,25 +863,45 @@ export interface GestureResponderEvent extends TouchPoint {
   /** Touch handlers (`onTouchStart`…): views further out do not see it. */
   stopPropagation(): void;
 }
-"#;
 
-/// `nsh/gesture`'s types.
-pub(crate) const GESTURE_TYPES: &str = r#"/** The state of a pan gesture (React Native's `PanResponderGestureState`). */
-export interface PanResponderGestureState {
-  stateID: number;
+/** A gesture followed through touch events: the fingers' centroid, how far
+ * it moved and how fast (React Native's `PanResponderGestureState`). The
+ * `…ShouldSetResponder` handlers get it since the first finger went down. */
+export interface ResponderGestureState {
   /** Latest position of the touches' centroid (surface points). */
   moveX: number;
   moveY: number;
-  /** Where the centroid was when the responder was granted. */
+  /** Where the centroid was when the gesture began. */
   x0: number;
   y0: number;
-  /** Distance moved since the grant. */
+  /** Distance moved since then. */
   dx: number;
   dy: number;
   /** Velocity (points per millisecond). */
   vx: number;
   vy: number;
   numberActiveTouches: number;
+}
+
+/** When a view's pan activates (`panActivation`; react-native-gesture-handler's
+ * `activeOffsetX` / `failOffsetY`), decided natively on the main thread as the
+ * finger moves: past an active offset the view becomes the responder and the
+ * scroll views around it can no longer take the touches; past a fail offset
+ * first it never does, and they keep them. Distances in points along one axis,
+ * either direction; without active offsets it activates after 10 points. */
+export interface PanActivation {
+  activeOffsetX?: number;
+  activeOffsetY?: number;
+  failOffsetX?: number;
+  failOffsetY?: number;
+}
+"#;
+
+/// `nsh/gesture`'s types.
+pub(crate) const GESTURE_TYPES: &str = r#"/** The state of a pan gesture (React Native's `PanResponderGestureState`):
+ * since the grant once the view is the responder. */
+export interface PanResponderGestureState extends ResponderGestureState {
+  stateID: number;
 }
 
 /** A `PanResponder.create` callback. */
@@ -830,6 +941,7 @@ mod tests {
         EventPayload::Touch(Box::new(TouchEvent {
             phase,
             timestamp: t,
+            activated: None,
             points: vec![TouchPoint {
                 id: 1,
                 target: 4,

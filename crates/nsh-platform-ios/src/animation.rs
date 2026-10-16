@@ -1,7 +1,7 @@
 //! Runs the native animation graph on the main thread, driven by a
 //! `CADisplayLink` that only runs while something animates.
 
-use nsh_anim::{AnimOp, AnimValue, Finished, Graph, NodeId};
+use nsh_animation::{AnimationOp, AnimationValue, Finished, Graph, NodeId};
 use objc2::{rc::Retained, sel};
 use objc2_foundation::{NSRunLoop, NSRunLoopCommonModes};
 use objc2_quartz_core::CADisplayLink;
@@ -32,7 +32,7 @@ impl Animator {
         }
     }
 
-    pub(crate) fn apply(&mut self, op: AnimOp) {
+    pub(crate) fn apply(&mut self, op: AnimationOp) {
         self.graph.apply(op, &mut self.finished);
         self.update_link();
     }
@@ -47,7 +47,7 @@ impl Animator {
         self.graph.value(node).unwrap_or(0.0)
     }
 
-    pub(crate) fn eval(&self, node: NodeId) -> AnimValue {
+    pub(crate) fn eval(&self, node: NodeId) -> AnimationValue {
         self.graph.eval(node)
     }
 

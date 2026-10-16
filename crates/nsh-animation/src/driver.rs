@@ -1,7 +1,7 @@
 //! Animation drivers. All are closed-form functions of elapsed time, so the
 //! result does not depend on frame rate or dropped frames.
 
-use crate::ops::{AnimId, Curve, Driver, EaseMode, Easing};
+use crate::ops::{AnimationId, Curve, Driver, EaseMode, Easing};
 
 /// Spring rest thresholds (value units and units per second).
 const REST_DISPLACEMENT: f32 = 0.001;
@@ -12,7 +12,7 @@ const DECAY_REST_SPEED: f32 = 0.0005;
 /// One animation running on a value.
 #[derive(Debug, Clone)]
 pub(crate) struct Running {
-    pub(crate) id: AnimId,
+    pub(crate) id: AnimationId,
     driver: Driver,
     from: f32,
     velocity: f32,
@@ -28,7 +28,7 @@ impl Running {
         self
     }
 
-    pub(crate) fn new(id: AnimId, driver: Driver, from: f32, velocity: f32) -> Self {
+    pub(crate) fn new(id: AnimationId, driver: Driver, from: f32, velocity: f32) -> Self {
         let velocity = match driver {
             Driver::Spring {
                 velocity: Some(v), ..
@@ -66,6 +66,15 @@ impl Running {
     /// Advances to `now` (seconds). Returns `(value, velocity, finished)`.
     pub(crate) fn step(&mut self, now: f64) -> (f32, f32, bool) {
         let start = *self.start.get_or_insert(now);
+        if let Driver::Decay {
+            deceleration,
+            clamp: Some(bounds),
+            bounce,
+            ..
+        } = self.driver
+        {
+            return self.bounded_decay(now, deceleration, bounds, bounce);
+        }
         let t = (now - start).max(0.0) as f32;
         match self.driver {
             Driver::Timing {
@@ -99,20 +108,110 @@ impl Running {
                     (to + x, v, false)
                 }
             }
-            Driver::Decay { deceleration, .. } => {
-                // Velocity in units per millisecond decays by `deceleration`
-                // every millisecond (React Native's formula).
-                let v0 = self.velocity / 1000.0;
-                let k = 1.0 - deceleration.clamp(0.0, 0.999_999);
-                let t_ms = t * 1000.0;
-                let decay = (-k * t_ms).exp();
-                let value = self.from + v0 / k * (1.0 - decay);
-                let speed = v0 * decay;
-                let finished = speed.abs() < DECAY_REST_SPEED;
-                (value, speed * 1000.0, finished)
-            }
+            Driver::Decay { deceleration, .. } => decay(self.from, self.velocity, deceleration, t),
         }
     }
+
+    /// A decay within `bounds`: each time it reaches one it stops there, or
+    /// goes on from it in the other direction with `bounce` of its speed
+    /// (a new segment of the closed form, starting at the exact time it got
+    /// there).
+    fn bounded_decay(
+        &mut self,
+        now: f64,
+        deceleration: f32,
+        (a, b): (f32, f32),
+        bounce: f32,
+    ) -> (f32, f32, bool) {
+        let (lo, hi) = (a.min(b), a.max(b));
+        let k = decay_rate(deceleration);
+        // A few bounces may fall within one frame.
+        for _ in 0..16 {
+            let start = self.start.unwrap_or(now);
+            let t_ms = ((now - start).max(0.0) * 1000.0) as f32;
+            if self.from < lo || self.from > hi {
+                // Started outside: it goes to the bound and stays.
+                self.from = self.from.clamp(lo, hi);
+                self.velocity = 0.0;
+                return (self.from, 0.0, true);
+            }
+            let v0 = self.velocity / 1000.0;
+            let bound = if v0 > 0.0 { hi } else { lo };
+            // The fraction of the whole travel (`v0 / k`) that reaches the
+            // bound; at 1 or more it never gets there.
+            let reach = if v0 == 0.0 {
+                f32::INFINITY
+            } else {
+                (bound - self.from) * k / v0
+            };
+            let hit = (reach < 1.0).then(|| -(1.0 - reach.max(0.0)).ln() / k);
+            match hit {
+                Some(hit) if hit <= t_ms => {
+                    let speed = -v0 * (-k * hit).exp() * bounce.clamp(0.0, 1.0);
+                    self.from = bound;
+                    if speed.abs() < DECAY_REST_SPEED {
+                        self.velocity = 0.0;
+                        return (bound, 0.0, true);
+                    }
+                    self.velocity = speed * 1000.0;
+                    self.start = Some(start + hit as f64 / 1000.0);
+                }
+                _ => {
+                    let (value, velocity, done) =
+                        decay(self.from, self.velocity, deceleration, t_ms / 1000.0);
+                    return (value.clamp(lo, hi), velocity, done);
+                }
+            }
+        }
+        (self.from, 0.0, true)
+    }
+}
+
+/// `1 - deceleration`: the fraction of velocity lost per millisecond.
+fn decay_rate(deceleration: f32) -> f32 {
+    1.0 - deceleration.clamp(0.0, 0.999_999)
+}
+
+/// Value, velocity and whether it stopped `t` seconds into a decay from
+/// `from` at `velocity` (units per second).
+fn decay(from: f32, velocity: f32, deceleration: f32, t: f32) -> (f32, f32, bool) {
+    // Velocity in units per millisecond decays by `deceleration` every
+    // millisecond (React Native's formula).
+    let v0 = velocity / 1000.0;
+    let k = decay_rate(deceleration);
+    let decay = (-k * t * 1000.0).exp();
+    let value = from + v0 / k * (1.0 - decay);
+    let speed = v0 * decay;
+    (value, speed * 1000.0, speed.abs() < DECAY_REST_SPEED)
+}
+
+/// `easing` at `count` evenly spaced points of `0..=1` (both ends
+/// included): the curve a timing animation follows, to draw it.
+pub fn sample_easing(easing: Easing, count: usize) -> Vec<f32> {
+    match count {
+        0 => Vec::new(),
+        1 => vec![ease(easing, 0.0)],
+        n => (0..n)
+            .map(|i| ease(easing, i as f32 / (n - 1) as f32))
+            .collect(),
+    }
+}
+
+/// The values `driver` moves a value through from `from`, every `step`
+/// seconds from its start until it ends (the last sample is where it
+/// ends), at most `max` of them: the exact curve the animation runs.
+pub fn sample_driver(driver: Driver, from: f32, step: f64, max: usize) -> Vec<f32> {
+    let mut running = Running::new(0, driver, from, 0.0).starting_at(0.0);
+    let step = step.max(1e-4);
+    let mut out = Vec::new();
+    for i in 0..max {
+        let (value, _, done) = running.step(i as f64 * step);
+        out.push(value);
+        if done {
+            break;
+        }
+    }
+    out
 }
 
 /// Displacement and velocity of a damped spring after `t` seconds, from
@@ -351,6 +450,8 @@ mod tests {
             Driver::Decay {
                 velocity: Some(1000.0),
                 deceleration: 0.998,
+                clamp: None,
+                bounce: 0.0,
             },
             0.0,
             0.0,
@@ -359,5 +460,77 @@ mod tests {
         // Total travel = v0 / (1 - d) = 1 unit/ms / 0.002 = 500 units.
         assert!((v - 500.0).abs() < 2.0, "{v}");
         assert!(t < 5.0);
+    }
+
+    fn bounded(bounce: f32) -> Driver {
+        Driver::Decay {
+            velocity: Some(1000.0),
+            deceleration: 0.998,
+            clamp: Some((-50.0, 100.0)),
+            bounce,
+        }
+    }
+
+    #[test]
+    fn bounded_decay_stops_at_the_bound() {
+        let mut r = Running::new(1, bounded(0.0), 0.0, 0.0);
+        // Free travel would be 500: it reaches 100 after
+        // -ln(1 - 100 * 0.002) / 0.002 ≈ 111.6 ms and stays.
+        assert_eq!(r.step(0.0), (0.0, 1000.0, false));
+        let (v, _, done) = r.step(0.1);
+        assert!(v < 100.0 && !done, "{v}");
+        assert_eq!(r.step(0.112), (100.0, 0.0, true));
+        // Starting outside: at the bound at once.
+        let mut r = Running::new(1, bounded(0.0), 300.0, 0.0);
+        assert_eq!(r.step(0.0), (100.0, 0.0, true));
+    }
+
+    #[test]
+    fn bounded_decay_bounces_within_the_bounds() {
+        let r = Running::new(1, bounded(0.5), 0.0, 0.0);
+        let mut r2 = r.clone();
+        let (v, t) = run(r, 10.0);
+        assert!((-50.0..=100.0).contains(&v), "{v}");
+        assert!(t < 10.0, "did not settle");
+        // Back from the top bound, moving down, soon after hitting it.
+        r2.step(0.0);
+        let (v, vel, _) = r2.step(0.15);
+        assert!(v < 100.0 && vel < 0.0, "{v} {vel}");
+        // Frame independent: one big step lands where small ones do.
+        let mut a = Running::new(1, bounded(0.5), 0.0, 0.0);
+        let mut b = a.clone();
+        a.step(0.0);
+        b.step(0.0);
+        for i in 1..=60 {
+            a.step(i as f64 / 120.0);
+        }
+        let (x, _, _) = a.step(0.5);
+        let (y, _, _) = b.step(0.5);
+        assert!((x - y).abs() < 1e-3, "{x} {y}");
+    }
+
+    #[test]
+    fn samples_follow_the_drivers() {
+        let linear = sample_easing(Easing::Linear, 5);
+        assert_eq!(linear, [0.0, 0.25, 0.5, 0.75, 1.0]);
+        let quad = sample_easing(Easing::Curve(Curve::Quad, EaseMode::In), 3);
+        assert_eq!(quad, [0.0, 0.25, 1.0]);
+        assert!(sample_easing(Easing::Linear, 0).is_empty());
+        let spring = Driver::Spring {
+            to: 1.0,
+            stiffness: 100.0,
+            damping: 10.0,
+            mass: 1.0,
+            velocity: Some(0.0),
+        };
+        let samples = sample_driver(spring, 0.0, 1.0 / 60.0, 1000);
+        assert_eq!(samples[0], 0.0);
+        assert_eq!(*samples.last().unwrap(), 1.0);
+        assert!(samples.iter().any(|&v| v > 1.0), "overshoots");
+        assert!(samples.len() < 1000);
+        // Exactly the frames a running spring shows.
+        let mut r = Running::new(1, spring, 0.0, 0.0).starting_at(0.0);
+        assert_eq!(r.step(10.0 / 60.0).0, samples[10]);
+        assert_eq!(sample_driver(spring, 0.0, 1.0 / 60.0, 3).len(), 3);
     }
 }

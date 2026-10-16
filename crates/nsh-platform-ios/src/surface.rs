@@ -223,6 +223,7 @@ impl RootView {
                 UIUserInterfaceIdiom::TV => Idiom::Tv,
                 _ => Idiom::Phone,
             },
+            locale: current_locale(),
         }
     }
 
@@ -436,6 +437,7 @@ impl RootView {
 /// large title, as UIKit lays them out on this device.
 fn header_heights(mtm: MainThreadMarker) -> (f32, f32) {
     let bar = objc2_ui_kit::UINavigationBar::new(mtm);
+    crate::navigation::keep_in_window(&bar);
     let normal = bar.sizeThatFits(CGSize::new(390.0, 0.0)).height as f32;
     let normal = if normal > 0.0 { normal } else { 44.0 };
     // Large titles add a 52pt row below the bar.
@@ -558,6 +560,15 @@ fn preferred_language_rtl() -> bool {
             NSLocale::characterDirectionForLanguage(&language)
                 == NSLocaleLanguageDirection::RightToLeft
         })
+}
+
+/// The user's region format (`NSLocale.currentLocale`: language and
+/// region, as Settings sets them), `Intl`'s default.
+fn current_locale() -> nsh_engine::Locale {
+    let identifier = objc2_foundation::NSLocale::currentLocale()
+        .localeIdentifier()
+        .to_string();
+    nsh_engine::Locale::parse(&identifier).unwrap_or_default()
 }
 
 /// The iOS version (`UIDevice.systemVersion`, the iOS version Catalyst

@@ -3,8 +3,8 @@
 //! `LayoutAnimation`. Everything runs on the UI thread, JS only describes
 //! it.
 //!
-//! Operations are encoded as a few values (`ANIM_*`) and decoded into
-//! `AnimOp`s (`protocol::decode_anim_op`). Nodes and composites are
+//! Operations are encoded as a few values (`ANIMATION_*`) and decoded into
+//! `AnimationOp`s (`protocol::decode_animation_op`). Nodes and composites are
 //! released when JS lets go of them (their finalizers queue the release); a
 //! promise of a started animation settles when the core reports its end
 //! (`Host::animations_finished`).
@@ -15,7 +15,7 @@ use std::{
     ptr,
 };
 
-use nsh_anim::AnimOp;
+use nsh_animation::AnimationOp;
 use nsh_core::js::protocol::*;
 use rquickjs::{Ctx, Value, qjs};
 use rustc_hash::FxHashMap;
@@ -41,9 +41,33 @@ pub(crate) struct Animations {
     next_node: Cell<u32>,
     next_animation: Cell<u32>,
     next_composite: Cell<u32>,
-    /// Promises of started animations: id -> (resolve, composite (or
-    /// undefined), callback (or undefined)), owned.
-    ends: RefCell<FxHashMap<u32, (JsValue, JsValue, JsValue)>>,
+    /// Promises of started animations and value reads, by id.
+    ends: RefCell<FxHashMap<u32, End>>,
+    /// Live composites by key (their finalizers take them out): a run going
+    /// on does not keep its composite alive, so the values it animates go
+    /// (and stop it) once nothing else holds them.
+    composites: RefCell<FxHashMap<u32, *mut CompositeData>>,
+    /// Live derived nodes by a hash of the operation that made them (its
+    /// node 0): deriving the same node again (a canvas drawing again, a
+    /// component rendering again) gets the same node instead of a new one
+    /// in the graph. The objects are not owned (their finalizers take them
+    /// out).
+    derived: RefCell<DerivedNodes>,
+}
+
+/// Derived nodes by hash: their operation (node 0), id and object.
+type DerivedNodes = FxHashMap<u64, Vec<(AnimationOp, u32, JsValue)>>;
+
+/// What a started animation or a value read settles.
+struct End {
+    /// Owned.
+    resolve: JsValue,
+    /// Owned, or undefined.
+    callback: JsValue,
+    /// The composite's key (0: none).
+    composite: u32,
+    /// Resolves with the value read rather than with `finished`.
+    read: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -61,6 +85,8 @@ impl Default for Animations {
             next_animation: Cell::new(2),
             next_composite: Cell::new(2),
             ends: RefCell::new(FxHashMap::default()),
+            composites: RefCell::new(FxHashMap::default()),
+            derived: RefCell::new(FxHashMap::default()),
         }
     }
 }
@@ -73,12 +99,13 @@ impl Animations {
             for p in self.protos.replace([UNDEFINED; 3]) {
                 qjs::JS_FreeValue(raw, p);
             }
-            for (_, (a, b, c)) in self.ends.borrow_mut().drain() {
-                qjs::JS_FreeValue(raw, a);
-                qjs::JS_FreeValue(raw, b);
-                qjs::JS_FreeValue(raw, c);
+            for (_, end) in self.ends.borrow_mut().drain() {
+                qjs::JS_FreeValue(raw, end.resolve);
+                qjs::JS_FreeValue(raw, end.callback);
             }
         }
+        self.composites.borrow_mut().clear();
+        self.derived.borrow_mut().clear();
     }
 }
 
@@ -91,6 +118,8 @@ fn animations<'a>(ctx: *mut JsContext) -> &'a Animations {
 struct NodeData {
     id: u32,
     inputs: Vec<JsValue>,
+    /// The hash it is remembered by in `Animations::derived`.
+    derived: Option<u64>,
 }
 
 /// A composite's data: its key, the running animation's id (0: none),
@@ -111,7 +140,20 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     let data = unsafe { Box::from_raw(p) };
     if let Some(state) = crate::state::of_runtime(rt) {
         // Not the op queue: a finalizer may run while it is borrowed.
-        unsafe { &(*state).dom }.queue_anim_release(AnimOp::Release { node: data.id });
+        unsafe { &(*state).dom }.queue_animation_release(AnimationOp::Release { node: data.id });
+        if let Some(hash) = data.derived {
+            // SAFETY: the state's animations, borrowed briefly (no JS runs
+            // while the map is borrowed).
+            let animations = unsafe { &(*state).animations };
+            if let Ok(mut map) = animations.derived.try_borrow_mut()
+                && let Some(list) = map.get_mut(&hash)
+            {
+                list.retain(|&(_, id, _)| id != data.id);
+                if list.is_empty() {
+                    map.remove(&hash);
+                }
+            }
+        }
     }
     for v in data.inputs {
         unsafe { qjs::JS_FreeValueRT(rt, v) };
@@ -136,7 +178,12 @@ unsafe extern "C" fn composite_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     }
     let data = unsafe { Box::from_raw(p) };
     if let Some(state) = crate::state::of_runtime(rt) {
-        unsafe { &(*state).dom }.queue_anim_release(AnimOp::ReleaseComposite { key: data.key });
+        unsafe { &(*state).dom }
+            .queue_animation_release(AnimationOp::ReleaseComposite { key: data.key });
+        // SAFETY: the state's animations, borrowed briefly.
+        if let Ok(mut map) = unsafe { &(*state).animations }.composites.try_borrow_mut() {
+            map.remove(&data.key);
+        }
     }
     unsafe { qjs::JS_FreeValueRT(rt, data.spec) };
     for v in data.values {
@@ -212,6 +259,10 @@ fn classes(ctx: *mut JsContext) -> Classes {
             &[
                 (c"set", value_set, 1),
                 (c"stop", value_stop, 0),
+                (c"getValue", value_get, 0),
+                (c"setOffset", value_set_offset, 1),
+                (c"flattenOffset", value_flatten_offset, 0),
+                (c"extractOffset", value_extract_offset, 0),
                 (c"timing", value_timing, 2),
                 (c"spring", value_spring, 2),
                 (c"decay", value_decay, 1),
@@ -237,9 +288,15 @@ fn classes(ctx: *mut JsContext) -> Classes {
     }
 }
 
-/// Decodes an encoded animation operation (`ANIM_*`, the node, its
+/// Decodes an encoded animation operation (`ANIMATION_*`, the node, its
 /// values) and queues it. Takes `values`.
 fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
+    let op = decode(ctx, values)?;
+    dom::push_op(ctx, nsh_core::Op::Animation(op))
+}
+
+/// Decodes an encoded animation operation. Takes `values`.
+fn decode(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<AnimationOp, JsValue> {
     let mut values = values;
     // SAFETY: an array taking the values, read by the decoder through a
     // context reference.
@@ -247,10 +304,10 @@ fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
     let cx = unsafe { Ctx::from_raw(ptr::NonNull::new_unchecked(ctx)) };
     let value = unsafe { Value::from_raw(cx.clone(), array) };
     let Some(array) = value.as_array() else {
-        return Ok(());
+        return Err(qjs::JS_EXCEPTION);
     };
-    match crate::protocol::decode_anim_op(&cx, array) {
-        Ok(op) => dom::push_op(ctx, nsh_core::Op::Anim(op)),
+    match crate::protocol::decode_animation_op(&cx, array) {
+        Ok(op) => Ok(op),
         Err(rquickjs::Error::Exception) => Err(qjs::JS_EXCEPTION),
         Err(e) => {
             let message = CString::new(format!("nsh/animated: {e}")).unwrap_or_default();
@@ -296,7 +353,11 @@ fn new_node(ctx: *mut JsContext, value: bool, inputs: Vec<JsValue>) -> (JsValue,
     let id = a.next_node.get();
     a.next_node.set(id + 2);
     let proto = a.protos.get()[if value { 1 } else { 0 }];
-    let data = Box::into_raw(Box::new(NodeData { id, inputs }));
+    let data = Box::into_raw(Box::new(NodeData {
+        id,
+        inputs,
+        derived: None,
+    }));
     // SAFETY: an object of the node class owning its data; `__nv` is what
     // the prop decoder reads.
     unsafe {
@@ -322,18 +383,108 @@ fn this_node(ctx: *mut JsContext, this: JsValue) -> Result<u32, JsValue> {
     })
 }
 
-/// A node reading `inputs` made by encoded operation `sub` with `args`.
+/// A node reading `inputs` (taken) made by encoded operation `sub` with
+/// `args`: the live node made by the same operation if there is one.
 fn derived(ctx: *mut JsContext, inputs: Vec<JsValue>, sub: i32, args: Vec<JsValue>) -> JsValue {
-    let (node, id) = new_node(ctx, false, inputs);
-    let mut values = vec![int(sub), int(id)];
+    let mut values = vec![int(sub), int(0)];
     values.extend(args);
-    match send(ctx, values) {
+    let key = match decode(ctx, values) {
+        Ok(op) => op,
+        Err(e) => {
+            for v in inputs {
+                free(ctx, v);
+            }
+            return e;
+        }
+    };
+    let a = animations(ctx);
+    let hash = derived_hash(&key);
+    let existing = a.derived.borrow().get(&hash).and_then(|list| {
+        list.iter()
+            .find(|(op, ..)| *op == key)
+            .map(|&(.., obj)| obj)
+    });
+    if let Some(obj) = existing {
+        for v in inputs {
+            free(ctx, v);
+        }
+        return dup(ctx, obj);
+    }
+    let (node, id) = new_node(ctx, false, inputs);
+    let c = classes(ctx);
+    // SAFETY: the node object's own data.
+    unsafe { (*(qjs::JS_GetOpaque(node, c.node) as *mut NodeData)).derived = Some(hash) };
+    a.derived
+        .borrow_mut()
+        .entry(hash)
+        .or_default()
+        .push((key.clone(), id, node));
+    match dom::push_op(ctx, nsh_core::Op::Animation(with_node(key, id))) {
         Ok(()) => node,
         Err(e) => {
             free(ctx, node);
             e
         }
     }
+}
+
+/// `op` making node `id`.
+fn with_node(mut op: AnimationOp, id: u32) -> AnimationOp {
+    match &mut op {
+        AnimationOp::CreateInterpolate { node, .. }
+        | AnimationOp::CreateDiffClamp { node, .. }
+        | AnimationOp::CreateMath { node, .. } => *node = id,
+        _ => {}
+    }
+    op
+}
+
+/// A hash of a derived node's operation (operations equal by `==` hash the
+/// same: `-0.0` is `0.0`).
+fn derived_hash(op: &AnimationOp) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = rustc_hash::FxHasher::default();
+    let mut f = |x: f32| (if x == 0.0 { 0.0f32 } else { x }).to_bits().hash(&mut h);
+    let mut kind = 0u8;
+    let mut ids = [0u32; 2];
+    match op {
+        AnimationOp::CreateInterpolate {
+            input,
+            input_range,
+            output,
+            ..
+        } => {
+            ids[0] = *input;
+            for &x in input_range {
+                f(x);
+            }
+            match output {
+                nsh_animation::Output::Numbers(v) => v.iter().for_each(|&x| f(x)),
+                nsh_animation::Output::Colors(v) => v.iter().for_each(|&c| f(f32::from_bits(c))),
+            }
+        }
+        AnimationOp::CreateDiffClamp {
+            input, min, max, ..
+        } => {
+            kind = 1;
+            ids[0] = *input;
+            f(*min);
+            f(*max);
+        }
+        AnimationOp::CreateMath { a, b, .. } => {
+            kind = 2;
+            for (i, o) in [a, b].into_iter().enumerate() {
+                match *o {
+                    nsh_animation::Operand::Node(n) => ids[i] = n,
+                    nsh_animation::Operand::Const(c) => f(c),
+                }
+            }
+        }
+        _ => kind = 3,
+    }
+    kind.hash(&mut h);
+    ids.hash(&mut h);
+    h.finish()
 }
 
 unsafe extern "C" fn node_interpolate(
@@ -376,7 +527,7 @@ unsafe extern "C" fn node_interpolate(
         easing,
     ];
     free(ctx, both);
-    derived(ctx, vec![dup(ctx, this)], ANIM_INTERPOLATE, args)
+    derived(ctx, vec![dup(ctx, this)], ANIMATION_INTERPOLATE, args)
 }
 
 unsafe extern "C" fn node_diff_clamp(
@@ -394,7 +545,7 @@ unsafe extern "C" fn node_diff_clamp(
         dup(ctx, arg(argc, argv, 0)),
         dup(ctx, arg(argc, argv, 1)),
     ];
-    derived(ctx, vec![dup(ctx, this)], ANIM_DIFF_CLAMP, args)
+    derived(ctx, vec![dup(ctx, this)], ANIMATION_DIFF_CLAMP, args)
 }
 
 /// `a op b`: a node of two operands (nodes or numbers).
@@ -410,7 +561,7 @@ fn math(ctx: *mut JsContext, op: &str, a: JsValue, b: JsValue) -> JsValue {
         .map(|v| dup(ctx, v))
         .collect();
     let args = vec![string(ctx, op), operand(a), operand(b)];
-    derived(ctx, inputs, ANIM_MATH, args)
+    derived(ctx, inputs, ANIMATION_MATH, args)
 }
 
 macro_rules! math_method {
@@ -446,7 +597,10 @@ unsafe extern "C" fn native_value(
     // SAFETY: converting a live value.
     unsafe { qjs::JS_ToFloat64(ctx, &mut v, arg(argc, argv, 0)) };
     let (node, id) = new_node(ctx, true, Vec::new());
-    match send(ctx, vec![int(ANIM_VALUE), int(id), qjs::JS_NewFloat64(v)]) {
+    match send(
+        ctx,
+        vec![int(ANIMATION_VALUE), int(id), qjs::JS_NewFloat64(v)],
+    ) {
         Ok(()) => node,
         Err(e) => {
             free(ctx, node);
@@ -476,11 +630,12 @@ unsafe extern "C" fn value_set(
         Err(e) => return e,
     };
     let v = dup(ctx, arg(argc, argv, 0));
-    send(ctx, vec![int(ANIM_SET), int(id), v])
+    send(ctx, vec![int(ANIMATION_SET), int(id), v])
         .err()
         .unwrap_or(UNDEFINED)
 }
 
+/// `stop()`: stops the animation; a promise of where the value stopped.
 unsafe extern "C" fn value_stop(
     ctx: *mut JsContext,
     this: JsValue,
@@ -491,9 +646,82 @@ unsafe extern "C" fn value_stop(
         Ok(id) => id,
         Err(e) => return e,
     };
-    send(ctx, vec![int(ANIM_STOP), int(id)])
-        .err()
-        .unwrap_or(UNDEFINED)
+    if let Err(e) = send(ctx, vec![int(ANIMATION_STOP), int(id)]) {
+        return e;
+    }
+    read(ctx, id)
+}
+
+/// `getValue()`: a promise of the node's current value, read on the UI
+/// thread (where it moves).
+unsafe extern "C" fn value_get(
+    ctx: *mut JsContext,
+    this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    match this_node(ctx, this) {
+        Ok(id) => read(ctx, id),
+        Err(e) => e,
+    }
+}
+
+/// A promise of node `node`'s value, answered by the graph
+/// (`AnimationOp::Read`, reported as a `Finished` with the value).
+fn read(ctx: *mut JsContext, node: u32) -> JsValue {
+    let request = next_animation(ctx);
+    if let Err(e) = send(ctx, vec![int(ANIMATION_READ), int(node), int(request)]) {
+        return e;
+    }
+    let (p, resolve) = promise(ctx);
+    animations(ctx).ends.borrow_mut().insert(
+        request,
+        End {
+            resolve,
+            callback: UNDEFINED,
+            composite: 0,
+            read: true,
+        },
+    );
+    p
+}
+
+/// A value method sending `code` (and its first argument, with `arg`).
+fn value_op(ctx: *mut JsContext, this: JsValue, code: i32, arg: Option<JsValue>) -> JsValue {
+    let id = match this_node(ctx, this) {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    let mut values = vec![int(code), int(id)];
+    values.extend(arg.map(|v| dup(ctx, v)));
+    send(ctx, values).err().unwrap_or(UNDEFINED)
+}
+
+unsafe extern "C" fn value_set_offset(
+    ctx: *mut JsContext,
+    this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    value_op(ctx, this, ANIMATION_SET_OFFSET, Some(arg(argc, argv, 0)))
+}
+
+unsafe extern "C" fn value_flatten_offset(
+    ctx: *mut JsContext,
+    this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    value_op(ctx, this, ANIMATION_FLATTEN_OFFSET, None)
+}
+
+unsafe extern "C" fn value_extract_offset(
+    ctx: *mut JsContext,
+    this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    value_op(ctx, this, ANIMATION_EXTRACT_OFFSET, None)
 }
 
 /// A new promise and its resolve function (owned).
@@ -524,14 +752,19 @@ fn start(ctx: *mut JsContext, this: JsValue, config: JsValue) -> JsValue {
         }
     };
     let id = next_animation(ctx);
-    if let Err(e) = send(ctx, vec![int(ANIM_START), int(node), int(id), config]) {
+    if let Err(e) = send(ctx, vec![int(ANIMATION_START), int(node), int(id), config]) {
         return e;
     }
     let (p, resolve) = promise(ctx);
-    animations(ctx)
-        .ends
-        .borrow_mut()
-        .insert(id, (resolve, UNDEFINED, UNDEFINED));
+    animations(ctx).ends.borrow_mut().insert(
+        id,
+        End {
+            resolve,
+            callback: UNDEFINED,
+            composite: 0,
+            read: false,
+        },
+    );
     p
 }
 
@@ -584,19 +817,31 @@ unsafe extern "C" fn value_decay(
     start(ctx, this, config)
 }
 
-/// Settles animation `id`'s promise (`Host::animations_finished`); false
-/// when it is not one of these.
-pub(crate) fn finished(ctx: *mut JsContext, id: u32, done: bool) -> Result<bool, JsValue> {
-    let Some((resolve, composite, callback)) = animations(ctx).ends.borrow_mut().remove(&id) else {
+/// Settles the promise of animation (or value read) `f.animation`
+/// (`Host::animations_finished`); false when it is not one of these.
+pub(crate) fn finished(ctx: *mut JsContext, f: &nsh_animation::Finished) -> Result<bool, JsValue> {
+    let (id, done) = (f.animation, f.finished);
+    let a = animations(ctx);
+    let Some(End {
+        resolve,
+        callback,
+        composite,
+        read,
+    }) = a.ends.borrow_mut().remove(&id)
+    else {
         return Ok(false);
     };
-    let c = classes(ctx);
-    // SAFETY: the composite's data, then calls of owned functions.
-    unsafe {
-        let p = qjs::JS_GetOpaque(composite, c.composite) as *mut CompositeData;
-        if !p.is_null() && (*p).running == id {
-            (*p).running = 0;
+    if let Some(&p) = a.composites.borrow().get(&composite) {
+        // SAFETY: a live composite's data (its finalizer takes it out of
+        // the map).
+        unsafe {
+            if (*p).running == id {
+                (*p).running = 0;
+            }
         }
+    }
+    // SAFETY: calls of owned functions.
+    unsafe {
         let mut result = Ok(true);
         if qjs::JS_IsFunction(ctx, callback) {
             let r = qjs::JS_NewObject(ctx);
@@ -615,10 +860,14 @@ pub(crate) fn finished(ctx: *mut JsContext, id: u32, done: bool) -> Result<bool,
                 qjs::JS_FreeValue(ctx, v);
             }
         }
-        let mut args = [if done { qjs::JS_TRUE } else { qjs::JS_FALSE }];
+        let mut args = [match (read, done) {
+            (true, _) => qjs::JS_NewFloat64(f.value.unwrap_or(0.0) as f64),
+            (false, true) => qjs::JS_TRUE,
+            (false, false) => qjs::JS_FALSE,
+        }];
         let v = qjs::JS_Call(ctx, resolve, UNDEFINED, 1, args.as_mut_ptr());
         qjs::JS_FreeValue(ctx, v);
-        for x in [resolve, composite, callback] {
+        for x in [resolve, callback] {
             qjs::JS_FreeValue(ctx, x);
         }
         result
@@ -639,6 +888,7 @@ fn composite(ctx: *mut JsContext, spec: JsValue, values: Vec<JsValue>) -> JsValu
         spec,
         values,
     }));
+    a.composites.borrow_mut().insert(key, data);
     // SAFETY: an object of the composite class owning its data.
     unsafe {
         let obj = qjs::JS_NewObjectClass(ctx, c.composite);
@@ -665,7 +915,7 @@ unsafe extern "C" fn composite_stop(
         return UNDEFINED;
     }
     let id = unsafe { (*p).running };
-    send(ctx, vec![int(ANIM_STOP_ANIMATION), int(id)])
+    send(ctx, vec![int(ANIMATION_STOP_ANIMATION), int(id)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -682,7 +932,7 @@ unsafe extern "C" fn composite_reset(
     }
     // SAFETY: live composite data.
     let key = unsafe { (*p).key };
-    send(ctx, vec![int(ANIM_RESET_COMPOSITE), int(key)])
+    send(ctx, vec![int(ANIMATION_RESET_COMPOSITE), int(key)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -713,15 +963,22 @@ unsafe extern "C" fn composite_start(
     };
     if let Err(e) = send(
         ctx,
-        vec![int(ANIM_START_COMPOSITE), int(id), int(key), spec],
+        vec![int(ANIMATION_START_COMPOSITE), int(id), int(key), spec],
     ) {
         return e;
     }
     let (promise, resolve) = promise(ctx);
-    animations(ctx)
-        .ends
-        .borrow_mut()
-        .insert(id, (resolve, dup(ctx, this), dup(ctx, arg(argc, argv, 0))));
+    // Not the composite itself: a run going on must not keep the values it
+    // animates alive (an endless loop would run on after its component).
+    animations(ctx).ends.borrow_mut().insert(
+        id,
+        End {
+            resolve,
+            callback: dup(ctx, arg(argc, argv, 0)),
+            composite: key,
+            read: false,
+        },
+    );
     promise
 }
 
@@ -749,6 +1006,96 @@ fn object(ctx: *mut JsContext, fields: Vec<(&CStr, JsValue)>) -> JsValue {
         }
         o
     }
+}
+
+/// Most samples a curve gives (a minute at 60 Hz).
+const MAX_SAMPLES: usize = 3600;
+
+/// `numbers` as a JS array.
+fn number_array(ctx: *mut JsContext, numbers: &[f32]) -> JsValue {
+    let mut values: Vec<JsValue> = numbers
+        .iter()
+        .map(|&x| qjs::JS_NewFloat64(x as f64))
+        .collect();
+    // SAFETY: the array takes the values.
+    unsafe { qjs::JS_NewArrayFrom(ctx, values.len() as c_int, values.as_mut_ptr()) }
+}
+
+/// `Animated.sampleSpring / sampleDecay(config, fps)`: the values the
+/// driver moves through from `config.from` (0), one per frame at `fps`
+/// (60) until it ends: what the native driver runs, to draw it.
+fn sample(ctx: *mut JsContext, kind: &str, config: JsValue, fps: JsValue) -> JsValue {
+    let to = get(ctx, config, c"toValue");
+    let has_to = !unsafe { qjs::JS_IsUndefined(to) };
+    let spec = driver_config(ctx, kind, has_to.then_some(to), config);
+    free(ctx, to);
+    let (mut from, mut rate) = (0f64, 60f64);
+    // SAFETY: conversions of live values.
+    unsafe {
+        let f = get(ctx, config, c"from");
+        if !qjs::JS_IsUndefined(f) {
+            qjs::JS_ToFloat64(ctx, &mut from, f);
+        }
+        free(ctx, f);
+        if !qjs::JS_IsUndefined(fps) {
+            qjs::JS_ToFloat64(ctx, &mut rate, fps);
+        }
+    }
+    // SAFETY: a context reference for the decoder; the value takes `spec`.
+    let cx = unsafe { Ctx::from_raw(ptr::NonNull::new_unchecked(ctx)) };
+    let spec = unsafe { Value::from_raw(cx.clone(), spec) };
+    match crate::protocol::driver(&cx, &spec) {
+        Ok(driver) => {
+            let step = 1.0 / rate.clamp(1.0, 1000.0);
+            number_array(
+                ctx,
+                &nsh_animation::sample_driver(driver, from as f32, step, MAX_SAMPLES),
+            )
+        }
+        Err(_) => qjs::JS_EXCEPTION,
+    }
+}
+
+unsafe extern "C" fn animated_sample_spring(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    sample(ctx, "spring", arg(argc, argv, 0), arg(argc, argv, 1))
+}
+
+unsafe extern "C" fn animated_sample_decay(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    sample(ctx, "decay", arg(argc, argv, 0), arg(argc, argv, 1))
+}
+
+/// `Easing.sample(easing, count)`: the curve at `count` points of 0..1.
+unsafe extern "C" fn easing_sample(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let mut count = 0f64;
+    // SAFETY: a conversion; a context reference for the decoder, which
+    // takes a dup.
+    unsafe { qjs::JS_ToFloat64(ctx, &mut count, arg(argc, argv, 1)) };
+    let cx = unsafe { Ctx::from_raw(ptr::NonNull::new_unchecked(ctx)) };
+    let e = unsafe { Value::from_raw(cx, qjs::JS_DupValue(ctx, arg(argc, argv, 0))) };
+    let count = if count.is_finite() {
+        (count.max(0.0) as usize).min(MAX_SAMPLES)
+    } else {
+        0
+    };
+    number_array(
+        ctx,
+        &nsh_animation::sample_easing(crate::protocol::easing(e), count),
+    )
 }
 
 /// `Animated.timing / spring / decay(value, config)`: one driver as a
@@ -990,6 +1337,8 @@ fn animated(ctx: *mut JsContext) -> JsValue {
             (c"divide", animated_divide, 2),
             (c"modulo", animated_modulo, 2),
             (c"diffClamp", animated_diff_clamp, 3),
+            (c"sampleSpring", animated_sample_spring, 2),
+            (c"sampleDecay", animated_sample_decay, 2),
         ],
     )
 }
@@ -1019,7 +1368,7 @@ fn class_function(ctx: *mut JsContext, name: &CStr, f: Native, proto_index: usiz
 /// The core's animation tables as JS (cached JSON, converted on use).
 fn table(ctx: *mut JsContext, key: &str) -> JsValue {
     static TABLES: std::sync::OnceLock<nsh_core::JsonValue> = std::sync::OnceLock::new();
-    let tables = TABLES.get_or_init(nsh_core::js::anim::tables);
+    let tables = TABLES.get_or_init(nsh_core::js::animation::tables);
     crate::host::json_to_js(ctx, &tables[key])
 }
 
@@ -1151,6 +1500,12 @@ fn easing(ctx: *mut JsContext) -> JsValue {
             o,
             c"bezier".as_ptr(),
             reactive::new_function(ctx, c"bezier", easing_bezier, 4),
+        );
+        qjs::JS_SetPropertyStr(
+            ctx,
+            o,
+            c"sample".as_ptr(),
+            reactive::new_function(ctx, c"sample", easing_sample, 2),
         );
         for (name, magic) in [(c"in", 0), (c"out", 1), (c"inOut", 2)] {
             let f = qjs::JS_NewCFunctionData(ctx, Some(easing_mode), 1, magic, 0, ptr::null_mut());
@@ -1349,14 +1704,28 @@ pub(crate) const EXPORTS: &[Item] = &[
   constructor(value: number);
   /** Jumps to `value`, stopping any animation. */
   set(value: number): void;
-  /** Stops the running animation where it is. */
-  stop(): void;
+  /** Stops the running animation where it is; resolves with the value
+   * there. */
+  stop(): Promise<number>;
+  /** The current value (with its offset), read where it moves (the UI
+   * thread): settles within a frame. */
+  getValue(): Promise<number>;
+  /** An offset added to the value (React Native's `setOffset`): bindings
+   * see value + offset; `set`, animations and drags move the value. */
+  setOffset(offset: number): void;
+  /** Adds the offset to the value and makes it 0. */
+  flattenOffset(): void;
+  /** Moves the value into the offset and makes the value 0 (a drag then
+   * starts from where the last one left it). */
+  extractOffset(): void;
   /** Animates to `to` over `duration` ms. Resolves with `finished`. */
   timing(to: number, options?: { duration?: number; easing?: Easing; delay?: number }): Promise<boolean>;
   /** Springs to `to`. Resolves with `finished`. */
   spring(to: number, options?: { stiffness?: number; damping?: number; mass?: number; velocity?: number }): Promise<boolean>;
-  /** Coasts from `velocity` (units per second) and slows down. */
-  decay(options?: { velocity?: number; deceleration?: number }): Promise<boolean>;
+  /** Coasts from `velocity` (units per second) and slows down; within
+   * `clamp` it stops at a bound, or bounces back keeping `bounce` (0..1) of
+   * its speed. */
+  decay(options?: DecayConfig): Promise<boolean>;
 }"#,
         ),
     ),
@@ -1364,7 +1733,7 @@ pub(crate) const EXPORTS: &[Item] = &[
         "createNativeValue",
         Export::Function(native_value, 1),
         Ts::Function(
-            "Creates a native value. Bind it (or nodes derived from it) to style\nproperties such as `opacity`, `transform` and `backgroundColor`, to a\nscroll position (`scrollValue`) or to drags (`pan`).",
+            "Creates a native value. Bind it (or nodes derived from it) to style\nproperties (`opacity`, `transform`, `backgroundColor`, `borderColor`, a\ntext's `color`, `shadowColor` / `shadowOpacity` / `shadowRadius`), to a\nscroll position (`scrollValue`) or to drags (`pan`).",
             &["(value?: number): NativeValue"],
         ),
     ),
@@ -1395,8 +1764,30 @@ pub(crate) const EXPORTS: &[Item] = &[
 ];
 
 /// `nsh/animated`'s types (with the easing and layout animation types of
-/// `nsh_core::js::anim::declarations`).
+/// `nsh_core::js::animation::declarations`).
 pub(crate) const TYPES: &str = r#"export type Extrapolation = "extend" | "clamp" | "identity";
+
+/** A decay: coasting from `velocity` (units per second, the current one by
+ * default), keeping `deceleration` (0.998) of it each millisecond. */
+export interface DecayConfig {
+  velocity?: number;
+  deceleration?: number;
+  /** Bounds the value stays within: it stops at a bound, or bounces back
+   * from it with `bounce`. */
+  clamp?: [min: number, max: number];
+  /** The fraction of its speed it keeps bouncing off a bound (0, the
+   * default: it stops there). */
+  bounce?: number;
+}
+
+/** A spring (React Native's `Animated.spring` config). */
+export interface SpringConfig {
+  toValue: number;
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+  velocity?: number;
+}
 
 /** Easing functions (React Native's `Easing`). */
 export interface EasingModule extends EasingCurves {
@@ -1406,6 +1797,10 @@ export interface EasingModule extends EasingCurves {
   in(e: Easing): Easing;
   out(e: Easing): Easing;
   inOut(e: Easing): Easing;
+  /** The curve at `count` evenly spaced points from 0 to 1 (both
+   * included), computed by the native implementation the animations run:
+   * to draw it. */
+  sample(easing: Easing, count: number): number[];
 }
 
 /** An animation built with `Animated`: runs natively, steps and all. */
@@ -1422,8 +1817,8 @@ export interface CompositeAnimation {
 /** Animations composed natively (React Native's `Animated`). */
 export interface AnimatedModule {
   timing(value: NativeValue, config: { toValue: number; duration?: number; easing?: Easing; delay?: number }): CompositeAnimation;
-  spring(value: NativeValue, config: { toValue: number; stiffness?: number; damping?: number; mass?: number; velocity?: number }): CompositeAnimation;
-  decay(value: NativeValue, config?: { velocity?: number; deceleration?: number }): CompositeAnimation;
+  spring(value: NativeValue, config: SpringConfig): CompositeAnimation;
+  decay(value: NativeValue, config?: DecayConfig): CompositeAnimation;
   sequence(list: CompositeAnimation[]): CompositeAnimation;
   parallel(list: CompositeAnimation[], config?: { stopTogether?: boolean }): CompositeAnimation;
   stagger(ms: number, list: CompositeAnimation[]): CompositeAnimation;
@@ -1435,6 +1830,11 @@ export interface AnimatedModule {
   divide(a: NativeNode, b: NativeNode | number): NativeNode;
   modulo(a: NativeNode, b: NativeNode | number): NativeNode;
   diffClamp(a: NativeNode, min: number, max: number): NativeNode;
+  /** The values a spring moves through from `from` (0), one per frame at
+   * `fps` (60) until it rests: the exact curve the native driver runs. */
+  sampleSpring(config: SpringConfig & { from?: number }, fps?: number): number[];
+  /** The same for a decay (it starts at `from`, 0 by default). */
+  sampleDecay(config: DecayConfig & { from?: number }, fps?: number): number[];
 }
 
 /** `LayoutAnimation`. */
@@ -1481,21 +1881,19 @@ mod tests {
         let starts: Vec<u32> = ops
             .iter()
             .filter_map(|o| match o {
-                Op::Anim(nsh_anim::AnimOp::Start { animation, .. }) => Some(*animation),
-                Op::Anim(nsh_anim::AnimOp::StartComposite { animation, .. }) => Some(*animation),
+                Op::Animation(nsh_animation::AnimationOp::Start { animation, .. }) => {
+                    Some(*animation)
+                }
+                Op::Animation(nsh_animation::AnimationOp::StartComposite { animation, .. }) => {
+                    Some(*animation)
+                }
                 _ => None,
             })
             .collect();
         assert_eq!(starts, [2, 4], "{ops:?}");
         host.animations_finished(&[
-            nsh_anim::Finished {
-                animation: 2,
-                finished: true,
-            },
-            nsh_anim::Finished {
-                animation: 4,
-                finished: false,
-            },
+            nsh_animation::Finished::new(2, true),
+            nsh_animation::Finished::new(4, false),
         ]);
         host.eval_script("report.js", "report()").unwrap();
         let mut ops = Vec::new();
@@ -1510,5 +1908,200 @@ mod tests {
             // runtime).
             Some("callback false|timing true|sequence false")
         );
+    }
+
+    fn animation_ops(host: &Host) -> Vec<nsh_animation::AnimationOp> {
+        let mut ops = Vec::new();
+        host.take_ops(&mut ops);
+        ops.into_iter()
+            .filter_map(|o| match o {
+                Op::Animation(op) => Some(op),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn report(host: &Host) -> Option<String> {
+        host.eval_script("report.js", "report()").unwrap();
+        let mut ops = Vec::new();
+        host.take_ops(&mut ops);
+        ops.iter().find_map(|o| match o {
+            Op::CreateText { text, .. } => Some(text.to_string()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn values_are_read_back_and_offset() {
+        use nsh_animation::AnimationOp as A;
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { NativeValue } from "nsh/animated";
+            import { text } from "nsh:rt";
+            const v = new NativeValue(1);
+            globalThis.log = [];
+            v.setOffset(5);
+            v.extractOffset();
+            v.flattenOffset();
+            v.getValue().then((x) => log.push(`value ${x}`));
+            v.stop().then((x) => log.push(`stopped ${x}`));
+            globalThis.report = () => text(log.join("|"));
+            globalThis.keep = v;
+            "#,
+        )
+        .unwrap();
+        let ops = animation_ops(&host);
+        assert_eq!(
+            ops,
+            [
+                A::CreateValue {
+                    node: 2,
+                    value: 1.0
+                },
+                A::SetOffset {
+                    node: 2,
+                    offset: 5.0
+                },
+                A::ExtractOffset { node: 2 },
+                A::FlattenOffset { node: 2 },
+                A::Read {
+                    node: 2,
+                    request: 2
+                },
+                A::Stop { node: 2 },
+                A::Read {
+                    node: 2,
+                    request: 4
+                },
+            ]
+        );
+        host.animations_finished(&[
+            nsh_animation::Finished {
+                animation: 2,
+                finished: true,
+                value: Some(6.0),
+            },
+            nsh_animation::Finished {
+                animation: 4,
+                finished: true,
+                value: Some(6.5),
+            },
+        ]);
+        assert_eq!(report(&host).as_deref(), Some("value 6|stopped 6.5"));
+    }
+
+    #[test]
+    fn identical_derived_nodes_are_one_node() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { NativeValue } from "nsh/animated";
+            import { text } from "nsh:rt";
+            const v = new NativeValue(0);
+            const config = { inputRange: [0, 1], outputRange: ["red", "blue"] };
+            // As a canvas drawing again would.
+            globalThis.keep = [
+                v,
+                v.interpolate(config),
+                v.interpolate({ ...config }),
+                v.interpolate({ inputRange: [0, 1], outputRange: ["red", "green"] }),
+                v.mul(2),
+                v.mul(2),
+                v.mul(-0),
+                v.mul(0),
+            ];
+            globalThis.report = () => {
+                const [, a, b, c, d, e, f, g] = keep;
+                return text([a === b, a !== c, d === e, f === g, d !== f].join(","));
+            };
+            "#,
+        )
+        .unwrap();
+        let ops = animation_ops(&host);
+        let created = ops
+            .iter()
+            .filter(|o| {
+                matches!(
+                    o,
+                    nsh_animation::AnimationOp::CreateInterpolate { .. }
+                        | nsh_animation::AnimationOp::CreateMath { .. }
+                )
+            })
+            .count();
+        assert_eq!(created, 4, "{ops:?}");
+        assert_eq!(report(&host).as_deref(), Some("true,true,true,true,true"));
+        // Once collected, deriving it again makes a new node.
+        host.eval_script(
+            "drop.js",
+            "keep = [keep[0]]; globalThis.again = () => keep[0].mul(2);",
+        )
+        .unwrap();
+        host.collect_garbage();
+        let released = animation_ops(&host);
+        assert!(
+            released.contains(&nsh_animation::AnimationOp::Release { node: 8 }),
+            "{released:?}"
+        );
+        host.eval_script("again.js", "keep.push(again())").unwrap();
+        let ops = animation_ops(&host);
+        assert!(
+            matches!(ops[..], [nsh_animation::AnimationOp::CreateMath { node, .. }] if node > 8),
+            "{ops:?}"
+        );
+    }
+
+    #[test]
+    fn an_endless_loop_does_not_keep_its_values() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { Animated, NativeValue } from "nsh/animated";
+            globalThis.v = new NativeValue(0);
+            Animated.loop(Animated.timing(v, { toValue: 1 })).start();
+            "#,
+        )
+        .unwrap();
+        let ops = animation_ops(&host);
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, nsh_animation::AnimationOp::StartComposite { .. })),
+            "{ops:?}"
+        );
+        // Its component goes: nothing holds the value but the running loop.
+        host.eval_script("drop.js", "v = undefined").unwrap();
+        host.collect_garbage();
+        let ops = animation_ops(&host);
+        // The graph stops a loop whose value is released.
+        assert!(
+            ops.contains(&nsh_animation::AnimationOp::Release { node: 2 }),
+            "{ops:?}"
+        );
+    }
+
+    #[test]
+    fn curves_are_sampled_natively() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { Animated, Easing } from "nsh/animated";
+            import { text } from "nsh:rt";
+            const quad = Easing.sample(Easing.quad, 3);
+            const spring = Animated.sampleSpring({ toValue: 1, from: 0, damping: 40 });
+            const decay = Animated.sampleDecay({ velocity: 1000, clamp: [0, 100] }, 120);
+            globalThis.report = () =>
+                text([
+                    quad.join(" "),
+                    spring[0],
+                    spring[spring.length - 1],
+                    spring.some((x) => x > 1),
+                    decay[decay.length - 1],
+                    Easing.sample(Easing.linear, 0).length,
+                ].join(","));
+            "#,
+        )
+        .unwrap();
+        animation_ops(&host);
+        assert_eq!(report(&host).as_deref(), Some("0 0.25 1,0,1,false,100,0"));
     }
 }

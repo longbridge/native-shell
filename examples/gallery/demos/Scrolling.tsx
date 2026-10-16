@@ -1,168 +1,283 @@
 import { Input, Scroll, type ScrollEvent, signal, Text, View, type YNode } from "nsh";
+import { createNativeValue } from "nsh/animated";
+import { Canvas } from "nsh/canvas";
 import { windowSize } from "nsh/device";
 import { List } from "nsh/list";
-import { Button, colors, Section, Toggle as Switch } from "../ui";
+import { Badge, Button, Caption, colors, Figure, finish, isDark, Meter, mono, Press, radius, Section, Segmented, Toggle as Switch, type Tone, toneColor, toneTint } from "../ui";
 
-const palette = ["#0969da", "#8250df", "#bf3989", "#cf222e", "#bc4c00", "#1a7f37", "#0a3069"];
+const tones: Tone[] = ["accent", "info", "warn", "up", "danger"];
 
-function Toggle(props: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+/** A switch row; `code` names the prop it sets. */
+function Toggle(props: { label: string; code?: string; note?: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
-      <Text style={{ flex: 1 }}>{props.label}</Text>
-      <Switch value={props.value} onChange={props.onChange} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 }}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 15, color: colors.text }}>{props.label}</Text>
+        <If when={props.code}>
+          <Text style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>{props.code}</Text>
+        </If>
+        <If when={props.note}>
+          <Text style={{ fontSize: 13, color: colors.faint }}>{props.note}</Text>
+        </If>
+      </View>
+      <Switch value={props.value} onChange={props.onChange} label={props.label} />
     </View>
   );
 }
 
-function Choice<T extends string>(props: { options: readonly T[]; value: T; onChange: (v: T) => void }) {
+/** The APIs a section shows, as code. */
+function Api(props: { names: string }) {
+  return <Text style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>{props.names}</Text>;
+}
+
+const options = <T extends string>(values: readonly T[]) => values.map((value) => ({ value, label: value }));
+
+/** A dot matrix with a low-alpha area and a dashed reference line: a page's backdrop. */
+function Backdrop(props: { tone: Tone; seed: number }) {
   return (
-    <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-      <Each of={props.options}>
-        {(option) => {
-          const o = option();
-          return (
-          <Text
-            onPress={() => props.onChange(o)}
-            style={{
-              fontSize: 13,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderRadius: 6,
-              overflow: "hidden",
-              color: props.value === o ? "#ffffff" : colors.text,
-              backgroundColor: props.value === o ? colors.accent : "#e1e4e8",
-            }}
-          >
-            {o}
-          </Text>
-          );
-        }}
-      </Each>
-    </View>
+    <Canvas
+      pointerEvents="none"
+      style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+      draw={(ctx, { width, height }) => {
+        const color = toneColor(props.tone);
+        ctx.fillStyle = colors.border;
+        for (let x = 10; x < width; x += 12) for (let y = 10; y < height; y += 12) ctx.fillRect(x, y, 1.5, 1.5);
+        // A wave, filled faintly below.
+        const points: [number, number][] = [];
+        for (let i = 0; i <= 24; i++) {
+          const x = (i / 24) * width;
+          const y = height * (0.62 - 0.18 * Math.sin(i * 0.5 + props.seed) - 0.06 * Math.sin(i * 1.3 + props.seed * 2));
+          points.push([x, y]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+        for (const [x, y] of points) ctx.lineTo(x, y);
+        ctx.lineTo(width, height);
+        ctx.closePath();
+        ctx.fillStyle = toneTint(props.tone);
+        ctx.fill();
+        ctx.beginPath();
+        points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = colors.faint;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, height * 0.5);
+        ctx.lineTo(width, height * 0.5);
+        ctx.stroke();
+      }}
+    />
   );
 }
 
-/** Full-width pages: one per fling, with a page indicator. */
+const pages = [
+  { title: "Revenue", value: "48.2k", note: "+12 %", tone: "accent" },
+  { title: "Sessions", value: "9,410", note: "+3 %", tone: "info" },
+  { title: "Latency", value: "142", note: "ms p95", tone: "warn" },
+  { title: "Uptime", value: "99.98", note: "%", tone: "up" },
+  { title: "Errors", value: "17", note: "−40 %", tone: "danger" },
+] as const;
+
+/** Full-width pages: one per fling; the indicator and the parallax follow the offset natively. */
 function Pager() {
-  // Pages as wide as the scroll view.
-  const width = signal(windowSize().width - 60);
+  // Pages as wide as the scroll view (the Section's inset is 32 + 12 + 28 narrower than the window).
+  const width = signal(windowSize().width - 72);
   const page = signal(0);
+  const x = createNativeValue(0);
+  const step = 16;
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 12 }}>
       <Scroll
         horizontal
         pagingEnabled
         showsIndicator={false}
-        style={{ height: 140, borderRadius: 12 }}
+        scrollValue={x}
+        style={{ height: 160, borderRadius: radius.control, backgroundColor: colors.surface, ...finish.card, borderWidth: 1, borderColor: colors.line }}
         onLayout={(e) => width.set(e.width)}
         onMomentumScrollEnd={(e) => page.set(Math.round(e.x / width()))}
         onScrollEnd={(e) => page.set(Math.round(e.x / width()))}
       >
         <View style={{ flexDirection: "row" }}>
-          <Each of={palette.slice(0, 5)}>
-            {(color, i) => (
-              <View style={{ width: width(), height: 140, backgroundColor: color(), alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ color: "#ffffff", fontSize: 28, fontWeight: "700" }}>Page {i() + 1}</Text>
-              </View>
-            )}
+          <Each of={pages}>
+            {(p, i) => {
+              // Read inside the styles, so they follow the width once it is measured.
+              const range = () => [(i() - 1) * width(), i() * width(), (i() + 1) * width()];
+              return (
+                <View style={{ width: width(), height: 160, overflow: "hidden" }}>
+                  <Backdrop tone={p().tone} seed={i() * 1.7} />
+                  <View
+                    style={{
+                      padding: 16,
+                      gap: 4,
+                      // The text lags behind the page and fades at the edges.
+                      opacity: x.interpolate({ inputRange: range(), outputRange: [0.1, 1, 0.1] }),
+                      transform: [{ translateX: x.interpolate({ inputRange: range(), outputRange: [-width() * 0.35, 0, width() * 0.35] }) }],
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>
+                      {p().title} · {i() + 1} of {pages.length}
+                    </Text>
+                    <Figure value={p().value} note={p().note} tone={p().tone} />
+                  </View>
+                </View>
+              );
+            }}
           </Each>
         </View>
       </Scroll>
-      <View style={{ flexDirection: "row", justifyContent: "center", gap: 6 }}>
-        <Each of={palette.slice(0, 5)}>
-          {(_, i) => (
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: page() === i() ? colors.accent : colors.border }} />
-          )}
-        </Each>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flexDirection: "row", gap: step - 8 }}>
+          <Each of={pages}>{() => <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.raised }} />}</Each>
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: colors.accent,
+              transform: [{ translateX: x.interpolate({ inputRange: [0, (pages.length - 1) * width()], outputRange: [0, (pages.length - 1) * step] }) }],
+            }}
+          />
+        </View>
+        <Text style={{ flex: 1, textAlign: "right", fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>Settled on page {page() + 1}</Text>
       </View>
     </View>
   );
 }
 
-/** Cards that snap to the center; a fling can pass several unless limited to one. */
+/** Cards that snap; a fling can pass several unless limited to one. */
 function Cards() {
   const card = 220;
   const gap = 12;
   const oneStep = signal(false);
   const align = signal<"start" | "center" | "end">("center");
   return (
-    <View style={{ gap: 10 }}>
-      <List
-        each={Array.from({ length: 20 }, (_, i) => i)}
-        horizontal
-        estimatedItemSize={card + gap}
-        snapToInterval={card + gap}
-        snapToAlignment={align()}
-        decelerationRate="fast"
-        disableIntervalMomentum={oneStep()}
-        showsIndicator={false}
-        style={{ height: 120 }}
-        contentContainerStyle={{ gap }}
-      >
-        {(i) => (
-          <View
-            style={{
-              width: card,
-              height: 120,
-              borderRadius: 14,
-              backgroundColor: palette[i() % palette.length],
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: "#ffffff", fontSize: 22, fontWeight: "700" }}>Card {i() + 1}</Text>
-          </View>
-        )}
-      </List>
-      <Choice options={["start", "center", "end"] as const} value={align()} onChange={(v) => align.set(v)} />
-      <Toggle label="One card per fling" value={oneStep()} onChange={(v) => oneStep.set(v)} />
+    <View style={{ gap: 12 }}>
+      <View style={{ marginHorizontal: -14 }}>
+        <List
+          each={Array.from({ length: 20 }, (_, i) => i)}
+          horizontal
+          estimatedItemSize={card + gap}
+          snapToInterval={card + gap}
+          snapToAlignment={align()}
+          decelerationRate="fast"
+          disableIntervalMomentum={oneStep()}
+          showsIndicator={false}
+          style={{ height: 128 }}
+          contentContainerStyle={{ gap, paddingHorizontal: 14 }}
+        >
+          {(i) => {
+            const tone = () => tones[i() % tones.length];
+            return (
+              <View
+                style={{
+                  width: card,
+                  height: 128,
+                  borderRadius: 18,
+                  borderCurve: "continuous",
+                  backgroundColor: colors.raised,
+                  ...finish.raised,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 16,
+                  justifyContent: "space-between",
+                  overflow: "hidden",
+                }}
+              >
+                <View style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3, backgroundColor: toneColor(tone()) }} />
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={{ flex: 1, fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>at {i() * (card + gap)} pt</Text>
+                  <Badge label={tone()} tone={tone()} />
+                </View>
+                <Text style={{ fontSize: 24, fontWeight: "600", color: colors.text, fontVariant: ["tabular-nums"] }}>
+                  Card {i() + 1}
+                </Text>
+              </View>
+            );
+          }}
+        </List>
+      </View>
+      <Segmented size="small" options={options(["start", "center", "end"] as const)} value={align()} onChange={(v) => align.set(v)} />
+      <Toggle label="One card per fling" code="disableIntervalMomentum" value={oneStep()} onChange={(v) => oneStep.set(v)} />
     </View>
   );
 }
 
+type Logged = { name: string; y: number; tone: Tone };
+
 /** onScroll (throttled), drag and momentum events, scrollEnabled, bounces, contentInset. */
 function Events() {
   const offset = signal<ScrollEvent | null>(null);
-  const log = signal<string[]>([]);
+  const log = signal<Logged[]>([]);
   const enabled = signal(true);
   const bounces = signal(true);
   const inset = signal(false);
   const throttle = signal<"0" | "100" | "500">("100");
-  const note = (name: string) => (e: { y: number }) => log.update((l) => [`${name} @ ${Math.round(e.y)}`, ...l].slice(0, 5));
+  const note = (name: string, tone: Tone) => (e: { y: number }) => log.update((l) => [{ name, y: Math.round(e.y), tone }, ...l].slice(0, 5));
+  const progress = () => {
+    const o = offset();
+    return o && o.contentHeight > o.height ? o.y / (o.contentHeight - o.height) : 0;
+  };
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+        <View style={{ flex: 1 }}>
+          <Figure value={offset() ? String(Math.round(offset()!.y)) : "0"} unit="pt" note={offset() ? `/ ${Math.round(offset()!.contentHeight)}` : "Scroll the box"} tone="info" />
+        </View>
+        <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"], paddingBottom: 6 }}>
+          viewport {offset() ? Math.round(offset()!.height) : "—"} pt
+        </Text>
+      </View>
+      <Meter value={progress()} tone="info" />
       <Scroll
-        style={{ height: 180, borderRadius: 10, backgroundColor: "#f6f8fa" }}
+        style={{ height: 180, borderRadius: radius.control, backgroundColor: colors.surface, ...finish.card, borderWidth: 1, borderColor: colors.line }}
         scrollEnabled={enabled()}
         bounces={bounces()}
         contentInset={inset() ? { top: 40, bottom: 40 } : undefined}
         scrollEventThrottle={Number(throttle())}
         onScroll={(v) => offset.set(v)}
-        onScrollBeginDrag={note("begin drag")}
-        onScrollEndDrag={note("end drag")}
-        onMomentumScrollBegin={note("momentum begin")}
-        onMomentumScrollEnd={note("momentum end")}
+        onScrollBeginDrag={note("begin drag", "accent")}
+        onScrollEndDrag={note("end drag", "warn")}
+        onMomentumScrollBegin={note("momentum begin", "info")}
+        onMomentumScrollEnd={note("momentum end", "up")}
       >
-        <View style={{ padding: 12, gap: 6 }}>
+        <View style={{ paddingVertical: 6 }}>
           <Each of={Array.from({ length: 30 }, (_, i) => i + 1)}>
-            {(i) => <Text style={{ color: colors.muted }}>Line {i()}</Text>}
+            {(i) => (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, height: 32, paddingHorizontal: 12 }}>
+                <Text style={{ width: 24, fontSize: 12, color: colors.faint, fontVariant: ["tabular-nums"], textAlign: "right" }}>{i()}</Text>
+                <View style={{ height: 4, borderRadius: 2, width: `${20 + ((i() * 37) % 70)}%`, backgroundColor: colors.raised }} />
+              </View>
+            )}
           </Each>
         </View>
       </Scroll>
-      <Text style={{ fontVariant: ["tabular-nums"] }}>
-        {offset()
-          ? `y ${Math.round(offset()!.y)} of ${Math.round(offset()!.contentHeight)} (viewport ${Math.round(offset()!.height)})`
-          : "Scroll the box"}
-      </Text>
-      <Text style={{ color: colors.muted, fontSize: 13 }}>{log().join("\n") || "No drags yet"}</Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text style={{ flex: 1 }}>onScroll every</Text>
-        <Choice options={["0", "100", "500"] as const} value={throttle()} onChange={(v) => throttle.set(v)} />
-        <Text>ms</Text>
+      <View style={{ gap: 6, minHeight: 5 * 20 }}>
+        <If when={log().length} else={<Text style={{ fontSize: 13, color: colors.faint }}>No drags yet</Text>}>
+          <Each of={log()}>
+            {(entry, i) => (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 20, opacity: 1 - i() * 0.16 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 2.5, backgroundColor: toneColor(entry().tone) }} />
+                <Text style={{ flex: 1, fontSize: 13, color: colors.muted }}>{entry().name}</Text>
+                <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>at {entry().y} pt</Text>
+              </View>
+            )}
+          </Each>
+        </If>
       </View>
-      <Toggle label="Scroll enabled" value={enabled()} onChange={(v) => enabled.set(v)} />
-      <Toggle label="Bounces" value={bounces()} onChange={(v) => bounces.set(v)} />
-      <Toggle label="Content inset 40 (top and bottom)" value={inset()} onChange={(v) => inset.set(v)} />
+      <View style={{ gap: 8 }}>
+        <Caption label="Scroll events at most every" note="ms" />
+        <Segmented size="small" options={options(["0", "100", "500"] as const)} value={throttle()} onChange={(v) => throttle.set(v)} />
+      </View>
+      <View>
+        <Toggle label="Scroll enabled" code="scrollEnabled" value={enabled()} onChange={(v) => enabled.set(v)} />
+        <Toggle label="Bounces" code="bounces" value={bounces()} onChange={(v) => bounces.set(v)} />
+        <Toggle label="Content inset" note="40 pt at the top and bottom" value={inset()} onChange={(v) => inset.set(v)} />
+      </View>
     </View>
   );
 }
@@ -174,10 +289,16 @@ function Zoom() {
   const bounces = signal(true);
   const tiles = Array.from({ length: 24 }, (_, i) => i);
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+        <View style={{ flex: 1 }}>
+          <Figure value={scale().toFixed(2)} unit="×" note={scale() > 1.01 ? "zoomed in" : scale() < 0.99 ? "zoomed out" : "fit"} tone={scale() > 1.01 ? "accent" : "info"} />
+        </View>
+        <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"], paddingBottom: 6 }}>0.5× to 5×</Text>
+      </View>
       <Scroll
         ref={scroll}
-        style={{ height: 240, borderRadius: 10, backgroundColor: "#0d1117" }}
+        style={{ height: 240, borderRadius: radius.control, backgroundColor: colors.surface, ...finish.card, borderWidth: 1, borderColor: colors.line }}
         minimumZoomScale={0.5}
         maximumZoomScale={5}
         bouncesZoom={bounces()}
@@ -189,61 +310,77 @@ function Zoom() {
           <Each of={tiles}>
             {(tile) => {
               const i = tile();
+              const tone = tones[(i * 7) % tones.length];
               return (
-              <View
-                style={{
-                  width: 74,
-                  height: 50,
-                  borderRadius: 8,
-                  borderCurve: "continuous",
-                  backgroundColor: palette[i % palette.length],
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                onPress={() => {
-                  // The tile's middle, in the content's (unzoomed) points.
-                  const x = 6 + (i % 4) * 80 + 37;
-                  const y = 6 + Math.floor(i / 4) * 56 + 25;
-                  scroll?.zoomTo({ scale: scale() < 2.5 ? 3 : 1, x, y });
-                }}
-              >
-                <Text style={{ color: "#ffffff", fontSize: 11 }}>Tile {i + 1}</Text>
-              </View>
+                <View
+                  style={{
+                    width: 74,
+                    height: 50,
+                    borderRadius: 10,
+                    borderCurve: "continuous",
+                    backgroundColor: toneTint(tone),
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 6,
+                    justifyContent: "space-between",
+                  }}
+                  onPress={() => {
+                    // The tile's middle, in the content's (unzoomed) points.
+                    const x = 6 + (i % 4) * 80 + 37;
+                    const y = 6 + Math.floor(i / 4) * 56 + 25;
+                    scroll?.zoomTo({ scale: scale() < 2.5 ? 3 : 1, x, y });
+                  }}
+                >
+                  <View style={{ width: 12, height: 3, borderRadius: 1.5, backgroundColor: toneColor(tone) }} />
+                  <Text style={{ color: colors.text, fontSize: 11, fontVariant: ["tabular-nums"] }}>Tile {i + 1}</Text>
+                </View>
               );
             }}
           </Each>
         </View>
       </Scroll>
-      <Text style={{ fontVariant: ["tabular-nums"] }}>Zoom {scale().toFixed(2)}×</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Button label="1×" onPress={() => scroll?.zoomTo({ scale: 1 })} />
-        <Button label="2×" onPress={() => scroll?.zoomTo({ scale: 2 })} />
-        <Button label="0.5×" onPress={() => scroll?.zoomTo({ scale: 0.5 })} />
+        <View style={{ flex: 1 }}>
+          <Button label="0.5×" variant="secondary" onPress={() => scroll?.zoomTo({ scale: 0.5 })} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="1×" onPress={() => scroll?.zoomTo({ scale: 1 })} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="2×" variant="secondary" onPress={() => scroll?.zoomTo({ scale: 2 })} />
+        </View>
       </View>
-      <Toggle label="Bounces past the limits" value={bounces()} onChange={(v) => bounces.set(v)} />
+      <Toggle label="Bounces past the limits" code="bouncesZoom" value={bounces()} onChange={(v) => bounces.set(v)} />
     </View>
   );
 }
 
-type Post = { id: number; label: string };
+type Post = { id: number; label: string; fresh: boolean; tone: Tone };
 
 /** New items arrive at the top; the rows on screen stay where they are. */
 function Feed() {
   let next = 0;
-  const post = (label: string): Post => ({ id: next++, label });
-  const posts = signal(Array.from({ length: 30 }, (_, i) => post(`Post ${i + 1}`)));
+  const post = (label: string, fresh: boolean): Post => ({ id: next, label, fresh, tone: tones[next++ % tones.length] });
+  const posts = signal(Array.from({ length: 30 }, (_, i) => post(`Post ${i + 1}`, false)));
   let fresh = 0;
-  const addOnTop = () => posts.update((p) => [...Array.from({ length: 3 }, () => post(`New ${++fresh}`)), ...p]);
+  const addOnTop = () => posts.update((p) => [...Array.from({ length: 3 }, () => post(`New ${++fresh}`, true)), ...p]);
   return (
-    <View style={{ gap: 10 }}>
-      <List each={posts()} estimatedItemSize={44} style={{ height: 240, borderRadius: 10, backgroundColor: "#f6f8fa" }}>
+    <View style={{ gap: 12 }}>
+      <List
+        each={posts()}
+        estimatedItemSize={48}
+        style={{ height: 240, borderRadius: radius.control, backgroundColor: colors.surface, ...finish.card, borderWidth: 1, borderColor: colors.line }}
+      >
         {(p) => (
-          <View style={{ paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
-            <Text style={{ color: p().label.startsWith("New") ? colors.accent : colors.text }}>{p().label}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, height: 48, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: p().fresh ? colors.accent : colors.raised }} />
+            <Text style={{ flex: 1, fontSize: 15, color: p().fresh ? colors.text : colors.muted }}>{p().label}</Text>
+            {p().fresh ? <Badge label="new" tone="accent" /> : <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>#{p().id}</Text>}
           </View>
         )}
       </List>
-      <Button label="Add 3 posts on top" onPress={addOnTop} />
+      <Caption label="Scroll down a little, then add" note={`${posts().length} posts`} />
+      <Button label="Add 3 posts on top" icon="plus" onPress={addOnTop} />
     </View>
   );
 }
@@ -255,25 +392,30 @@ export function Scrolling() {
   const presses = signal(0);
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardShouldPersistTaps={taps()}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <Section title="Paging">
+      <View style={{ padding: 16, gap: 16 }}>
+        <Section title="Paging" note="5 pages">
+          <Api names="pagingEnabled · scrollValue" />
           <Pager />
         </Section>
-        <Section title="Snapping (snapToInterval)">
+        <Section title="Snapping" note="20 cards">
+          <Api names="snapToInterval · snapToAlignment" />
           <Cards />
         </Section>
-        <Section title="Zoom (pinch, tap a tile)">
+        <Section title="Zoom" note="Pinch or tap a tile">
+          <Api names="maximumZoomScale · zoomTo()" />
           <Zoom />
         </Section>
         <Section title="Events and behavior">
+          <Api names="onScroll · onScrollBeginDrag · onMomentumScrollEnd" />
           <Events />
         </Section>
         <Section title="Prepending keeps the position">
           <Feed />
         </Section>
-        <Section title="Taps with the keyboard up (keyboardShouldPersistTaps)">
-          <Choice options={["never", "handled", "always"] as const} value={taps()} onChange={(v) => taps.set(v)} />
-          <Text style={{ color: colors.muted, fontSize: 13 }}>
+        <Section title="Taps with the keyboard up">
+          <Api names="keyboardShouldPersistTaps" />
+          <Segmented size="small" options={options(["never", "handled", "always"] as const)} value={taps()} onChange={(v) => taps.set(v)} />
+          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>
             {taps() === "never"
               ? "A tap outside the input only hides the keyboard; the button does not get it."
               : taps() === "handled"
@@ -282,9 +424,38 @@ export function Scrolling() {
           </Text>
           <Input
             placeholder="Type here, then tap the button"
-            style={{ fontSize: 16, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 10 }}
+            placeholderTextColor={colors.faint}
+            selectionColor={colors.accent}
+            style={{
+              height: 44,
+              fontSize: 15,
+              color: colors.text,
+              backgroundColor: colors.surface,
+              ...finish.inset,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.control,
+              paddingHorizontal: 14,
+            }}
           />
-          <Button label={`Pressed ${presses()} times`} onPress={() => presses.set(presses() + 1)} />
+          <Press onPress={() => presses.set(presses() + 1)} accessibilityLabel="Count a tap">
+            <View
+              style={{
+                height: 44,
+                borderRadius: radius.control,
+                borderCurve: "continuous",
+                backgroundColor: colors.light,
+                ...finish.light,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onLight }}>Tap me</Text>
+              <Text style={{ fontSize: 15, color: isDark() ? "#55595f" : "#9a9ea4", fontVariant: ["tabular-nums"] }}>{presses()}</Text>
+            </View>
+          </Press>
           <View style={{ height: 300 }} />
         </Section>
       </View>

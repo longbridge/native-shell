@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.ContextWrapper;
-import android.content.res.Configuration;
 import android.os.Build;
 import android.view.View;
 import android.view.Window;
@@ -26,15 +25,14 @@ final class SystemUi {
 
     /**
      * The status bar of the activity's window. style: 0 default (follows
-     * the appearance), 1 light content, 2 dark content.
+     * the appearance: {@code night}, the app's or the system's), 1 light
+     * content, 2 dark content.
      */
     @SuppressWarnings("deprecation")
-    static void statusBar(Context context, int style, boolean hidden, Integer background) {
+    static void statusBar(Context context, int style, boolean hidden, Integer background, boolean night) {
         Activity activity = activity(context);
         if (activity == null) return;
         Window window = activity.getWindow();
-        boolean night = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
         boolean darkIcons = style == 2 || (style == 0 && !night);
         // Before edge-to-edge (API 35) the bar has a color of its own.
         if (background != null && Build.VERSION.SDK_INT < 35) window.setStatusBarColor(background);
@@ -73,7 +71,10 @@ final class SystemUi {
             return;
         }
         boolean[] answered = {false};
-        AlertDialog.Builder b = new AlertDialog.Builder(activity);
+        // In the appearance shown (the app's own, else the system's).
+        AlertDialog.Builder b = new AlertDialog.Builder(activity, mounter.night()
+                ? android.R.style.Theme_DeviceDefault_Dialog_Alert
+                : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert);
         if (title != null && !title.isEmpty()) b.setTitle(title);
         b.setCancelable(cancelable);
         if (sheet) {
@@ -132,5 +133,34 @@ final class SystemUi {
 
     static void toast(Context context, String text, boolean longer) {
         Toast.makeText(context, text, longer ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+    }
+
+    /** {@code Clipboard.setString}: a plain text clip. */
+    static void setClipboard(Context context, String text) {
+        android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, text));
+    }
+
+    /**
+     * {@code Clipboard.getString} / {@code hasString}: the clip's text, null when it holds none;
+     * with {@code hasOnly} "" for text, without reading the clip (its description says).
+     * Android 10+ only lets the focused app read it: null otherwise.
+     */
+    static String readClipboard(Context context, boolean hasOnly) {
+        android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || !clipboard.hasPrimaryClip()) return null;
+        if (hasOnly) {
+            android.content.ClipDescription d = clipboard.getPrimaryClipDescription();
+            boolean text = d != null
+                    && (d.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN)
+                            || d.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_HTML));
+            return text ? "" : null;
+        }
+        android.content.ClipData clip = clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return null;
+        CharSequence text = clip.getItemAt(0).coerceToText(context);
+        return text != null && text.length() > 0 ? text.toString() : null;
     }
 }

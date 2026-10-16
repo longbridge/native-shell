@@ -35,6 +35,7 @@ const KEYFRAMES = `
 .nsh-field { position: absolute; border: 0; outline: none; background: transparent; padding: 0; margin: 0;
   resize: none; font: inherit; color: inherit; -webkit-user-select: text; user-select: text; }
 .nsh-selectable, .nsh-selectable * { -webkit-user-select: text; user-select: text; }
+.nsh-selectable ::selection { background: var(--nsh-selection, Highlight); }
 .nsh-header { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center;
   justify-content: center; font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   border-bottom: 0.5px solid rgba(0,0,0,.15); z-index: 10; }
@@ -205,7 +206,7 @@ class Player {
     root._id = ROOT_ID;
     root._kind = "root";
     root._events = new Set();
-    root._anim = {};
+    root._animation = {};
     this.views.set(ROOT_ID, root);
     const width = root.clientWidth || 390;
     const height = root.clientHeight || 844;
@@ -359,7 +360,7 @@ class Player {
     el._id = id;
     el._kind = kind;
     el._events = new Set();
-    el._anim = {};
+    el._animation = {};
     el._css = "";
     el._frame = null;
     el.className = kind === "scroll" ? "nsh-v nsh-scroll" : "nsh-v";
@@ -469,7 +470,9 @@ class Player {
     el.style.cssText = (el._base ?? "") + css + (el._extra ?? "");
     if (transition) el.style.transition = transition;
     this.placeFrame(el);
-    for (const [prop, value] of Object.entries(el._anim)) el.style.setProperty(prop, value);
+    for (const [prop, value] of Object.entries(el._animation)) {
+      if (prop !== "border-color" && prop !== "color") el.style.setProperty(prop, value);
+    }
     if (el._sticky) el.style.translate = el._sticky;
     if (border) {
       if (!el._border) {
@@ -477,6 +480,7 @@ class Player {
         el._border.className = "nsh-border";
       }
       el._border.style.cssText = border;
+      if (el._animation["border-color"]) el._border.style.borderColor = el._animation["border-color"];
       el.append(el._border);
     } else if (el._border) {
       el._border.remove();
@@ -496,11 +500,21 @@ class Player {
       this.drawSoon(el);
       return;
     }
-    el._anim[prop] = value;
+    el._animation[prop] = value;
+    if (prop === "border-color") {
+      // Borders are drawn by an overlay.
+      if (el._border) el._border.style.borderColor = value;
+      return;
+    }
+    if (prop === "color") {
+      // Each run has its own color.
+      for (const span of el.querySelectorAll(":scope > .nsh-run")) span.style.color = value;
+      return;
+    }
     el.style.setProperty(prop, value);
   }
 
-  op_t([, id, cx, cy, , , runs, styles, selectable]) {
+  op_t([, id, cx, cy, , , runs, styles, selectable, selectionColor]) {
     const el = this.view(id);
     if (!el) return;
     const frag = document.createDocumentFragment();
@@ -511,11 +525,14 @@ class Player {
       span.style.left = `${cx + x}px`;
       span.style.top = `${cy + y}px`;
       span.textContent = text;
+      if (el._animation.color) span.style.color = el._animation.color;
       frag.append(span);
     }
     for (const span of [...el.querySelectorAll(":scope > .nsh-run")]) span.remove();
     el.insertBefore(frag, el.firstChild);
     el.classList.toggle("nsh-selectable", !!selectable);
+    if (selectionColor) el.style.setProperty("--nsh-selection", selectionColor);
+    else el.style.removeProperty("--nsh-selection");
     el.setAttribute("aria-label", runs.map((r) => r[2]).join(""));
   }
 
@@ -558,6 +575,14 @@ class Player {
     if (pe === "box-none") el._boxNone = true;
   }
 
+  op_al([, id, label]) {
+    const el = this.view(id);
+    if (!el) return;
+    if (el._props) el._props.label = label;
+    if (label) el.setAttribute("aria-label", label);
+    else el.removeAttribute("aria-label");
+  }
+
   op_la([, create, update, del]) {
     this.layoutAnimation = { create, update, delete: del };
   }
@@ -566,7 +591,7 @@ class Player {
     el.style.opacity = "0";
     requestAnimationFrame(() => {
       el.style.transition = `opacity ${t.duration}ms ${t.easing} ${t.delay}ms`;
-      el.style.opacity = el._anim.opacity ?? "";
+      el.style.opacity = el._animation.opacity ?? "";
       setTimeout(() => { el.style.transition = ""; }, t.duration + t.delay + 50);
     });
   }
@@ -579,6 +604,17 @@ class Player {
 
   op_dir([, rtl]) {
     this.root.dir = rtl ? "rtl" : "ltr";
+  }
+
+  // The app's appearance (`setColorScheme`): 0 the system's, 1 light, 2 dark.
+  op_appearance([, appearance]) {
+    this.appearance = appearance;
+    this.root.style.colorScheme = appearance === 1 ? "light" : appearance === 2 ? "dark" : "";
+  }
+
+  /** Dark appearance as shown: the app's, else the system's. */
+  get shownDark() {
+    return this.appearance ? this.appearance === 2 : this.dark;
   }
 
   // Images
@@ -863,7 +899,7 @@ class Player {
         : config.keyboard === "email-address" ? "email"
           : config.keyboard === "url" ? "url"
             : config.keyboard === "phone-pad" ? "tel" : "text";
-      field.inputMode = { "number-pad": "numeric", numeric: "decimal", "decimal-pad": "decimal", "phone-pad": "tel", "email-address": "email", url: "url" }[config.keyboard] ?? "text";
+      field.inputMode = { "number-pad": "numeric", numeric: "decimal", "decimal-pad": "decimal", "numbers-and-punctuation": "text", "phone-pad": "tel", "email-address": "email", url: "url" }[config.keyboard] ?? "text";
       field.enterKeyHint = { done: "done", go: "go", next: "next", search: "search", send: "send" }[config.returnKey] ?? "enter";
     }
     field.readOnly = !config.editable;
@@ -974,8 +1010,8 @@ class Player {
     }
     header.textContent = "";
     header.style.height = `${c.height}px`;
-    header.style.background = c.background ?? (this.dark ? "#1c1c1e" : "#f9f9f9");
-    header.style.color = c.titleColor ?? (this.dark ? "#fff" : "#000");
+    header.style.background = c.background ?? (this.shownDark ? "#1c1c1e" : "#f9f9f9");
+    header.style.color = c.titleColor ?? (this.shownDark ? "#fff" : "#000");
     const title = document.createElement("span");
     title.textContent = c.title ?? "";
     const titleView = c.titleView != null ? this.view(c.titleView) : null;
@@ -1064,7 +1100,7 @@ class Player {
     const el = this.view(id);
     if (!el) return;
     el._modal = { animation, transparent };
-    el.style.background = transparent ? "" : (this.dark ? "#000" : "#fff");
+    el.style.background = transparent ? "" : (this.shownDark ? "#000" : "#fff");
   }
 
   present(el) {
@@ -1145,8 +1181,23 @@ class Player {
       case "dialog": this.dialog(args[0], args[1], args[2], args[3]); break;
       case "reload": el?._frameEl?.contentWindow?.location.reload(); break;
       case "seek": if (el?._video) el._video.currentTime = args[0]; break;
+      case "setClipboard": navigator.clipboard?.writeText(args[0]).catch(() => {}); break;
+      case "readClipboard": this.readClipboard(args[0], args[1]); break;
       default: break;
     }
+  }
+
+  /** `Clipboard.getString` / `hasString`: browsers only tell by reading (which may ask the user). */
+  async readClipboard(request, hasOnly) {
+    let text = "";
+    try {
+      text = (await navigator.clipboard?.readText()) ?? "";
+    } catch {
+      // Denied, or no clipboard access (an insecure context).
+    }
+    const payload = { id: request, has: text.length > 0 };
+    if (!hasOnly && text) payload.text = text;
+    this.event(ROOT_ID, "onClipboard", payload);
   }
 
   dialog(dialogId, title, message, buttons) {
@@ -1211,7 +1262,7 @@ class Player {
     return [e.clientX - r.left, e.clientY - r.top];
   }
 
-  touchEvent(phase, changedId) {
+  touchEvent(phase, changedId, activated) {
     const points = [];
     for (const [id, p] of this.pointers) {
       if (!p.touchPath.length) continue;
@@ -1227,7 +1278,7 @@ class Player {
       });
     }
     if (!points.length) return;
-    const json = JSON.stringify({ phase, time: performance.now(), points });
+    const json = JSON.stringify({ phase, time: performance.now(), points, activated });
     this.call(() => this.withStrings([json], (p, l) => this.wasm.nsh_touch(p, l)));
   }
 
@@ -1245,6 +1296,9 @@ class Player {
       pan: chain.find((v) => v._gestures?.pan || v._events.has("onPanStart") || v._events.has("onPanEnd")) ?? null,
       scroll: e.pointerType === "mouse" && !isField ? chain.find((v) => v._kind === "scroll") ?? null : null,
       pinch: chain.find((v) => v._gestures?.pinch || v._gestures?.rotation) ?? null,
+      // `panActivation`: decided here as the pointer moves (PanActivation::decide).
+      gate: chain.find((v) => v._props?.panActivation) ?? null,
+      gateState: 0,
       states: chain.filter((v) => v._tracked & PRESSED),
       mode: null,
     };
@@ -1262,7 +1316,7 @@ class Player {
     const opacity = el._props?.activeOpacity;
     if (opacity != null && opacity < 1) {
       el.style.transition = "opacity .05s";
-      el.style.opacity = String(opacity * Number(el._anim.opacity ?? getComputedStyle(el).opacity ?? 1));
+      el.style.opacity = String(opacity * Number(el._animation.opacity ?? getComputedStyle(el).opacity ?? 1));
     }
     if (el._events.has("onPressIn")) this.event(el._id, "onPressIn");
     if (el._events.has("onLongPress")) {
@@ -1280,7 +1334,7 @@ class Player {
     clearTimeout(p.longTimer);
     if (el._props?.activeOpacity != null) {
       el.style.transition = "opacity .2s";
-      el.style.opacity = el._anim.opacity ?? "";
+      el.style.opacity = el._animation.opacity ?? "";
     }
     if (el._events.has("onPressOut")) this.event(el._id, "onPressOut");
     if (inside && !p.long && el._events.has("onPress")) this.event(el._id, "onPress");
@@ -1301,16 +1355,21 @@ class Player {
     p.t = now;
     const tx = x - p.startX;
     const ty = y - p.startY;
-    if (p.touchPath.length) this.touchEvent(1, e.pointerId);
+    const activated = this.decideGate(p, tx, ty);
+    if (p.touchPath.length) this.touchEvent(1, e.pointerId, activated);
     if (this.twoFinger) {
       this.moveTwoFinger();
       return;
     }
+    // A scroll view waits while the gate's pan may still activate, and
+    // never gets an activated one.
+    const gated = p.gate && p.gateState !== 2;
+    if (gated && p.gateState === 1) e.preventDefault();
     if (!p.mode && Math.hypot(tx, ty) > 6) {
       if (p.pan) {
         p.mode = "pan";
         this.call((w) => w.nsh_pan(p.pan._id, 0, 0, 0, 0, 0));
-      } else if (p.scroll) {
+      } else if (p.scroll && !gated) {
         p.mode = "scroll";
         p.scrollStart = [p.scroll.scrollLeft, p.scroll.scrollTop];
         if (p.scroll._events.has("onScrollBeginDrag")) this.event(p.scroll._id, "onScrollBeginDrag", { x: p.scroll.scrollLeft, y: p.scroll.scrollTop });
@@ -1331,6 +1390,22 @@ class Player {
       s.scrollTop = p.scrollStart[1] - (s._horizontal ? 0 : ty);
     }
     void dx;
+  }
+
+  /** The gate's node id when its pan activates with this move (else undefined). */
+  decideGate(p, dx, dy) {
+    if (!p.gate || p.gateState !== 0) return undefined;
+    const [ax, ay, fx, fy] = p.gate._props.panActivation;
+    const past = (limit, d) => limit != null && Math.abs(d) > limit;
+    if (past(fx, dx) || past(fy, dy)) {
+      p.gateState = 2;
+      return undefined;
+    }
+    const active = ax == null && ay == null ? Math.hypot(dx, dy) > 10 : past(ax, dx) || past(ay, dy);
+    if (!active) return undefined;
+    p.gateState = 1;
+    this.pressOut(p, false);
+    return p.gate._id;
   }
 
   pointerUp(e, cancelled) {

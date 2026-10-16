@@ -8,13 +8,13 @@ Every tag is a component in scope, imported from its one home (`native-pipeline.
 | JSX | Native (Apple) | Notes |
 |---|---|---|
 | `<View>` | `NshView` (UIView) | `onPress` / `onLongPress` / `onPressIn` / `onPressOut`, `activeOpacity`, `pan={{x, y}}` + `onPanStart` / `onPanEnd`, `pinch` / `rotation` |
-| `<Text>` | `TextView` (CTFrame) | nested `<Text>` is a span, other elements are inline attachments ([text.md](text.md)); `numberOfLines`, `ellipsizeMode`, `allowFontScaling`, `maxFontSizeMultiplier`, `adjustsFontSizeToFit` + `minimumFontScale`, `selectable`, `onTextLayout` |
+| `<Text>` | `TextView` (CTFrame) | nested `<Text>` is a span, other elements are inline attachments ([text.md](text.md)); `numberOfLines`, `ellipsizeMode`, `allowFontScaling`, `maxFontSizeMultiplier`, `adjustsFontSizeToFit` + `minimumFontScale`, `selectable` (range selection) + `selectionColor`, `onTextLayout` |
 | `<Image src>` | UIView + image CALayer | `src` is a URL or `import img from "./a.png"` (an asset descriptor with its size); `resizeMode`; `defaultSource` (placeholder), `blurRadius`, `fadeDuration`; `onLoadStart` / `onProgress` (`loaded` / `total` bytes) / `onLoad` (the source's pixel size) / `onError` / `onLoadEnd`; `tintColor`; animated GIF / WebP / APNG; `Image.getSize(uri)` / `Image.prefetch(uri)` |
-| `<Scroll>` | UIScrollView | `horizontal`, `refreshing` + `onRefresh`, `scrollValue`, `onScrollEnd`, `keyboardDismissMode`, zooming, see [scrolling-and-lists.md](scrolling-and-lists.md) |
+| `<Scroll>` | UIScrollView | `horizontal`, `contentContainerStyle` / `contentContainerClass`, `refreshing` + `onRefresh`, `scrollValue`, `onScrollEnd`, `keyboardDismissMode`, zooming, see [scrolling-and-lists.md](scrolling-and-lists.md) |
 | `<Canvas draw>` | `CanvasView` (drawRect replay) | see [canvas.md](canvas.md) |
 | `<List each>` | UIScrollView + recycled cells | see [scrolling-and-lists.md](scrolling-and-lists.md) |
-| `<Input>` | UITextField / UITextView in a container | `value` / `defaultValue` / `onChangeText` / `onSubmitEditing` / `onFocus` / `onBlur`, `placeholder`, `secureTextEntry`, `keyboardType`, `returnKeyType`, `autoCapitalize`, `autoCorrect`, `multiline`, `maxLength`, `editable`, `autoFocus`, `selectionColor`, `blurOnSubmit`, `selection` + `onSelectionChange` (UTF-16 `start` / `end`), `onKeyPress` (`key`: the text, `Backspace`, `Enter`), `autoComplete` (autofill; `ios={{ textContentType }}` for iOS's names), `caretHidden`, `onContentSizeChange` (the text's size, for growing inputs); ref `setSelection(start, end)` |
-| `<Stack>` / `<Screen>` | UINavigationController | `createNavigator(route)`: `push` / `pop` / `popToTop` / `replace` / `reset`; screens keep their state while stacked; native header (`title`, `headerLeft` / `headerRight` / `headerTitle` elements, `headerTransparent`, colors; `ios={{ headerLargeTitle, headerBackTitle }}`), swipe back (`gestureEnabled`: the interactive gesture only); `preventBack` + `onBackRequest` keep the user on a screen (no swipe; the header / Android back buttons send the event instead of popping) |
+| `<Input>` | UITextField / UITextView in a container | `value` / `defaultValue` / `onChangeText` / `onSubmitEditing` / `onFocus` / `onBlur`, `placeholder`, `secureTextEntry`, `keyboardType` (React Native's values: `number-pad` digits only, `decimal-pad`, `numeric` = iOS's decimal pad / Android's signed decimal, `numbers-and-punctuation` = iOS's numbers and punctuation / Android's signed decimal, `email-address`, `phone-pad`, `url`), `ios={{ keyboardAppearance }}` (`default` / `light` / `dark`; Android's keyboards follow the system theme), `returnKeyType`, `autoCapitalize`, `autoCorrect`, `multiline`, `maxLength`, `editable`, `autoFocus`, `selectionColor`, `blurOnSubmit`, `selection` + `onSelectionChange` (UTF-16 `start` / `end`), `onKeyPress` (`key`: the text, `Backspace`, `Enter`), `autoComplete` (autofill; `ios={{ textContentType }}` for iOS's names), `caretHidden`, `onContentSizeChange` (the text's size, for growing inputs); ref `setSelection(start, end)` |
+| `<Stack>` / `<Screen>` | UINavigationController | `createNavigator(route)`: `push` / `pop` / `popToTop` / `replace` / `reset`; screens keep their state while stacked; native header (content below the header UIKit shows: the platform measures it, `Core::set_screen_header`; `title`, `headerLeft` / `headerRight` / `headerTitle` elements, `headerTransparent`, colors; `ios={{ headerLargeTitle, headerBackTitle }}`), swipe back (`gestureEnabled`: the interactive gesture only); `preventBack` + `onBackRequest` keep the user on a screen (no swipe; the header / Android back buttons send the event instead of popping) |
 | `<Modal>` | presented UIViewController | `visible`, `animationType`, `transparent`, `onRequestClose` (controlled), `onShow`, `onDismiss`; `dismissible` (iOS sheets swipe away, Android back closes natively, then `onRequestClose` + `onDismiss`); `ios={{ presentationStyle, supportedOrientations }}` (`pageSheet` / `formSheet`), `android={{ statusBarTranslucent }}` (otherwise the content starts below the status bar) |
 | `<InputAccessoryView>` | a NshView set as `inputAccessoryView` | `nativeID`; inputs name it with `ios={{ inputAccessoryViewID }}`. A layout root as wide as the window and as tall as its content; the core resolves the id (`InputConfig::accessory`). Renders nothing on Android |
 | `<WebView>` | WKWebView (WebKit loaded on first use) | `source` (`uri` / `html` + `baseUrl`), `injectedJavaScript(BeforeContentLoaded)`, `onMessage` (pages call `window.ReactNativeWebView.postMessage`), `onLoad*`, `onNavigationStateChange`; ref: `reload()`, `goBack()`, `goForward()`, `postMessage(data)`, `injectJavaScript(js)` |
@@ -61,7 +61,7 @@ and reorders fast input). Events tell JS afterwards. Existing answers: input `ma
 `InputFilter`), `blurOnSubmit` (`textFieldShouldReturn`), `gestureEnabled` / `preventBack` (`gestureRecognizerShouldBegin`,
 `navigationBar:shouldPopItem:`, Android `wantsBack()` / `OnBackInvokedCallback` registration), `dismissible`
 (`presentationControllerShouldDismiss`, the dialog's back), `pan` / `pinch` / `hitSlop` / `pointerEvents` /
-`keyboardShouldPersistTaps` (recognizers), capabilities (`decidePolicyForNavigationAction`, `shouldOverrideUrlLoading`),
+`keyboardShouldPersistTaps` / `panActivation` (recognizers), capabilities (`decidePolicyForNavigationAction`, `shouldOverrideUrlLoading`),
 `cancelable`. A new capability with such a callback gets a prop (a menu's items, a rule, a flag); what a prop cannot
 express is let through and corrected in the event afterwards (a controlled `value` in `onChangeText`). `BackHandler` is
 of that kind: with a listener the press is taken, and JS exits the app when no listener handles it.
@@ -69,8 +69,9 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
 ## Interaction and the environment
 
 - **Press feedback primitives** (native, no JS round trip): `activeOpacity`; `underlayColor` + `underlayOpacity` (default 0.85)
-  on any view — the core shows the underlay as the background and fades the children while the platform reports the view
-  pressed; `active:` classes. `KeyboardAvoidingView` (Rust; `behavior`: `padding` → inset padding, `height` → inset margin,
+  on any view — the core shows the underlay as the background (in place of the background color and any gradient,
+  which would cover it) and fades the children while the platform reports the view pressed; `active:` classes.
+  Background colors that would be hidden by a gradient replace it (`docs/dev/styles.md`, Effects). `KeyboardAvoidingView` (Rust; `behavior`: `padding` → inset padding, `height` → inset margin,
   `position` → an inner view moved up; `keyboardVerticalOffset`).
 - **Platform modules**: `Platform` (`OS`: `ios` / `android` / `macos` / `windows` / `linux`, from the platform's
   `Environment::os` (`nsh_engine::Os`; the default is the build's mobile OS, so `nsh trace` is iOS); `isDesktop`,
@@ -85,9 +86,31 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
 - **Imperative calls**: nodes have `focus()`, `blur()` and `scrollTo({ x, y, animated })` (use `ref`); lists also
   `scrollToIndex({ index, viewPosition, viewOffset, animated })`, `scrollToEnd()`, `scrollToOffset()`; `Keyboard.dismiss()`.
   Commands run after the commit's other mount items; list scrolls are resolved by the core with the current item sizes.
+- **`measure()`** (on any node's ref) resolves, once the turn's changes are laid out, to `{ x, y, width, height, pageX,
+  pageY }` or `null` (not in the tree, never shown). `x` / `y` / `width` / `height` are the frame in the parent, as
+  `onLayout` reports it; `pageX` / `pageY` the top left corner in the root view the node is in: the surface, or the modal
+  it is shown in (screens fill their stack, so a screen's views are in the surface's coordinates). Those are the
+  coordinates of touches' `pageX` / `pageY`, so `e.pageX - m.pageX` is a touch's position in the measured view whatever
+  view the finger went down on (`locationX` is relative to that one). The core answers it from its layout
+  (`Command::Measure`, `Core::measure`: the frames it mounted, summed up the tree), never by asking the platform: the
+  scroll views and lists around subtract their content offsets (as the platforms last reported them, `set_scroll_offset`)
+  and apply their zoom scales; transforms, native animations included, are not applied, nor is the mirroring of
+  right-to-left horizontal lists (scaleX −1). The answer is a `$return` on the root, like a module call's
+  (`nsh-js` `components.rs`). There is no `measureInWindow`: the root view is the window for a full-screen surface, and
+  an embedding app knows where it put the surface.
 - **Touch** (React Native semantics): `pointerEvents`, `hitSlop`, `activeOpacity`, `delayLongPress`, `android={{ ripple }}`
   (`{ color, borderless, radius, foreground }`, Android only); press-in waits ~130ms inside scroll views; only the innermost
-  pressable view responds. Nested `<Text>` spans with press handlers
+  pressable view responds. Children placed outside their parent (`position: "absolute"`, `overflow` visible: a
+  dropdown under its field) can be touched where they are drawn: UIKit and Android only look for a touch's target
+  inside a view's bounds, so the core mounts, for each view whose descendants reach outside it, the area they cover
+  (`MountItem::Overflow`, in the view's coordinates, from the layout frames, only when it changes; clipping views,
+  scroll views, lists and stacks have none). `NshView`'s `hitTest` looks in its subviews when the point is outside its
+  bounds (and hit slop) but in that area, and never returns the view itself there; Android's `Box` delivers the touch
+  (and the rest of the gesture) to the child whose area holds it, which passes it on to its children only, and the touch
+  tracker's hit test (`TouchTracker.deepest`) descends the same way. `pointerEvents` keeps its meaning (`box-only` and
+  `none` views are not entered). Views whose children stay inside pay nothing; transforms that move a child out are
+  not covered. There is no portal / overlay primitive yet: a popover renders inside its anchor's parent (give the
+  anchor a `zIndex` over its later siblings) or at the screen's root. Nested `<Text>` spans with press handlers
   are links: the core lists them in `AttributedText::links` (UTF-16 ranges) and the block's press recognizer routes a press to
   the span under the finger (CoreText `CTLineGetStringIndexForPosition` / `Layout.getOffsetForHorizontal`).
 - **Raw touches and the responder system**: `onTouchStart/Move/End/Cancel` (+ `Capture`), `onStartShouldSetResponder`,
@@ -98,12 +121,31 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
   negotiation runs as in React Native, natively (`nsh-js` `touch.rs`), asking the app's handlers. A grant returning true
   (PanResponder's default) sends `SetJsResponder`: scroll
   views around stop taking the touches (UIKit: their pan recognizer is disabled; Android: `ScrollBox.jsBlocked`); a native
-  scroll view that starts dragging first cancels the JS touches. Rust components' nodes on the path hear the same
-  event first and negotiate their own responder in the core (`claim_touches`, `docs/dev/components.md`); the core
-  sends both sides' blocks.
+  scroll view that starts dragging first cancels the JS touches. The `…ShouldSetResponder` handlers also get a
+  `gestureState` (`ResponderGestureState`: `dx`, `dy`, `vx`, `vy`, `moveX`, `moveY`, `x0`, `y0`, `numberActiveTouches`,
+  since the first finger went down; `nsh_core::ui::PanGesture`, the same the core gives Rust claims). Rust components'
+  nodes on the path hear the same event first and negotiate their own responder in the core (`claim_touches`,
+  `docs/dev/components.md`); the core sends both sides' blocks.
+- **Pans that coexist with scroll views** (`panActivation={{ activeOffsetX, activeOffsetY, failOffsetX, failOffsetY }}`,
+  react-native-gesture-handler's offsets; Rust: `TouchClaim::on_pan(PanActivation)`): a JS decision to claim a touch
+  comes a turn late, when the scroll view may have taken it, and claiming on start blocks the scroll view from the
+  first pixel. So the platform decides, on the main thread, from the mounted offsets (`ViewProps::pan_activation`,
+  `PanActivation::decide`: a fail offset passed first fails, an active offset passed activates; no active offsets: 10
+  points in any direction). iOS: a `PanGate` recognizer on the view (`touch.rs`); the pans of the scroll views around
+  it must wait for it to fail (`shouldBeRequiredToFailByGestureRecognizer:`), so a vertical drag scrolls once it passes
+  `failOffsetY` and a horizontal one never scrolls. Android: the root's `TouchTracker` decides on each move before the
+  views below see it and, on activation, blocks the `ScrollBox`es around (`gateBlocked`) and disallows their
+  interception; a scroll view that intercepts first (past its touch slop) wins as before. Web: `nsh.js` defers its
+  drag scrolling while the gate is undecided. The activation travels with the touches (`TouchEvent::activated`; the
+  iOS gate hands it to the root's tracker, which reports it with these touches or the next), and the gated view
+  becomes the responder (its termination request is honored as for any claim). Its own `…ShouldSetResponder`
+  handlers (and a Rust element's other claims) are never asked: the view is a responder exactly when its pan is
+  active, so `PanResponder`'s `panHandlers` work unchanged next to the prop.
 - **Accessibility**: `accessible`, `accessibilityLabel` / `Hint` / `Role` (`role`) / `State` / `Value` / `Actions` +
   `onAccessibilityAction`, `accessibilityElementsHidden`, `importantForAccessibility`, `accessibilityLiveRegion`, `testID`
-  (Android: resource id). Views without a label read their texts.
+  (Android: resource id). Views without a label read their texts. The props go as one `MountItem::ViewProps`, except
+  a label changing alone on mounted props (one that follows app state: a count, a price), which goes as
+  `MountItem::AccessibilityLabel`.
 - **Frames**: `requestAnimationFrame` / `cancelAnimationFrame` follow the display (CADisplayLink / Choreographer).
 - **Back button** (`nsh/android`): `BackHandler.addEventListener("hardwareBackPress", ...)`, after modals and stacks; the app exits
   when nothing handles it. Rust components listen with `cx.on_back_press(..)`, before JS's listeners; the root wants

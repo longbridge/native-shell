@@ -1709,7 +1709,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsh-anim"
+name = "nsh-animation"
 version = "0.1.0"
 
 [[package]]
@@ -1737,8 +1737,10 @@ name = "nsh-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "clap",
  "crossbeam-channel",
+ "flate2",
  "image",
  "libc",
  "log",
@@ -1753,6 +1755,8 @@ dependencies = [
  "plist",
  "serde",
  "serde_json",
+ "sha2",
+ "tar",
  "ureq",
  "zip",
 ]
@@ -1762,7 +1766,7 @@ name = "nsh-core"
 version = "0.1.0"
 dependencies = [
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-macros",
  "rustc-hash",
  "serde_json",
@@ -1791,7 +1795,7 @@ dependencies = [
  "crossbeam-channel",
  "libc",
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-bundler",
  "nsh-core",
  "nsh-js",
@@ -1826,7 +1830,7 @@ name = "nsh-js"
 version = "0.1.0"
 dependencies = [
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-core",
  "nsh-ui-mobile",
  "percent-encoding",
@@ -1869,7 +1873,7 @@ dependencies = [
  "jni",
  "libc",
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
@@ -1887,7 +1891,7 @@ dependencies = [
  "dispatch2",
  "libc",
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
@@ -1909,7 +1913,7 @@ name = "nsh-platform-web"
 version = "0.1.0"
 dependencies = [
  "log",
- "nsh-anim",
+ "nsh-animation",
  "nsh-bundler",
  "nsh-core",
  "nsh-engine",
@@ -3909,6 +3913,16 @@ dependencies = [
  "serde",
  "slotmap",
  "smallvec",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
 ]
 
 [[package]]

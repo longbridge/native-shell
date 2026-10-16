@@ -134,6 +134,12 @@ final class InputBox extends FrameLayout implements Node {
         switch (keyboard) {
             case 1: type = InputType.TYPE_CLASS_NUMBER; break;
             case 2: type = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL; break;
+            // `numeric` (as React Native) and `numbers-and-punctuation`: a sign too.
+            case 6:
+            case 7:
+                type = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
+                        | InputType.TYPE_NUMBER_FLAG_DECIMAL;
+                break;
             case 3: type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS; break;
             case 4: type = InputType.TYPE_CLASS_PHONE; break;
             case 5: type = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI; break;

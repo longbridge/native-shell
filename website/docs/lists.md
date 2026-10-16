@@ -96,6 +96,7 @@ Pass a new array to change the items: `posts.set([...posts(), ...more])`. The li
 | `horizontal` | `boolean` | `false` | Scrolls sideways. |
 | `numColumns` | `number` | `1` | Items per row (vertical lists). |
 | `inverted` | `boolean` | `false` | Item 0 at the bottom (chat); starts at the end and keeps its distance from the end. |
+| `maintainVisibleContentPosition` | `{ autoscrollToBottomThreshold?: number }` | | A list that is not inverted stays at the end while it is within that many points of it, as content grows (see below). |
 | `stickyHeaderIndices` | `number[]` | | Items that stick to the top while scrolled past (one column, not inverted). |
 | `contentContainerStyle` | `{ padding*, gap, rowGap, columnGap }` | | Padding and gaps of the content, numbers only. |
 | `ListHeaderComponent` | component or element | | Before the items. |
@@ -227,6 +228,16 @@ mount(Chat);
 ```
 
 `scrollToEnd()` on an inverted list scrolls to its start: the newest message.
+
+### Following the end of a list that is not inverted
+
+A list in reading order (oldest first) can follow its end too: with `maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 40 }}`, while the user is at the end (or within 40 points of it), the list stays at the end as the content grows: a reply streaming into the last item, a new message appended, the keyboard shrinking the list. Scrolled further up, the visible content stays where it is and the new content grows below it. Items inserted above the visible ones never move them, with or without the option.
+
+```tsx
+<List each={messages()} keyExtractor={(m) => m.id} maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 40 }} style={{ flex: 1 }}>
+  {(m) => <Bubble message={m()} />}
+</List>
+```
 
 ## Horizontal lists
 

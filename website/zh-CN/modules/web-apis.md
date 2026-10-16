@@ -6,7 +6,7 @@ order: 15
 
 # Web API
 
-除了 ECMAScript 标准库，nsh 应用的 JS 环境还提供一组 Web 平台全局对象：`fetch` 及其 `Headers`、`Request`、`Response`；Streams 标准；`URL` 和 `URLSearchParams`；`TextEncoder` / `TextDecoder`；`Blob`、`File` 和 `FormData`；`EventTarget`、`Event` 和 `AbortController`；定时器、`requestAnimationFrame` 和 `console`。它们都用 Rust 原生实现，遵循 WHATWG 标准，无需 import。很多为浏览器编写的库（HTTP 客户端、URL 与编码工具、流处理工具）可以直接使用。
+除了 ECMAScript 标准库，nsh 应用的 JS 环境还提供一组 Web 平台全局对象：`fetch` 及其 `Headers`、`Request`、`Response`；Streams 标准；`URL` 和 `URLSearchParams`；`TextEncoder` / `TextDecoder`；`Blob`、`File` 和 `FormData`；`EventTarget`、`Event` 和 `AbortController`；定时器、`requestAnimationFrame` 和 `console`；以及 QuickJS 缺少的用于数字与日期格式化的 `Intl`。它们都用 Rust 原生实现，遵循 WHATWG 标准，无需 import。很多为浏览器编写的库（HTTP 客户端、URL 与编码工具、流处理工具）可以直接使用。
 
 这里没有 DOM：没有 `window`、`document`、`localStorage`、`XMLHttpRequest`、`WebSocket`、`crypto`，也没有 `structuredClone`。界面用[元素](../elements/index.md)和[组件](../components/index.md)搭建，而不是 HTML。
 
@@ -22,6 +22,7 @@ order: 15
 | [文本编码](#文本编码) | `TextEncoder`、`TextDecoder` |
 | [Blob 与表单数据](#blob-与表单数据) | `Blob`、`File`、`FormData` |
 | [Fetch](#fetch) | `fetch`、`Headers`、`Request`、`Response` |
+| [数字与日期格式化](#数字与日期格式化) | `Intl.NumberFormat`、`Intl.DateTimeFormat`、`toLocaleString` |
 | [流](#流) | `ReadableStream`、`WritableStream`、`TransformStream`、各类 reader、writer 和 controller、`ByteLengthQueuingStrategy`、`CountQueuingStrategy`、`TextEncoderStream`、`TextDecoderStream` |
 
 ## 控制台与计时
@@ -620,6 +621,26 @@ for await (const line of res.body!.pipeThrough(new TextDecoderStream()).pipeThro
   console.log(line);
 }
 ```
+
+## 数字与日期格式化
+
+QuickJS 自身没有 `Intl`；nsh 补上了一个，在 Rust 中格式化：`Intl.NumberFormat`、`Intl.DateTimeFormat` 和 `Intl.getCanonicalLocales`，以及数字和 BigInt 的 `toLocaleString`、日期的 `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString`，它们接受相同的 `locales` 和 `options`。它们的声明来自 TypeScript 自带的 `ES2023` 库，所以不在 `globals.d.ts` 中。
+
+```ts
+(1234567.891).toLocaleString();                                              // "1,234,567.891"（en-US）
+(1234.5).toLocaleString("de-DE", { style: "currency", currency: "EUR" });  // "1.234,50 €"
+new Intl.NumberFormat("en", { notation: "compact" }).format(1_500_000);      // "1.5M"
+new Intl.NumberFormat("zh-CN", { notation: "compact" }).format(12_345);      // "1.2万"
+new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });   // "09:05"
+new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date); // "Oct 16, 2026, 3:04 PM"
+```
+
+不传 `locales` 时使用设备的区域设置（iOS 的 `NSLocale.currentLocale`、Android 的 `Locale.getDefault()`）；`nsh trace` 和 Web 上为 `en-US`。
+
+- **数字**：`decimal`、`percent`、`currency`（`currencyDisplay` 为 `symbol`、`narrowSymbol`、`code`）和 `unit`（常用单位：长度、质量、时长、数据大小、温度、速度）样式；`minimumIntegerDigits`、`minimum` / `maximumFractionDigits`、`minimum` / `maximumSignificantDigits`、`roundingPriority`、`trailingZeroDisplay`、`useGrouping`、`signDisplay`；`standard`、`scientific`、`engineering` 和 `compact` 记数法（`compactDisplay` 为 `short` / `long`）。舍入方式是四舍五入（远离零），按数字的书写形式进行（`1.005` 舍入为 `1.01`，与浏览器一致）。`format` 也精确地接受 BigInt 和十进制字符串。`formatToParts` 和 `resolvedOptions` 与浏览器一致。
+- **日期**：`weekday`、`year`、`month`（`numeric`、`2-digit`、`short`、`long`、`narrow`）、`day`、`hour`、`minute`、`second`、`fractionalSecondDigits`、`hour12` / `hourCycle`、`timeZoneName` 以及 `dateStyle` / `timeStyle`，使用公历。`timeZone` 支持设备时区、`UTC` 和偏移量（`"+08:00"`）；其他时区名会抛出 `RangeError`（没有时区数据库）。
+- **区域**：区域数据是一张常用语言的表（英语、德语、法语、西班牙语、意大利语、葡萄牙语、荷兰语、俄语、瑞典语、波兰语、土耳其语、印尼语、越南语、泰语、印地语、中文、日语、韩语）及其地区变体（`en-GB`、`en-IN`、`de-CH`、`es-MX`、`pt-PT`、`zh-TW` 等），而不是完整的 CLDR，所以细节可能与浏览器的输出不同。没有数据的区域会依次回退到下一个请求的区域、设备的区域、`en-US`；俄语、瑞典语、波兰语、土耳其语、印尼语、越南语、泰语和印地语的日期没有月份名（月份写成数字，星期用英语）。数字始终是拉丁数字。
+- **不支持**：`Intl.Collator`（`String.prototype.localeCompare` 是 QuickJS 自带的，不区分区域）、`PluralRules`、`RelativeTimeFormat`、`ListFormat`、`DisplayNames`、`Segmenter` 和 `Intl.Locale`；`currencySign: "accounting"` 和 `currencyDisplay: "name"` 分别按 `standard` 和 `code` 格式化。
 
 ## 性能
 

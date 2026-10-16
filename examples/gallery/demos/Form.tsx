@@ -1,182 +1,421 @@
-import { Input, type InputProps, Scroll, signal, split, Text, View, type YNode } from "nsh";
+import { effect, Input, type InputProps, type JSX, Scroll, signal, split, Text, View, type YNode } from "nsh";
+import { Animated, createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui/mobile";
+import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
-import { Button, colors, Section } from "../ui";
+import { Appear, Badge, Button, Caption, Card, colors, finish, header, IconTile, Inset, Meter, mono, Press, radius, RoundButton, Section, Segmented, tints, toneColor, type Tone } from "../ui";
 
-const field = {
-  fontSize: 16,
-  color: colors.text,
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: 10,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-} as const;
-
-/** A labelled input; `next` focuses another input on return. */
-function Field(props: InputProps & { label: string; next?: () => YNode | undefined }) {
-  const [own, input] = split(props, ["label", "next"]);
+/**
+ * A labelled input (`api` names the prop it shows, `hint` is a plain note):
+ * the border glows accent while focused (a ring fading in
+ * natively), an error turns it red, slides a message in (layout animation)
+ * and shakes the field. `next` focuses another input on return.
+ */
+function Field(
+  props: InputProps & { label: string; api?: string; hint?: string; error?: string; prefix?: string; next?: () => YNode | undefined },
+) {
+  const [own, input] = split(props, ["label", "api", "hint", "error", "prefix", "next", "onFocus", "onBlur", "style"]);
+  const focus = createNativeValue(0);
+  const shake = createNativeValue(0);
+  let shown = false;
+  effect(() => {
+    const has = !!own.error;
+    if (has === shown) return;
+    shown = has;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (has) Animated.sequence([9, -8, 6, -4, 2, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 45 }))).start();
+  });
+  const box = () => (props.multiline ? { minHeight: 46, paddingTop: 13, paddingBottom: 13 } : { height: 46 });
   return (
-    <View style={{ gap: 4 }}>
-      <Text style={{ fontSize: 13, color: colors.muted }}>{own.label}</Text>
-      <Input
-        style={field}
-        returnKeyType={own.next ? "next" : "done"}
-        onSubmitEditing={() => own.next?.()?.focus()}
-        {...input}
-      />
+    <View style={{ gap: 6, transform: [{ translateX: shake }] }}>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: "500", color: colors.muted }}>{own.label}</Text>
+        <If when={own.api}>
+          <Text style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>{own.api}</Text>
+        </If>
+        <If when={own.hint}>
+          <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>{own.hint}</Text>
+        </If>
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: props.multiline ? "flex-start" : "center",
+          borderRadius: radius.control,
+          borderCurve: "continuous",
+          borderWidth: 1,
+          borderColor: own.error ? colors.danger : props.editable === false ? colors.line : colors.border,
+          backgroundColor: colors.inset,
+          // Recessed while editable; a read-only field lies flat.
+          ...(props.editable === false ? {} : finish.inset),
+        }}
+      >
+        <If when={own.prefix}>
+          <Text style={{ paddingLeft: 14, fontSize: 15, color: colors.muted }}>{own.prefix}</Text>
+        </If>
+        <Input
+          placeholderTextColor={colors.faint}
+          selectionColor={colors.accent}
+          returnKeyType={own.next ? "next" : "done"}
+          onSubmitEditing={() => own.next?.()?.focus()}
+          onFocus={() => {
+            focus.timing(1, { duration: 160 });
+            own.onFocus?.();
+          }}
+          onBlur={() => {
+            focus.timing(0, { duration: 220 });
+            own.onBlur?.();
+          }}
+          {...input}
+          style={[{ flex: 1, paddingHorizontal: 14, fontSize: 15, color: props.editable === false ? colors.muted : colors.text, ...box() }, ...(Array.isArray(own.style) ? own.style : [own.style])]}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: -1,
+            left: -1,
+            right: -1,
+            bottom: -1,
+            borderRadius: radius.control,
+            borderCurve: "continuous",
+            borderWidth: 1.5,
+            borderColor: own.error ? colors.danger : colors.accent,
+            opacity: focus,
+          }}
+        />
+      </View>
+      <If when={own.error}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger }} />
+          <Text style={{ flex: 1, fontSize: 13, color: colors.danger }}>{own.error}</Text>
+        </View>
+      </If>
+    </View>
+  );
+}
+
+/** A row that opens something: an icon, a title, the API it shows. */
+function LinkRow(props: { icon: IconName; title: string; note: string; first?: boolean; onPress: () => void }) {
+  return (
+    <Press onPress={props.onPress} scale={0.98} accessibilityLabel={props.title}>
+      <View
+        style={{
+          minHeight: 60,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          borderTopWidth: props.first ? 0 : 1,
+          borderTopColor: colors.line,
+        }}
+      >
+        <IconTile name={props.icon} size={34} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 15, fontWeight: "500", color: colors.text }}>{props.title}</Text>
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.faint, fontFamily: mono }}>
+            {props.note}
+          </Text>
+        </View>
+        <Icon name="chevron" size={14} tint={colors.faint} />
+      </View>
+    </Press>
+  );
+}
+
+/** Two items side by side, equal widths. */
+function Pair(props: { children: [JSX.Element, JSX.Element] }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      <View style={{ flex: 1 }}>{props.children[0]}</View>
+      <View style={{ flex: 1 }}>{props.children[1]}</View>
     </View>
   );
 }
 
 type Mode = "none" | "on-drag" | "interactive";
 
+const modes = [
+  { value: "none", label: "None" },
+  { value: "on-drag", label: "On drag" },
+  { value: "interactive", label: "Interactive" },
+] as const;
+
+const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** 0–4: length, mixed case, a digit, a symbol. */
+const strength = (p: string) =>
+  p.length === 0 ? 0 : [p.length >= 8, /[a-z]/.test(p) && /[A-Z]/.test(p), /\d/.test(p), /[^\w\s]/.test(p)].filter(Boolean).length;
+const strengthLabel = ["Empty", "Weak", "Fair", "Good", "Strong"];
+const strengthTone: Tone[] = ["neutral", "danger", "warn", "info", "up"];
+
+type Status = { tone: "up" | "danger"; text: string } | null;
+
 /**
- * Many inputs in a scroll view: the focused one stays above the keyboard
- * (natively), return moves to the next one, dragging the form can hide the
- * keyboard.
+ * An account form in a scroll view: the focused input stays above the
+ * keyboard (natively), return moves to the next one, dragging the form can
+ * hide the keyboard; leaving a field or submitting checks it.
  */
 export function Form() {
   const name = signal("");
   const email = signal("");
+  const password = signal("");
+  const code = signal("");
   const shout = signal("");
   const notes = signal("");
   const mode = signal<Mode>("on-drag");
-  const submitted = signal("");
+  const status = signal<Status>(null);
   const sheet = signal(false);
+  const touched = signal<Record<string, boolean>>({});
+  const touch = (key: string) => () => touched.update((t) => ({ ...t, [key]: true }));
   // Inputs in return-key order.
   const refs: YNode[] = [];
   const next = (i: number) => () => refs[i + 1];
   const ref = (i: number) => (node: YNode) => (refs[i] = node);
 
+  const nameError = () => (touched().name && !name().trim() ? "Enter your name" : undefined);
+  const emailError = () =>
+    touched().email && !emailPattern.test(email()) ? (email() ? "That address needs an @ and a domain" : "Enter your e-mail") : undefined;
+  const passwordError = () => (touched().password && password().length < 8 ? "Use at least 8 characters" : undefined);
+  const score = () => strength(password());
+
+  const submit = () => {
+    touched.set({ name: true, email: true, password: true });
+    const issues = [nameError(), emailError(), passwordError()].filter(Boolean).length;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    status.set(
+      issues
+        ? { tone: "danger", text: `${issues} ${issues === 1 ? "field needs" : "fields need"} attention` }
+        : { tone: "up", text: `Account created for ${name()} <${email()}>` },
+    );
+  };
+
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }} keyboardDismissMode={mode()}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={{ flex: 1, color: colors.muted }}>Keyboard {Math.round(keyboard().height)} pt</Text>
-          <Each of={["none", "on-drag", "interactive"] as Mode[]}>
-            {(m) => (
-              <Text
-                onPress={() => mode.set(m())}
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Appear>
+          <Card
+            icon="form"
+            title="Keyboard"
+            subtitle="keyboardDismissMode while dragging"
+            right={<Badge label={`${Math.round(keyboard().height)} pt`} tone={keyboard().height > 0 ? "accent" : "neutral"} />}
+          >
+            <Segmented options={modes} value={mode()} onChange={(m) => mode.set(m)} />
+            <Caption label="Drag the form with the keyboard up" note={mode()} />
+          </Card>
+        </Appear>
+
+        <Appear index={1}>
+          <Section title="Account" note="autoComplete">
+            <Field
+              ref={ref(0)}
+              next={next(0)}
+              label="Name"
+              value={name()}
+              onChangeText={(v) => name.set(v)}
+              onBlur={touch("name")}
+              error={nameError()}
+              autoCapitalize="words"
+              autoComplete="name"
+              placeholder="Ada Lovelace"
+            />
+            <Field
+              ref={ref(1)}
+              next={next(1)}
+              label="E-mail"
+              api="email-address"
+              value={email()}
+              onChangeText={(v) => email.set(v)}
+              onBlur={touch("email")}
+              error={emailError()}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              placeholder="ada@example.com"
+            />
+            <View style={{ gap: 8 }}>
+              <Field
+                ref={ref(2)}
+                next={next(2)}
+                label="Password"
+                api="secureTextEntry"
+                value={password()}
+                onChangeText={(v) => {
+                  if (strength(v) !== score()) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  password.set(v);
+                }}
+                onBlur={touch("password")}
+                error={passwordError()}
+                secureTextEntry
+                autoComplete="new-password"
+                placeholder="At least 8 characters"
+              />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Meter value={score() / 4} tone={strengthTone[score()]} />
+                </View>
+                <Text style={{ width: 52, textAlign: "right", fontSize: 13, fontWeight: "500", color: score() ? toneColor(strengthTone[score()]) : colors.faint }}>
+                  {strengthLabel[score()]}
+                </Text>
+              </View>
+            </View>
+            <Field ref={ref(3)} next={next(3)} label="Phone" api="phone-pad" keyboardType="phone-pad" autoComplete="tel" placeholder="+1 555 0100" />
+            <Field
+              ref={ref(4)}
+              next={next(4)}
+              label="Website"
+              api="url"
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="https://"
+            />
+          </Section>
+        </Appear>
+
+        <Appear index={2}>
+          <Section title="Numbers" note="keyboardType">
+            <Pair>
+              <Field ref={ref(5)} next={next(5)} label="Age" hint="3 digits" keyboardType="number-pad" maxLength={3} placeholder="36" />
+              <Field ref={ref(6)} next={next(6)} label="Amount" api="decimal-pad" prefix="$" keyboardType="decimal-pad" placeholder="0.00" />
+            </Pair>
+            <Field
+              label="Offset"
+              api="numbers-and-punctuation"
+              hint="dark keyboard (iOS)"
+              keyboardType="numbers-and-punctuation"
+              ios={{ keyboardAppearance: "dark" }}
+              placeholder="-12.5"
+            />
+            <Field
+              ref={ref(7)}
+              next={next(7)}
+              label="Verification code"
+              hint={`${code().length}/6`}
+              value={code()}
+              onChangeText={(v) => code.set(v)}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="······"
+              style={{ letterSpacing: 10, fontSize: 22, fontWeight: "500", fontVariant: ["tabular-nums"], textAlign: "center" }}
+            />
+          </Section>
+        </Appear>
+
+        <Appear index={3}>
+          <Section title="Shipping address" note="scrolls into view">
+            <Field ref={ref(8)} next={next(8)} label="Street" autoComplete="street-address" placeholder="12 Analytical Way" />
+            <Pair>
+              <Field ref={ref(9)} next={next(9)} label="City" placeholder="London" />
+              <Field ref={ref(10)} next={next(10)} label="Postal code" autoCapitalize="characters" autoComplete="postal-code" placeholder="SW1A 1AA" />
+            </Pair>
+            <Field ref={ref(11)} next={next(11)} label="Country" placeholder="United Kingdom" />
+          </Section>
+        </Appear>
+
+        <Appear index={4}>
+          <Section title="Selection and keys" note="onSelectionChange">
+            <SelectionDemo />
+          </Section>
+        </Appear>
+
+        <Appear index={5}>
+          <Section title="Text" note="Input props">
+            <Field
+              ref={ref(12)}
+              next={next(12)}
+              label="Controlled"
+              hint="Uppercased as you type"
+              value={shout()}
+              onChangeText={(t) => shout.set(t.toUpperCase())}
+              placeholder="TYPE IN LOWER CASE"
+            />
+            <Field label="Read only" api="editable={false}" value="Not editable" editable={false} />
+            <Field
+              ref={ref(13)}
+              next={next(13)}
+              label="Custom colors"
+              api="selectionColor"
+              placeholder="A blue placeholder, an amber selection"
+              placeholderTextColor={colors.info}
+              selectionColor={colors.warn}
+            />
+            <View style={{ gap: 8 }}>
+              <Field
+                ref={ref(14)}
+                label="Notes"
+                hint={`${notes().length}/280`}
+                multiline
+                maxLength={280}
+                value={notes()}
+                onChangeText={(v) => notes.set(v)}
+                placeholder="Return adds a line"
+                style={{ minHeight: 100 }}
+              />
+              <Meter value={notes().length / 280} tone={notes().length > 250 ? "warn" : "accent"} />
+            </View>
+            <AutoGrow />
+            <Field label="No caret" api="caretHidden" caretHidden defaultValue="No caret here" />
+          </Section>
+        </Appear>
+
+        <Appear index={6}>
+          <Card
+            icon="check"
+            title="Create the account"
+            subtitle="Submitting checks every field"
+            right={<If when={status()}><Badge label={status()?.tone === "up" ? "Sent" : "Check"} tone={status()?.tone ?? "neutral"} /></If>}
+          >
+            <If when={status()}>
+              <View
                 style={{
-                  fontSize: 13,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderRadius: 6,
-                  overflow: "hidden",
-                  color: mode() === m() ? "#ffffff" : colors.text,
-                  backgroundColor: mode() === m() ? colors.accent : "#e1e4e8",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 12,
+                  borderRadius: radius.control,
+                  backgroundColor: status()?.tone === "up" ? tints.up : tints.danger,
                 }}
               >
-                {m()}
-              </Text>
-            )}
-          </Each>
-        </View>
+                <Icon name={status()?.tone === "up" ? "check" : "bell"} size={16} tint={status()?.tone === "up" ? colors.up : colors.danger} />
+                <Text style={{ flex: 1, fontSize: 14, lineHeight: 19, color: status()?.tone === "up" ? colors.up : colors.danger }}>{status()?.text}</Text>
+              </View>
+            </If>
+            <Pair>
+              <Button label="Submit" onPress={submit} />
+              <Button label="Hide keyboard" variant="secondary" onPress={() => Keyboard.dismiss()} />
+            </Pair>
+          </Card>
+        </Appear>
 
-        <Section title="Account">
-          <Field ref={ref(0)} next={next(0)} label="Name" value={name()} onChangeText={(v) => name.set(v)} autoCapitalize="words" autoComplete="name" placeholder="Ada Lovelace" />
-          <Field
-            ref={ref(1)}
-            next={next(1)}
-            label="E-mail"
-            value={email()}
-            onChangeText={(v) => email.set(v)}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            placeholder="ada@example.com"
-          />
-          <Field ref={ref(2)} next={next(2)} label="Password" secureTextEntry autoComplete="new-password" placeholder="At least 8 characters" />
-          <Field ref={ref(3)} next={next(3)} label="Phone" keyboardType="phone-pad" autoComplete="tel" placeholder="+1 555 0100" />
-          <Field ref={ref(4)} next={next(4)} label="Website" keyboardType="url" autoCapitalize="none" autoCorrect={false} placeholder="https://" />
-        </Section>
-
-        <Section title="Numbers">
-          <Field ref={ref(5)} next={next(5)} label="Age (number pad, 3 digits)" keyboardType="number-pad" maxLength={3} />
-          <Field ref={ref(6)} next={next(6)} label="Amount (decimal pad)" keyboardType="decimal-pad" placeholder="0.00" />
-          <Field
-            ref={ref(7)}
-            next={next(7)}
-            label="Code (6 digits)"
-            keyboardType="numeric"
-            maxLength={6}
-            style={{ ...field, letterSpacing: 8, fontSize: 22, textAlign: "center" }}
-          />
-        </Section>
-
-        <Section title="Address (far down: the form scrolls to keep the input visible)">
-          <Field ref={ref(8)} next={next(8)} label="Street" placeholder="12 Analytical Way" />
-          <Field ref={ref(9)} next={next(9)} label="City" placeholder="London" />
-          <Field ref={ref(10)} next={next(10)} label="Postal code" autoCapitalize="characters" placeholder="SW1A 1AA" />
-          <Field ref={ref(11)} next={next(11)} label="Country" placeholder="United Kingdom" />
-        </Section>
-
-        <Section title="Selection and keys">
-          <SelectionDemo />
-        </Section>
-
-        <Section title="Text">
-          <Field
-            ref={ref(12)}
-            next={next(12)}
-            label="Controlled: uppercased as you type"
-            value={shout()}
-            onChangeText={(t) => shout.set(t.toUpperCase())}
-          />
-          <Field label="Read only" value="Not editable" editable={false} style={{ ...field, color: colors.muted, backgroundColor: "#f6f8fa" }} />
-          <Field
-            ref={ref(13)}
-            next={next(13)}
-            label="Custom colors"
-            placeholder="Placeholder in purple"
-            placeholderTextColor="#8250df"
-            selectionColor="#bf3989"
-          />
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 13, color: colors.muted }}>Notes (multiline, grows, 280 max)</Text>
-            <Input
-              ref={ref(14)}
-              style={{ ...field, minHeight: 100 }}
-              multiline
-              maxLength={280}
-              value={notes()}
-              onChangeText={(v) => notes.set(v)}
-              placeholder="Return adds a line"
-            />
-            <Text style={{ fontSize: 12, color: colors.muted, textAlign: "right" }}>{`${notes().length}/280`}</Text>
-          </View>
-          <AutoGrow />
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 13, color: colors.muted }}>caretHidden</Text>
-            <Input style={field} caretHidden defaultValue="No caret here" />
-          </View>
-        </Section>
-
-        <View style={{ gap: 10 }}>
-          <Button label="Submit" onPress={() => submitted.set(`${name() || "Nobody"} <${email() || "no e-mail"}>`)} />
-          <Text style={{ color: "#1a7f37" }}>{submitted()}</Text>
-          <Button label="Hide the keyboard" color="#57606a" onPress={() => Keyboard.dismiss()} />
-          <Button label="Inputs in a sheet" color="#8250df" onPress={() => sheet.set(true)} />
-          <Button
-            label="A message bar at the bottom"
-            color="#1a7f37"
-            onPress={() => nav.push({ name: "page", page: MessageBar })}
-          />
-        </View>
+        <Appear index={7}>
+          <Card title="More keyboards" subtitle="Sheets and bars that ride on the keyboard" flush>
+            <Inset padding={0} gap={0}>
+              <LinkRow first icon="components" title="Inputs in a sheet" note='presentationStyle="pageSheet"' onPress={() => sheet.set(true)} />
+              <LinkRow icon="text" title="A message bar at the bottom" note="KeyboardAvoidingView" onPress={() => nav.push({ name: "page", page: MessageBar })} />
+            </Inset>
+          </Card>
+        </Appear>
       </View>
 
       <Modal visible={sheet()} ios={{ presentationStyle: "pageSheet" }} onRequestClose={() => sheet.set(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
-            <View style={{ padding: 16, gap: 12 }}>
-              <Text style={{ fontSize: 22, fontWeight: "700" }}>A sheet</Text>
-              <Button label="Close" onPress={() => sheet.set(false)} />
-              <Each of={["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"]}>
-                {(label) => <Field label={label()} placeholder={`${label()} field`} />}
-              </Each>
+            <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 8, paddingLeft: 4 }}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ fontSize: 24, fontWeight: "700", letterSpacing: -0.4, color: colors.text }}>A sheet</Text>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>Its inputs stay above the keyboard too</Text>
+                </View>
+                <Button label="Done" variant="secondary" onPress={() => sheet.set(false)} />
+              </View>
+              <Inset>
+                <Each of={["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"]}>
+                  {(label) => <Field label={label()} placeholder={`${label()} field`} />}
+                </Each>
+              </Inset>
             </View>
           </Scroll>
         </SafeAreaView>
@@ -185,87 +424,109 @@ export function Form() {
   );
 }
 
-/** An input pinned to the bottom (outside any scroll view): it rides on the keyboard. */
 /** A multiline input that grows with its text (onContentSizeChange), up to 5 lines. */
 function AutoGrow() {
   const height = signal(0);
-  const size = signal("");
+  const size = signal("–");
   return (
-    <View style={{ gap: 4 }}>
-      <Text style={{ fontSize: 13, color: colors.muted }}>Grows with its text (onContentSizeChange): {size()}</Text>
-      <Input
-        multiline
-        placeholder="Type several lines"
-        onContentSizeChange={(e) => {
-          size.set(`${Math.round(e.width)}×${Math.round(e.height)}`);
-          height.set(Math.min(e.height, 110));
-        }}
-        style={{ ...field, height: Math.max(height(), 20) + 20 }}
-      />
-    </View>
+    <Field
+      label="Grows with its text"
+      hint={size()}
+      multiline
+      placeholder="Type several lines"
+      onContentSizeChange={(e) => {
+        size.set(`${Math.round(e.width)}×${Math.round(e.height)}`);
+        height.set(Math.min(e.height, 110));
+      }}
+      style={{ height: Math.max(height(), 20) + 26 }}
+    />
   );
 }
 
+type Message = { mine: boolean; text: string };
+
+/** An input pinned to the bottom (outside any scroll view): it rides on the keyboard. */
 function MessageBar() {
   const insets = useSafeAreaInsets();
-  const messages = signal<string[]>([]);
+  const messages = signal<Message[]>([
+    { mine: false, text: "The bar below sits outside the scroll view." },
+    { mine: false, text: "KeyboardAvoidingView lifts it with the keyboard. Say something." },
+  ]);
   const draft = signal("");
   const send = () => {
     if (!draft().trim()) return;
-    messages.update((m) => [...m, draft()]);
+    messages.update((m) => [...m, { mine: true, text: draft() }]);
     draft.set("");
   };
   return (
-    <Screen title="Message bar">
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }}>
-      <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
-        <View style={{ padding: 16, gap: 8 }}>
-          <Text style={{ color: colors.muted }}>
-            The bar below sits outside the scroll view; KeyboardAvoidingView lifts it with the keyboard.
-          </Text>
-          <Each of={messages()}>
-            {(m) => (
-              <Text
-                style={{
-                  alignSelf: "flex-end",
-                  color: "#ffffff",
-                  backgroundColor: colors.accent,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                }}
-              >
-                {m()}
-              </Text>
-            )}
-          </Each>
+    <Screen title="Message bar" {...header}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }}>
+        <Scroll style={{ flex: 1 }} keyboardDismissMode="interactive">
+          <View style={{ padding: 16, gap: 8 }}>
+            <Text style={{ alignSelf: "center", fontSize: 12, fontWeight: "500", color: colors.faint, paddingBottom: 8 }}>Today</Text>
+            <Each of={messages()}>
+              {(m) => (
+                <Appear>
+                  <View
+                    style={{
+                      alignSelf: m().mine ? "flex-end" : "flex-start",
+                      maxWidth: "80%",
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 18,
+                      borderCurve: "continuous",
+                      borderBottomRightRadius: m().mine ? 6 : 18,
+                      borderBottomLeftRadius: m().mine ? 18 : 6,
+                      backgroundColor: m().mine ? colors.accentFill : colors.raised,
+                      ...(m().mine ? finish.accent : finish.raised),
+                    }}
+                  >
+                    <Text style={{ fontSize: 15, lineHeight: 20, color: m().mine ? colors.onAccent : colors.text }}>{m().text}</Text>
+                  </View>
+                </Appear>
+              )}
+            </Each>
+          </View>
+        </Scroll>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingTop: 8,
+            // Above the home indicator, unless the keyboard covers it.
+            paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
+            backgroundColor: colors.surface,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <Input
+            value={draft()}
+            onChangeText={(v) => draft.set(v)}
+            onSubmitEditing={send}
+            blurOnSubmit={false}
+            placeholder="Message"
+            placeholderTextColor={colors.faint}
+            selectionColor={colors.accent}
+            returnKeyType="send"
+            style={{
+              flex: 1,
+              height: 44,
+              paddingHorizontal: 16,
+              fontSize: 15,
+              color: colors.text,
+              backgroundColor: colors.inset,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 22,
+              ...finish.inset,
+            }}
+          />
+          <RoundButton icon="arrow-up" label="Send" onPress={send} />
         </View>
-      </Scroll>
-      <View
-        style={{
-          flexDirection: "row",
-          gap: 8,
-          padding: 8,
-          // Above the home indicator, unless the keyboard covers it.
-          paddingBottom: 8 + (keyboard().height > 0 ? 0 : insets().bottom),
-          backgroundColor: colors.surface,
-        }}
-      >
-        <Input
-          value={draft()}
-          onChangeText={(v) => draft.set(v)}
-          onSubmitEditing={send}
-          blurOnSubmit={false}
-          placeholder="Message"
-          returnKeyType="send"
-          style={{ ...field, flex: 1, borderRadius: 18, paddingVertical: 8 }}
-        />
-        <Text onPress={send} style={{ alignSelf: "center", color: colors.accent, fontSize: 16, fontWeight: "600" }}>
-          Send
-        </Text>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
@@ -278,30 +539,35 @@ function SelectionDemo() {
   const selection = signal<{ start: number; end?: number } | undefined>(undefined);
   let input: YNode | undefined;
   return (
-    <View style={{ gap: 8 }}>
-      <Input
+    <View style={{ gap: 12 }}>
+      <Field
         ref={(node) => (input = node)}
+        label="Text"
+        hint={`${range().start}–${range().end}`}
         value={text()}
         onChangeText={(v) => text.set(v)}
         selection={selection()}
         onSelectionChange={(v) => range.set(v)}
         onKeyPress={(e) => keys.update((k) => [...k, e.key].slice(-8))}
         autoComplete="off"
-        style={field}
       />
-      <Text style={{ fontSize: 13, color: colors.muted }}>
-        {`Selection ${range().start}–${range().end}: "${text().slice(range().start, range().end)}"`}
-      </Text>
-      <Text style={{ fontSize: 13, color: colors.muted }}>{`Keys: ${keys().join(" ") || "–"}`}</Text>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Button label="Select all" onPress={() => selection.set({ start: 0, end: text().length })} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button label="Caret to start" color="#57606a" onPress={() => input?.setSelection(0)} />
-        </View>
+      <Caption label="Selected" note={`"${text().slice(range().start, range().end)}"`} />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, minHeight: 28 }}>
+        <If when={keys().length > 0} else={<Text style={{ fontSize: 13, color: colors.faint }}>Keys you press show here</Text>}>
+          <Each of={keys()}>
+            {(key) => (
+              <View style={{ minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 7, alignItems: "center", justifyContent: "center", backgroundColor: colors.raised, borderWidth: 1, borderColor: colors.border, ...finish.raised }}>
+                <Text style={{ fontSize: 13, color: colors.text }}>{key() === " " ? "␣" : key()}</Text>
+              </View>
+            )}
+          </Each>
+        </If>
       </View>
-      <Field label="One-time code (autofill from messages)" keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} />
+      <Pair>
+        <Button label="Select all" onPress={() => selection.set({ start: 0, end: text().length })} />
+        <Button label="Caret to start" variant="secondary" onPress={() => input?.setSelection(0)} />
+      </Pair>
+      <Field label="One-time code" api="one-time-code" keyboardType="number-pad" autoComplete="one-time-code" maxLength={6} placeholder="123456" />
     </View>
   );
 }

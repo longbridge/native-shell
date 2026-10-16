@@ -11,7 +11,7 @@
 use std::cell::Cell;
 
 use super::Listener;
-use crate::{TouchEvent, TouchPhase, TouchPoint};
+use crate::{PanActivation, TouchEvent, TouchPhase, TouchPoint};
 
 /// A pan gesture followed through touch events (TS: `PanResponder`'s
 /// `PanResponderGestureState`): the fingers' centroid, how far it moved
@@ -161,6 +161,8 @@ impl ClaimRequest {
 pub(crate) enum ClaimPhase {
     Start,
     Move,
+    /// When the platform activates the element's pan.
+    Pan,
 }
 
 /// When an element claims the touches of a gesture (TS:
@@ -179,6 +181,8 @@ pub struct TouchClaim {
     pub(crate) capture: bool,
     pub(crate) block_native: bool,
     pub(crate) ask: Option<Listener<ClaimRequest>>,
+    /// The pan the platform recognizes ([`TouchClaim::on_pan`]).
+    pub(crate) pan: Option<PanActivation>,
 }
 
 impl TouchClaim {
@@ -188,6 +192,7 @@ impl TouchClaim {
             capture: false,
             block_native: true,
             ask: None,
+            pan: None,
         }
     }
 
@@ -202,6 +207,22 @@ impl TouchClaim {
     /// does not keep them.
     pub fn on_move() -> Self {
         Self::new(ClaimPhase::Move)
+    }
+
+    /// When the platform activates a pan on the element as `activation`
+    /// says (TS: `panActivation`), deciding on the main thread as the
+    /// fingers move: past an active offset the element claims the touches,
+    /// and the scroll views around it can no longer take them; past a fail
+    /// offset first it never does, and they keep them (a chart scrubbed
+    /// horizontally in a vertical scroll view:
+    /// `PanActivation::horizontal(10.0, 10.0)`). The element's other claims
+    /// are not asked meanwhile; [`TouchClaim::ask`] still is, at the
+    /// activation.
+    pub fn on_pan(activation: PanActivation) -> Self {
+        Self {
+            pan: Some(activation),
+            ..Self::new(ClaimPhase::Pan)
+        }
     }
 
     /// Asked before the elements inside it (outermost first), so it takes

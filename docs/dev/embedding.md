@@ -1,7 +1,8 @@
 # Packaging and embedding
 
 - `nsh package <entry> --target ios|ios-simulator|android` builds an installable app from the prebuilt runtime: metadata from
-  `nsh.json` next to the entry (`name`, `id`, `version`, `build`, `icon`) or flags. iOS: `.app`, `.ipa` with `--sign <identity>
+  `nsh.json` next to the entry (`name`, `id`, `version`, `build`, `icon`; `appearance` also sets `UIUserInterfaceStyle`
+  and a dark window theme, so the launch screen is in it) or flags. iOS: `.app`, `.ipa` with `--sign <identity>
   --profile <file.mobileprovision>` (entitlements come from the profile; icons are compiled by `actool` into `Assets.car`).
   Android: an APK assembled without Gradle (`aapt2 link`, native libraries stored uncompressed and 16 KB aligned, `apksigner`;
   the debug key unless `--keystore`).

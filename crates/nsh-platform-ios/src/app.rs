@@ -1,7 +1,10 @@
 use std::{cell::RefCell, sync::Mutex};
 
 use nsh_engine::{Bundle, Root};
-use objc2::{ClassType, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
+use objc2::{
+    ClassType, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained,
+    runtime::AnyObject,
+};
 use objc2_core_foundation::CGSize;
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 use objc2_ui_kit::{
@@ -163,6 +166,7 @@ fn connect(mtm: MainThreadMarker, scene: &UIWindowScene) {
         restrictions.setMinimumSize(CATALYST_WINDOW);
         restrictions.setMaximumSize(CATALYST_WINDOW);
     }
+    hide_title(scene);
     let window = UIWindow::initWithWindowScene(UIWindow::alloc(mtm), scene);
     let controller = RootController::new(mtm);
     let root = controller.view().expect("view controller has a view");
@@ -193,6 +197,29 @@ fn connect(mtm: MainThreadMarker, scene: &UIWindowScene) {
             _view: view,
         })
     });
+}
+
+/// Mac Catalyst: hides the window's title and toolbar, so the title bar is
+/// a transparent strip over the content (like iOS's status bar) and stacks
+/// show their own header (kept in the window with the iPad style,
+/// `navigation::keep_in_window`), with the app's colors, below the window
+/// controls. The window's title would otherwise repeat the header's.
+fn hide_title(scene: &UIWindowScene) {
+    // `UIWindowScene.titlebar` exists only on Mac Catalyst (objc2 does not
+    // declare it).
+    if !scene.respondsToSelector(objc2::sel!(titlebar)) {
+        return;
+    }
+    // SAFETY: `titlebar` returns a `UITitlebar` (or nil).
+    let titlebar: Option<Retained<AnyObject>> = unsafe { msg_send![scene, titlebar] };
+    let Some(titlebar) = titlebar else { return };
+    // SAFETY: `UITitlebar`'s setters: `titleVisibility` is an NSInteger
+    // enum (1 is `UITitlebarTitleVisibilityHidden`), `toolbar` a nullable
+    // `NSToolbar`.
+    unsafe {
+        let _: () = msg_send![&*titlebar, setTitleVisibility: 1isize];
+        let _: () = msg_send![&*titlebar, setToolbar: Option::<&AnyObject>::None];
+    }
 }
 
 /// Runs a standalone app full-window. Never returns.

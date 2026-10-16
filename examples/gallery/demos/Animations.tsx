@@ -1,105 +1,436 @@
-import { Scroll, signal, Text, View } from "nsh";
-import { Animated, createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
-import { Button, colors, Section } from "../ui";
+import { cleanup, Scroll, signal, Text, View } from "nsh";
+import { Animated, type CompositeAnimation, createNativeValue, Easing, LayoutAnimation, type LayoutAnimationConfig, type NativeNode } from "nsh/animated";
+import { Canvas, type CanvasRenderingContext2D } from "nsh/canvas";
+import { Icon } from "../icons";
+import { alpha, Appear, Badge, Button, Caption, Card, colors, finish, isDark, Legend, mono, type Palette, Press, radius, Segmented, tints } from "../ui";
 
-const TRACK = 220;
+/** The tones of the demos' dots and tiles (call in a reactive scope). */
+const tones = () => [colors.accent, colors.info, colors.warn, colors.danger, colors.up];
+/** Text on a tone's fill. */
+const onTone = () => (isDark() ? colors.onAccent : "#ffffff");
 
-/** One dot per easing, all started together natively. */
-function Curves() {
-  const curves: [string, Easing][] = [
-    ["linear", Easing.linear],
-    ["ease", Easing.ease],
-    ["quad out", Easing.out(Easing.quad)],
-    ["cubic inOut", Easing.inOut(Easing.cubic)],
-    ["sin in", Easing.sin],
-    ["circle out", Easing.out(Easing.circle)],
-    ["exp inOut", Easing.inOut(Easing.exp)],
-    ["back out", Easing.out(Easing.back())],
-    ["elastic out", Easing.out(Easing.elastic(1))],
-    ["bounce out", Easing.out(Easing.bounce)],
-  ];
-  const dots = curves.map(() => createNativeValue(0));
-  let there = false;
-  const play = () => {
-    there = !there;
-    Animated.parallel(
-      dots.map((x, i) => Animated.timing(x, { toValue: there ? TRACK : 0, duration: 1000, easing: curves[i][1] })),
-    ).start();
-  };
+/** A plain label with the API it uses, in code type. */
+function Api(props: { label: string; api: string }) {
   return (
-    <View style={{ gap: 6 }}>
-      <Each of={curves}>
-        {(c, i) => (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ width: 84, fontSize: 12, color: colors.muted }}>{c()[0]}</Text>
-            <View style={{ width: TRACK + 14, height: 14, borderRadius: 7, backgroundColor: "#f6f8fa" }}>
-              <View
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 7,
-                  backgroundColor: colors.accent,
-                  transform: [{ translateX: dots[i()] }],
-                }}
-              />
-            </View>
-          </View>
-        )}
-      </Each>
-      <Button label="Play" onPress={play} />
+    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+      <Text style={{ flex: 1, fontSize: 13, color: colors.muted }}>{props.label}</Text>
+      <Text style={{ fontSize: 12, fontFamily: mono, color: colors.faint }}>{props.api}</Text>
     </View>
   );
 }
 
-const palette = ["#fd8c73", "#f2cc60", "#4ac26b", "#54aeff", "#8250df"];
+/** The width of a track, measured once laid out (the dots move by it). */
+function useWidth() {
+  const width = signal(0);
+  return [width, (e: { width: number }) => width.set(e.width)] as const;
+}
+
+// --- Hero -------------------------------------------------------------------
+
+/** An orbit, pulsing rings and a breathing core: three loops, started once. */
+function Hero() {
+  const spin = createNativeValue(0);
+  const rings = [0, 1, 2].map(() => createNativeValue(0));
+  const breathe = createNativeValue(0);
+  const all = Animated.parallel([
+    Animated.loop(Animated.timing(spin, { toValue: 360, duration: 3200, easing: Easing.linear }), { resetBeforeIteration: true }),
+    Animated.stagger(
+      800,
+      rings.map((r) => Animated.loop(Animated.timing(r, { toValue: 1, duration: 2400, easing: Easing.out(Easing.cubic) }), { resetBeforeIteration: true })),
+    ),
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.sin) }),
+        Animated.timing(breathe, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin) }),
+      ]),
+    ),
+  ]);
+  all.start();
+  cleanup(() => all.stop());
+
+  const S = 188;
+  const orbit = (size: number, angle: NativeNode, color: string, dot: number) => (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: (S - size) / 2,
+        top: (S - size) / 2,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        borderWidth: 1,
+        borderColor: colors.line,
+        transform: [{ rotate: angle }],
+      }}
+    >
+      <View style={{ position: "absolute", left: size / 2 - dot / 2, top: -dot / 2, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: color, ...finish.knob }} />
+    </View>
+  );
+  return (
+    <Card
+      icon="animation"
+      title="Native motion"
+      subtitle="Three loops, started once, run on the UI thread"
+    >
+      <View style={{ height: S + 8, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ width: S, height: S }}>
+          <Each of={rings}>
+            {(r) => (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  left: 34,
+                  top: 34,
+                  width: S - 68,
+                  height: S - 68,
+                  borderRadius: (S - 68) / 2,
+                  borderWidth: 1.5,
+                  borderColor: colors.accent,
+                  opacity: r().interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.6, 0] }),
+                  transform: [{ scale: r().interpolate({ inputRange: [0, 1], outputRange: [0.35, 1.45] }) }],
+                }}
+              />
+            )}
+          </Each>
+          {orbit(S - 12, spin, colors.accent, 10)}
+          {orbit(S - 64, spin.mul(-1.6), colors.info, 8)}
+          <View
+            style={{
+              position: "absolute",
+              left: S / 2 - 26,
+              top: S / 2 - 26,
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: breathe.interpolate({ inputRange: [0, 1], outputRange: [colors.accentFill, colors.up] }),
+              boxShadow: finish.accent.boxShadow,
+              transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.08] }) }],
+            }}
+          >
+            <Icon name="animation" size={22} tint={colors.onAccent} />
+          </View>
+        </View>
+      </View>
+      <View style={{ gap: 8 }}>
+        <Api label="Orbits, one turn in 3.2 s" api="Animated.loop" />
+        <Api label="Rings, 0.8 s apart" api="Animated.stagger" />
+        <Api label="Core, in and out" api="Animated.sequence" />
+      </View>
+    </Card>
+  );
+}
+
+// --- Easing -----------------------------------------------------------------
+
+type Fn = (t: number) => number;
+const out = (f: Fn): Fn => (t) => 1 - f(1 - t);
+const inOut = (f: Fn): Fn => (t) => (t < 0.5 ? f(t * 2) / 2 : 1 - f((1 - t) * 2) / 2);
+const bezier = (x1: number, y1: number, x2: number, y2: number): Fn => {
+  const b = (a: number, c: number, s: number) => 3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * c + s * s * s;
+  return (p) => {
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (b(x1, x2, mid) < p) lo = mid;
+      else hi = mid;
+    }
+    return b(y1, y2, (lo + hi) / 2);
+  };
+};
+const bounce: Fn = (t) => {
+  if (t < 1 / 2.75) return 7.5625 * t * t;
+  if (t < 2 / 2.75) return 7.5625 * (t - 1.5 / 2.75) ** 2 + 0.75;
+  if (t < 2.5 / 2.75) return 7.5625 * (t - 2.25 / 2.75) ** 2 + 0.9375;
+  return 7.5625 * (t - 2.625 / 2.75) ** 2 + 0.984375;
+};
+const back: Fn = (t) => t * t * (2.70158 * t - 1.70158);
+const elastic: Fn = (t) => 1 - Math.cos((t * Math.PI) / 2) ** 3 * Math.cos(t * Math.PI);
+
+/** The curves, with a JS copy of each only to draw it (the animation uses the native one). */
+const curves: { name: string; easing: Easing; f: Fn }[] = [
+  { name: "linear", easing: Easing.linear, f: (t) => t },
+  { name: "ease", easing: Easing.ease, f: bezier(0.25, 0.1, 0.25, 1) },
+  { name: "quad out", easing: Easing.out(Easing.quad), f: out((t) => t * t) },
+  { name: "cubic inOut", easing: Easing.inOut(Easing.cubic), f: inOut((t) => t ** 3) },
+  { name: "sin in", easing: Easing.sin, f: (t) => 1 - Math.cos((t * Math.PI) / 2) },
+  { name: "circle out", easing: Easing.out(Easing.circle), f: out((t) => 1 - Math.sqrt(Math.max(0, 1 - t * t))) },
+  { name: "exp inOut", easing: Easing.inOut(Easing.exp), f: inOut((t) => 2 ** (10 * (t - 1))) },
+  { name: "back out", easing: Easing.out(Easing.back()), f: out(back) },
+  { name: "elastic out", easing: Easing.out(Easing.elastic(1)), f: out(elastic) },
+  { name: "bounce out", easing: Easing.out(Easing.bounce), f: out(bounce) },
+];
+
+/** Diagonal hatching inside a rectangle. */
+function hatch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.strokeStyle = alpha(colors.text, 0.06);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = -h; i < w; i += 7) {
+    ctx.moveTo(x + i, y + h);
+    ctx.lineTo(x + i + h, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** One curve plotted, with a dot that rides it: x runs linearly, y with the curve, both native. */
+function EasingPlot() {
+  const selected = signal(curves.length - 3);
+  const px = createNativeValue(0);
+  const py = createNativeValue(0);
+  let running: CompositeAnimation | undefined;
+  const play = () => {
+    running?.stop();
+    px.set(0);
+    py.set(0);
+    const c = curves[selected()];
+    running = Animated.sequence([
+      Animated.delay(120),
+      Animated.parallel([
+        Animated.timing(px, { toValue: 1, duration: 1100, easing: Easing.linear }),
+        Animated.timing(py, { toValue: 1, duration: 1100, easing: c.easing }),
+      ]),
+    ]);
+    running.start();
+  };
+  const lo = -0.18;
+  const hi = 1.24;
+  return (
+    <Card icon="spark" title="Easing" subtitle="Curves are data, evaluated natively">
+      <Canvas
+        style={{ height: 196 }}
+        draw={(ctx, { width, height }) => {
+          const l = 30;
+          const r = width - 12;
+          const t = 8;
+          const b = height - 8;
+          const y = (v: number) => b - ((v - lo) / (hi - lo)) * (b - t);
+          const x = (v: number) => l + v * (r - l);
+          // Zones outside 0..1: where a curve overshoots.
+          hatch(ctx, l, t, r - l, y(1) - t);
+          hatch(ctx, l, y(0), r - l, b - y(0));
+          ctx.strokeStyle = colors.line;
+          ctx.lineWidth = 1;
+          for (const q of [0.25, 0.5, 0.75]) {
+            ctx.beginPath();
+            ctx.moveTo(x(q), t);
+            ctx.lineTo(x(q), b);
+            ctx.stroke();
+          }
+          ctx.setLineDash([3, 4]);
+          ctx.strokeStyle = colors.faint;
+          for (const v of [0, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(l, y(v));
+            ctx.lineTo(r, y(v));
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.font = "11px system-ui";
+          ctx.fillStyle = colors.faint;
+          ctx.textBaseline = "middle";
+          ctx.fillText("1.0", 2, y(1));
+          ctx.fillText("0", 2, y(0));
+          // The curve, filled faintly beneath.
+          const f = curves[selected()].f;
+          const n = 96;
+          ctx.beginPath();
+          ctx.moveTo(x(0), y(0));
+          for (let i = 0; i <= n; i++) ctx.lineTo(x(i / n), y(f(i / n)));
+          ctx.lineTo(x(1), y(0));
+          ctx.closePath();
+          ctx.fillStyle = tints.accent;
+          ctx.globalAlpha = 0.6;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.beginPath();
+          ctx.moveTo(x(0), y(f(0)));
+          for (let i = 1; i <= n; i++) ctx.lineTo(x(i / n), y(f(i / n)));
+          ctx.strokeStyle = colors.accent;
+          ctx.lineWidth = 2;
+          ctx.lineJoin = "round";
+          ctx.stroke();
+          // The playhead and the dot, from native values.
+          const hx = px.mul(r - l).add(l);
+          const hy = py.mul(-(b - t) / (hi - lo)).add(b + (lo * (b - t)) / (hi - lo));
+          ctx.strokeStyle = alpha(colors.text, 0.22);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(hx, t);
+          ctx.lineTo(hx, b);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(l, hy);
+          ctx.lineTo(hx, hy);
+          ctx.setLineDash([2, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = colors.light;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = colors.accent;
+          ctx.beginPath();
+          ctx.arc(hx, hy, 9, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = colors.accent;
+          ctx.beginPath();
+          ctx.arc(l, hy, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }}
+      />
+      <Scroll horizontal showsIndicator={false}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Each of={curves}>
+            {(c, i) => (
+              <Chip
+                label={c().name}
+                active={selected() === i()}
+                onPress={() => {
+                  selected.set(i());
+                  play();
+                }}
+              />
+            )}
+          </Each>
+        </View>
+      </Scroll>
+      <Button label="Play" icon="play" onPress={play} />
+    </Card>
+  );
+}
+
+/** Every curve at once: ten timings in one `Animated.parallel`. */
+function EasingRace() {
+  const dots = curves.map(() => createNativeValue(0));
+  const [width, measure] = useWidth();
+  const there = signal(false);
+  const play = () => {
+    there.set(!there());
+    Animated.parallel(dots.map((d, i) => Animated.timing(d, { toValue: there() ? 1 : 0, duration: 1200, easing: curves[i].easing }))).start();
+  };
+  return (
+    <Card icon="lists" title="Side by side" subtitle="Ten timings started together" right={<Badge label="1.2 s" />}>
+      <View style={{ gap: 2 }}>
+        <Each of={curves}>
+          {(c, i) => (
+            <View style={{ flexDirection: "row", alignItems: "center", height: 26, gap: 10 }}>
+              <Text numberOfLines={1} style={{ width: 84, fontSize: 13, color: colors.muted }}>
+                {c().name}
+              </Text>
+              <View onLayout={i() === 0 ? measure : undefined} style={{ flex: 1, height: 12, justifyContent: "center" }}>
+                <View style={{ height: 2, borderRadius: 1, backgroundColor: colors.raised }} />
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: 12,
+                    height: 12,
+                    borderRadius: 6,
+                    backgroundColor: tones()[i() % tones().length],
+                    ...finish.knob,
+                    transform: [{ translateX: dots[i()].mul(Math.max(0, width() - 12)) }],
+                  }}
+                />
+              </View>
+            </View>
+          )}
+        </Each>
+      </View>
+      <Api label="One group, one start" api="Animated.parallel" />
+      <Button label={there() ? "Reverse" : "Play"} variant="secondary" icon="play" onPress={play} />
+    </Card>
+  );
+}
+
+/** A selectable capsule (36 pt, with hit slop up to 44). */
+function Chip(props: { label: string; active?: boolean; onPress: () => void }) {
+  return (
+    <Press onPress={props.onPress} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: !!props.active }}>
+      <View
+        style={{
+          height: 36,
+          paddingHorizontal: 14,
+          borderRadius: 18,
+          justifyContent: "center",
+          backgroundColor: props.active ? colors.light : colors.raised,
+          ...(props.active ? finish.light : finish.raised),
+          borderWidth: props.active ? 0 : 1,
+          borderColor: colors.border,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "500", color: props.active ? colors.onLight : colors.text }}>{props.label}</Text>
+      </View>
+    </Press>
+  );
+}
+
+// --- Composition -------------------------------------------------------------
 
 /** sequence, parallel, stagger and loop, with stop and reset. */
 function Composition() {
-  const ys = palette.map(() => createNativeValue(0));
+  const ys = tones().map(() => createNativeValue(0));
   const spin = createNativeValue(0);
   const fade = createNativeValue(1);
-  const state = signal("idle");
-  const report = (name: string) => (finished: boolean) => state.set(`${name}: ${finished ? "finished" : "stopped"}`);
+  const state = signal<{ label: string; tone: "neutral" | "accent" | "warn" | "info" }>({ label: "idle", tone: "neutral" });
 
   const stagger = Animated.stagger(
-    80,
+    70,
     ys.map((y) =>
       Animated.sequence([
-        Animated.timing(y, { toValue: -36, duration: 220, easing: Easing.out(Easing.quad) }),
-        Animated.spring(y, { toValue: 0, stiffness: 300, damping: 12 }),
+        Animated.timing(y, { toValue: -46, duration: 220, easing: Easing.out(Easing.quad) }),
+        Animated.spring(y, { toValue: 0, stiffness: 320, damping: 11 }),
       ]),
     ),
   );
   const sequence = Animated.sequence([
-    Animated.timing(spin, { toValue: 1, duration: 500, easing: Easing.inOut(Easing.cubic) }),
+    Animated.timing(spin, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.cubic) }),
     Animated.delay(200),
     Animated.parallel([
-      Animated.timing(fade, { toValue: 0.2, duration: 300 }),
-      Animated.timing(spin, { toValue: 0, duration: 600, easing: Easing.out(Easing.back()) }),
+      Animated.timing(fade, { toValue: 0.25, duration: 300 }),
+      Animated.timing(spin, { toValue: 0, duration: 640, easing: Easing.out(Easing.back()) }),
     ]),
     Animated.timing(fade, { toValue: 1, duration: 300 }),
   ]);
   const pulse = Animated.loop(
     Animated.sequence([
-      Animated.timing(fade, { toValue: 0.3, duration: 400, easing: Easing.sin }),
-      Animated.timing(fade, { toValue: 1, duration: 400, easing: Easing.sin }),
+      Animated.timing(fade, { toValue: 0.3, duration: 420, easing: Easing.inOut(Easing.sin) }),
+      Animated.timing(fade, { toValue: 1, duration: 420, easing: Easing.inOut(Easing.sin) }),
     ]),
   );
-  const run = (name: string, a: typeof stagger) => () => {
-    state.set(`${name}…`);
-    a.start().then(report(name));
+  const all = [stagger, sequence, pulse];
+  cleanup(() => all.forEach((a) => a.stop()));
+  const run = (name: string, a: CompositeAnimation) => () => {
+    state.set({ label: `${name} running`, tone: "info" });
+    a.start().then((finished) => state.set({ label: `${name} ${finished ? "finished" : "stopped"}`, tone: finished ? "accent" : "warn" }));
   };
   return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 10, height: 80 }}>
-        <Each of={palette}>
+    <Card icon="components" title="Composition" subtitle="Each step starts as the last one ends" right={<Badge label={state().label} tone={state().tone} />}>
+      <View style={{ height: 116, flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 12, paddingBottom: 14 }}>
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", left: 0, right: 0, bottom: 14, borderTopWidth: 1, borderColor: colors.border, borderStyle: "dashed" }}
+        />
+        <Each of={tones()}>
           {(color, i) => (
             <View
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                borderCurve: "continuous",
                 backgroundColor: color(),
+                ...finish.knob,
                 opacity: fade,
                 transform: [
                   { translateY: ys[i()] },
@@ -110,194 +441,419 @@ function Composition() {
           )}
         </Each>
       </View>
-      <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center" }}>{state()}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        <Chip label="Stagger" onPress={run("stagger", stagger)} />
-        <Chip label="Sequence" onPress={run("sequence", sequence)} />
-        <Chip label="Loop" onPress={run("loop", pulse)} />
-        <Chip label="Stop" onPress={() => [stagger, sequence, pulse].forEach((a) => a.stop())} />
-        <Chip label="Reset" onPress={() => [stagger, sequence, pulse].forEach((a) => a.reset())} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Stagger" variant="secondary" onPress={run("stagger", stagger)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="Sequence" variant="secondary" onPress={run("sequence", sequence)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="Loop" variant="secondary" onPress={run("loop", pulse)} />
+        </View>
       </View>
-    </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Stop" variant="ghost" icon="pause" onPress={() => all.forEach((a) => a.stop())} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="Reset" variant="ghost" onPress={() => all.forEach((a) => a.reset())} />
+        </View>
+      </View>
+    </Card>
   );
 }
 
-function Chip(props: { label: string; onPress: () => void }) {
-  return (
-    <Text
-      onPress={props.onPress}
-      style={{
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 14,
-        overflow: "hidden",
-        backgroundColor: "#ddf4ff",
-        color: colors.accent,
-        fontWeight: "600",
-      }}
-    >
-      {props.label}
-    </Text>
-  );
+// --- Springs ----------------------------------------------------------------
+
+const springs: { label: string; stiffness: number; damping: number; tone: keyof Palette }[] = [
+  { label: "Gentle", stiffness: 120, damping: 14, tone: "info" },
+  { label: "Wobbly", stiffness: 180, damping: 8, tone: "warn" },
+  { label: "Stiff", stiffness: 400, damping: 30, tone: "accent" },
+];
+const SPRING_MS = 1800;
+
+/** The response of a unit spring from 0 to 1 (mass 1), sampled. */
+function response(stiffness: number, damping: number, n: number) {
+  const out: number[] = [];
+  let x = -1;
+  let v = 0;
+  const dt = 1 / 600;
+  const per = SPRING_MS / 1000 / n;
+  let next = 0;
+  for (let t = 0; out.length <= n; t += dt) {
+    if (t >= next) {
+      out.push(1 + x);
+      next += per;
+    }
+    v += (-stiffness * x - damping * v) * dt;
+    x += v * dt;
+  }
+  return out;
 }
 
-/** Springs with different settings, released together. */
+/** Springs with different settings, released together; the plot's dots are the springs themselves. */
 function Springs() {
-  const settings = [
-    { label: "gentle", stiffness: 120, damping: 14 },
-    { label: "wobbly", stiffness: 180, damping: 8 },
-    { label: "stiff", stiffness: 400, damping: 30 },
-  ];
-  const xs = settings.map(() => createNativeValue(0));
-  let there = false;
+  const xs = springs.map(() => createNativeValue(0));
+  const clock = createNativeValue(0);
+  const [width, measure] = useWidth();
+  const there = signal(false);
   const play = () => {
-    there = !there;
-    Animated.parallel(xs.map((x, i) => Animated.spring(x, { toValue: there ? TRACK : 0, ...settings[i] }))).start();
+    there.set(!there());
+    const w = Math.max(1, width() - 28);
+    clock.set(0);
+    Animated.parallel([
+      Animated.timing(clock, { toValue: 1, duration: SPRING_MS, easing: Easing.linear }),
+      ...xs.map((x, i) => Animated.spring(x, { toValue: there() ? w : 0, stiffness: springs[i].stiffness, damping: springs[i].damping })),
+    ]).start();
   };
   return (
-    <View style={{ gap: 6 }}>
-      <Each of={settings}>
-        {(s, i) => (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ width: 84, fontSize: 12, color: colors.muted }}>{s().label}</Text>
-            <View style={{ width: TRACK + 20, height: 20 }}>
+    <Card icon="physics" title="Springs" subtitle="Stiffness and damping, mass 1">
+      <Canvas
+        style={{ height: 150 }}
+        draw={(ctx, { width: cw, height }) => {
+          const l = 4;
+          const r = cw - 4;
+          const t = 10;
+          const b = height - 10;
+          const y = (v: number) => b - (v / 1.5) * (b - t);
+          // A dot matrix behind, then the target.
+          ctx.fillStyle = colors.line;
+          for (let gx = l; gx <= r; gx += 12) for (let gy = t; gy <= b; gy += 12) ctx.fillRect(gx, gy, 1.5, 1.5);
+          ctx.setLineDash([3, 4]);
+          ctx.strokeStyle = colors.faint;
+          ctx.beginPath();
+          ctx.moveTo(l, y(1));
+          ctx.lineTo(r, y(1));
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const n = 120;
+          const w = Math.max(1, width() - 28);
+          const fromEnd = !there();
+          springs.forEach((s, i) => {
+            const pts = response(s.stiffness, s.damping, n);
+            ctx.strokeStyle = colors[s.tone];
+            ctx.lineWidth = 1.75;
+            ctx.beginPath();
+            pts.forEach((p, k) => {
+              const v = fromEnd ? 1 - p : p;
+              const px = l + (k / n) * (r - l);
+              if (k === 0) ctx.moveTo(px, y(v));
+              else ctx.lineTo(px, y(v));
+            });
+            ctx.stroke();
+            // The live spring value, at the clock's x.
+            ctx.fillStyle = colors[s.tone];
+            ctx.beginPath();
+            ctx.arc(clock.mul(r - l).add(l), xs[i].div(w).mul(-(b - t) / 1.5).add(b), 4, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }}
+      />
+      <View style={{ flexDirection: "row", gap: 14, flexWrap: "wrap" }}>
+        <Each of={springs}>{(s) => <Legend color={colors[s().tone]} label={s().label} value={`${s().stiffness} / ${s().damping}`} />}</Each>
+      </View>
+      <View style={{ gap: 8 }}>
+        <Each of={springs}>
+          {(s, i) => (
+            <View onLayout={i() === 0 ? measure : undefined} style={{ height: 28, justifyContent: "center", borderRadius: 14, backgroundColor: colors.background, ...finish.track }}>
               <View
-                style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: "#8250df", transform: [{ translateX: xs[i()] }] }}
+                style={{
+                  position: "absolute",
+                  left: 2,
+                  top: 2,
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: colors[s().tone],
+                  ...finish.knob,
+                  transform: [{ translateX: xs[i()] }],
+                }}
               />
             </View>
-          </View>
-        )}
-      </Each>
-      <Button label="Release" color="#8250df" onPress={play} />
-    </View>
+          )}
+        </Each>
+      </View>
+      <Button label="Release" onPress={play} />
+    </Card>
   );
 }
+
+// --- Interpolation ----------------------------------------------------------
+
+/** A dial's ticks and labels, drawn once. */
+function DialFace(props: { size: number }) {
+  return (
+    <Canvas
+      style={{ width: props.size, height: props.size }}
+      draw={(ctx, { width }) => {
+        const c = width / 2;
+        for (let i = 0; i <= 40; i++) {
+          const a = ((-120 + i * 6) * Math.PI) / 180 - Math.PI / 2;
+          const major = i % 10 === 0;
+          const r0 = c - (major ? 12 : 7);
+          ctx.strokeStyle = major ? colors.muted : colors.border;
+          ctx.lineWidth = major ? 1.5 : 1;
+          ctx.beginPath();
+          ctx.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0);
+          ctx.lineTo(c + Math.cos(a) * (c - 2), c + Math.sin(a) * (c - 2));
+          ctx.stroke();
+        }
+        ctx.font = "11px system-ui";
+        ctx.fillStyle = colors.faint;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ["0", "1", "2"].forEach((label, i) => {
+          const a = ((-120 + i * 120) * Math.PI) / 180 - Math.PI / 2;
+          ctx.fillText(label, c + Math.cos(a) * (c - 24), c + Math.sin(a) * (c - 24));
+        });
+      }}
+    />
+  );
+}
+
+/** Colors, angles and scales from one value; outside the range they extend or clamp. */
+function Interpolations() {
+  const t = createNativeValue(0);
+  const at = signal<"0" | "1" | "2">("0");
+  const go = (to: "0" | "1" | "2") => {
+    at.set(to);
+    t.spring(Number(to), { stiffness: 140, damping: 16 });
+  };
+  const D = 128;
+  return (
+    <Card icon="styles" title="Interpolation" subtitle="One value drives color, angle and scale" right={<Badge label={`t = ${at()}`} tone="accent" />}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={{ width: D, height: D }}>
+          <DialFace size={D} />
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: D / 2 - 1.5,
+              top: 14,
+              width: 3,
+              height: D - 28,
+              transform: [{ rotate: t.interpolate({ inputRange: [0, 2], outputRange: ["-120deg", "120deg"] }) }],
+            }}
+          >
+            <View style={{ height: D / 2 - 22, borderRadius: 1.5, backgroundColor: colors.accent }} />
+          </View>
+          <View style={{ position: "absolute", left: D / 2 - 6, top: D / 2 - 6, width: 12, height: 12, borderRadius: 6, backgroundColor: colors.light, ...finish.light }} />
+        </View>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 16,
+              borderCurve: "continuous",
+              backgroundColor: t.interpolate({ inputRange: [0, 1, 2], outputRange: [colors.info, colors.accent, colors.danger] }),
+              transform: [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"], extrapolateRight: "extend" }) }],
+            }}
+          />
+          <Text style={{ fontSize: 11, fontFamily: mono, color: colors.faint }}>extend</Text>
+        </View>
+        <View style={{ alignItems: "center", gap: 8 }}>
+          <View style={{ width: 64, height: 64, alignItems: "center", justifyContent: "center" }}>
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                backgroundColor: colors.up,
+                transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.2], extrapolate: "clamp" }) }],
+              }}
+            />
+          </View>
+          <Text style={{ fontSize: 11, fontFamily: mono, color: colors.faint }}>clamp</Text>
+        </View>
+      </View>
+      <Segmented
+        options={[
+          { value: "0", label: "t = 0" },
+          { value: "1", label: "t = 1" },
+          { value: "2", label: "t = 2" },
+        ]}
+        value={at()}
+        onChange={go}
+      />
+      <View style={{ gap: 6 }}>
+        <Caption label="Color through three stops" note="at 0, 1 and 2" />
+        <Caption label="Rotation keeps going past 1" note="360° at 2" />
+        <Caption label="Scale stops at 1.2" note="clamp" />
+      </View>
+    </Card>
+  );
+}
+
+// --- diffClamp --------------------------------------------------------------
 
 /** A header that hides while the list scrolls up and comes back as it
  * scrolls down: `diffClamp` of the scroll offset, natively. */
 function HidingHeader() {
   const scroll = createNativeValue(0);
-  const header = scroll.diffClamp(0, 44);
+  const H = 52;
+  const header = scroll.diffClamp(0, H);
   return (
-    <View style={{ height: 260, borderRadius: 10, overflow: "hidden", backgroundColor: "#f6f8fa" }}>
-      <Scroll style={{ flex: 1 }} scrollValue={scroll}>
-        <View style={{ paddingTop: 52, paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
-          <Each of={Array.from({ length: 30 }, (_, i) => i + 1)}>
-            {(n) => (
-              <View style={{ padding: 10, borderRadius: 8, backgroundColor: colors.surface }}>
-                <Text>Row {n()}</Text>
-              </View>
-            )}
-          </Each>
+    <Card icon="scroll" title="Hiding header" subtitle="Hides as the list scrolls up, returns as it scrolls down">
+      <View style={{ height: 300, borderRadius: radius.control, overflow: "hidden", backgroundColor: colors.background, ...finish.track }}>
+        <Scroll style={{ flex: 1 }} scrollValue={scroll}>
+          <View style={{ paddingTop: H + 8, paddingHorizontal: 8, paddingBottom: 8, gap: 6 }}>
+            <Each of={Array.from({ length: 30 }, (_, i) => i + 1)}>
+              {(n) => (
+                <View
+                  style={{
+                    height: 48,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: colors.surface,
+                    borderWidth: 1,
+                    borderColor: colors.line,
+                  }}
+                >
+                  <Text style={{ width: 24, fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>{String(n()).padStart(2, "0")}</Text>
+                  <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>Row {n()}</Text>
+                  <View style={{ width: 40 + ((n() * 37) % 50), height: 4, borderRadius: 2, backgroundColor: n() % 3 === 0 ? colors.accent : colors.raised }} />
+                </View>
+              )}
+            </Each>
+          </View>
+        </Scroll>
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            height: H,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            paddingHorizontal: 14,
+            backgroundColor: colors.raised,
+            ...finish.raised,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            transform: [{ translateY: header.mul(-1) }],
+            opacity: header.interpolate({ inputRange: [0, H], outputRange: [1, 0], easing: Easing.in(Easing.quad) }),
+          }}
+        >
+          <Icon name="search" size={16} tint={colors.muted} />
+          <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: colors.text }}>Search</Text>
+          <Text style={{ fontSize: 12, fontFamily: mono, color: colors.faint }}>diffClamp(0, {H})</Text>
         </View>
-      </Scroll>
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: 0,
-          height: 44,
-          justifyContent: "center",
-          paddingHorizontal: 12,
-          backgroundColor: colors.accent,
-          transform: [{ translateY: header.mul(-1) }],
-          opacity: header.interpolate({ inputRange: [0, 44], outputRange: [1, 0], easing: Easing.in(Easing.quad) }),
-        }}
-      >
-        <Text style={{ color: "#ffffff", fontWeight: "700" }}>Scroll up to hide me</Text>
       </View>
-    </View>
+    </Card>
   );
 }
 
-/** Colors and angles from one value; outside its range it extends on the
- * right only. */
-function Interpolations() {
-  const t = createNativeValue(0);
-  const at = signal(0);
-  const go = (to: number) => {
-    at.set(to);
-    t.timing(to, { duration: 700, easing: Easing.inOut(Easing.cubic) });
+// --- Layout animation -------------------------------------------------------
+
+const presets: Record<"spring" | "ease" | "linear", LayoutAnimationConfig> = {
+  spring: LayoutAnimation.Presets.spring,
+  ease: LayoutAnimation.Presets.easeInEaseOut,
+  linear: LayoutAnimation.Presets.linear,
+};
+
+/** Layout changes animated natively by the next commit: moves, inserts and removals. */
+function Layout() {
+  const column = signal(false);
+  const preset = signal<keyof typeof presets>("spring");
+  let next = 6;
+  const items = signal([1, 2, 3, 4, 5]);
+  const change = (fn: () => void) => {
+    LayoutAnimation.configureNext(preset() === "spring" ? LayoutAnimation.create(420, "spring") : presets[preset()]);
+    fn();
   };
   return (
-    <View style={{ gap: 10 }}>
-      <View style={{ flexDirection: "row", justifyContent: "center", gap: 24, height: 90, alignItems: "center" }}>
-        <View
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: 12,
-            backgroundColor: t.interpolate({ inputRange: [0, 1, 2], outputRange: ["#54aeff", "#8250df", "#cf222e"] }),
-            transform: [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"], extrapolateRight: "extend" }) }],
-          }}
-        />
-        <View
-          style={{
-            width: 60,
-            height: 60,
-            borderRadius: 30,
-            backgroundColor: "#4ac26b",
-            transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1.2], extrapolate: "clamp" }) }],
-          }}
-        />
+    <Card icon="mobile" title="Layout animation" subtitle="Frames, inserts and removals of the next commit" right={<Badge label={`${items().length} views`} />}>
+      <Segmented
+        size="small"
+        options={[
+          { value: "spring", label: "Spring" },
+          { value: "ease", label: "Ease in out" },
+          { value: "linear", label: "Linear" },
+        ]}
+        value={preset()}
+        onChange={(v) => preset.set(v)}
+      />
+      <View style={{ minHeight: 64, flexDirection: column() ? "column" : "row", flexWrap: "wrap", gap: 8 }}>
+        <Each of={items()}>
+          {(id) => (
+            <View
+              style={{
+                height: column() ? 30 : 64,
+                width: column() ? undefined : 50,
+                flexGrow: column() ? 0 : 1,
+                borderRadius: 12,
+                borderCurve: "continuous",
+                paddingHorizontal: 10,
+                justifyContent: "center",
+                backgroundColor: tones()[id() % tones().length],
+                ...finish.knob,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: onTone(), fontVariant: ["tabular-nums"] }}>{id()}</Text>
+            </View>
+          )}
+        </Each>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Each of={[0, 1, 2]}>
-          {(n) => <Chip label={`t = ${n()}${at() === n() ? " ●" : ""}`} onPress={() => go(n())} />}
-        </Each>
+        <View style={{ flex: 1 }}>
+          <Button label={column() ? "Row" : "Column"} onPress={() => change(() => column.set(!column()))} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Shuffle"
+            variant="secondary"
+            onPress={() => change(() => items.set([...items()].sort(() => Math.random() - 0.5)))}
+          />
+        </View>
       </View>
-      <Text style={{ fontSize: 12, color: colors.muted }}>
-        Color through three stops; rotation extends past 1 (to 360° at 2); scale clamps at 1.2.
-      </Text>
-    </View>
-  );
-}
-
-/** Layout changes animated natively by the next commit. */
-function Layout() {
-  const open = signal(false);
-  return (
-    <View style={{ gap: 10 }}>
-      <View style={{ flexDirection: open() ? "column" : "row", gap: 8 }}>
-        <Each of={palette}>
-          {(color) => <View style={{ height: open() ? 24 : 44, flex: open() ? undefined : 1, borderRadius: 8, backgroundColor: color() }} />}
-        </Each>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Add" variant="secondary" icon="plus" disabled={items().length >= 8} onPress={() => change(() => items.set([...items(), next++]))} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button label="Remove" variant="ghost" disabled={items().length <= 1} onPress={() => change(() => items.set(items().slice(1)))} />
+        </View>
       </View>
-      <Button
-        label={open() ? "Row" : "Column"}
-        color="#57606a"
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.spring);
-          open.set(!open());
-        }}
-      />
-    </View>
+    </Card>
   );
 }
 
 export function Animations() {
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <Section title="Easing curves">
-          <Curves />
-        </Section>
-        <Section title="Sequence, parallel, stagger, loop">
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Appear index={0}>
+          <Hero />
+        </Appear>
+        <Appear index={1}>
+          <EasingPlot />
+        </Appear>
+        <Appear index={2}>
+          <EasingRace />
+        </Appear>
+        <Appear index={3}>
           <Composition />
-        </Section>
-        <Section title="Springs">
+        </Appear>
+        <Appear index={4}>
           <Springs />
-        </Section>
-        <Section title="Interpolation">
+        </Appear>
+        <Appear index={5}>
           <Interpolations />
-        </Section>
-        <Section title="diffClamp: a header that hides on scroll">
+        </Appear>
+        <Appear index={6}>
           <HidingHeader />
-        </Section>
-        <Section title="Layout animation">
+        </Appear>
+        <Appear index={7}>
           <Layout />
-        </Section>
+        </Appear>
       </View>
     </Scroll>
   );

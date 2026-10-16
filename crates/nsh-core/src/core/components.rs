@@ -23,10 +23,10 @@ use crate::{
     Prop, ROOT_ID, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
-        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentError, ComponentSpec,
-        ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall, Globals,
-        ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position,
-        PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
+        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ClipboardRead, ComponentError,
+        ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall,
+        Globals, ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn,
+        Position, PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
         StyleRefinement, Task, Theme, caught,
         responder::ResponderEl,
         view,
@@ -121,6 +121,8 @@ pub(super) struct Instance {
     /// The host's JS children, in order.
     js_children: Vec<NodeId>,
     children_at: Placement,
+    /// Lazy children (`#[prop(lazy)]`): whether JS was told to make them.
+    children_wanted: bool,
     /// The glue's node of each slot the app passes.
     slots: Vec<(&'static str, NodeId)>,
     /// The last render's handlers: native events by node, and the events of
@@ -155,6 +157,7 @@ impl Instance {
             root: None,
             js_children,
             children_at: Placement::None,
+            children_wanted: false,
             slots: Vec::new(),
             handlers: Vec::new(),
             event_handlers: Vec::new(),
@@ -255,8 +258,12 @@ pub(super) struct Components {
     /// Image sizes asked for (`Image.getSize`), by request id: their answers.
     image_infos: FxHashMap<u32, AnswerSlot<Result<ImageSize, String>>>,
     next_image_info: u32,
+    /// Clipboard reads (`Clipboard.getString` / `hasString`), by request
+    /// id: their answers.
+    clipboard_reads: FxHashMap<u32, ClipboardRead>,
+    next_clipboard_read: u32,
     /// The ends of the animations components started, by id.
-    animations: FxHashMap<nsh_anim::AnimId, AnswerSlot<bool>>,
+    animations: FxHashMap<nsh_animation::AnimationId, AnswerSlot<bool>>,
     /// The components' own lists, by node.
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
     /// The insets screens and modals reported (`onInsets`).
@@ -293,6 +300,8 @@ impl Default for Components {
             next_dialog: 1,
             image_infos: FxHashMap::default(),
             next_image_info: 1,
+            clipboard_reads: FxHashMap::default(),
+            next_clipboard_read: 1,
             animations: FxHashMap::default(),
             virtual_lists: FxHashMap::default(),
             insets: FxHashMap::default(),
@@ -447,9 +456,12 @@ impl<M: TextEngine> Core<M> {
 
     /// The environment components read ([`crate::ui::RenderCx::window`]
     /// and the like), as the platform reports it: the components that read
-    /// what changed render again.
+    /// what changed render again. `dark` is the system's: the app's
+    /// appearance wins over it ([`Core::set_appearance`]).
     pub fn set_environment(&mut self, mut environment: Environment) {
         environment.rtl = self.surface_rtl(environment.rtl);
+        self.system_dark = environment.dark;
+        environment.dark = self.shown_dark();
         self.apply_environment(environment);
     }
 
@@ -1261,6 +1273,19 @@ impl<M: TextEngine> Core<M> {
             for &child in &inst.js_children {
                 self.detach_id(child);
             }
+        }
+        // Lazy children are made while the render places them.
+        let wanted = inst.children_at != Placement::None;
+        if inst.children_wanted != wanted && inst.spec.as_ref().is_some_and(|s| s.lazy_children) {
+            inst.children_wanted = wanted;
+            self.events.push((
+                host,
+                EventKind::NativeEvent,
+                EventPayload::Native {
+                    name: "$children".into(),
+                    data: JsonValue::Bool(wanted),
+                },
+            ));
         }
         failure
     }
@@ -2418,16 +2443,17 @@ impl<M: TextEngine> Core<M> {
                 });
             }
             Action::Return(call, result) => self.reply(crate::ROOT_ID, call, result),
-            Action::Anim(op) => {
-                let _ = self.apply_op(Op::Anim(op));
+            Action::Animation(op) => {
+                let _ = self.apply_op(Op::Animation(op));
             }
             Action::Animate { op, animation, end } => {
                 self.components.animations.insert(animation, end);
-                let _ = self.apply_op(Op::Anim(op));
+                let _ = self.apply_op(Op::Animation(op));
             }
             Action::ReportViewable(list) => self.report_viewable(list),
             Action::Frame(answer) => self.wait_frame(answer),
             Action::Direction(change) => self.change_direction(change),
+            Action::Appearance(appearance) => self.set_appearance(appearance),
             Action::ImageInfo(uri, answer) => {
                 let id = self.components.next_image_info;
                 self.components.next_image_info += 1;
@@ -2437,12 +2463,22 @@ impl<M: TextEngine> Core<M> {
                     command: Command::ImageInfo { id, uri },
                 });
             }
+            Action::ReadClipboard(read) => {
+                let id = self.components.next_clipboard_read;
+                self.components.next_clipboard_read += 1;
+                let has_only = matches!(read, ClipboardRead::Has(_));
+                self.components.clipboard_reads.insert(id, read);
+                let _ = self.apply_op(Op::Command {
+                    id: crate::ROOT_ID,
+                    command: Command::ReadClipboard { id, has_only },
+                });
+            }
         }
     }
 
     /// Native animations that ended: the components' resolve their
     /// [`crate::ui::AnimationEnd`]s; JS's stay in `finished`.
-    pub fn animations_finished(&mut self, finished: &mut Vec<nsh_anim::Finished>) {
+    pub fn animations_finished(&mut self, finished: &mut Vec<nsh_animation::Finished>) {
         finished.retain(|f| match self.components.animations.remove(&f.animation) {
             Some(end) => {
                 end.borrow_mut().deliver(f.finished);
@@ -2460,8 +2496,20 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// The answer to clipboard read `id`: the text, `None` when it holds
+    /// none.
+    pub(super) fn answer_clipboard(&mut self, id: u32, text: Option<String>, has: bool) {
+        match self.components.clipboard_reads.remove(&id) {
+            Some(ClipboardRead::Text(answer)) => {
+                answer.borrow_mut().deliver(text.unwrap_or_default())
+            }
+            Some(ClipboardRead::Has(answer)) => answer.borrow_mut().deliver(has),
+            None => {}
+        }
+    }
+
     /// The answer to a call JS waits for, as a `$return` event on `host`.
-    fn reply(&mut self, host: NodeId, call: u64, result: Result<JsonValue, String>) {
+    pub(super) fn reply(&mut self, host: NodeId, call: u64, result: Result<JsonValue, String>) {
         let mut reply = serde_json::Map::new();
         reply.insert("c".into(), call.into());
         match result {
@@ -2534,6 +2582,23 @@ impl<M: TextEngine> Core<M> {
                     (_, _, error) => Err(error.unwrap_or_else(|| "no size".into())),
                 };
                 self.answer_image_info(request as u32, size);
+                true
+            }
+            EventKind::Clipboard if id == crate::ROOT_ID => {
+                let Some(request) = number("id") else {
+                    return false;
+                };
+                let (mut text, mut has) = (None, false);
+                if let EventPayload::Map(entries) = payload {
+                    for (k, v) in entries {
+                        match (*k, v) {
+                            ("text", crate::PayloadValue::Str(t)) => text = Some(t.clone()),
+                            ("has", crate::PayloadValue::Bool(b)) => has = *b,
+                            _ => {}
+                        }
+                    }
+                }
+                self.answer_clipboard(request as u32, text, has);
                 true
             }
             EventKind::Insets => {

@@ -211,6 +211,11 @@ pub trait Props: Clone + PartialEq + 'static {
     #[doc(hidden)]
     const ITEMS: Option<&'static str> = None;
 
+    /// Its children are made only while the render places them
+    /// (`#[prop(lazy)]`).
+    #[doc(hidden)]
+    const LAZY_CHILDREN: bool = false;
+
     /// The component's documentation (the struct's doc comment).
     fn doc() -> &'static str;
 
@@ -305,6 +310,10 @@ pub struct ComponentSpec {
     pub methods: Vec<MethodSpec>,
     /// The named TypeScript types they use.
     pub types: TsTypes,
+    /// JS makes the children only while the render places them
+    /// (`#[prop(lazy)]` on its `Children`): the core tells it with a
+    /// `$children` event on the host.
+    pub lazy_children: bool,
 }
 
 impl ComponentSpec {
@@ -334,6 +343,7 @@ impl ComponentSpec {
             events,
             methods,
             types,
+            lazy_children: C::Props::LAZY_CHILDREN,
         }
     }
 

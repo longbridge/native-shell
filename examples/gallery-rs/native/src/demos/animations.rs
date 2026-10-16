@@ -415,7 +415,7 @@ impl Component for Interpolations {
         );
         let angle = t.interpolate_with(
             &[0.0, 1.0],
-            AnimOutput::Numbers(vec![0.0, 180.0]),
+            AnimationOutput::Numbers(vec![0.0, 180.0]),
             Interpolation {
                 extrapolate_right: Extrapolate::Extend,
                 ..Interpolation::default()
@@ -516,7 +516,7 @@ impl Component for HidingHeader {
                     .bind_translate_y(&header.mul(-1.0))
                     .bind_opacity(&header.interpolate_with(
                         &[0.0, 44.0],
-                        AnimOutput::Numbers(vec![1.0, 0.0]),
+                        AnimationOutput::Numbers(vec![1.0, 0.0]),
                         Interpolation {
                             easing: Easing::Curve(Curve::Quad, EaseMode::In),
                             ..Interpolation::default()

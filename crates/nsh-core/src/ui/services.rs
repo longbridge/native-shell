@@ -65,6 +65,11 @@ pub(crate) fn toast(message: String, duration: ToastDuration) -> Action {
     )
 }
 
+/// Puts `text` on the system clipboard.
+pub(crate) fn set_clipboard(text: String) -> Action {
+    Action::Command(ROOT_ID, Command::SetClipboard(text))
+}
+
 /// The size of the image at `uri`, its bytes loaded.
 pub(crate) fn image_size(uri: String) -> (Answer<Result<ImageSize, String>>, Action) {
     let (answer, slot) = Answer::new();

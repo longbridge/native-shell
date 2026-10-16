@@ -108,6 +108,18 @@ impl<M: TextEngine> Core<M> {
                 self.run_listener(host, &listener, payload);
             }
         }
+        // A pan the platform activated: its element claims the touches.
+        if let Some(id) = touch.activated
+            && self.hears_touches(id)
+        {
+            let responder = self.live_responder();
+            let event = self.responder_event_now(about, touch);
+            if responder != Some(id)
+                && let Some(block) = self.claims(id, ClaimPhase::Pan, false, event)
+            {
+                self.take_over(id, block, responder, about, touch);
+            }
+        }
         match phase {
             TouchPhase::Start => self.negotiate(ClaimPhase::Start, &path, about, touch),
             TouchPhase::Move => self.negotiate(ClaimPhase::Move, &path, about, touch),
@@ -169,11 +181,7 @@ impl<M: TextEngine> Core<M> {
         about: &TouchPoint,
         touch: &TouchEvent,
     ) {
-        let responder = self
-            .components
-            .touch
-            .responder
-            .filter(|&r| self.key(r).is_ok());
+        let responder = self.live_responder();
         let mut from = 0;
         if let Some(r) = responder {
             let around = |id: NodeId| match (self.key(id), self.key(r)) {
@@ -210,6 +218,28 @@ impl<M: TextEngine> Core<M> {
         if Some(wanting) == responder {
             return;
         }
+        self.take_over(wanting, block, responder, about, touch);
+    }
+
+    /// The responder, if its node still exists.
+    fn live_responder(&self) -> Option<NodeId> {
+        self.components
+            .touch
+            .responder
+            .filter(|&r| self.key(r).is_ok())
+    }
+
+    /// Node `wanting` claimed the touches from `responder`: it becomes the
+    /// responder unless the responder keeps them.
+    fn take_over(
+        &mut self,
+        wanting: NodeId,
+        block: bool,
+        responder: Option<NodeId>,
+        about: &TouchPoint,
+        touch: &TouchEvent,
+    ) {
+        let event = self.responder_event_now(about, touch);
         if let Some(r) = responder {
             let keeps = self
                 .host_of(r)
@@ -225,7 +255,9 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// Whether node `id` claims the touches in `phase` (its claims of that
-    /// kind, in order): with whether it blocks native scroll views.
+    /// kind, in order): with whether it blocks native scroll views. An
+    /// element waiting for its pan ([`crate::ui::TouchClaim::on_pan`]) only
+    /// claims when the platform activates it.
     fn claims(
         &mut self,
         id: NodeId,
@@ -235,10 +267,14 @@ impl<M: TextEngine> Core<M> {
     ) -> Option<bool> {
         let host = self.host_of(id)?;
         let el = self.responder_el(host, id)?;
+        let gated = el.claims.iter().any(|c| c.phase == ClaimPhase::Pan);
+        if gated != (phase == ClaimPhase::Pan) {
+            return None;
+        }
         for claim in el
             .claims
             .iter()
-            .filter(|c| c.phase == phase && c.capture == capture)
+            .filter(|c| c.phase == phase && (gated || c.capture == capture))
         {
             match &claim.ask {
                 None => return Some(claim.block_native),

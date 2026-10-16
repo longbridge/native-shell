@@ -161,8 +161,13 @@ fn font(f: &CanvasFont) -> String {
         |f| format!("\"{f}\""),
     );
     format!(
-        "{}{} {}px {family}",
+        "{}{}{} {}px {family}",
         if f.italic { "italic " } else { "" },
+        if f.variant.has(nsh_core::FontVariant::SMALL_CAPS) {
+            "small-caps "
+        } else {
+            ""
+        },
         f.weight,
         f.size
     )
@@ -239,6 +244,9 @@ pub(crate) fn encode(drawing: &Drawing) -> String {
                 w.f(*y);
             }),
             CanvasOp::Font(f) => w.op("=font", |w| w.str(&font(f))),
+            // Browsers' canvases draw no number forms (the shorthand only
+            // takes `small-caps`).
+            CanvasOp::FontVariantNumeric(_) => {}
             CanvasOp::TextAlign(a) => w.op("=textAlign", |w| w.str(&name(a))),
             CanvasOp::TextBaseline(b) => w.op("=textBaseline", |w| w.str(&name(b))),
             CanvasOp::FillText {

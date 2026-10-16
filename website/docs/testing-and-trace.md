@@ -28,13 +28,19 @@ Use it to:
 2. Starts an engine with a 390×844 viewport and renders the first frame.
 3. Optionally scrolls the first scroll view or list.
 4. Waits while the app is idle (by default 1.2 s, so the engine's idle garbage collection runs first and retention bugs
-   show up), printing whatever the app renders meanwhile (timers, fetches, animations).
-5. Taps the first pressable view (the first view with `onPress`) a number of times and prints what each tap changes.
+   show up), printing whatever the app renders meanwhile (timers, fetches, animations). An app that never stops
+   rendering (a clock, a looping animation) is waited for at most 10 s; `--wait` sets the time instead.
+5. Taps the views `--tap` names, or the first pressable view (the first view with `onPress`) a number of times, and
+   prints what each tap changes, then what the app renders after it.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--taps <n>` | 2 | Taps to send to the first pressable view. |
+| `--tap <selector>` | none | A view to tap (repeatable, in order): `id:<testID>`, `label:<accessibilityLabel>`, `text:<text>`, `view:<id>`, or a bare string matched as each of the first three. |
+| `--taps <n>` | 2 | Without `--tap`: taps to send to the first pressable view. |
 | `--idle-ms <ms>` | 1200 | Idle time before tapping. |
+| `--wait <ms>` | none | Run exactly this long before the first tap and after each one, instead of waiting until the app is idle. |
+| `--duration <ms>` | 0 | Keep running this long after the last tap. |
+| `--safe-area <insets>` | 0 | Safe area insets: `top,right,bottom,left` in points, e.g. `47,0,34,0`. |
 | `--scroll <points>` | none | Scroll the first scroll view or list by this many points, in 10 pt frames, printing each frame's batch. |
 | `--width <points>` | 390 | Viewport width. |
 | `--height <points>` | 844 | Viewport height. |
@@ -131,8 +137,16 @@ costs, and that frames revealing no new row produce nothing. Use it with a relea
 
 ## Taps
 
-`nsh trace` taps the **first** view with `onPress` in the first frame. Design a trace-friendly entry by putting the
-interaction you want to measure first, or write a small entry file for it:
+Name the views to tap with `--tap`, by `testID`, accessibility label or text, in the order to tap them. A match that is
+not pressable itself (a `Text` inside a button) taps its nearest pressable ancestor, and the views a tap brings in (a
+pushed screen, an opened menu) can be tapped next:
+
+```sh
+nsh trace --tap label:Plan --tap "text:Add stage" --tap id:save --wait 300
+```
+
+Without `--tap`, `nsh trace` taps the **first** view with `onPress` on screen. You can also write a small entry file
+that renders only the screen under test:
 
 ```tsx
 // trace/AddItem.tsx: renders the screen and puts the button under test first

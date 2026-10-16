@@ -64,6 +64,7 @@ mount(App);
 | `blurOnSubmit` | `boolean` | `true` | 单行输入框按回车后失去焦点。 |
 | `caretHidden` | `boolean` | `false` | 不绘制光标。 |
 | `selectionColor` | `ColorValue` | | 光标和选区的颜色。 |
+| `ios={{ keyboardAppearance }}` | `"default" \| "light" \| "dark"` | `"default"` | 键盘的外观（iOS）。 |
 | `selection` | `{ start: number; end?: number }` | | 受控的选区，单位为 UTF-16 码元。 |
 | `allowFontScaling` | `boolean` | `true` | 跟随系统文字大小。 |
 | `maxFontSizeMultiplier` | `number` | | 系统缩放的上限（0：无上限）。 |
@@ -96,10 +97,13 @@ mount(App);
 | `"default"` | 文本。 |
 | `"email-address"` | 文本，方便输入 `@` 和 `.`。 |
 | `"url"` | 文本，方便输入 `/` 和 `.com`。 |
-| `"number-pad"` | 只有数字。 |
-| `"numeric"` | 数字，在某些键盘上还有符号。 |
+| `"number-pad"` | 只有数字：没有正负号和小数点（验证码、PIN）。 |
 | `"decimal-pad"` | 数字和小数点。 |
+| `"numeric"` | 与 React Native 相同：iOS 上是小数键盘；Android 上是带正负号和小数点的数字键盘。 |
+| `"numbers-and-punctuation"` | 数字、负号和标点（iOS 的数字与标点键盘；Android 上是带正负号和小数点的数字键盘）。在 iOS 上输入负数时使用它。 |
 | `"phone-pad"` | 电话拨号盘。 |
+
+在 iOS 上，`ios={{ keyboardAppearance: "dark" }}`（或 `"light"`、`"default"`）让键盘使用浅色或深色外观而不随系统外观变化，适合在浅色模式下运行的深色应用。Android 的键盘始终跟随系统主题。
 
 `autoComplete` 告诉系统字段里装的是什么，系统就能提供已保存的姓名、地址、密码以及短信中的验证码。它接受以下取值：`"name"`、`"given-name"`、`"family-name"`、`"email"`、`"tel"`、`"username"`、`"current-password"`、`"new-password"`、`"one-time-code"`、`"street-address"`、`"postal-code"`、`"country"`、`"cc-number"`、`"cc-exp"`、`"cc-csc"`、`"url"`、`"birthdate-full"` 等，或 `"off"`。iOS 自己的名字（`"emailAddress"`、`"oneTimeCode"` 等）也可以用在 `autoComplete` 或 `ios={{ textContentType }}` 中。
 

@@ -37,6 +37,13 @@ class Box extends ViewGroup implements Node {
     /** Pan axis lock: 0 free, 1 horizontal, 2 vertical. */
     int panAxis;
     boolean pinchable, rotatable;
+    /**
+     * The area descendants cover outside the bounds (px, own coordinates;
+     * `MountItem::Overflow`), or null: touches there go to the children.
+     */
+    android.graphics.RectF overflow;
+    /** The child taking the current gesture where ViewGroup would not deliver it (outside its bounds). */
+    private View overflowTarget;
     /** Children go here while the box both clips and casts a shadow. */
     private Box content;
     private final Path clipPath = new Path();
@@ -181,7 +188,30 @@ class Box extends ViewGroup implements Node {
     @Override
     public boolean dispatchTouchEvent(MotionEvent e) {
         if (pointerEvents == 1) return false;
-        if (e.getActionMasked() == MotionEvent.ACTION_DOWN && mounter.hasHitSlop()) {
+        int action = e.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            overflowTarget = null;
+            // ViewGroup only delivers a touch to a child that contains it: a
+            // touch on a descendant placed outside its parent (a dropdown
+            // under its field) goes to the child whose area holds it, and
+            // a touch outside this box (delivered so by its parent) only
+            // to its children, never to the box itself.
+            float x = e.getX(), y = e.getY();
+            boolean outside = x < 0 || y < 0 || x >= getWidth() || y >= getHeight();
+            if (outside || hasOverflowingChild()) {
+                View target = pointerEvents == 3 ? null : overflowChild(x, y, outside);
+                if (target != null && dispatchTo(target, e)) {
+                    overflowTarget = target;
+                    return true;
+                }
+                if (outside) return false;
+            }
+        } else if (overflowTarget != null) {
+            boolean handled = dispatchTo(overflowTarget, e);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) overflowTarget = null;
+            return handled;
+        }
+        if (action == MotionEvent.ACTION_DOWN && mounter.hasHitSlop()) {
             View target = slopTarget(e.getX(), e.getY());
             if (target != null) {
                 // A touch in a child's hit slop: move it inside the child, so
@@ -197,6 +227,77 @@ class Box extends ViewGroup implements Node {
             }
         }
         return super.dispatchTouchEvent(e);
+    }
+
+    private boolean hasOverflowingChild() {
+        ViewGroup group = container();
+        for (int i = group.getChildCount() - 1; i >= 0; i--) {
+            View c = group.getChildAt(i);
+            if (c instanceof Box && ((Box) c).overflow != null) return true;
+        }
+        return false;
+    }
+
+    /** ({@code x}, {@code y}) of this box in child {@code c}. */
+    private float[] inChild(View c, float x, float y) {
+        ViewGroup group = container();
+        float[] pt = {x, y};
+        if (group != this) {
+            pt[0] -= group.getLeft();
+            pt[1] -= group.getTop();
+        }
+        pt[0] += group.getScrollX() - c.getLeft();
+        pt[1] += group.getScrollY() - c.getTop();
+        android.graphics.Matrix m = c.getMatrix();
+        if (!m.isIdentity()) {
+            android.graphics.Matrix inverse = new android.graphics.Matrix();
+            if (m.invert(inverse)) inverse.mapPoints(pt);
+        }
+        return pt;
+    }
+
+    /**
+     * The topmost child to deliver a touch at ({@code x}, {@code y}) to
+     * that ViewGroup would not: one whose overflow area holds it, or (with
+     * {@code inBounds}) one that contains it. Null when a child above
+     * contains the point (the regular dispatch delivers it).
+     */
+    private View overflowChild(float x, float y, boolean inBounds) {
+        ViewGroup group = container();
+        for (int i = group.getChildCount() - 1; i >= 0; i--) {
+            View c = group.getChildAt(i);
+            if (c.getVisibility() != VISIBLE) continue;
+            float[] pt = inChild(c, x, y);
+            if (pt[0] >= 0 && pt[1] >= 0 && pt[0] < c.getWidth() && pt[1] < c.getHeight()) {
+                return inBounds ? c : null;
+            }
+            if (c instanceof Box) {
+                Box b = (Box) c;
+                if (b.overflow != null && b.pointerEvents != 1 && b.pointerEvents != 3 && !b.clip
+                        && b.overflow.contains(pt[0], pt[1])) return c;
+            }
+        }
+        return null;
+    }
+
+    /** Delivers {@code e} (of this box) to child {@code c}, in its coordinates. */
+    private boolean dispatchTo(View c, MotionEvent e) {
+        ViewGroup group = container();
+        MotionEvent local = MotionEvent.obtain(e);
+        float dx = group.getScrollX() - c.getLeft(), dy = group.getScrollY() - c.getTop();
+        if (group != this) {
+            dx -= group.getLeft();
+            dy -= group.getTop();
+        }
+        local.offsetLocation(dx, dy);
+        android.graphics.Matrix m = c.getMatrix();
+        if (!m.isIdentity()) {
+            android.graphics.Matrix inverse = new android.graphics.Matrix();
+            if (m.invert(inverse)) local.transform(inverse);
+        }
+        boolean handled = c.dispatchTouchEvent(local);
+        local.recycle();
+        return handled;
     }
 
     private static float clamp(float v, float min, float max) {

@@ -2,15 +2,31 @@
 //! drags and scroll offsets update it; changed view properties go back to
 //! Java as `[animating, (view, prop, value)*]` float arrays.
 
-use nsh_anim::{AnimProp, AnimValue, Finished, Graph, NodeId};
-use nsh_core::{GestureValues, MAX_TRANSFORMS, MountItem, Transform};
+use nsh_animation::{AnimationProp, AnimationValue, Finished, Graph, NodeId};
+use nsh_core::{GestureValues, MAX_TRANSFORMS, MountItem, Shadow, Transform};
 use rustc_hash::FxHashMap;
 
 // Java-side property codes (`Mounter.java`).
 const OPACITY: f32 = 0.0;
 const BACKGROUND: f32 = 7.0;
+/// Every border side's color (ARGB bits).
+const BORDER_COLOR: f32 = 11.0;
+/// A text's color (ARGB bits).
+const TEXT_COLOR: f32 = 12.0;
+/// The shadow's color with its opacity in the alpha (ARGB bits).
+const SHADOW_COLOR: f32 = 13.0;
+/// The shadow's radius (points).
+const SHADOW_RADIUS: f32 = 14.0;
 /// Canvas native value slot `n` is `CANVAS_ARG + n` (a color as ARGB bits).
 const CANVAS_ARG: f32 = 1000.0;
+/// A color value as Java's ARGB bits.
+fn argb(value: AnimationValue) -> f32 {
+    match value {
+        AnimationValue::Color(c) => f32::from_bits(c.rotate_right(8)),
+        other => other.number(),
+    }
+}
+
 /// Codes of the [`view_transform`] values, in order.
 const TRANSFORM_CODES: [f32; 8] = [1.0, 2.0, 4.0, 5.0, 6.0, 8.0, 9.0, 10.0];
 
@@ -44,24 +60,24 @@ struct Gestures {
 }
 
 #[derive(Default)]
-pub(crate) struct UiAnim {
+pub(crate) struct UiAnimation {
     graph: Graph,
     pub(crate) finished: Vec<Finished>,
     /// View id -> bound properties.
-    bindings: FxHashMap<u32, Vec<(AnimProp, NodeId)>>,
+    bindings: FxHashMap<u32, Vec<(AnimationProp, NodeId)>>,
     /// View id -> static transform list, whose animated entries the
-    /// bindings replace.
-    statics: FxHashMap<u32, Transform>,
+    /// bindings replace, and shadow, whose bound parts they replace.
+    statics: FxHashMap<u32, (Transform, Shadow)>,
     gestures: FxHashMap<u32, Gestures>,
     /// Scroll view id -> (value node, horizontal).
     scrolls: FxHashMap<u32, (NodeId, bool)>,
 }
 
-impl UiAnim {
+impl UiAnimation {
     pub(crate) fn apply(&mut self, item: MountItem) {
         match item {
-            MountItem::Anim(op) => self.graph.apply(op, &mut self.finished),
-            MountItem::AnimBindings { id, bindings } => {
+            MountItem::Animation(op) => self.graph.apply(op, &mut self.finished),
+            MountItem::AnimationBindings { id, bindings } => {
                 if bindings.is_empty() {
                     self.bindings.remove(&id);
                 } else {
@@ -69,7 +85,7 @@ impl UiAnim {
                 }
             }
             MountItem::ViewStyle { id, style } => {
-                self.statics.insert(id, style.transform);
+                self.statics.insert(id, (style.transform, style.shadow));
             }
             MountItem::Gestures { id, values } => {
                 if values.is_empty() {
@@ -197,26 +213,50 @@ impl UiAnim {
             let v = f32::from_bits(view);
             let mut overrides = [None; MAX_TRANSFORMS];
             let mut transformed = false;
+            let mut shadow: Option<Shadow> = None;
+            let statics = self.statics.get(&view).copied();
+            let static_shadow = statics.map_or(Shadow::DEFAULT, |s| s.1);
             for &(prop, node) in bindings {
                 match prop {
-                    AnimProp::Opacity => {
+                    AnimationProp::BorderColor | AnimationProp::Color => {
+                        let code = if prop == AnimationProp::Color {
+                            TEXT_COLOR
+                        } else {
+                            BORDER_COLOR
+                        };
+                        out.extend_from_slice(&[v, code, argb(self.graph.eval(node))]);
+                    }
+                    AnimationProp::ShadowColor => {
+                        if let AnimationValue::Color(c) = self.graph.eval(node) {
+                            shadow.get_or_insert(static_shadow).color = nsh_core::Color(c);
+                        }
+                    }
+                    AnimationProp::ShadowOpacity => {
+                        shadow.get_or_insert(static_shadow).opacity =
+                            self.graph.eval(node).number();
+                    }
+                    AnimationProp::ShadowRadius => {
+                        let radius = self.graph.eval(node).number().max(0.0);
+                        out.extend_from_slice(&[v, SHADOW_RADIUS, radius]);
+                    }
+                    AnimationProp::Opacity => {
                         out.extend_from_slice(&[v, OPACITY, self.graph.eval(node).number()]);
                     }
-                    AnimProp::BackgroundColor => {
+                    AnimationProp::BackgroundColor => {
                         let value = match self.graph.eval(node) {
-                            AnimValue::Color(c) => f32::from_bits(c.rotate_right(8)),
+                            AnimationValue::Color(c) => f32::from_bits(c.rotate_right(8)),
                             other => other.number(),
                         };
                         out.extend_from_slice(&[v, BACKGROUND, value]);
                     }
-                    AnimProp::CanvasArg(k) => {
+                    AnimationProp::CanvasArg(k) => {
                         let value = match self.graph.eval(node) {
-                            AnimValue::Color(c) => f32::from_bits(c.rotate_right(8)),
+                            AnimationValue::Color(c) => f32::from_bits(c.rotate_right(8)),
                             other => other.number(),
                         };
                         out.extend_from_slice(&[v, CANVAS_ARG + k as f32, value]);
                     }
-                    AnimProp::Transform(i) => {
+                    AnimationProp::Transform(i) => {
                         if let Some(o) = overrides.get_mut(i as usize) {
                             *o = Some(self.graph.eval(node).number());
                             transformed = true;
@@ -224,12 +264,16 @@ impl UiAnim {
                     }
                 }
             }
+            if let Some(s) = shadow {
+                // As `Mounter.java` takes a style's shadow: the opacity
+                // scales the color's alpha.
+                let c = s.color.0;
+                let alpha = ((c & 0xff) as f32 * s.opacity.clamp(0.0, 1.0)).round() as u32;
+                let argb = (alpha << 24) | (c >> 8);
+                out.extend_from_slice(&[v, SHADOW_COLOR, f32::from_bits(argb)]);
+            }
             if transformed {
-                let statics = self
-                    .statics
-                    .get(&view)
-                    .copied()
-                    .unwrap_or(Transform::IDENTITY);
+                let statics = statics.map_or(Transform::IDENTITY, |s| s.0);
                 let values = view_transform(&statics, |i| overrides[i]);
                 for (code, value) in TRANSFORM_CODES.iter().zip(values) {
                     out.extend_from_slice(&[v, *code, value]);

@@ -1,85 +1,259 @@
 import { type GestureResponderEvent, Scroll, signal, Text, View } from "nsh";
-import { createNativeValue, Easing } from "nsh/animated";
-import { Canvas, Path2D } from "nsh/canvas";
+import { Animated, createNativeValue, Easing, type NativeValue } from "nsh/animated";
+import { Canvas, type CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 import logo from "../logo@2x.png";
-import { Button, colors, Section } from "../ui";
+import { alpha, Appear, Button, Caption, Card, colors, Figure, finish, isDark, Legend, type Palette, Segmented, Stat } from "../ui";
 
 const TAU = Math.PI * 2;
+const SANS = (size: number, weight = "400") => `${weight} ${size}px system-ui`;
 
-/** A ring whose sweep is a native value: animating it redraws natively. */
-function ProgressRing() {
-  const progress = createNativeValue(0.3);
-  const target = signal(0.3);
-  const go = (to: number) => {
-    target.set(to);
-    progress.timing(to, { duration: 900, easing: Easing.inOut(Easing.cubic) });
+/** The accent as rgba, for low-alpha fills. */
+const accentA = (a: number) => alpha(colors.accent, a);
+const infoA = (a: number) => alpha(colors.info, a);
+
+/** A small seeded random generator, so the fictional data is stable. */
+function seeded(seed: number) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Diagonal hatching over the current clip (call inside save / clip / restore). */
+function hatch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, gap = 6) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = -h; i < w; i += gap) {
+    ctx.moveTo(x + i, y + h);
+    ctx.lineTo(x + i + h, y);
+  }
+  ctx.stroke();
+}
+
+/** A dashed horizontal or vertical reference line. */
+function dashed(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, color: string = colors.border) {
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A value that sweeps 0 → 1 once mounted (and again on `replay`): canvases clip to it. */
+function reveal(duration = 900) {
+  const t = createNativeValue(0);
+  const replay = () => {
+    t.set(0);
+    t.timing(1, { duration, easing: Easing.out(Easing.cubic) });
+  };
+  replay();
+  return { t, replay };
+}
+
+// ---------------------------------------------------------------------------
+// A dial: a tick ring, a hatched red zone, a gradient sweep and a needle, all
+// bound to one native value. Springing it moves the needle on the UI thread.
+
+const presets = [
+  { value: "idle", label: "Idle", load: 18 },
+  { value: "cruise", label: "Cruise", load: 57 },
+  { value: "peak", label: "Peak", load: 91 },
+] as const;
+type Preset = (typeof presets)[number]["value"];
+
+function Dial() {
+  const preset = signal<Preset>("cruise");
+  const load = () => presets.find((p) => p.value === preset())!.load;
+  const needle = createNativeValue(0);
+  needle.spring(load(), { stiffness: 90, damping: 9 });
+  const choose = (p: Preset) => {
+    preset.set(p);
+    needle.spring(load(), { stiffness: 140, damping: 11 });
+  };
+  const a0 = 0.75 * Math.PI;
+  const a1 = 2.25 * Math.PI;
+  const angle = needle.interpolate({ inputRange: [0, 100], outputRange: [a0, a1] });
+  const zone = () => (load() >= 85 ? "danger" : load() >= 60 ? "warn" : "up");
   return (
-    <Section title="Native animation (progress ring)">
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-        <Canvas
-          style={{ width: 120, height: 120 }}
-          draw={(ctx, { width, height }) => {
-            const cx = width / 2, cy = height / 2, r = width / 2 - 10;
-            ctx.lineWidth = 12;
+    <Card icon="spark" title="Turbine 3 load" subtitle="Needle and sweep on one native value">
+      <Canvas
+        style={{ height: 230 }}
+        draw={(ctx, { width, height }) => {
+          const cx = width / 2;
+          const cy = height * 0.54;
+          const r = Math.min(width / 2 - 8, height * 0.5) - 6;
+          const at = (v: number) => a0 + (v / 100) * (a1 - a0);
+          // The red zone: an annular sector, hatched.
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, r + 2, at(85), a1);
+          ctx.arc(cx, cy, r - 20, a1, at(85), true);
+          ctx.closePath();
+          ctx.clip();
+          ctx.fillStyle = alpha(colors.danger, 0.08);
+          // The zone sits right of the hub, from just above it to 45° below.
+          const zx = cx + 0.6 * r, zy = cy - 0.2 * r, zw = 0.4 * r + 4, zh = r;
+          ctx.fillRect(zx, zy, zw, zh);
+          hatch(ctx, zx, zy, zw, zh, alpha(colors.danger, 0.55), 5);
+          ctx.restore();
+          // The tick ring.
+          for (let i = 0; i <= 50; i++) {
+            const a = at(i * 2);
+            const major = i % 10 === 0;
+            const inner = r - (major ? 14 : 8);
+            ctx.strokeStyle = i * 2 >= 85 ? colors.danger : major ? colors.muted : colors.faint;
+            ctx.lineWidth = major ? 2 : 1;
             ctx.lineCap = "round";
-            ctx.strokeStyle = "#e5e7eb";
             ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, TAU);
+            ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+            ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
             ctx.stroke();
-            const g = ctx.createConicGradient(-Math.PI / 2, cx, cy);
-            g.addColorStop(0, "#22d3ee");
-            g.addColorStop(1, "#6366f1");
-            ctx.strokeStyle = g;
-            ctx.beginPath();
-            // The end angle reads the native value on every frame.
-            ctx.arc(cx, cy, r, -Math.PI / 2, progress.mul(TAU).sub(Math.PI / 2));
-            ctx.stroke();
-            ctx.fillStyle = colors.text;
-            ctx.font = "600 20px system-ui";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(`${Math.round(target() * 100)}%`, cx, cy);
-          }}
-        />
-        <View style={{ gap: 8 }}>
-          <Button label="Random" onPress={() => go(Math.round(Math.random() * 100) / 100)} />
-          <Button label="Full" color="#1a7f37" onPress={() => go(1)} />
-        </View>
+            if (major) {
+              const label = String(i * 2);
+              ctx.font = SANS(11);
+              ctx.fillStyle = colors.faint;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(label, cx + Math.cos(a) * (r - 28), cy + Math.sin(a) * (r - 28));
+            }
+          }
+          // The sweep: a track, then a conic gradient arc ending at the needle.
+          const sr = r + 12;
+          ctx.lineWidth = 5;
+          ctx.lineCap = "round";
+          ctx.strokeStyle = colors.raised;
+          ctx.beginPath();
+          ctx.arc(cx, cy, sr, a0, a1);
+          ctx.stroke();
+          const g = ctx.createConicGradient(a0 - 0.2, cx, cy);
+          g.addColorStop(0, colors.info);
+          g.addColorStop(0.45, colors.accent);
+          g.addColorStop(0.75, colors.warn);
+          g.addColorStop(0.8, colors.danger);
+          ctx.strokeStyle = g;
+          ctx.beginPath();
+          ctx.arc(cx, cy, sr, a0, angle);
+          ctx.stroke();
+          // The readout (redrawn only when the preset changes).
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.font = SANS(40, "600");
+          ctx.fillStyle = colors.text;
+          ctx.fillText(String(load()), cx, cy + r * 0.62);
+          ctx.font = SANS(11);
+          ctx.fillStyle = colors.faint;
+          ctx.fillText("% load", cx, cy + r * 0.62 + 18);
+          // The needle, rotated natively.
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+          ctx.shadowColor = isDark() ? "rgba(0,0,0,0.6)" : "rgba(20,20,10,0.3)";
+          ctx.shadowBlur = 6;
+          ctx.fillStyle = colors.text;
+          ctx.beginPath();
+          ctx.moveTo(-14, -3);
+          ctx.lineTo(r - 18, 0);
+          ctx.lineTo(-14, 3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = colors.raised;
+          ctx.strokeStyle = colors.text;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 7, 0, TAU);
+          ctx.fill();
+          ctx.stroke();
+        }}
+      />
+      <Segmented options={presets} value={preset()} onChange={choose} />
+      <View style={{ flexDirection: "row" }}>
+        <Stat width="33%" label="Zone" value={zone() === "danger" ? "Redline" : zone() === "warn" ? "High" : "Nominal"} tone={zone()} />
+        <Stat width="33%" label="Spool" value={`${(load() * 128).toLocaleString()} rpm`} />
+        <Stat width="33%" label="Limit" value="85 %" tone="danger" />
       </View>
-    </Section>
+    </Card>
   );
 }
 
-/** A chart: gradient area, a line, labels measured with measureText. */
-function Chart() {
-  const data = signal([12, 30, 22, 48, 36, 60, 52, 75, 64, 88]);
+// ---------------------------------------------------------------------------
+// An area chart: gradient fill, a line, a dashed average, a hatched window,
+// labels measured with measureText. New data sweeps in natively.
+
+const fresh = (rand = Math.random) => Array.from({ length: 14 }, (_, i) => Math.round(28 + 40 * Math.sin(i / 2.2) ** 2 + rand() * 26));
+
+function AreaChart() {
+  const data = signal(fresh(seeded(7)));
+  const sweep = reveal(1100);
+  const last = () => data()[data().length - 1];
+  const avg = () => Math.round(data().reduce((a, b) => a + b, 0) / data().length);
   return (
-    <Section title="Chart">
+    <Card
+      icon="stocks"
+      title="Relay throughput"
+      subtitle="Area · average · hatching"
+      right={<Button label="New" variant="secondary" onPress={() => (data.set(fresh()), sweep.replay())} />}
+    >
+      <Figure
+        value={`${last()}.${(last() * 7) % 10}`}
+        unit="k/s"
+        note={`${last() >= avg() ? "+" : "−"}${Math.abs(last() - avg())} vs. average`}
+        tone={last() >= avg() ? "up" : "down"}
+      />
       <Canvas
         style={{ height: 180 }}
         draw={(ctx, { width, height }) => {
           const values = data();
-          const pad = { left: 32, right: 12, top: 12, bottom: 24 };
-          const w = width - pad.left - pad.right, h = height - pad.top - pad.bottom;
-          const max = 100;
+          ctx.font = SANS(11);
+          const labelW = ctx.measureText("100").width;
+          const pad = { left: labelW + 8, right: 4, top: 16, bottom: 20 };
+          const w = width - pad.left - pad.right;
+          const h = height - pad.top - pad.bottom;
           const x = (i: number) => pad.left + (i / (values.length - 1)) * w;
-          const y = (v: number) => pad.top + h - (v / max) * h;
-          ctx.font = "11px system-ui";
-          ctx.fillStyle = colors.muted;
-          ctx.strokeStyle = "#e5e7eb";
-          ctx.lineWidth = 1;
-          for (const v of [0, 25, 50, 75, 100]) {
-            ctx.beginPath();
-            ctx.moveTo(pad.left, y(v));
-            ctx.lineTo(width - pad.right, y(v));
-            ctx.stroke();
+          const y = (v: number) => pad.top + h - (v / 100) * h;
+          // Grid and labels.
+          ctx.textBaseline = "middle";
+          for (const v of [0, 50, 100]) {
+            dashed(ctx, pad.left, y(v), width - pad.right, y(v), colors.line);
             const label = String(v);
-            ctx.fillText(label, pad.left - 6 - ctx.measureText(label).width, y(v) + 4);
+            ctx.fillStyle = colors.faint;
+            ctx.fillText(label, pad.left - 8 - ctx.measureText(label).width, y(v));
           }
+          // The deploy window: hatched.
+          const wx = x(9), ww = x(11) - x(9);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(wx, pad.top, ww, h);
+          ctx.clip();
+          hatch(ctx, wx, pad.top, ww, h, alpha(colors.warn, 0.28), 6);
+          ctx.restore();
+          ctx.fillStyle = colors.warn;
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText("deploy", wx + 2, pad.top - 4);
+          // Day labels.
+          ctx.fillStyle = colors.faint;
+          for (const i of [0, 7, 13]) {
+            const label = i === 13 ? "now" : `d-${13 - i}`;
+            const lw = ctx.measureText(label).width;
+            ctx.fillText(label, Math.min(width - pad.right - lw, Math.max(pad.left, x(i) - lw / 2)), height - 4);
+          }
+          // Everything data-driven sweeps in left to right (a native clip).
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(pad.left - 6, 0, sweep.t.mul(w + 12), height);
+          ctx.clip();
           const area = ctx.createLinearGradient(0, pad.top, 0, pad.top + h);
-          area.addColorStop(0, "rgba(59,130,246,0.35)");
-          area.addColorStop(1, "rgba(59,130,246,0)");
+          area.addColorStop(0, accentA(0.26));
+          area.addColorStop(1, accentA(0));
           ctx.beginPath();
           ctx.moveTo(x(0), y(values[0]));
           values.forEach((v, i) => i > 0 && ctx.lineTo(x(i), y(v)));
@@ -90,196 +264,483 @@ function Chart() {
           ctx.fill();
           ctx.beginPath();
           values.forEach((v, i) => (i === 0 ? ctx.moveTo(x(i), y(v)) : ctx.lineTo(x(i), y(v))));
-          ctx.strokeStyle = "#3b82f6";
-          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = colors.accent;
+          ctx.lineWidth = 2;
           ctx.lineJoin = "round";
           ctx.stroke();
-          ctx.fillStyle = "#ffffff";
-          ctx.strokeStyle = "#3b82f6";
-          ctx.lineWidth = 2;
           values.forEach((v, i) => {
             ctx.beginPath();
-            ctx.arc(x(i), y(v), 3.5, 0, TAU);
+            ctx.arc(x(i), y(v), i === values.length - 1 ? 4.5 : 2.5, 0, TAU);
+            ctx.fillStyle = colors.inset;
+            ctx.fill();
+            ctx.strokeStyle = colors.accent;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          });
+          ctx.restore();
+          // The average, with a pill label measured to fit.
+          const mean = avg();
+          dashed(ctx, pad.left, y(mean), width - pad.right, y(mean), colors.muted);
+          const label = `avg ${mean}`;
+          const lw = ctx.measureText(label).width + 12;
+          ctx.fillStyle = colors.raised;
+          ctx.beginPath();
+          ctx.roundRect(width - pad.right - lw, y(mean) - 9, lw, 18, 9);
+          ctx.fill();
+          ctx.fillStyle = colors.text;
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, width - pad.right - lw + 6, y(mean));
+        }}
+      />
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Legend color={colors.accent} label="Messages" />
+        <Legend color={colors.muted} label="Average" />
+        <Legend color={colors.warn} label="Deploy" />
+      </View>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A ridgeline: one smooth curve per day, overlapping, each a low-alpha fill.
+
+const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const ridges = days.map((_, d) => {
+  const rand = seeded(100 + d);
+  const peaks = [6 + rand() * 4, 12 + rand() * 3, 17 + rand() * 4];
+  const weights = [0.5 + rand() * 0.5, 0.4 + rand() * 0.6, 0.3 + rand() * 0.7].map((w) => (d >= 5 ? w * 0.55 : w));
+  return Array.from({ length: 25 }, (_, h) => peaks.reduce((s, p, k) => s + weights[k] * Math.exp(-((h - p) ** 2) / 6), 0.04));
+});
+
+function Ridgeline() {
+  const sweep = reveal(1400);
+  return (
+    <Card
+      icon="animation"
+      title="Footfall by hour"
+      subtitle="Ridgeline, one curve a day"
+      right={<Button label="Replay" variant="secondary" onPress={sweep.replay} />}
+    >
+      <Caption label="Gate B, last week" note="Peak 12:00–14:00" />
+      <Canvas
+        style={{ height: 210 }}
+        draw={(ctx, { width, height }) => {
+          ctx.font = SANS(11);
+          const left = ctx.measureText("Mon").width + 10;
+          const bottom = 18;
+          const step = (height - bottom - 30) / (days.length - 1);
+          const x = (h: number) => left + (h / 24) * (width - left);
+          // Peak window and hour labels.
+          dashed(ctx, x(12), 0, x(12), height - bottom, colors.border);
+          dashed(ctx, x(14), 0, x(14), height - bottom, colors.border);
+          ctx.fillStyle = colors.faint;
+          ctx.textBaseline = "alphabetic";
+          for (const h of [0, 6, 12, 18, 24]) {
+            const label = String(h).padStart(2, "0");
+            const lw = ctx.measureText(label).width;
+            ctx.fillText(label, Math.min(width - lw, Math.max(left, x(h) - lw / 2)), height - 3);
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, sweep.t.mul(width), height);
+          ctx.clip();
+          ridges.forEach((series, d) => {
+            const base = 30 + d * step;
+            const amp = 46;
+            const y = (v: number) => base - v * amp;
+            ctx.beginPath();
+            ctx.moveTo(x(0), base);
+            ctx.lineTo(x(0), y(series[0]));
+            for (let h = 1; h < series.length; h++) {
+              const mx = (x(h - 1) + x(h)) / 2;
+              ctx.quadraticCurveTo(x(h - 1), y(series[h - 1]), mx, (y(series[h - 1]) + y(series[h])) / 2);
+            }
+            ctx.lineTo(x(24), y(series[24]));
+            ctx.lineTo(x(24), base);
+            ctx.closePath();
+            // Occlude the ridge behind, then a low-alpha fill and the line.
+            ctx.fillStyle = colors.inset;
+            ctx.fill();
+            const weekend = d >= 5;
+            ctx.fillStyle = weekend ? infoA(0.18) : accentA(0.1 + d * 0.025);
+            ctx.fill();
+            ctx.strokeStyle = weekend ? colors.info : colors.accent;
+            ctx.lineWidth = 1.25;
+            ctx.stroke();
+          });
+          ctx.restore();
+          ctx.fillStyle = colors.muted;
+          days.forEach((day, d) => ctx.fillText(day, 0, 30 + d * step - 2));
+        }}
+      />
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Legend color={colors.accent} label="Weekday" />
+        <Legend color={colors.info} label="Weekend" />
+      </View>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A dot matrix: uptime per hour block, a pulse on the newest dot (native loop).
+
+/** The dot levels, from none to full (call in a reactive scope). */
+const levels = () => [colors.raised, accentA(0.22), accentA(0.45), accentA(0.7), colors.accent];
+
+function DotMatrix() {
+  const pulse = createNativeValue(0);
+  Animated.loop(Animated.timing(pulse, { toValue: 1, duration: 1400, easing: Easing.out(Easing.quad) })).start();
+  return (
+    <Card icon="bell" title="Beacon uptime" subtitle="Dot matrix, one column a day">
+      <Figure value="99.94" unit="%" note="3 incidents" tone="danger" />
+      <Canvas
+        style={{ height: 96 }}
+        draw={(ctx, { width, height }) => {
+          const rows = 7;
+          const gap = 12.5;
+          const cols = Math.floor(width / gap);
+          const ox = (width - (cols - 1) * gap) / 2;
+          const oy = (height - (rows - 1) * gap) / 2;
+          const rand = seeded(42);
+          let lastX = 0, lastY = 0;
+          for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < rows; r++) {
+              const n = rand();
+              const incident = (c === 6 && r === 2) || (c === 17 && r === 5) || (c === cols - 4 && r === 3);
+              ctx.fillStyle = incident ? colors.danger : levels()[Math.min(4, Math.floor(n * n * 5 + (c / cols) * 1.6))];
+              ctx.beginPath();
+              ctx.arc(ox + c * gap, oy + r * gap, 3.6, 0, TAU);
+              ctx.fill();
+              lastX = ox + c * gap;
+              lastY = oy + r * gap;
+            }
+          }
+          // The pulse: radius and alpha follow a native loop.
+          ctx.save();
+          ctx.globalAlpha = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0] });
+          ctx.strokeStyle = colors.accent;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(lastX, lastY, pulse.interpolate({ inputRange: [0, 1], outputRange: [4, 11] }), 0, TAU);
+          ctx.stroke();
+          ctx.restore();
+        }}
+      />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Text style={{ fontSize: 13, color: colors.muted }}>Less</Text>
+        <Each of={levels()}>{(c) => <View style={{ width: 9, height: 9, borderRadius: 2.5, backgroundColor: c() }} />}</Each>
+        <Text style={{ flex: 1, fontSize: 13, color: colors.muted }}>More</Text>
+        <Legend color={colors.danger} label="Incident" />
+      </View>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A dumbbell plot: before → after per row, the after dots travel natively
+// (one value, staggered through each row's input range).
+
+const routes = [
+  { name: "North Gate", before: 182, after: 96 },
+  { name: "Harbor", before: 240, after: 131 },
+  { name: "Old Mill", before: 128, after: 104 },
+  { name: "Ridge", before: 205, after: 88 },
+  { name: "Lowfield", before: 96, after: 71 },
+  { name: "Quarry", before: 151, after: 160 },
+];
+
+function Dumbbell() {
+  const t: NativeValue = createNativeValue(0);
+  const play = () => {
+    t.set(0);
+    t.timing(1, { duration: 1500, easing: Easing.out(Easing.cubic) });
+  };
+  play();
+  return (
+    <Card
+      icon="physics"
+      title="Route latency"
+      subtitle="Dumbbell, before → after"
+      right={<Button label="Replay" variant="secondary" onPress={play} />}
+    >
+      <Canvas
+        style={{ height: 30 * routes.length + 24 }}
+        draw={(ctx, { width, height }) => {
+          ctx.font = SANS(13);
+          const left = Math.max(...routes.map((r) => ctx.measureText(r.name).width)) + 12;
+          ctx.font = SANS(11);
+          const right = ctx.measureText("+00%").width + 10;
+          const max = 250;
+          const x = (ms: number) => left + (ms / max) * (width - left - right);
+          ctx.textBaseline = "alphabetic";
+          for (const ms of [0, 100, 200]) {
+            dashed(ctx, x(ms), 0, x(ms), height - 18, colors.line);
+            ctx.fillStyle = colors.faint;
+            const label = `${ms}`;
+            ctx.fillText(label, x(ms) - ctx.measureText(label).width / 2, height - 3);
+          }
+          routes.forEach((r, i) => {
+            const cy = 15 + i * 30;
+            const start = i * 0.07;
+            const after = t.interpolate({ inputRange: [start, start + 0.6], outputRange: [x(r.before), x(r.after)] });
+            const worse = r.after > r.before;
+            const tone = worse ? colors.danger : colors.accent;
+            ctx.font = SANS(13);
+            ctx.fillStyle = colors.muted;
+            ctx.textBaseline = "middle";
+            ctx.fillText(r.name, 0, cy);
+            ctx.strokeStyle = worse ? alpha(colors.danger, 0.5) : accentA(0.45);
+            ctx.lineWidth = 3;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(x(r.before), cy);
+            ctx.lineTo(after, cy);
+            ctx.stroke();
+            ctx.fillStyle = colors.inset;
+            ctx.strokeStyle = colors.muted;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(x(r.before), cy, 4.5, 0, TAU);
             ctx.fill();
             ctx.stroke();
+            ctx.fillStyle = tone;
+            ctx.beginPath();
+            ctx.arc(after, cy, 5.5, 0, TAU);
+            ctx.fill();
+            const pct = Math.round(((r.after - r.before) / r.before) * 100);
+            const label = `${pct > 0 ? "+" : ""}${pct}%`;
+            ctx.font = SANS(11);
+            ctx.fillStyle = tone;
+            ctx.fillText(label, width - ctx.measureText(label).width, cy);
           });
         }}
       />
-      <Button label="New data" onPress={() => data.set(data().map(() => Math.round(10 + Math.random() * 85)))} />
-    </Section>
+      <View style={{ flexDirection: "row", gap: 16 }}>
+        <Legend color={colors.muted} label="Before" />
+        <Legend color={colors.accent} label="After" />
+        <Legend color={colors.danger} label="Regressed" />
+      </View>
+    </Card>
   );
 }
 
-/** A clock: transforms, save / restore, a spinning second hand natively. */
+// ---------------------------------------------------------------------------
+// A clock: transforms, save / restore, a second hand rotating natively.
+
 function Clock() {
   const seconds = createNativeValue(0);
-  // One turn a minute, natively (no JS per frame).
-  const spin = async () => {
-    for (;;) {
-      seconds.set(0);
-      await seconds.timing(60, { duration: 60_000, easing: Easing.linear });
-    }
-  };
-  spin();
+  Animated.loop(Animated.timing(seconds, { toValue: 60, duration: 60_000, easing: Easing.linear })).start();
   return (
-    <Section title="Transforms (a clock)">
-      <Canvas
-        style={{ width: 160, height: 160, alignSelf: "center" }}
-        draw={(ctx, { width }) => {
-          const r = width / 2;
-          ctx.translate(r, r);
-          ctx.fillStyle = "#f8fafc";
-          ctx.strokeStyle = "#334155";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(0, 0, r - 4, 0, TAU);
-          ctx.fill();
-          ctx.stroke();
-          for (let i = 0; i < 60; i++) {
-            ctx.save();
-            ctx.rotate((i / 60) * TAU);
-            ctx.lineWidth = i % 5 === 0 ? 3 : 1;
+    <Card icon="search" title="Transforms" subtitle="translate · rotate · save / restore">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+        <Canvas
+          style={{ width: 150, height: 150 }}
+          draw={(ctx, { width }) => {
+            const r = width / 2;
+            ctx.translate(r, r);
+            ctx.fillStyle = colors.surface;
+            ctx.strokeStyle = colors.border;
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(r - 10, 0);
-            ctx.lineTo(r - (i % 5 === 0 ? 20 : 14), 0);
+            ctx.arc(0, 0, r - 2, 0, TAU);
+            ctx.fill();
+            ctx.stroke();
+            for (let i = 0; i < 60; i++) {
+              ctx.save();
+              ctx.rotate((i / 60) * TAU);
+              ctx.strokeStyle = i % 5 === 0 ? colors.muted : colors.faint;
+              ctx.lineWidth = i % 5 === 0 ? 2 : 1;
+              ctx.beginPath();
+              ctx.moveTo(r - 8, 0);
+              ctx.lineTo(r - (i % 5 === 0 ? 17 : 12), 0);
+              ctx.stroke();
+              ctx.restore();
+            }
+            const hand = (angle: number, length: number, w: number) => {
+              ctx.save();
+              ctx.rotate(angle - Math.PI / 2);
+              ctx.strokeStyle = colors.text;
+              ctx.lineWidth = w;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(-8, 0);
+              ctx.lineTo(length, 0);
+              ctx.stroke();
+              ctx.restore();
+            };
+            hand((10 / 12) * TAU, r * 0.48, 4.5);
+            hand((10 / 60) * TAU, r * 0.7, 3);
+            ctx.save();
+            ctx.rotate(seconds.mul(TAU / 60));
+            ctx.rotate(-Math.PI / 2);
+            ctx.strokeStyle = colors.accent;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-14, 0);
+            ctx.lineTo(r * 0.8, 0);
             ctx.stroke();
             ctx.restore();
-          }
-          const hand = (angle: number, length: number, width: number, color: string) => {
-            ctx.save();
-            ctx.rotate(angle - Math.PI / 2);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.lineCap = "round";
+            ctx.fillStyle = colors.accent;
             ctx.beginPath();
-            ctx.moveTo(-8, 0);
-            ctx.lineTo(length, 0);
-            ctx.stroke();
-            ctx.restore();
-          };
-          hand((10 / 12) * TAU, r * 0.5, 5, "#0f172a");
-          hand((10 / 60) * TAU, r * 0.72, 3.5, "#0f172a");
-          ctx.save();
-          // Degrees of a turn per second, as a native rotation.
-          ctx.rotate(seconds.mul(TAU / 60));
-          ctx.rotate(-Math.PI / 2);
-          ctx.strokeStyle = "#ef4444";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(-14, 0);
-          ctx.lineTo(r * 0.8, 0);
-          ctx.stroke();
-          ctx.restore();
-          ctx.fillStyle = "#ef4444";
-          ctx.beginPath();
-          ctx.arc(0, 0, 4, 0, TAU);
-          ctx.fill();
-        }}
-      />
-    </Section>
+            ctx.arc(0, 0, 4, 0, TAU);
+            ctx.fill();
+          }}
+        />
+        <View style={{ flex: 1, gap: 8 }}>
+          <Caption label="Ticks" note="60 rotations" />
+          <Caption label="Hands" note="save, restore" />
+          <Caption label="Second hand" note="Native loop" />
+        </View>
+      </View>
+    </Card>
   );
 }
 
-const icons: [string, string][] = [
-  ["heart", "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z"],
-  ["star", "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z"],
-  ["bolt", "M13 2L3 14h7l-1 8 10-12h-7z"],
-  ["check", "M20 6L9 17l-5-5"],
+// ---------------------------------------------------------------------------
+// Path2D: SVG path data, filled or stroked.
+
+const glyphs: { name: string; d: string; color: keyof Palette; stroke?: boolean }[] = [
+  { name: "Heart", d: "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z", color: "danger" },
+  { name: "Star", d: "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z", color: "warn" },
+  { name: "Bolt", d: "M13 2L3 14h7l-1 8 10-12h-7z", color: "info" },
+  { name: "Check", d: "M20 6L9 17l-5-5", color: "accent", stroke: true },
 ];
 
-/** SVG path data through Path2D: icons that take the text color. */
-function Icons() {
+function Glyphs() {
   return (
-    <Section title="Path2D (SVG path data)">
-      <View style={{ flexDirection: "row", gap: 16 }}>
-        <Each of={icons}>
-          {(icon, i) => {
-            const [name, d] = icon();
-            const path = new Path2D(d);
+    <Card icon="star" title="Path2D" subtitle="SVG path data, parsed natively">
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Each of={glyphs}>
+          {(glyph) => {
+            const path = new Path2D(glyph().d);
             return (
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <Canvas
-                  style={{ width: 40, height: 40 }}
-                  draw={(ctx) => {
-                    ctx.scale(40 / 24, 40 / 24);
-                    const color = ["#ef4444", "#f59e0b", "#8b5cf6", "#10b981"][i()];
-                    if (name === "check") {
-                      ctx.strokeStyle = color;
-                      ctx.lineWidth = 2.5;
-                      ctx.lineCap = "round";
-                      ctx.lineJoin = "round";
-                      ctx.stroke(path);
-                    } else {
-                      ctx.fillStyle = color;
-                      ctx.fill(path);
-                    }
+              <View style={{ alignItems: "center", gap: 8 }}>
+                <View
+                  style={{
+                    width: 60,
+                    height: 60,
+                    borderRadius: 18,
+                    borderCurve: "continuous",
+                    backgroundColor: colors.raised,
+                    ...finish.raised,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
-                />
-                <Text style={{ fontSize: 12, color: colors.muted }}>{name}</Text>
+                >
+                  <Canvas
+                    style={{ width: 30, height: 30 }}
+                    draw={(ctx) => {
+                      ctx.scale(30 / 24, 30 / 24);
+                      if (glyph().stroke) {
+                        ctx.strokeStyle = colors[glyph().color];
+                        ctx.lineWidth = 2.5;
+                        ctx.lineCap = "round";
+                        ctx.lineJoin = "round";
+                        ctx.stroke(path);
+                      } else {
+                        ctx.fillStyle = colors[glyph().color];
+                        ctx.fill(path);
+                      }
+                    }}
+                  />
+                </View>
+                <Text style={{ fontSize: 13, color: colors.muted }}>{glyph().name}</Text>
               </View>
             );
           }}
         </Each>
       </View>
-    </Section>
+    </Card>
   );
 }
 
-/** Images, compositing, shadows, dashes. */
+// ---------------------------------------------------------------------------
+// Images, clipping, shadows, compositing, dashes, radial gradients.
+
 function Compositing() {
   return (
-    <Section title="Images, compositing, shadows">
+    <Card icon="image" title="Compositing" subtitle="Clip, shadow, destination-out, dashes">
       <Canvas
-        style={{ height: 130 }}
-        draw={(ctx, { width }) => {
-          // An image clipped to a circle.
+        style={{ height: 120 }}
+        draw={(ctx, { width, height }) => {
+          const cy = height / 2;
+          // An image clipped to a circle, with a ring.
           ctx.save();
           ctx.beginPath();
-          ctx.arc(60, 60, 48, 0, TAU);
+          ctx.arc(46, cy, 42, 0, TAU);
           ctx.clip();
-          ctx.drawImage(logo, 12, 12, 96, 96);
+          ctx.fillStyle = colors.raised;
+          ctx.fillRect(0, 0, 92, height);
+          ctx.drawImage(logo, 10, cy - 36, 72, 72);
           ctx.restore();
-          // A shadowed card with a cut-out hole (destination-out).
-          ctx.save();
-          ctx.shadowColor = "rgba(0,0,0,0.25)";
-          ctx.shadowBlur = 12;
-          ctx.shadowOffsetY = 4;
-          ctx.fillStyle = "#6366f1";
+          ctx.strokeStyle = colors.border;
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.roundRect(130, 16, 110, 90, 14);
+          ctx.arc(46, cy, 42, 0, TAU);
+          ctx.stroke();
+          // A shadowed card with a hole punched through (destination-out).
+          const cx = width / 2;
+          ctx.save();
+          ctx.shadowColor = isDark() ? "rgba(0,0,0,0.7)" : "rgba(20,20,10,0.25)";
+          ctx.shadowBlur = 14;
+          ctx.shadowOffsetY = 6;
+          const g = ctx.createLinearGradient(cx - 46, 0, cx + 46, height);
+          g.addColorStop(0, colors.accentFill);
+          g.addColorStop(1, "#7fbf3a");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.roundRect(cx - 46, cy - 40, 92, 80, 16);
           ctx.fill();
           ctx.restore();
           ctx.globalCompositeOperation = "destination-out";
           ctx.beginPath();
-          ctx.arc(185, 61, 22, 0, TAU);
+          ctx.arc(cx, cy, 18, 0, TAU);
           ctx.fill();
           ctx.globalCompositeOperation = "source-over";
-          // Dashes and a radial gradient.
-          const g = ctx.createRadialGradient(width - 50, 50, 4, width - 50, 50, 44);
-          g.addColorStop(0, "#fde68a");
-          g.addColorStop(1, "#f97316");
-          ctx.fillStyle = g;
+          // A radial gradient with a dashed outline.
+          const rx = width - 46;
+          const rg = ctx.createRadialGradient(rx - 10, cy - 12, 4, rx, cy, 40);
+          rg.addColorStop(0, "#ffe2a8");
+          rg.addColorStop(0.55, colors.warn);
+          rg.addColorStop(1, alpha(colors.danger, 0.2));
+          ctx.fillStyle = rg;
           ctx.beginPath();
-          ctx.arc(width - 50, 60, 40, 0, TAU);
+          ctx.arc(rx, cy, 38, 0, TAU);
           ctx.fill();
-          ctx.setLineDash([6, 5]);
-          ctx.strokeStyle = "#9a3412";
-          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = colors.warn;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(rx, cy, 43, 0, TAU);
           ctx.stroke();
         }}
       />
-    </Section>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <Text style={{ fontSize: 13, color: colors.muted }}>Clipped image</Text>
+        <Text style={{ fontSize: 13, color: colors.muted }}>Cut-out</Text>
+        <Text style={{ fontSize: 13, color: colors.muted }}>Radial gradient</Text>
+      </View>
+    </Card>
   );
 }
 
-/** Touch drawing: each move draws again from JS. */
+// ---------------------------------------------------------------------------
+// Touch drawing: each move draws again from JS.
+
 function Sketch() {
   const strokes = signal<[number, number][][]>([]);
   const point = (e: GestureResponderEvent): [number, number] => [e.locationX, e.locationY];
   return (
-    <Section title="Sketch (touch → draw)">
+    <Card
+      icon="gestures"
+      title="Sketch"
+      subtitle="Touch → draw from JS"
+      right={<Button label="Clear" variant="secondary" disabled={strokes().length === 0} onPress={() => strokes.set([])} />}
+    >
       <Canvas
-        style={{ height: 180, backgroundColor: "#f8fafc", borderRadius: 10 }}
+        style={{ height: 200 }}
         onStartShouldSetResponder={() => true}
         onResponderGrant={(e) => {
           strokes.set([...strokes(), [point(e)]]);
@@ -292,8 +753,20 @@ function Sketch() {
           const last = all[all.length - 1];
           strokes.set([...all.slice(0, -1), [...last, point(e)]]);
         }}
-        draw={(ctx) => {
-          ctx.strokeStyle = "#0f172a";
+        draw={(ctx, { width, height }) => {
+          // A dot grid to draw on.
+          ctx.fillStyle = colors.border;
+          for (let x = 8; x < width; x += 16) {
+            for (let y = 8; y < height; y += 16) ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+          }
+          if (strokes().length === 0) {
+            ctx.font = SANS(14);
+            ctx.fillStyle = colors.faint;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("Draw here", width / 2, height / 2);
+          }
+          ctx.strokeStyle = colors.accent;
           ctx.lineWidth = 3;
           ctx.lineCap = "round";
           ctx.lineJoin = "round";
@@ -304,21 +777,26 @@ function Sketch() {
           }
         }}
       />
-      <Button label="Clear" color="#57606a" onPress={() => strokes.set([])} />
-    </Section>
+      <Caption label="Strokes" note={`${strokes().length} · ${strokes().reduce((n, s) => n + s.length, 0)} points`} />
+    </Card>
   );
 }
 
 export function CanvasDemo() {
+  const cards = [Dial, AreaChart, Ridgeline, DotMatrix, Dumbbell, Clock, Glyphs, Compositing, Sketch];
   return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <ProgressRing />
-        <Chart />
-        <Clock />
-        <Icons />
-        <Compositing />
-        <Sketch />
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Each of={cards}>
+          {(Demo, i) => {
+            const Body = Demo();
+            return (
+              <Appear index={i()}>
+                <Body />
+              </Appear>
+            );
+          }}
+        </Each>
       </View>
     </Scroll>
   );

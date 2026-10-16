@@ -83,7 +83,8 @@ Context calls only record: nothing is drawn while `draw` runs, so you cannot rea
 | `globalAlpha` | Opacity of what is drawn next, 0..1. |
 | `globalCompositeOperation` | How it combines: `"source-over"`, `"destination-out"`, `"multiply"`, `"screen"`, ... |
 | `shadowColor`, `shadowBlur`, `shadowOffsetX`, `shadowOffsetY` | Shadows. |
-| `font` | CSS `font` shorthand: `"600 14px Inter"` (sizes in px, pt or rem). |
+| `font` | CSS `font` shorthand: `"600 14px Inter"` (sizes in px, pt or rem); `small-caps` and the number forms `tabular-nums`, `oldstyle-nums`, ... may come before the size. |
+| `fontVariantNumeric` | `"tabular-nums"` makes every figure the same width, so changing numbers (counters, prices, axis labels) do not jitter; also `"proportional-nums"`, `"oldstyle-nums"`, `"lining-nums"`, `"normal"`. An nsh addition (CSS's `font-variant-numeric`); setting `font` keeps it. Browsers ignore it. |
 | `textAlign`, `textBaseline` | Text placement. |
 
 **Transforms**: `translate(x, y)`, `scale(x, y)`, `rotate(angle)` (radians, clockwise), `transform(a, b, c, d, e, f)`, `setTransform(a, b, c, d, e, f)`, `resetTransform()`.
@@ -94,13 +95,35 @@ Context calls only record: nothing is drawn while `draw` runs, so you cannot rea
 
 **Text**: `fillText(text, x, y, maxWidth?)`, `strokeText(...)`, `measureText(text)` (measured synchronously by the platform's text engine with the current `font`; only `width`).
 
+**Hit testing**: `isPointInPath(path?, x, y, rule?)` and `isPointInStroke(path?, x, y)` answer synchronously, computed from the recorded geometry (the current transform, path, `lineWidth` and `lineCap`). Keep the context of the last `draw` and the `Path2D`s you drew to find the shape under a tap:
+
+```tsx
+let ctx: CanvasRenderingContext2D | undefined;
+const slices = [new Path2D("M50 50 L100 50 A50 50 0 0 1 50 100 Z"), /* ... */];
+
+<Canvas
+  style={{ width: 100, height: 100 }}
+  onStartShouldSetResponder={() => true}
+  onResponderRelease={(e) => {
+    const hit = slices.findIndex((p) => ctx?.isPointInPath(p, e.locationX, e.locationY));
+    if (hit >= 0) select(hit);
+  }}
+  draw={(c) => {
+    ctx = c;
+    slices.forEach((p) => c.fill(p));
+  }}
+/>
+```
+
+Strokes are tested with round joins and without dashes; coordinates given as native values count as 0.
+
 **Gradients**: `createLinearGradient`, `createRadialGradient`, `createConicGradient`, each with `addColorStop(offset, color)`.
 
 **Images**: `drawImage(image, dx, dy)`, `drawImage(image, dx, dy, dw, dh)`, `drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)`.
 
 `ctx.canvas.width` and `ctx.canvas.height` give the canvas's size in points.
 
-**Not supported**: `getImageData` / `putImageData` and other pixel access, `filter`, `isPointInPath`, SVG images in `drawImage`. An invalid color or font drops that one operation, as in HTML Canvas.
+**Not supported**: `getImageData` / `putImageData` and other pixel access, `filter`, SVG images in `drawImage`. An invalid color or font drops that one operation, as in HTML Canvas.
 
 ## Paths and Path2D
 

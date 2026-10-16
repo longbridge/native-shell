@@ -260,6 +260,7 @@ pub fn touch(
     let event = TouchEvent {
         phase,
         timestamp,
+        activated: None,
         points: vec![TouchPoint {
             id: 1,
             target: path[0],

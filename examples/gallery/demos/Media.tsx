@@ -1,69 +1,193 @@
 import { Scroll, signal, Text, View, type YNode } from "nsh";
 import { Video } from "nsh/video";
 import { WebView, type WebViewNavigation } from "nsh/webview";
-import { Button, colors, Section } from "../ui";
+import { Icon } from "../icons";
+import { Appear, Badge, Button, Caption, Card, colors, finish, isDark, Meter, Press, radius, RoundButton, Segmented } from "../ui";
 
-const page = `<!doctype html><html><head><meta name="viewport" content="width=device-width"></head>
-<body style="font-family: -apple-system, sans-serif; margin: 16px">
+/** An inline page in the gallery's colors (for the appearance shown: the page reloads when it changes). */
+const page = () => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; padding: 16px; background: ${colors.inset}; color: ${colors.text}; font-family: -apple-system, system-ui, sans-serif; font-size: 15px; line-height: 1.4; }
+  h3 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+  p { margin: 0 0 12px; color: ${colors.muted}; font-size: 15px; }
+  button { height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: ${finish.accent.backgroundImage}; color: ${colors.onAccent}; font-family: inherit; font-size: 15px; font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,${isDark() ? 0.45 : 0.6}); }
+  #got { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid ${colors.border}; color: ${colors.muted}; font-size: 15px; }
+</style></head>
+<body>
 <h3>An inline page</h3>
+<p>HTML from a string. It sends messages to the app and receives them.</p>
 <button onclick="window.ReactNativeWebView.postMessage('hello from the page')">Post to the app</button>
-<p id="got">Nothing from the app yet.</p>
-<script>window.addEventListener('message', (e) => { document.getElementById('got').textContent = 'The app says: ' + e.data; });</script>
+<div id="got">No message from the app yet.</div>
+<script>window.addEventListener('message', (e) => { document.getElementById('got').textContent = 'From the app: ' + e.data; });</script>
 </body></html>`;
 
-export function Media() {
-  const state = signal<WebViewNavigation | null>(null);
-  const controls = signal(false);
+const frame = () => ({ borderRadius: radius.control, overflow: "hidden", borderWidth: 1, borderColor: colors.border }) as const;
+
+function Messaging() {
   const message = signal("");
-  const paused = signal(true);
-  const progress = signal("");
+  const sent = signal(0);
   let web!: YNode;
+  return (
+    <Card icon="media" title="Web view" subtitle="Inline HTML, with messages both ways">
+      <WebView ref={web} source={{ html: page() }} style={{ height: 210, backgroundColor: colors.inset, ...frame() }} onMessage={(e) => message.set(e.data)} />
+      <Caption label="From the page" note={message() || "—"} />
+      <Caption label="To the page" note={sent() ? `hi #${sent()}` : "—"} />
+      <Button
+        label="Post to the page"
+        onPress={() => {
+          sent.set(Math.round(performance.now()) % 1000);
+          web.postMessage(`hi #${sent()}`);
+        }}
+      />
+    </Card>
+  );
+}
+
+/** A round icon button, 44 pt. */
+function NavButton(props: { flip?: boolean; enabled: boolean; label: string; onPress: () => void }) {
+  return (
+    <Press onPress={props.onPress} disabled={!props.enabled} accessibilityLabel={props.label} hitSlop={4}>
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: colors.raised,
+          ...finish.raised,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+          transform: props.flip ? [{ rotate: "180deg" }] : [],
+        }}
+      >
+        <Icon name="chevron" size={18} tint={colors.text} />
+      </View>
+    </Press>
+  );
+}
+
+function Site() {
+  const state = signal<WebViewNavigation | null>(null);
   let site!: YNode;
+  const host = () => {
+    const url = state()?.url ?? "";
+    return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "…";
+  };
+  return (
+    <Card
+      icon="search"
+      title="A web site"
+      subtitle={state()?.title || "Navigation state, back and forward"}
+      right={<Badge label={state()?.loading ? "Loading" : "Loaded"} tone={state()?.loading ? "warn" : "up"} />}
+    >
+      <View
+        style={{
+          height: 40,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 14,
+          borderRadius: 20,
+          backgroundColor: colors.inset,
+          ...finish.track,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
+      >
+        <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: state()?.loading ? colors.warn : colors.up }} />
+        <Text numberOfLines={1} ellipsizeMode="middle" style={{ flex: 1, fontSize: 15, color: colors.muted }}>
+          {host()}
+        </Text>
+      </View>
+      <WebView
+        ref={site}
+        source={{ uri: "https://native-shell.com" }}
+        style={{ height: 340, backgroundColor: colors.inset, ...frame() }}
+        onNavigationStateChange={(v) => state.set(v)}
+      />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <NavButton flip label="Back" enabled={!!state()?.canGoBack} onPress={() => site.goBack()} />
+        <NavButton label="Forward" enabled={!!state()?.canGoForward} onPress={() => site.goForward()} />
+        <View style={{ flex: 1 }} />
+        <Button label="Reload" variant="secondary" onPress={() => site.reload()} />
+      </View>
+    </Card>
+  );
+}
+
+const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function Player() {
+  const controls = signal<"own" | "system">("own");
+  const paused = signal(true);
+  const time = signal(0);
+  const duration = signal(0);
+  const buffering = signal(false);
   let video!: YNode;
   return (
+    <Card
+      icon="play"
+      title="Video"
+      subtitle="AVPlayer / MediaPlayer"
+      right={<Badge label={buffering() ? "Buffering" : paused() ? "Paused" : "Playing"} tone={buffering() ? "warn" : paused() ? "neutral" : "accent"} />}
+    >
+      <Video
+        ref={video}
+        source="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+        paused={paused()}
+        muted
+        repeat
+        controls={controls() === "system"}
+        style={{ height: 200, backgroundColor: "#000000", ...frame() }}
+        onLoad={(e) => duration.set(e.duration)}
+        onBuffer={(e) => buffering.set(e.isBuffering)}
+        onProgress={(e) => {
+          time.set(e.currentTime);
+          duration.set(e.duration);
+        }}
+      />
+      <If when={controls() === "own"}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <RoundButton icon={paused() ? "play" : "pause"} label={paused() ? "Play" : "Pause"} onPress={() => paused.set(!paused())} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Meter value={duration() > 0 ? time() / duration() : 0} />
+            <View style={{ flexDirection: "row" }}>
+              <Text style={{ flex: 1, fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>{fmt(time())}</Text>
+              <Text style={{ fontSize: 13, color: colors.faint, fontVariant: ["tabular-nums"] }}>{fmt(duration())}</Text>
+            </View>
+          </View>
+          <Button label="Restart" variant="secondary" onPress={() => video.seek(0)} />
+        </View>
+      </If>
+      <Segmented
+        options={[
+          { value: "own", label: "Own controls" },
+          { value: "system", label: "System controls" },
+        ]}
+        value={controls()}
+        onChange={(v) => controls.set(v)}
+      />
+    </Card>
+  );
+}
+
+export function Media() {
+  const cards = [Messaging, Site, Player];
+  return (
     <Scroll style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: 16, gap: 20 }}>
-        <Section title="Web view">
-          <WebView ref={web} source={{ html: page }} style={{ height: 200, borderRadius: 8, overflow: "hidden" }} onMessage={(e) => message.set(e.data)} />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Button label="Post to the page" onPress={() => web.postMessage(`hi #${Math.round(performance.now()) % 1000}`)} />
-            <Text style={{ flex: 1, color: colors.muted }}>{message()}</Text>
-          </View>
-        </Section>
-        <Section title="A web site">
-          <WebView
-            ref={site}
-            source={{ uri: "https://en.m.wikipedia.org/wiki/React_Native" }}
-            style={{ height: 320, borderRadius: 8, overflow: "hidden" }}
-            onNavigationStateChange={(v) => state.set(v)}
-          />
-          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13 }}>
-            {state() ? `${state()!.loading ? "Loading " : ""}${state()!.title || state()!.url}` : "…"}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Button label="Back" color={state()?.canGoBack ? colors.accent : "#8c959f"} onPress={() => site.goBack()} />
-            <Button label="Forward" color={state()?.canGoForward ? colors.accent : "#8c959f"} onPress={() => site.goForward()} />
-            <Button label="Reload" color="#57606a" onPress={() => site.reload()} />
-          </View>
-        </Section>
-        <Section title="Video">
-          <Video
-            ref={video}
-            source="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
-            paused={paused()}
-            muted
-            repeat
-            controls={controls()}
-            style={{ height: 200, backgroundColor: "#000000", borderRadius: 8, overflow: "hidden" }}
-            onProgress={(e) => progress.set(`${e.currentTime.toFixed(1)} / ${e.duration.toFixed(1)} s`)}
-          />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Button label={paused() ? "Play" : "Pause"} onPress={() => paused.set(!paused())} />
-            <Button label="Restart" color="#57606a" onPress={() => video.seek(0)} />
-            <Button label={controls() ? "Own controls" : "System controls"} color="#8250df" onPress={() => controls.set(!controls())} />
-            <Text style={{ color: colors.muted }}>{progress()}</Text>
-          </View>
-        </Section>
+      <View style={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+        <Each of={cards}>
+          {(Demo, i) => {
+            const Body = Demo();
+            return (
+              <Appear index={i()}>
+                <Body />
+              </Appear>
+            );
+          }}
+        </Each>
       </View>
     </Scroll>
   );

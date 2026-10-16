@@ -79,12 +79,14 @@ pub(crate) enum Action {
     /// The pixel size of the image at the URI (its bytes stay loaded); the
     /// answer resolves the slot.
     ImageInfo(String, AnswerSlot<Result<ImageSize, String>>),
+    /// Reads the system clipboard; the answer resolves the slot.
+    ReadClipboard(ClipboardRead),
     /// An operation on the native animation graph.
-    Anim(nsh_anim::AnimOp),
+    Animation(nsh_animation::AnimationOp),
     /// Starts an animation; its end resolves the slot.
     Animate {
-        op: nsh_anim::AnimOp,
-        animation: nsh_anim::AnimId,
+        op: nsh_animation::AnimationOp,
+        animation: nsh_animation::AnimationId,
         end: AnswerSlot<bool>,
     },
     /// A component's own list reports the rows viewable now (they stayed
@@ -94,6 +96,16 @@ pub(crate) enum Action {
     Frame(AnswerSlot<Instant>),
     /// Changes the layout direction's policy.
     Direction(super::services::Direction),
+    /// Sets the app's appearance.
+    Appearance(crate::platform::Appearance),
+}
+
+/// A clipboard read waiting for the platform's answer.
+pub(crate) enum ClipboardRead {
+    /// The text (`""` when it holds none).
+    Text(AnswerSlot<String>),
+    /// Whether it holds text.
+    Has(AnswerSlot<bool>),
 }
 
 /// An image's size in pixels (`Image.getSize`).
@@ -135,7 +147,7 @@ pub(crate) struct Executor {
     runtime: RefCell<Option<Handle>>,
     /// Native animation nodes and animations made so far (their ids are
     /// odd: JS's are even).
-    anim_ids: std::cell::Cell<u32>,
+    animation_ids: std::cell::Cell<u32>,
     /// Live derived nodes, for renders deriving them again.
     derived: RefCell<super::animated::Derived>,
     /// The components' listeners of the back button.
@@ -144,18 +156,25 @@ pub(crate) struct Executor {
 
 impl Executor {
     /// The live node `key` (a node-making op, node 0) made.
-    pub(crate) fn derived(&self, key: &nsh_anim::AnimOp) -> Option<Rc<super::animated::Node>> {
+    pub(crate) fn derived(
+        &self,
+        key: &nsh_animation::AnimationOp,
+    ) -> Option<Rc<super::animated::Node>> {
         self.derived.borrow_mut().get(key)
     }
 
-    pub(crate) fn remember_derived(&self, key: nsh_anim::AnimOp, node: &Rc<super::animated::Node>) {
+    pub(crate) fn remember_derived(
+        &self,
+        key: nsh_animation::AnimationOp,
+        node: &Rc<super::animated::Node>,
+    ) {
         self.derived.borrow_mut().0.push((key, Rc::downgrade(node)));
     }
 
     /// A new id for a native animation node or animation.
-    pub(crate) fn next_anim_id(&self) -> u32 {
-        let n = self.anim_ids.get();
-        self.anim_ids.set(n + 1);
+    pub(crate) fn next_animation_id(&self) -> u32 {
+        let n = self.animation_ids.get();
+        self.animation_ids.set(n + 1);
         2 * n + 1
     }
 
@@ -471,6 +490,28 @@ impl AsyncCx {
         answer
     }
 
+    /// Puts `text` on the system clipboard (TS: `Clipboard.setString`).
+    pub fn set_clipboard(&self, text: impl Into<String>) {
+        self.act(services::set_clipboard(text.into()));
+    }
+
+    /// The text on the system clipboard, `""` when it holds none (TS:
+    /// `Clipboard.getString`). On iOS, reading it may show the system's
+    /// paste notice.
+    pub fn clipboard_string(&self) -> Answer<String> {
+        let (answer, slot) = Answer::new();
+        self.act(Action::ReadClipboard(ClipboardRead::Text(slot)));
+        answer
+    }
+
+    /// Whether the system clipboard holds text, without reading it (TS:
+    /// `Clipboard.hasString`).
+    pub fn clipboard_has_string(&self) -> Answer<bool> {
+        let (answer, slot) = Answer::new();
+        self.act(Action::ReadClipboard(ClipboardRead::Has(slot)));
+        answer
+    }
+
     /// Completes when the next display frame starts, with its time (TS:
     /// what `requestAnimationFrame` waits for). Awaited in a loop, it runs
     /// once per frame.
@@ -478,6 +519,14 @@ impl AsyncCx {
         let (answer, action) = services::frame();
         self.act(action);
         answer
+    }
+
+    /// Shows the surface in `appearance` whatever the system's (TS:
+    /// `setColorScheme`): [`crate::ui::RenderCx::dark`] (the theme's
+    /// mode), `dark:` classes and the platform's controls follow it;
+    /// [`crate::platform::Appearance::System`] follows the system again.
+    pub fn set_color_scheme(&self, appearance: crate::platform::Appearance) {
+        self.act(Action::Appearance(appearance));
     }
 
     /// Lays the surface out right to left whatever the user's language

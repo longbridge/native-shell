@@ -46,6 +46,8 @@ final class ScrollBox extends FrameLayout implements Node {
     private boolean paging, enabled = true, bounces = true, oneStep;
     /** A JS responder inside keeps the touches (`onResponderGrant` returned true). */
     boolean jsBlocked;
+    /** The pan of a view inside activated (`panActivation`): it keeps the touches. */
+    boolean gateBlocked;
     private float snapInterval, deceleration;
     private float[] snapOffsets = new float[0];
     private int snapAlignment; // 0 start, 1 center, 2 end
@@ -322,13 +324,13 @@ final class ScrollBox extends FrameLayout implements Node {
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent e) {
-            return enabled && !jsBlocked && super.onInterceptTouchEvent(e);
+            return enabled && !jsBlocked && !gateBlocked && super.onInterceptTouchEvent(e);
         }
 
         @SuppressLint("ClickableViewAccessibility")
         @Override
         public boolean onTouchEvent(MotionEvent e) {
-            if (!enabled || jsBlocked) return false;
+            if (!enabled || jsBlocked || gateBlocked) return false;
             boolean up = beforeTouch(e);
             boolean handled = super.onTouchEvent(e);
             if (up) released();
@@ -348,13 +350,13 @@ final class ScrollBox extends FrameLayout implements Node {
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent e) {
-            return enabled && !jsBlocked && super.onInterceptTouchEvent(e);
+            return enabled && !jsBlocked && !gateBlocked && super.onInterceptTouchEvent(e);
         }
 
         @SuppressLint("ClickableViewAccessibility")
         @Override
         public boolean onTouchEvent(MotionEvent e) {
-            if (!enabled || jsBlocked) return false;
+            if (!enabled || jsBlocked || gateBlocked) return false;
             boolean up = beforeTouch(e);
             boolean handled = super.onTouchEvent(e);
             if (up) released();
@@ -812,14 +814,14 @@ final class ScrollBox extends FrameLayout implements Node {
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent e) {
-            if (!enabled || jsBlocked) return false;
+            if (!enabled || jsBlocked || gateBlocked) return false;
             return track(e);
         }
 
         @SuppressLint("ClickableViewAccessibility")
         @Override
         public boolean onTouchEvent(MotionEvent e) {
-            if (!enabled || jsBlocked) return false;
+            if (!enabled || jsBlocked || gateBlocked) return false;
             boolean up = beforeTouch(e);
             int action = e.getActionMasked();
             // A down that reaches here was seen by the interception already.

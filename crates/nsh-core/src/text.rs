@@ -175,6 +175,9 @@ pub struct AttributedText {
     pub rtl: bool,
     /// A long press copies the text (`selectable`; drawing only).
     pub selectable: bool,
+    /// The highlight of the selection of selectable text (`selectionColor`);
+    /// the platform's tint when `None`.
+    pub selection_color: Option<Color>,
     /// Inline views and images, in text order: each is an object
     /// replacement character (U+FFFC) the engine gives the attachment's
     /// size, sitting on the baseline.

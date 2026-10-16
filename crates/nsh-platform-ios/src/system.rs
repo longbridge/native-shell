@@ -5,7 +5,7 @@ use std::{cell::Cell, rc::Rc};
 use block2::RcBlock;
 use nsh_core::{
     Dialog, DialogButtonStyle, EventKind, EventPayload, PayloadValue, StatusBarConfig,
-    StatusBarStyle,
+    StatusBarStyle, platform::Appearance,
 };
 use nsh_engine::EngineControl;
 use objc2::{MainThreadOnly, rc::Retained};
@@ -13,20 +13,60 @@ use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::NSString;
 use objc2_ui_kit::{
     UIAlertAction, UIAlertActionStyle, UIAlertController, UIAlertControllerStyle, UIDevice,
-    UIPopoverArrowDirection, UIStatusBarAnimation, UIStatusBarStyle, UIUserInterfaceIdiom, UIView,
-    UIViewController,
+    UIPopoverArrowDirection, UIStatusBarAnimation, UIStatusBarStyle, UIUserInterfaceIdiom,
+    UIUserInterfaceStyle, UIView, UIViewController,
 };
 
 thread_local! {
     /// The status bar the app asked for (one per process, like the bar).
     static STATUS_BAR: Cell<StatusBarConfig> = Cell::new(StatusBarConfig::default());
+    /// The appearance the app asked for last (`setColorScheme`), for what
+    /// is not a subview of a surface: the status bar, alerts, modals.
+    static APPEARANCE: Cell<UIUserInterfaceStyle> = const { Cell::new(UIUserInterfaceStyle::Unspecified) };
+}
+
+/// The appearance the app asked for (`Unspecified`: the system's).
+pub(crate) fn appearance() -> UIUserInterfaceStyle {
+    APPEARANCE.get()
+}
+
+/// Applies the app's appearance to the surface `root` and to what is
+/// shown outside of it (the status bar's default style, alerts and modals
+/// shown from now on).
+pub(crate) fn set_appearance(appearance: Appearance, root: &UIView) {
+    let style = match appearance {
+        Appearance::System => UIUserInterfaceStyle::Unspecified,
+        Appearance::Light => UIUserInterfaceStyle::Light,
+        Appearance::Dark => UIUserInterfaceStyle::Dark,
+    };
+    APPEARANCE.set(style);
+    root.setOverrideUserInterfaceStyle(style);
+    if let Some(window) = root.window() {
+        let mut controller = window.rootViewController();
+        while let Some(c) = controller {
+            if c.isViewLoaded()
+                && c.view()
+                    .is_some_and(|v| !v.isDescendantOfView(root) && !root.isDescendantOfView(&v))
+            {
+                // Modals the surface presented.
+                c.setOverrideUserInterfaceStyle(style);
+            }
+            c.setNeedsStatusBarAppearanceUpdate();
+            controller = c.presentedViewController();
+        }
+    }
 }
 
 /// The status bar style the app asked for, for view controllers'
 /// `preferredStatusBarStyle` (embedders forward theirs here too).
 pub fn preferred_status_bar_style() -> UIStatusBarStyle {
     match STATUS_BAR.get().style {
-        StatusBarStyle::Default => UIStatusBarStyle::Default,
+        // The default follows the app's appearance when it has one.
+        StatusBarStyle::Default => match APPEARANCE.get() {
+            UIUserInterfaceStyle::Dark => UIStatusBarStyle::LightContent,
+            UIUserInterfaceStyle::Light => UIStatusBarStyle::DarkContent,
+            _ => UIStatusBarStyle::Default,
+        },
         StatusBarStyle::Light => UIStatusBarStyle::LightContent,
         StatusBarStyle::Dark => UIStatusBarStyle::DarkContent,
     }
@@ -125,6 +165,7 @@ pub(crate) fn show_dialog(dialog: &Dialog, view: &UIView, control: &EngineContro
         style,
         mtm,
     );
+    alert.setOverrideUserInterfaceStyle(appearance());
     for (index, button) in dialog.buttons.iter().enumerate() {
         let style = match button.style {
             DialogButtonStyle::Default => UIAlertActionStyle::Default,
@@ -173,6 +214,28 @@ pub(crate) fn show_dialog(dialog: &Dialog, view: &UIView, control: &EngineContro
         popover.setPermittedArrowDirections(UIPopoverArrowDirection::empty());
     }
     top.presentViewController_animated_completion(&alert, true, None);
+}
+
+/// `Clipboard.setString`: puts `text` on the general pasteboard.
+pub(crate) fn set_clipboard(text: &str) {
+    // SAFETY: a plain setter of the general pasteboard.
+    unsafe {
+        objc2_ui_kit::UIPasteboard::generalPasteboard().setString(Some(&NSString::from_str(text)))
+    };
+}
+
+/// `Clipboard.getString` / `hasString`: whether the general pasteboard
+/// holds text and, unless `has_only`, the text. `hasStrings` does not read
+/// it, so it shows no paste notice.
+pub(crate) fn read_clipboard(has_only: bool) -> (bool, Option<String>) {
+    let board = objc2_ui_kit::UIPasteboard::generalPasteboard();
+    if has_only {
+        // SAFETY: a plain getter.
+        return (unsafe { board.hasStrings() }, None);
+    }
+    // SAFETY: a plain getter.
+    let text = unsafe { board.string() }.map(|s| s.to_string());
+    (text.is_some(), text)
 }
 
 /// `AccessibilityInfo.announceForAccessibility`: VoiceOver reads `text`.

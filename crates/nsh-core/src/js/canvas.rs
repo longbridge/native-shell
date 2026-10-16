@@ -50,6 +50,7 @@ codes! { CODES:
     CV_FILL_TEXT = 40,
     CV_STROKE_TEXT = 41,
     CV_DRAW_IMAGE = 42,
+    CV_FONT_VARIANT_NUMERIC = 43,
     /// SVG path data, parsed natively (`new Path2D("M0 0 L10 10")`)
     CV_SVG_PATH = 50,
 }
@@ -66,7 +67,7 @@ use crate::{
         Composite, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, Path, PathOp,
         parse_svg_path,
     },
-    style::Color,
+    style::{Color, FontVariant},
     ui::TsTypes,
 };
 
@@ -255,6 +256,24 @@ parsed! {
     Color => Color::parse,
     Composite => Composite::parse,
     CanvasFont => CanvasFont::parse,
+}
+
+/// `fontVariantNumeric`: number forms only (space-separated, as in CSS);
+/// anything else drops the operation.
+impl<Cx> OpArg<Cx> for FontVariant {
+    fn read<L: HostList<Item: HostInput>>(
+        r: &mut OpReader<'_, L>,
+        _: &mut Cx,
+    ) -> Result<Option<Self>, OpsError> {
+        Ok(r.arg()?
+            .as_string()
+            .and_then(|s| FontVariant::parse(&s))
+            .filter(|v| !v.has(FontVariant::SMALL_CAPS)))
+    }
+
+    fn ts(_: &mut TsTypes) -> String {
+        "\"normal\" | \"tabular-nums\" | \"proportional-nums\" | \"lining-nums\" | \"oldstyle-nums\" | (string & {})".into()
+    }
 }
 
 /// String unions: names they do not have are the default.

@@ -64,7 +64,7 @@ Every host element accepts the props below (the `CommonProps` type). Element pag
 
 | Prop | Type | Description |
 |---|---|---|
-| `style` | `StyleProp<ViewStyle>` (`TextStyle` for `<Text>` and `<Input>`, `ImageStyle` for `<Image>`) | Inline style, or an array of styles merged left to right (falsy entries skipped). Wins over `class`. See the [style reference](../modules/style-reference.md). |
+| `style` | `StyleProp<ViewStyle>` (`TextStyle` for `<Text>` and `<Input>`, `ImageStyle` for `<Image>`) | Inline style, or an array of styles merged left to right (falsy entries skipped; arrays may nest, so `style={[base, props.style]}` takes a `props.style` that is itself an array). Wins over `class`. See the [style reference](../modules/style-reference.md). |
 | `class` | `string` | Tailwind classes, resolved natively (`"flex-row gap-2 p-4 dark:bg-zinc-900"`). Later classes win over earlier ones. See [Tailwind](../docs/tailwind.md). |
 | `classList` | `Record<string, boolean \| null \| undefined>` | Classes applied while their value is truthy (`{ "opacity-50": busy() }`). |
 | `disabled` | `boolean` | Ignores presses (no press feedback either), applies `disabled:` classes and disables controls such as inputs. |
@@ -125,7 +125,11 @@ For gestures the props above do not cover, every element takes the touch and res
 `onResponderStart`, `onResponderMove`, `onResponderEnd`, `onResponderRelease`, `onResponderTerminate` and
 `onResponderTerminationRequest`. Each handler gets a `GestureResponderEvent`
 (`{ identifier, locationX, locationY, pageX, pageY, target, timestamp, touches, changedTouches, nativeEvent,
-stopPropagation() }`). Returning `true` from `onResponderGrant` keeps native scroll views from taking the touches.
+stopPropagation() }`); the `…ShouldSetResponder` handlers also get a `gestureState` (`dx`, `dy`, `vx`, `vy`, ...).
+Returning `true` from `onResponderGrant` keeps native scroll views from taking the touches. `panActivation`
+(`{ activeOffsetX, activeOffsetY, failOffsetX, failOffsetY }`) makes the view the responder only once the platform
+activates its pan, so drags inside scroll views leave the other axis to them
+([Touch and gestures](../docs/touch-and-gestures.md#pans-inside-scroll-views-panactivation)).
 `PanResponder` in [`nsh/gesture`](../modules/nsh-gesture.md) builds on them.
 
 ### Accessibility

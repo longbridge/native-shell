@@ -25,6 +25,30 @@ pub enum ColorScheme {
     Dark,
 }
 
+/// The appearance an app asks for (`nsh.json` `"appearance"`, TS
+/// `setColorScheme`): one of its own, or the system's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, crate::ui::PropEnum)]
+pub enum Appearance {
+    /// The system appearance (default).
+    #[default]
+    System,
+    /// Always light.
+    Light,
+    /// Always dark.
+    Dark,
+}
+
+impl Appearance {
+    /// The color scheme shown when the system's is `system`.
+    pub fn resolve(self, system: ColorScheme) -> ColorScheme {
+        match self {
+            Appearance::System => system,
+            Appearance::Light => ColorScheme::Light,
+            Appearance::Dark => ColorScheme::Dark,
+        }
+    }
+}
+
 /// The operating system (`Platform.OS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {
@@ -117,6 +141,8 @@ pub struct Environment {
     pub os_version: (u16, u16),
     /// The kind of device.
     pub idiom: Idiom,
+    /// The user's locale (number and date formats: `Intl`'s default).
+    pub locale: Locale,
 }
 
 impl Default for Environment {
@@ -135,7 +161,98 @@ impl Default for Environment {
             os: Os::default(),
             os_version: (0, 0),
             idiom: Idiom::Phone,
+            locale: Locale::EN_US,
         }
+    }
+}
+
+/// A BCP 47 language tag (`en-US`, `zh-Hans-CN`), held inline so that the
+/// environment stays `Copy`: the language, script and region subtags fit;
+/// variants and extensions are dropped.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Locale {
+    bytes: [u8; Locale::CAPACITY],
+    len: u8,
+}
+
+impl Locale {
+    const CAPACITY: usize = 15;
+
+    /// `en-US`, the default when a platform reports none.
+    pub const EN_US: Locale = Locale {
+        bytes: *b"en-US\0\0\0\0\0\0\0\0\0\0",
+        len: 5,
+    };
+
+    /// The tag of a platform locale identifier: `en_US`, `en-US`,
+    /// `de_DE@calendar=gregorian`, `pt_BR.UTF-8` (POSIX) and `zh-Hans_CN`
+    /// all work. Subtags are cased as BCP 47 writes them (`zh-Hans-CN`);
+    /// `None` without a language.
+    pub fn parse(identifier: &str) -> Option<Locale> {
+        let identifier = identifier.split(['@', '.']).next().unwrap_or_default();
+        let mut bytes = [0u8; Self::CAPACITY];
+        let mut len = 0;
+        for (i, part) in identifier.split(['-', '_']).enumerate() {
+            let keep = if i == 0 {
+                (2..=3).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_alphabetic())
+            } else {
+                // A script (4 letters) or a region (2 letters, 3 digits).
+                (part.len() == 4 && part.bytes().all(|b| b.is_ascii_alphabetic()))
+                    || (part.len() == 2 && part.bytes().all(|b| b.is_ascii_alphabetic()))
+                    || (part.len() == 3 && part.bytes().all(|b| b.is_ascii_digit()))
+            };
+            if !keep {
+                if i == 0 {
+                    return None;
+                }
+                // A variant or an extension: dropped with what follows.
+                break;
+            }
+            if len + part.len() + usize::from(i > 0) > Self::CAPACITY {
+                break;
+            }
+            if i > 0 {
+                bytes[len] = b'-';
+                len += 1;
+            }
+            for (j, b) in part.bytes().enumerate() {
+                bytes[len] = match (i, part.len()) {
+                    (0, _) => b.to_ascii_lowercase(),
+                    (_, 4) if j == 0 => b.to_ascii_uppercase(),
+                    (_, 4) => b.to_ascii_lowercase(),
+                    _ => b.to_ascii_uppercase(),
+                };
+                len += 1;
+            }
+        }
+        Some(Locale {
+            bytes,
+            len: len as u8,
+        })
+    }
+
+    /// The tag (`en-US`).
+    pub fn as_str(&self) -> &str {
+        // ASCII, as parsed.
+        std::str::from_utf8(&self.bytes[..usize::from(self.len)]).unwrap_or("en-US")
+    }
+}
+
+impl Default for Locale {
+    fn default() -> Self {
+        Self::EN_US
+    }
+}
+
+impl std::fmt::Debug for Locale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Locale({})", self.as_str())
+    }
+}
+
+impl std::fmt::Display for Locale {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -227,4 +344,22 @@ pub enum FetchOp {
     Pause(bool),
     /// Abort the request (`AbortController`, or the body was cancelled).
     Cancel,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Locale;
+
+    #[test]
+    fn locales_parse_platform_identifiers() {
+        let tag = |s: &str| Locale::parse(s).map(|l| l.as_str().to_owned());
+        assert_eq!(tag("en_US").as_deref(), Some("en-US"));
+        assert_eq!(tag("zh-hans_cn").as_deref(), Some("zh-Hans-CN"));
+        assert_eq!(tag("de_DE@calendar=gregorian").as_deref(), Some("de-DE"));
+        assert_eq!(tag("pt_BR.UTF-8").as_deref(), Some("pt-BR"));
+        assert_eq!(tag("es-419").as_deref(), Some("es-419"));
+        assert_eq!(tag("en-US-u-hc-h23").as_deref(), Some("en-US"));
+        assert_eq!(tag("C"), None);
+        assert_eq!(Locale::default().as_str(), "en-US");
+    }
 }

@@ -36,6 +36,7 @@ globals.
 | `nsh/canvas` | `Canvas`, `Path2D`, `CanvasRenderingContext2D`, `CanvasGradient` | `canvas.rs` |
 | `nsh/image` | `Image`: the image element's component, with `Image.getSize`, `Image.prefetch` (promises the core resolves from the root's `ImageInfo` event) | `modules.rs` + its registry (`components.rs`) |
 | `nsh/gesture` | `PanResponder` | `touch.rs` |
+| `nsh/clipboard` | `Clipboard.setString(text)`, `Clipboard.getString()` / `hasString()` (promises the core resolves from the root's `Clipboard` event; `hasString` does not read the text, so iOS shows no paste notice); UIPasteboard, ClipboardManager, `navigator.clipboard`; the `clipboard` capability | its registry (`nsh_core::runtime`) |
 | `nsh/webview`, `nsh/video` | `WebView`, `Video` | `platform_modules.rs` |
 | `nsh/native` | `nativeComponent(name, { props, events })`: a component for a native component the embedding app registered | `platform_modules.rs` |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | `platform_modules.rs` |
@@ -53,7 +54,7 @@ globals.
   from the object are cleared); the core knows them by those names. Android: `ripple`, `elevation`,
   `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar `backgroundColor` (a Rust component's `android`
   prop). Alert's `cancelable` is an option of both platforms (iOS alerts are never dismissed by a tap outside). iOS:
-  input `inputAccessoryViewID` / `textContentType`, Screen `headerLargeTitle` / `headerBackTitle`, Modal
+  input `inputAccessoryViewID` / `textContentType` / `keyboardAppearance`, Screen `headerLargeTitle` / `headerBackTitle`, Modal
   `presentationStyle` / `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`.
 - A module's exports are made when a bundle first imports it; what must always happen (the root's direction, the
   themes) is the renderer's (`dom.rs`, `setup`), not a module's.
