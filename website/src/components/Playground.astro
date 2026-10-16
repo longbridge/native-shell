@@ -132,7 +132,8 @@ const t = zh
     padding: 0 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--background);
+    background: var(--finish-raised-bg);
+    box-shadow: var(--finish-raised);
     color: var(--foreground);
     font: inherit;
     font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
@@ -143,21 +144,23 @@ const t = zh
   .playground__status[data-kind="ok"] { color: var(--success); }
   .playground__actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
   .playground__toggle { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--muted-foreground); cursor: pointer; }
+  .playground__toggle input { accent-color: var(--citrus); }
   .pg-btn {
     height: 2rem;
     padding: 0 0.85rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--background);
+    background: var(--finish-raised-bg);
+    box-shadow: var(--finish-raised);
     color: var(--foreground);
     font: inherit;
     font-size: 0.85rem;
-    font-weight: 500;
+    font-weight: 560;
     cursor: pointer;
   }
-  .pg-btn:hover { border-color: var(--border-hover); background: var(--secondary); }
-  .pg-btn--primary { background: var(--brand); border-color: var(--brand); color: var(--brand-contrast); }
-  .pg-btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+  .pg-btn:hover { border-color: var(--border-hover); }
+  .pg-btn--primary { border-color: transparent; background: var(--finish-primary-bg); box-shadow: var(--finish-primary); color: var(--brand-contrast); }
+  .pg-btn--primary:hover { border-color: transparent; background: var(--finish-primary-hover-bg); }
   .pg-link { border: 0; background: none; color: var(--muted-foreground); font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0; }
   .pg-link:hover { color: var(--foreground); }
   .playground__body {
@@ -169,10 +172,11 @@ const t = zh
   }
   .playground__editor {
     min-width: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
     border-radius: var(--radius-surface);
     overflow: hidden;
     background: var(--code-bg);
+    box-shadow: var(--finish-inset);
   }
   .playground__editor .cm-editor { height: 100%; font-size: 13px; }
   .playground__editor .cm-scroller { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); line-height: 1.6; }
@@ -188,19 +192,20 @@ const t = zh
     border: 1px solid var(--border);
     border-radius: var(--radius-card);
     overflow: hidden;
+    background: var(--finish-card-bg);
+    box-shadow: var(--finish-flat);
   }
   .playground__output-head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.35rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.75rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--muted-foreground);
-    background: var(--secondary);
+    color: var(--faint);
   }
   .playground__log {
     flex: 1;
@@ -226,9 +231,9 @@ const t = zh
   .playground .tok-variableName2, .playground .tok-definition { color: var(--code-fn); }
   .playground .tok-tagName { color: var(--code-keyword); }
   .playground .tok-attributeName { color: var(--code-type); }
-  .playground .cm-gutters { background: var(--code-bg); border-right: 1px solid var(--border); color: var(--muted-foreground); }
+  .playground .cm-gutters { background: var(--code-bg); border-right: 1px solid var(--line); color: var(--faint); }
   .playground .cm-activeLine, .playground .cm-activeLineGutter { background: color-mix(in srgb, var(--foreground) 4%, transparent); }
-  .playground .cm-content { caret-color: var(--foreground); color: var(--code-fg); }
+  .playground .cm-content { caret-color: var(--citrus); color: var(--code-fg); }
   .playground .cm-selectionBackground, .playground .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--selection) 30%, transparent) !important; }
 
   @media (max-width: 900px) {

@@ -1,8 +1,9 @@
 # Website design
 
-Rules for `website/`, so later changes stay coherent. The site follows
-gpui-kit.com's design language — same restraint, same neutral palette and
-code themes — adapted for a mobile framework.
+Rules for `website/`, so later changes stay coherent. The site follows the
+gallery's design language (`examples/gallery/ui.tsx`): graphite surfaces lit
+from above, one citrus accent, tinted status colours — neutral and refined,
+the look of the UI nsh draws.
 
 ## Principles
 
@@ -22,28 +23,42 @@ code themes — adapted for a mobile framework.
    reader can check in the repository: a crate, an element, a module, a
    command (`Taffy`, `<List>`, `nsh/animated`, `nsh publish`). Claims track
    `README.md` and `AGENTS.md`; update the copy when they change.
-4. **Restraint carries the design.** Hierarchy comes from type scale, weight
-   and hairlines, not colour fills or gradients.
+4. **Restraint carries the design.** Hierarchy comes from type scale, weight,
+   hairlines and surface depth (card, inset, raised), not colour fills. The
+   only gradients are the surfaces' own top-to-bottom light.
 
 ## Colour
 
-Tokens live in `src/styles/global.css` (`:root` and `.dark`).
+Tokens live in `:root` in `src/styles/global.css`. The site is dark only
+(`<html class="dark">`, no theme switch).
 
-- **The brand is near-black (near-white in dark mode)**: primary buttons,
-  focus, the current item. It is the text colour, so it is never used as an
-  accent to add interest; kickers and captions use `--muted-foreground`.
-- **Blue (`--data-2`, `#3b82f6` / `#419cff`) is for links, the logo's prompt
-  and the main-thread hop in the architecture diagram** — things that are
-  "live" or "go somewhere". Green (`--success`) marks running demos.
-- Callouts take one tint each (note blue, tip green, important violet,
-  warning amber, caution red) at 6% fill and a 30% border; nothing else on a
-  page is tinted.
-- **Code colours come from the Shiki themes** (`src/light.theme.json`,
-  `src/dark.theme.json`, macOS classic, shared with gpui-kit). `global.css`
-  maps their hex values onto `--code-*` tokens, so fenced blocks, demo
-  sources and the home page's code switch theme together. Never hand-colour
-  a snippet.
-- The phone bezel is dark in both themes: it is the device, not the page.
+- **Surfaces**, as in the gallery: page `#101113`, card `#18191c`, inset
+  `#0c0d0f`, raised `#24262a`; border `#2c2e33`, hairline `#1f2124`; text
+  `#eceef1`, muted `#8d9198`, faint `#5a5e65`.
+- **Finishes** (`--finish-*`, the gallery's `finish`): cards take a
+  `#1d1e22 → #17181b` gradient, an inner top highlight and a soft shadow;
+  insets (code, the demo stage, the search field, segmented tracks) are
+  recessed with an inner shadow; raised controls (secondary buttons, the
+  current nav and sidebar item, kbd, segmented thumbs) have a top highlight.
+  Primary buttons are light (`#fbfbfc → #d4d6d9`, dark text).
+- **One accent, citrus `#c8f26d`** (text on it `#13160c`): the logo, links,
+  kickers, the current TOC entry, the nsh module's tag in the hero, the
+  accent of the diagrams. Never a large fill.
+- Status colours: up / success `#45d49a`, danger `#ff6170`, info `#7ea8ff`,
+  warn `#ffb547`, as small tinted badges or dots. Callouts take one tint
+  each (note info, tip green, important violet, warning amber, caution red)
+  over the card colour; nothing else on a page is tinted.
+- **Code colours are tokens** (`--code-*`): Shiki emits the macos-classic
+  light theme's hex values (`src/light.theme.json`) and `global.css` maps
+  them onto the tokens, so fenced blocks, demo sources and the home page's
+  code share one palette. Never hand-colour a snippet.
+- Diagrams in `public/diagrams` keep a light and a dark file; the site shows
+  the dark one, whose `:root` tokens use the same palette.
+- Radii: cards 16px, insets 12px, controls 10px.
+- The logo is the app icon's mark (`public/logo.svg`, inline in
+  `Logo.astro`): a citrus arch holding a light dot. The favicon
+  (`favicon.svg`), `apple-touch-icon.png` and `icon-512.png` (og:image) are
+  the full icon on graphite.
 
 ## Typography
 
@@ -52,7 +67,8 @@ Chinese); `ui-monospace` / SF Mono for code. No webfonts. Base 15px.
 
 - Display: `clamp(2.3rem, 4.6vw, 3.75rem)`, weight 680, tracking −0.045em.
 - Section heading: `clamp(1.9rem, 3.4vw, 2.8rem)`, weight 660.
-- Kickers: 0.68rem mono, uppercase, wide tracking, muted. Small mono labels
+- Kickers: 0.68rem mono, uppercase, wide tracking, faint (citrus on the
+  home page's sections). Small mono labels
   — not colour — mark structure (section kicker, sidebar group, "On this page").
 - Negative and wide tracking are for Latin only: `html[lang^="zh"]` resets
   them.
@@ -77,7 +93,8 @@ assistant types, a pending card ticks Compiled → Signature verified →
 Sandboxed, then the live module fades in once both the story (≥3.2s) and the
 frame have loaded. Entrance motion only, 620ms `cubic-bezier(.16, 1, .3, 1)`;
 with reduced motion the final state shows at once. The host app is always
-light, like the module, regardless of the page theme.
+light, like the module, on the dark page; the module's dashed region and
+tag are citrus.
 
 ## Devices and demos
 

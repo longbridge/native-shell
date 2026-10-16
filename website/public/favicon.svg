@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2d32"/>
+      <stop offset="1" stop-color="#101113"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.62" r="0.45">
+      <stop offset="0" stop-color="#c8f26d" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#c8f26d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2fb9f"/>
+      <stop offset="1" stop-color="#a9d63f"/>
+    </linearGradient>
+    <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <clipPath id="r"><rect width="1024" height="1024" rx="228"/></clipPath><g clip-path="url(#r)"><rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <rect width="1024" height="1024" fill="url(#hl)"/>
+  </g><g transform="translate(192 184) scale(5)">
+    <path d="M30 100 V58 a34 34 0 0 1 68 0 V100" fill="none" stroke="url(#g)" stroke-width="20" stroke-linecap="round"/>
+    <circle cx="64" cy="76" r="11" fill="#eef0f2"/>
+  </g>
+</svg>

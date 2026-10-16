@@ -19,15 +19,17 @@ const abs = (route: string) => new URL(`${BASE.replace(/\/$/, '')}${route}`, SIT
 ---
 
 <!doctype html>
-<html lang={lang}>
+<html lang={lang} class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     {robots && <meta name="robots" content={robots} />}
-    <meta name="color-scheme" content="light dark" />
-    <link rel="icon" type="image/svg+xml" href={`${BASE}logo.svg`} />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#101113" />
+    <link rel="icon" type="image/svg+xml" href={`${BASE}favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${BASE}apple-touch-icon.png`} />
     <link rel="canonical" href={canonical} />
     {alternates?.en && <link rel="alternate" hreflang="en" href={abs(alternates.en)} />}
     {alternates?.['zh-CN'] && <link rel="alternate" hreflang="zh-CN" href={abs(alternates['zh-CN'])} />}
@@ -37,23 +39,10 @@ const abs = (route: string) => new URL(`${BASE.replace(/\/$/, '')}${route}`, SIT
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={abs('/icon-512.png')} />
     <meta name="twitter:card" content="summary" />
     <link rel="alternate" type="text/plain" title="llms.txt" href={`${BASE}llms.txt`} />
 
-    <!-- Before first paint: `theme` in localStorage is "light" or "dark"; absent follows the system. -->
-    <script is:inline>
-      (function () {
-        var stored = null;
-        try { stored = localStorage.getItem('theme'); } catch (e) {}
-        var media = window.matchMedia('(prefers-color-scheme: dark)');
-        var root = document.documentElement;
-        root.dataset.themePref = stored === 'light' || stored === 'dark' ? stored : 'system';
-        root.classList.toggle('dark', stored === 'dark' || (stored !== 'light' && media.matches));
-        media.addEventListener('change', function (event) {
-          if (root.dataset.themePref === 'system') root.classList.toggle('dark', event.matches);
-        });
-      })();
-    </script>
   </head>
   <body>
     <a class="skip-link" href="#main">{lang === 'zh-CN' ? '跳到正文' : 'Skip to content'}</a>

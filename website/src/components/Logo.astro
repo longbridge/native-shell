@@ -1,11 +1,19 @@
 ---
-// The mark: a phone outline holding a shell prompt — native views, driven by
-// the `nsh` shell. Inline so its two strokes follow the theme tokens.
+// The mark of the app icon (public/logo.svg): a thick arch, the shell, in the
+// citrus accent, holding a light dot, the module it runs. The viewBox is
+// cropped to the arch so it fills the box at small sizes; the gradient's id
+// is per instance because the nav and the footer both draw one.
 export interface Props { class?: string }
 const { class: className = '' } = Astro.props;
+const id = `logo-${Math.random().toString(36).slice(2, 8)}`;
 ---
-<svg class:list={['logo', className]} viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <rect class="logo__frame" x="6.5" y="2.5" width="19" height="27" rx="5" stroke-width="2.6" />
-  <path class="logo__prompt" d="m11.5 12.5 3.5 3.5-3.5 3.5" stroke-width="2.6" />
-  <path class="logo__frame" d="M17.5 19.5h3.5" stroke-width="2.6" />
+<svg class:list={['logo', className]} viewBox="14 12 100 100" aria-hidden="true">
+  <defs>
+    <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2fb9f" />
+      <stop offset="1" stop-color="#a9d63f" />
+    </linearGradient>
+  </defs>
+  <path d="M30 100 V58 a34 34 0 0 1 68 0 V100" fill="none" stroke={`url(#${id})`} stroke-width="20" stroke-linecap="round" />
+  <circle cx="64" cy="76" r="11" fill="#eef0f2" />
 </svg>

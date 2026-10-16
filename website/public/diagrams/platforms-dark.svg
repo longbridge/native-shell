@@ -9,18 +9,18 @@
       :root{
         --band:rgba(255,255,255,.045);
         --band-line:rgba(255,255,255,.13);
-        --band-hi:rgba(90,169,255,.10);
+        --band-hi:rgba(200,242,109,.08);
         --seam:rgba(255,255,255,.07);
-        --card:#252526;
+        --card:#24262a;
         --card-line:rgba(255,255,255,.20);
-        --card-hi:#2b3540;
-        --ink:#e9e9ec;
-        --muted:#9ca0a8;
+        --card-hi:#2b3122;
+        --ink:#eceef1;
+        --muted:#8d9198;
         --line:rgba(255,255,255,.48);
         --faint:rgba(255,255,255,.26);
         --fill:rgba(255,255,255,.12);
-        --accent:#5aa9ff;
-        --danger:#f2555a;
+        --accent:#c8f26d;
+        --danger:#ff6170;
       }
 
       text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}

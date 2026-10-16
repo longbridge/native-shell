@@ -1,13 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <style>
-    .frame { stroke: #0a0a0a; }
-    .prompt { stroke: #3b82f6; }
-    @media (prefers-color-scheme: dark) {
-      .frame { stroke: #fafafa; }
-      .prompt { stroke: #419cff; }
-    }
-  </style>
-  <rect class="frame" x="6.5" y="2.5" width="19" height="27" rx="5" stroke-width="2.6"/>
-  <path class="prompt" d="m11.5 12.5 3.5 3.5-3.5 3.5" stroke-width="2.6"/>
-  <path class="frame" d="M17.5 19.5h3.5" stroke-width="2.6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2fb9f"/>
+      <stop offset="1" stop-color="#a9d63f"/>
+    </linearGradient>
+  </defs>
+  <path d="M30 100 V58 a34 34 0 0 1 68 0 V100" fill="none" stroke="url(#g)" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="64" cy="76" r="11" fill="#eef0f2"/>
 </svg>
