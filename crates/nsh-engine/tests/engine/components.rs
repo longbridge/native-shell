@@ -1098,3 +1098,105 @@ fn the_apps_appearance_overrides_the_systems() {
     assert!(later.iter().any(|b| shows(b, "scheme light")), "{later:?}");
     assert_eq!(background(&later), Some(nsh_core::Color(0xffff_ffff)));
 }
+
+const MENU: &str = r#"import { mount, signal, Text } from "nsh";
+import { Menu } from "nsh/desktop";
+
+const chosen = signal("none");
+Menu.setApplicationMenu([
+  false,
+  {
+    label: "File",
+    submenu: [
+      { label: "New", shortcut: "Mod+N", onSelect: () => chosen.set("new") },
+      { type: "separator" },
+      { role: "quit" },
+    ],
+  },
+]);
+
+mount(() => <Text>{chosen()}</Text>);
+"#;
+
+/// `Menu.setApplicationMenu` reaches the platform as items with ids and
+/// shortcuts (a role's by default), and the platform's `onMenu` calls the
+/// chosen item's function; mobile platforms get nothing.
+#[test]
+fn menus_reach_the_platform_and_call_back() {
+    use nsh_core::desktop::{DesktopCommand, Key, MenuAction, MenuItem, MenuRole, Shortcut};
+
+    let (engine, rx) = start_in(
+        MENU,
+        Environment {
+            os: nsh_engine::Os::Windows,
+            ..Environment::default()
+        },
+    );
+    let mut menu = None;
+    until(&rx, |batch| {
+        for item in &batch.items {
+            if let MountItem::Command {
+                id: ROOT_ID,
+                command: Command::Desktop(command),
+            } = item
+                && let DesktopCommand::SetMenu(Some(items)) = &**command
+            {
+                menu = Some(items.clone());
+            }
+        }
+        shows(batch, "none")
+    });
+    let menu = menu.expect("the menu");
+    let new = MenuAction {
+        id: 1,
+        label: "New".into(),
+        shortcut: Some(Shortcut {
+            ctrl: true,
+            ..Shortcut::key(Key::Char('n'))
+        }),
+        enabled: true,
+        checked: None,
+        role: None,
+    };
+    let quit = MenuAction {
+        id: 0,
+        label: String::new(),
+        shortcut: MenuRole::Quit.shortcut(false),
+        enabled: true,
+        checked: None,
+        role: Some(MenuRole::Quit),
+    };
+    assert_eq!(
+        &*menu,
+        [MenuItem::Submenu {
+            label: "File".into(),
+            enabled: true,
+            items: vec![
+                MenuItem::Action(new),
+                MenuItem::Separator,
+                MenuItem::Action(quit)
+            ],
+        }]
+    );
+    engine.control().dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![("id", PayloadValue::Number(1.0))]),
+    );
+    assert!(
+        until(&rx, |batch| shows(batch, "new"))
+            .iter()
+            .any(|b| shows(b, "new"))
+    );
+
+    // On a phone, nothing is sent.
+    let (_engine, rx) = start(MENU);
+    let batches = until(&rx, |batch| shows(batch, "none"));
+    assert!(!batches.iter().flat_map(|b| &b.items).any(|i| matches!(
+        i,
+        MountItem::Command {
+            command: Command::Desktop(_),
+            ..
+        }
+    )));
+}

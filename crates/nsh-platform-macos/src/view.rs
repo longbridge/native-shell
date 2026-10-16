@@ -414,6 +414,14 @@ define_class!(
             true
         }
 
+        #[unsafe(method(mouseDownCanMoveWindow))]
+        fn mouse_down_can_move_window(&self) -> bool {
+            // Under a hidden title bar AppKit would drag the window from a
+            // view that is not opaque before it sees the press: nsh decides
+            // (`windowDrag`, `crate::chrome`).
+            false
+        }
+
         #[unsafe(method(acceptsFirstResponder))]
         fn accepts_first_responder(&self) -> bool {
             // A click outside a field that edits leaves the focus in it, as

@@ -35,9 +35,10 @@ enum Part {
     ScreenReader,
     ReduceMotion,
     Rtl,
+    TitleBar,
 }
 
-const PARTS: usize = 8;
+const PARTS: usize = 9;
 
 /// The environment's part of a context's state.
 pub(crate) struct Env {
@@ -248,6 +249,20 @@ pub(crate) fn set_environment(ctx: *mut JsContext, next: &Environment) -> Result
     if changed(&|p| p.safe_area == next.safe_area) {
         writes.push((Part::SafeArea, object(ctx, &insets(&next.safe_area))));
     }
+    if changed(&|p| p.title_bar == next.title_bar) {
+        let t = next.title_bar;
+        writes.push((
+            Part::TitleBar,
+            object(
+                ctx,
+                &[
+                    (c"height", number(t.top)),
+                    (c"left", number(t.left)),
+                    (c"right", number(t.right)),
+                ],
+            ),
+        ));
+    }
     if changed(&|p| {
         p.keyboard_height == next.keyboard_height && p.keyboard_duration == next.keyboard_duration
     }) {
@@ -328,6 +343,11 @@ pub(crate) fn set_environment(ctx: *mut JsContext, next: &Environment) -> Result
 fn accessor(ctx: *mut JsContext, part: Part) -> JsValue {
     // SAFETY: a dup of an accessor the environment owns.
     unsafe { qjs::JS_DupValue(ctx, env(ctx).accessors[part as usize].get()) }
+}
+
+/// `titleBar()` (`nsh/desktop`): the hidden title bar's area (owned).
+pub(crate) fn title_bar(ctx: *mut JsContext) -> JsValue {
+    accessor(ctx, Part::TitleBar)
 }
 
 fn current(ctx: *mut JsContext) -> Environment {

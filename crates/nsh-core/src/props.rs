@@ -285,6 +285,9 @@ pub struct ViewProps {
     /// `panActivation`: the view's touch responder waits for a pan the
     /// platform recognizes.
     pub pan_activation: Option<PanActivation>,
+    /// `windowDrag` (desktops): pressing the view drags the window; `None`
+    /// leaves it to the views around it.
+    pub window_drag: Option<bool>,
 }
 
 /// When a pan on a view activates (`panActivation`; react-native-gesture-

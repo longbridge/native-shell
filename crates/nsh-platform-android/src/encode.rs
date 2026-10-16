@@ -564,7 +564,9 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     | Command::SetStatusBar(_)
                     | Command::ScrollToIndex { .. }
                     | Command::Measure { .. }
-                    | Command::ScrollToEnd { .. } => e.int(-1),
+                    | Command::ScrollToEnd { .. }
+                    // Desktops only.
+                    | Command::Desktop(_) => e.int(-1),
                 }
             }
         }

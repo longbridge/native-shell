@@ -1,0 +1,502 @@
+//! The window's chrome (`nsh/desktop`): its title, the hidden title bar,
+//! drag regions, the application menu and context menus.
+//!
+//! - **Hidden title bar** ([`TitleBarStyle::Hidden`]): the window gets a
+//!   full-size content view under a transparent, untitled title bar, so the
+//!   app draws up to the window's top edge while the traffic lights stay.
+//!   The environment's `title_bar` reports the bar's height (the window's
+//!   frame above its content layout rectangle) and the traffic lights'
+//!   width; it is zero in full screen, where AppKit shows the bar over the
+//!   app only when the pointer reaches the top of the screen.
+//! - **Drag regions**: a left press on a view marked `windowDrag`
+//!   ([`crate::input::window_drag`]) moves the window with
+//!   `performWindowDragWithEvent:` (AppKit's own drag, with snapping and
+//!   Mission Control), and a double click does what the user chose in
+//!   System Settings (`AppleActionOnDoubleClick`: zoom, minimize or
+//!   nothing). The press never reaches the app. This works with the
+//!   system's title bar too.
+//! - **Menus** are `NSMenu`s: the application menu is the app's main menu
+//!   (its first submenu is the app menu, which AppKit titles with the app's
+//!   name), context menus pop up in the root view. Items with a role use
+//!   AppKit's standard actions with no target, so the responder chain
+//!   carries them out (the focused field's `copy:`, the application's
+//!   `terminate:`); an item with a role is never reported to the app.
+//!   Other items target an [`MenuTarget`] of the surface, which reports
+//!   their id as [`EventKind::Menu`]. `autoenablesItems` is off, so an
+//!   item's `enabled` is what shows. The main menu the app replaced is
+//!   kept and comes back with `setApplicationMenu(null)`.
+//! - Context menus track the mouse in a loop of their own, so they are
+//!   shown from the main queue once the batch is applied, never while it
+//!   is.
+
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
+
+use nsh_core::{
+    EventKind, EventPayload, PayloadValue, ROOT_ID,
+    desktop::{DesktopCommand, Key, MenuAction, MenuItem, MenuRole, Shortcut, TitleBarStyle},
+    platform::Insets,
+};
+use objc2::{
+    DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, runtime::Sel, sel,
+};
+use objc2_app_kit::{
+    NSApplication, NSEvent, NSEventModifierFlags, NSMenu, NSMenuItem, NSRunningApplication,
+    NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+};
+use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSString, NSUserDefaults, ns_string};
+
+use crate::surface::Surface;
+
+/// The title bar's height when AppKit cannot tell (macOS 11 and later).
+const TITLE_BAR_HEIGHT: f32 = 28.0;
+/// The traffic lights' width when AppKit cannot tell.
+const TRAFFIC_LIGHTS_WIDTH: f32 = 78.0;
+
+thread_local! {
+    /// The app's name for the app menu's roles ("Quit Gallery"), set by
+    /// [`crate::run_app`].
+    static APP_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// The main menu before an app set its own: `setApplicationMenu(null)`
+    /// brings it back.
+    static ORIGINAL_MENU: RefCell<Option<Option<Retained<NSMenu>>>> = const { RefCell::new(None) };
+}
+
+/// Names the app for the app menu's roles.
+pub(crate) fn set_app_name(name: &str) {
+    APP_NAME.with(|n| *n.borrow_mut() = Some(name.to_owned()));
+}
+
+fn app_name() -> String {
+    APP_NAME
+        .with(|n| n.borrow().clone())
+        .or_else(|| {
+            NSRunningApplication::currentApplication()
+                .localizedName()
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_default()
+}
+
+define_class!(
+    /// The target of a surface's menu items: reports the chosen item's tag
+    /// (its id) to the surface with its key.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = u64]
+    #[name = "NshMenuTarget"]
+    pub(crate) struct MenuTarget;
+
+    unsafe impl NSObjectProtocol for MenuTarget {}
+
+    impl MenuTarget {
+        #[unsafe(method(menuItemChosen:))]
+        fn chosen(&self, item: &NSMenuItem) {
+            let Some(surface) = Surface::with_key(*self.ivars()) else {
+                return;
+            };
+            let id = item.tag();
+            if id > 0 {
+                surface.event(
+                    ROOT_ID,
+                    EventKind::Menu,
+                    EventPayload::Map(vec![("id", PayloadValue::Number(id as f64))]),
+                );
+            }
+        }
+    }
+);
+
+/// A surface's chrome.
+#[derive(Default)]
+pub(crate) struct Chrome {
+    style: Cell<TitleBarStyle>,
+    /// The target of its menu items (made with the first menu).
+    target: RefCell<Option<Retained<MenuTarget>>>,
+}
+
+fn window(surface: &Surface) -> Option<Retained<NSWindow>> {
+    surface.root.ns().window()
+}
+
+fn full_screen(window: &NSWindow) -> bool {
+    window.styleMask().contains(NSWindowStyleMask::FullScreen)
+}
+
+/// Tells the app the hidden title bar's area (after a style change, a
+/// resize, full screen).
+pub(crate) fn update_area(surface: &Surface) {
+    let area = match window(surface) {
+        Some(window)
+            if surface.chrome.style.get() == TitleBarStyle::Hidden && !full_screen(&window) =>
+        {
+            let frame = window.frame();
+            let layout = window.contentLayoutRect();
+            let height = (frame.size.height - layout.size.height) as f32;
+            let left = window
+                .standardWindowButton(NSWindowButton::ZoomButton)
+                .map(|zoom| {
+                    let f = zoom.frame();
+                    (f.origin.x + f.size.width) as f32 + 8.0
+                })
+                .filter(|w| *w > 8.0)
+                .unwrap_or(TRAFFIC_LIGHTS_WIDTH);
+            Insets {
+                top: if height > 0.0 {
+                    height
+                } else {
+                    TITLE_BAR_HEIGHT
+                },
+                left,
+                right: 0.0,
+                bottom: 0.0,
+            }
+        }
+        _ => Insets::default(),
+    };
+    let mut env = surface.environment.get();
+    if env.title_bar != area {
+        env.title_bar = area;
+        surface.set_environment(env);
+    }
+}
+
+// --- Commands ---------------------------------------------------------------------------
+
+/// A desktop command (on the root).
+pub(crate) fn command(surface: &Rc<Surface>, command: &DesktopCommand) {
+    match command {
+        DesktopCommand::SetTitle(title) => {
+            if let Some(window) = window(surface) {
+                window.setTitle(&NSString::from_str(title));
+            }
+        }
+        DesktopCommand::SetTitleBar(style) => {
+            surface.chrome.style.set(*style);
+            apply_title_bar(surface);
+        }
+        DesktopCommand::Minimize => {
+            if let Some(window) = window(surface) {
+                window.miniaturize(None);
+            }
+        }
+        DesktopCommand::ToggleMaximize => {
+            if let Some(window) = window(surface) {
+                window.zoom(None);
+            }
+        }
+        DesktopCommand::ToggleFullScreen => {
+            if let Some(window) = window(surface) {
+                window.toggleFullScreen(None);
+            }
+        }
+        DesktopCommand::Close => {
+            if let Some(window) = window(surface) {
+                window.performClose(None);
+            }
+        }
+        DesktopCommand::SetMenu(items) => set_menu(surface, items.as_deref()),
+        DesktopCommand::PopupMenu { items, at } => {
+            // The menu tracks the mouse in a loop of its own: not while the
+            // batch is applied.
+            let key = surface.key();
+            let items = items.clone();
+            let at = *at;
+            dispatch2::DispatchQueue::main().exec_async(move || {
+                if let Some(surface) = Surface::with_key(key) {
+                    popup(&surface, &items, at);
+                }
+            });
+        }
+    }
+}
+
+/// The window's style for the title bar's.
+pub(crate) fn apply_title_bar(surface: &Surface) {
+    let Some(window) = window(surface) else {
+        return;
+    };
+    let hidden = surface.chrome.style.get() == TitleBarStyle::Hidden;
+    let mut mask = window.styleMask();
+    if hidden {
+        mask |= NSWindowStyleMask::FullSizeContentView;
+    } else {
+        mask &= !NSWindowStyleMask::FullSizeContentView;
+    }
+    window.setStyleMask(mask);
+    window.setTitlebarAppearsTransparent(hidden);
+    window.setTitleVisibility(if hidden {
+        NSWindowTitleVisibility::Hidden
+    } else {
+        NSWindowTitleVisibility::Visible
+    });
+    update_area(surface);
+}
+
+// --- Drag regions -----------------------------------------------------------------------
+
+/// A left press at `(x, y)` (root coordinates): on a view marked
+/// `windowDrag`, it moves (or, double-clicked, zooms) the window; true
+/// when it did, and the press is not the app's.
+pub(crate) fn mouse_down(surface: &Surface, event: &NSEvent, x: f32, y: f32) -> bool {
+    if !crate::input::window_drag(surface, x, y) {
+        return false;
+    }
+    let Some(window) = window(surface) else {
+        return false;
+    };
+    if event.clickCount() == 2 {
+        let action = NSUserDefaults::standardUserDefaults()
+            .stringForKey(ns_string!("AppleActionOnDoubleClick"))
+            .map(|s| s.to_string());
+        match action.as_deref() {
+            Some("Minimize") => window.miniaturize(None),
+            Some("None") => {}
+            _ => window.zoom(None),
+        }
+    } else {
+        window.performWindowDragWithEvent(event);
+    }
+    true
+}
+
+// --- Menus ------------------------------------------------------------------------------
+
+/// The target of `surface`'s menu items.
+fn target(surface: &Surface) -> Retained<MenuTarget> {
+    let mut target = surface.chrome.target.borrow_mut();
+    target
+        .get_or_insert_with(|| {
+            let t = MenuTarget::alloc(surface.mtm).set_ivars(surface.key());
+            // SAFETY: NSObject's initializer.
+            unsafe { msg_send![super(t), init] }
+        })
+        .clone()
+}
+
+/// The standard action of a role (sent down the responder chain).
+fn role_action(role: MenuRole) -> Sel {
+    match role {
+        MenuRole::About => sel!(orderFrontStandardAboutPanel:),
+        MenuRole::Hide => sel!(hide:),
+        MenuRole::HideOthers => sel!(hideOtherApplications:),
+        MenuRole::ShowAll => sel!(unhideAllApplications:),
+        MenuRole::Quit => sel!(terminate:),
+        MenuRole::Undo => sel!(undo:),
+        MenuRole::Redo => sel!(redo:),
+        MenuRole::Cut => sel!(cut:),
+        MenuRole::Copy => sel!(copy:),
+        MenuRole::Paste => sel!(paste:),
+        MenuRole::SelectAll => sel!(selectAll:),
+        MenuRole::Minimize => sel!(performMiniaturize:),
+        MenuRole::Zoom => sel!(performZoom:),
+        MenuRole::ToggleFullScreen => sel!(toggleFullScreen:),
+        MenuRole::Close => sel!(performClose:),
+    }
+}
+
+/// An item's title: its label, else its role's (with the app's name where
+/// macOS writes it).
+fn title(action: &MenuAction) -> String {
+    if !action.label.is_empty() {
+        return action.label.clone();
+    }
+    match action.role {
+        Some(role @ (MenuRole::About | MenuRole::Hide | MenuRole::Quit)) => {
+            format!("{} {}", role.label(), app_name())
+        }
+        Some(MenuRole::ToggleFullScreen) => "Enter Full Screen".to_owned(),
+        Some(role) => role.label().to_owned(),
+        None => String::new(),
+    }
+}
+
+/// A shortcut as a key equivalent and its modifiers.
+fn key_equivalent(shortcut: &Shortcut) -> (String, NSEventModifierFlags) {
+    let function = |code: u32| char::from_u32(code).map(String::from).unwrap_or_default();
+    let key = match shortcut.key {
+        Key::Char(c) => c.to_string(),
+        Key::Enter => "\r".to_owned(),
+        Key::Escape => "\u{1b}".to_owned(),
+        Key::Tab => "\t".to_owned(),
+        Key::Backspace => "\u{8}".to_owned(),
+        Key::Space => " ".to_owned(),
+        // AppKit's function key characters (NSUpArrowFunctionKey, ...).
+        Key::Up => function(0xF700),
+        Key::Down => function(0xF701),
+        Key::Left => function(0xF702),
+        Key::Right => function(0xF703),
+        Key::F(n) => function(0xF704 + u32::from(n) - 1),
+        Key::Insert => function(0xF727),
+        Key::Delete => function(0xF728),
+        Key::Home => function(0xF729),
+        Key::End => function(0xF72B),
+        Key::PageUp => function(0xF72C),
+        Key::PageDown => function(0xF72D),
+    };
+    let mut mask = NSEventModifierFlags::empty();
+    for (on, flag) in [
+        (shortcut.meta, NSEventModifierFlags::Command),
+        (shortcut.ctrl, NSEventModifierFlags::Control),
+        (shortcut.alt, NSEventModifierFlags::Option),
+        (shortcut.shift, NSEventModifierFlags::Shift),
+    ] {
+        if on {
+            mask |= flag;
+        }
+    }
+    (key, mask)
+}
+
+/// A menu of `items`, titled `title`.
+fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> {
+    let mtm = surface.mtm;
+    let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
+    menu.setAutoenablesItems(false);
+    let mut last_separator = true;
+    for item in items {
+        match item {
+            MenuItem::Separator => {
+                if !last_separator {
+                    menu.addItem(&NSMenuItem::separatorItem(mtm));
+                    last_separator = true;
+                }
+            }
+            MenuItem::Action(action) => {
+                let (key, mask) = action
+                    .shortcut
+                    .as_ref()
+                    .map(key_equivalent)
+                    .unwrap_or_else(|| (String::new(), NSEventModifierFlags::empty()));
+                let selector = match action.role {
+                    Some(role) => Some(role_action(role)),
+                    None if action.id != 0 => Some(sel!(menuItemChosen:)),
+                    None => None,
+                };
+                // SAFETY: the actions are AppKit's standard ones (sent down
+                // the responder chain) or the target's own.
+                let ns = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        NSMenuItem::alloc(mtm),
+                        &NSString::from_str(&title(action)),
+                        selector,
+                        &NSString::from_str(&key),
+                    )
+                };
+                if action.shortcut.is_some() {
+                    ns.setKeyEquivalentModifierMask(mask);
+                }
+                if action.role.is_none() && action.id != 0 {
+                    let target = target(surface);
+                    // SAFETY: the target answers `menuItemChosen:`; the
+                    // surface keeps it while its menus exist (menu items do
+                    // not retain their targets).
+                    unsafe { ns.setTarget(Some(&target)) };
+                    ns.setTag(action.id as isize);
+                }
+                ns.setEnabled(action.enabled && selector.is_some());
+                if let Some(checked) = action.checked {
+                    ns.setState(if checked { 1 } else { 0 });
+                }
+                menu.addItem(&ns);
+                last_separator = false;
+            }
+            MenuItem::Submenu {
+                label,
+                enabled,
+                items,
+            } => {
+                let sub = self::menu(surface, label, items);
+                // SAFETY: an item with no action, holding the submenu.
+                let ns = unsafe {
+                    NSMenuItem::initWithTitle_action_keyEquivalent(
+                        NSMenuItem::alloc(mtm),
+                        &NSString::from_str(label),
+                        None,
+                        ns_string!(""),
+                    )
+                };
+                ns.setSubmenu(Some(&sub));
+                ns.setEnabled(*enabled);
+                menu.addItem(&ns);
+                last_separator = false;
+            }
+        }
+    }
+    menu
+}
+
+/// The application menu: the main menu, with a menu of the bar per
+/// top-level submenu (its top-level actions go to the first one).
+fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
+    let mtm = surface.mtm;
+    let app = NSApplication::sharedApplication(mtm);
+    ORIGINAL_MENU.with(|o| {
+        let mut o = o.borrow_mut();
+        if o.is_none() {
+            *o = Some(app.mainMenu());
+        }
+    });
+    let Some(items) = items else {
+        let original = ORIGINAL_MENU.with(|o| o.borrow_mut().take()).flatten();
+        app.setMainMenu(original.as_deref());
+        return;
+    };
+    let bar = NSMenu::new(mtm);
+    bar.setAutoenablesItems(false);
+    for item in items {
+        // A top-level item that is not a submenu gets one of its own.
+        let (label, enabled, sub_items) = match item {
+            MenuItem::Submenu {
+                label,
+                enabled,
+                items,
+            } => (label.clone(), *enabled, items.clone()),
+            MenuItem::Action(action) => (title(action), true, vec![item.clone()]),
+            MenuItem::Separator => continue,
+        };
+        let sub = menu(surface, &label, &sub_items);
+        // SAFETY: an item with no action, holding the submenu.
+        let holder = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(&label),
+                None,
+                ns_string!(""),
+            )
+        };
+        holder.setSubmenu(Some(&sub));
+        holder.setEnabled(enabled);
+        bar.addItem(&holder);
+    }
+    app.setMainMenu(Some(&bar));
+}
+
+/// Shows a context menu at `at` (root coordinates) or at the mouse.
+fn popup(surface: &Surface, items: &Arc<[MenuItem]>, at: Option<(f32, f32)>) {
+    let root = surface.root.ns();
+    let menu = menu(surface, "", items);
+    let location = match at {
+        // The root view is flipped: y goes down, as the app's.
+        Some((x, y)) => NSPoint::new(x as f64, y as f64),
+        None => {
+            let Some(window) = root.window() else { return };
+            let in_window = window.convertPointFromScreen(NSEvent::mouseLocation());
+            root.convertPoint_fromView(in_window, None)
+        }
+    };
+    menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(root));
+}
+
+/// The root view moved to a window, or the window changed: a hidden title
+/// bar applies to it (a window keeps its own style otherwise).
+pub(crate) fn window_changed(surface: &Surface) {
+    if surface.chrome.style.get() == TitleBarStyle::Hidden {
+        apply_title_bar(surface);
+    } else {
+        update_area(surface);
+    }
+}

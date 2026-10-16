@@ -240,6 +240,11 @@ impl Model {
         true
     }
 
+    /// There is an edit to undo.
+    pub(crate) fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
     /// Undoes the last edit; true when there was one.
     pub(crate) fn undo(&mut self) -> bool {
         let Some(snap) = self.undo.pop() else {

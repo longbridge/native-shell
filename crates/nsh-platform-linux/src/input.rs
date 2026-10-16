@@ -552,6 +552,10 @@ fn handle(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
         // Touchscreens report touches; pointer events emulated from them
         // would press twice.
         T::ButtonPress | T::ButtonRelease | T::MotionNotify if event.is_pointer_emulated() => {}
+        // On a view that drags the window: the window's, not the app's.
+        T::ButtonPress if crate::chrome::press(surface, event, x, y) => {
+            return glib::Propagation::Stop;
+        }
         T::ButtonPress if button() == Some(gdk::BUTTON_PRIMARY) => {
             down(surface, Key::Mouse, x, y, time)
         }
@@ -719,6 +723,33 @@ fn focus_native(widget: &gtk::Widget) {
 }
 
 // --- Hit testing --------------------------------------------------------------------
+
+/// Where the pointer last was (root coordinates).
+pub(crate) fn last_pointer(surface: &Surface) -> Option<(f32, f32)> {
+    surface.input.last.get()
+}
+
+/// Pressing `(x, y)` (root coordinates) drags the window: the nearest view
+/// that sets `windowDrag` says so, unless a text field, a hosted widget or
+/// a view with press or touch handlers is nearer.
+pub(crate) fn window_drag(surface: &Surface, x: f32, y: f32) -> bool {
+    let Some(hit) = pick(&surface.root, x, y) else {
+        return false;
+    };
+    if hit.native.is_some() {
+        return false;
+    }
+    for view in chain(&hit.view) {
+        let s = view.state();
+        if let Some(drag) = s.props.window_drag {
+            return drag;
+        }
+        if s.kind == ViewKind::Input || has_press(s.events) || s.events.contains(EventKind::Touch) {
+            return false;
+        }
+    }
+    false
+}
 
 /// What is under a point.
 struct Hit {

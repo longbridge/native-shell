@@ -13,6 +13,7 @@ pub mod canvas;
 mod core;
 mod css;
 mod css_named;
+pub mod desktop;
 mod effects;
 mod fenwick;
 mod geometry;

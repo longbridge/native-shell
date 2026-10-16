@@ -2605,6 +2605,40 @@ fn dragged(key: u64, view: &NshView, s: &Selection, dx: f32, dy: f32, x: f32, y:
     select(key, view, Some(range));
 }
 
+/// A right click on selectable text `view`: Copy (its selection) and
+/// Select All.
+pub(crate) fn context_menu(surface: &Rc<crate::surface::Surface>, view: &NshView) {
+    use nsh_core::desktop::MenuRole;
+
+    use crate::chrome::LocalItem;
+    let selected = selected_text(view).is_some_and(|t| !t.is_empty());
+    let (copy, all) = (view.clone(), view.clone());
+    crate::chrome::popup_actions(
+        surface,
+        vec![
+            LocalItem::Item {
+                role: Some(MenuRole::Copy),
+                label: "",
+                enabled: selected,
+                action: Rc::new(move |_| {
+                    if let Some(text) = selected_text(&copy) {
+                        crate::system::set_clipboard_text(&text);
+                    }
+                }),
+            },
+            LocalItem::Item {
+                role: Some(MenuRole::SelectAll),
+                label: "",
+                enabled: true,
+                action: Rc::new(move |s| {
+                    let len = all.state().text.as_ref().map_or(0, |t| t.text.len_utf16());
+                    select(s.key(), &all, Some((0, len)));
+                }),
+            },
+        ],
+    );
+}
+
 /// The selected text of `view`, without attachments' placeholders.
 fn selected_text(view: &NshView) -> Option<String> {
     let (a, b) = view_selection(view)?.range.get()?;

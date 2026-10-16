@@ -9,7 +9,8 @@ order: 3.24
 nsh apps also run as native Mac apps. The macOS backend renders them with AppKit views and Core Animation and lays out
 text with CoreText; the core, the reactive graph, the renderer, Taffy layout and the `nsh/ui/mobile` components are the
 same as on iOS and Android, so one bundle runs everywhere. On macOS, `Platform.OS` is `"macos"` and the
-`desktop={{…}}` props apply.
+`desktop={{…}}` props apply. The window's title, a title bar of the app's own, the menu bar and context menus come from
+[`nsh/desktop`](../modules/nsh-desktop.md).
 
 This is not [Mac Catalyst](./getting-started.md#mac-catalyst-default-on-macos), which stays the default `nsh run`
 target on macOS: Catalyst runs the iOS backend (UIKit) in an iPhone-sized window and behaves like a phone. The macOS
@@ -112,7 +113,8 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 (`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.nshc`) load with
 `unsafe { Bundle::bytecode(bytes) }`: bytecode is trusted input, so only load it from your own app's files.
 For an app that is only an nsh app, `run_app(source, options)` opens one `AppView` in a window with a standard menu
-(About, Hide, Quit, Edit, Minimize, Zoom, Enter Full Screen, Close) and runs until the window closes.
+(About, Hide, Quit, Edit, Minimize, Zoom, Enter Full Screen, Close), which the app can replace with
+`Menu.setApplicationMenu` ([`nsh/desktop`](../modules/nsh-desktop.md)), and runs until the window closes.
 
 Native components are registered with `AppView::register_component`; see
 [Native components](./native-components.md#registering-on-macos-rust).

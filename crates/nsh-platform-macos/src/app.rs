@@ -350,6 +350,7 @@ pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     name_app(&options.title);
+    crate::chrome::set_app_name(&options.title);
     let delegate: Retained<Delegate> = unsafe { msg_send![Delegate::alloc(mtm), init] };
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     app.setMainMenu(Some(&main_menu(mtm, &options.title)));

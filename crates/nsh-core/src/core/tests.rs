@@ -5930,3 +5930,38 @@ fn measures_in_root_coordinates() {
     assert_eq!(c.measure(6), None);
     assert_eq!(c.measure(1000), None);
 }
+
+/// `desktop={{ windowDrag }}` reaches the platform in the view's props, and
+/// clearing it sends them again.
+#[test]
+fn window_drag_is_a_view_prop() {
+    let mut c = core();
+    let drag = |value| Op::SetProp {
+        id: 2,
+        prop: Prop::WindowDrag(value),
+    };
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            drag(Some(true)),
+            Op::Insert {
+                parent: crate::ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ViewProps { id: 2, props } if props.window_drag == Some(true))
+    ));
+    apply(&mut c, vec![drag(None)]);
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ViewProps { id: 2, props } if props.window_drag.is_none())
+    ));
+}

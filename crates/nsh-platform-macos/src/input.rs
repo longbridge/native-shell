@@ -555,6 +555,10 @@ pub(crate) fn event(surface: &Rc<Surface>, event: &NSEvent) {
     let input = &surface.input;
     match ty {
         NSEventType::LeftMouseDown => {
+            // A title bar of the app's own moves the window.
+            if crate::chrome::mouse_down(surface, event, x, y) {
+                return;
+            }
             input.last.set(Some((x, y)));
             let shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             down(
@@ -1979,6 +1983,36 @@ fn end_momentum(surface: &Rc<Surface>) {
     if let Some(view) = view {
         crate::scroll::momentum_end(surface, &view);
     }
+}
+
+/// Pressing `(x, y)` (root coordinates) drags the window: the nearest view
+/// that sets `windowDrag` says so, unless a text field, a hosted AppKit
+/// view (header buttons, fields) or a view with press or touch handlers is
+/// nearer.
+pub(crate) fn window_drag(surface: &Surface, x: f32, y: f32) -> bool {
+    let Some(hit) = pick(&surface.root, x, y) else {
+        return false;
+    };
+    if hit.native {
+        return false;
+    }
+    let mut view = Some(hit.view);
+    while let Some(v) = view {
+        {
+            let s = v.state();
+            if let Some(drag) = s.props.window_drag {
+                return drag;
+            }
+            if s.kind == ViewKind::Input
+                || has_press(s.events)
+                || s.events.contains(EventKind::Touch)
+            {
+                return false;
+            }
+        }
+        view = v.parent_view();
+    }
+    false
 }
 
 /// The hosted AppKit view (a text field, a web view) under `(x, y)` (root

@@ -57,6 +57,7 @@ order: 25
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | 滑动在页面历史中前进后退。 |
 | `desktop={{ headerLargeTitle }}`、`desktop={{ headerBackTitle }}` | `Screen` | 大标题；返回按钮上的文字。 |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`：窗口中居中的卡片。 |
+| `desktop={{ windowDrag }}` | 所有元素 | 按住它拖动窗口，像系统标题栏一样（见 [nsh/desktop](../modules/nsh-desktop.md#自定义标题栏)）。 |
 
 `desktop={{…}}` 在所有地方都可以使用；上面列出的是目前仅限桌面的属性。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
 
@@ -64,7 +65,7 @@ order: 25
 
 ## 平台模块
 
-`nsh/ios` 和 `nsh/android` 存放只有一个平台才有的 API。两者在所有平台上都可以导入，因此同一个包可以到处运行：在另一个平台上，它们的函数什么都不做，组件什么都不渲染。每个模块都导出 `isAvailable`，只在自己的平台上为 `true`。
+`nsh/ios` 和 `nsh/android` 存放只有一个平台才有的 API，`nsh/desktop` 存放只有桌面才有的 API。它们在所有平台上都可以导入，因此同一个包可以到处运行：在其他平台上，它们的函数什么都不做，组件什么都不渲染。每个模块都导出 `isAvailable`，只在自己的平台上为 `true`。
 
 ### nsh/android
 
@@ -109,6 +110,17 @@ function Player() {
 | `isAvailable` | iOS 和 Mac Catalyst 上为 `true`。 |
 
 见[表单与键盘](./forms-and-keyboard.md#键盘上方的工具栏inputaccessoryview)。
+
+### nsh/desktop
+
+| 导出 | 说明 |
+|---|---|
+| `Window` | 窗口：`setTitle`、`setTitleBar("hidden")`（自定义标题栏）、`minimize`、`toggleMaximize`、`toggleFullScreen`、`close`。 |
+| `titleBar` | 隐藏的标题栏的高度，以及系统窗口按钮占用的空间（响应式）。 |
+| `Menu` | `setApplicationMenu(items)`（菜单栏，带快捷键）和 `popup(items, at?)`（右键菜单）。 |
+| `isAvailable` | 在 macOS、Windows 和 Linux 上为 `true`。 |
+
+见 [nsh/desktop](../modules/nsh-desktop.md)。
 
 ### 状态栏
 

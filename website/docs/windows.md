@@ -9,7 +9,8 @@ order: 3.26
 nsh apps also run on Windows. The Windows backend draws them in Win32 windows with Direct2D and lays out text with
 DirectWrite; the core, the reactive graph, the renderer, Taffy layout and the `nsh/ui/mobile` components are the same
 as on iOS and Android, so one bundle runs everywhere. On Windows, `Platform.OS` is `"windows"` and the
-`desktop={{…}}` props apply.
+`desktop={{…}}` props apply. The window's title, a title bar of the app's own, the menu bar and context menus come from
+[`nsh/desktop`](../modules/nsh-desktop.md).
 
 ## Requirements
 
@@ -142,7 +143,9 @@ Different, or not supported:
   `borderCurve: "continuous"` draws circular corners.
 - **Text**: head and middle ellipses on a single line only (more lines get a tail ellipsis); color emoji from COLR
   fonts only; small caps only where the font has them.
-- **Text inputs**: no context menu; keyboard types and autofill do not apply; Tab moves between text fields.
+- **Text inputs**: keyboard types and autofill do not apply (there is no software keyboard); Tab moves between text
+  fields. A right click opens the edit menu (Undo, Cut, Copy, Paste, Delete, Select All), as on selectable text (Copy,
+  Select All).
 - **Accessibility** (UI Automation): headers' titles and buttons, dialogs and toasts are not exposed; headings report
   level 1.
 - **Input accessory views** and the **status bar** (no desktop equivalent).

@@ -57,6 +57,7 @@ What exists today:
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | Swipe back and forward in the page history. |
 | `desktop={{ headerLargeTitle }}`, `desktop={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`: a card centered in the window. |
+| `desktop={{ windowDrag }}` | every element | Pressing it drags the window, as the system's title bar would (see [nsh/desktop](../modules/nsh-desktop.md#a-title-bar-of-your-own)). |
 
 `desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 
@@ -64,7 +65,7 @@ Cross-platform props whose effect differs slightly are not grouped: `Alert.alert
 
 ## Platform modules
 
-`nsh/ios` and `nsh/android` hold the APIs only one platform has. Both can be imported on every platform, so one bundle runs everywhere: on the other platform their functions do nothing and their components render nothing. Each exports `isAvailable`, which is `true` only on its own platform.
+`nsh/ios` and `nsh/android` hold the APIs only one platform has, `nsh/desktop` those only desktops have. All can be imported on every platform, so one bundle runs everywhere: elsewhere their functions do nothing and their components render nothing. Each exports `isAvailable`, which is `true` only on its own platforms.
 
 ### nsh/android
 
@@ -109,6 +110,17 @@ The back button is handled by the top modal first, then the top navigation stack
 | `isAvailable` | `true` on iOS and Mac Catalyst. |
 
 See [Forms and the keyboard](./forms-and-keyboard.md#a-bar-over-the-keyboard-ios-inputaccessoryview).
+
+### nsh/desktop
+
+| Export | Description |
+|---|---|
+| `Window` | The window: `setTitle`, `setTitleBar("hidden")` for a title bar of the app's own, `minimize`, `toggleMaximize`, `toggleFullScreen`, `close`. |
+| `titleBar` | The hidden title bar's height and the room the system's window controls take (reactive). |
+| `Menu` | `setApplicationMenu(items)` (the menu bar, with shortcuts) and `popup(items, at?)` (context menus). |
+| `isAvailable` | `true` on macOS, Windows and Linux. |
+
+See [nsh/desktop](../modules/nsh-desktop.md).
 
 ### The status bar
 

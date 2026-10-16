@@ -62,6 +62,8 @@ pub(crate) const WM_NSH_WAKE: u32 = WM_APP + 1;
 pub(crate) const WM_NSH_TICK: u32 = WM_APP + 2;
 /// A closure from another thread ([`invoke`]); `lparam` owns it.
 const WM_NSH_CALL: u32 = WM_APP + 3;
+/// A context menu to show ([`crate::chrome::show_popup`]).
+pub(crate) const WM_NSH_MENU: u32 = WM_APP + 4;
 
 const CLASS: PCWSTR = w!("NshWindow");
 const DISPATCH_CLASS: PCWSTR = w!("NshDispatcher");
@@ -485,6 +487,30 @@ fn handle(
     match msg {
         WM_NSH_WAKE => surface.drain(),
         WM_NSH_TICK => surface.tick(),
+        WM_NSH_MENU => crate::chrome::show_popup(surface),
+        WM_NCCALCSIZE => return crate::chrome::nc_calc_size(surface, hwnd, wparam, lparam),
+        WM_NCHITTEST if data.top_level => {
+            return crate::chrome::nc_hit_test(surface, hwnd, lparam);
+        }
+        WM_NCMOUSEMOVE | WM_NCMOUSELEAVE | WM_NCLBUTTONDOWN | WM_NCLBUTTONUP
+        | WM_NCLBUTTONDBLCLK => {
+            return crate::chrome::nc_mouse(surface, hwnd, msg, wparam);
+        }
+        WM_NCACTIVATE if data.top_level => {
+            return crate::chrome::nc_activate(surface, hwnd, wparam, lparam);
+        }
+        WM_NCPAINT if data.top_level => {
+            // SAFETY: default handling, then the dark menu bar's line.
+            let r = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            crate::chrome::paint_menu_bar_line(surface, hwnd);
+            return Some(r);
+        }
+        // `WM_UAHDRAWMENU`, `WM_UAHDRAWMENUITEM`: the menu bar.
+        0x0091 | 0x0092 => return crate::chrome::draw_menu_bar(surface, hwnd, msg, lparam),
+        WM_COMMAND if (wparam.0 >> 16) & 0xFFFF == 0 && lparam.0 == 0 => {
+            crate::chrome::menu_command(surface, (wparam.0 & 0xFFFF) as u16);
+            return Some(LRESULT(0));
+        }
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
             // SAFETY: paired Begin / EndPaint on this window.
@@ -538,6 +564,7 @@ fn handle(
                 // SAFETY: a valid structure for this window.
                 let _ = unsafe { TrackMouseEvent(&mut track) };
             }
+            crate::chrome::client_mouse_moved(surface);
             let (x, y) = point(lparam);
             crate::input::pointer(surface, mouse_event(PointerKind::Move, x, y, 0, 1, surface));
         }
