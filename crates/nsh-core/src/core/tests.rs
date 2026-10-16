@@ -1010,6 +1010,162 @@ fn list_keeps_visible_content_anchored() {
     );
 }
 
+/// A list of 100 rows estimated at 50 pt in a 400 pt viewport.
+fn estimated_list(c: &mut Core<FakeEngine>) {
+    apply(
+        c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::List,
+            },
+            style_op(2, &[("height", StyleValue::Number(400.0))]),
+            Op::SetProp {
+                id: 2,
+                prop: Prop::EstimatedItemSize(50.0),
+            },
+            Op::SetProp {
+                id: 2,
+                prop: Prop::Count(100),
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+}
+
+/// Where list 2 is after `batch`: from `start`, its `ScrollTo` commands
+/// and `ScrollBy` items in order.
+fn scrolled(batch: &MountBatch, start: f32) -> f32 {
+    batch.items.iter().fold(start, |at, item| match item {
+        MountItem::Command {
+            id: 2,
+            command: Command::ScrollTo { y, .. },
+        } => *y,
+        MountItem::ScrollBy { id: 2, dy, .. } => at + dy,
+        _ => at,
+    })
+}
+
+#[test]
+fn scroll_commands_follow_their_target_as_rows_are_measured() {
+    let mut c = core();
+    estimated_list(&mut c);
+    c.commit();
+    let (mut next_id, mut cells) = (100, Vec::new());
+    render_binds(&mut c, &mut next_id, &mut cells, 50.0);
+    c.commit();
+    // The rows are really 80 pt: the end of the estimated content is too
+    // early, and the list follows the end once the last rows measure.
+    c.apply(Op::Command {
+        id: 2,
+        command: Command::ScrollToEnd { animated: false },
+    })
+    .unwrap();
+    let mut at = scrolled(&c.commit().unwrap(), 0.0);
+    for _ in 0..4 {
+        render_binds(&mut c, &mut next_id, &mut cells, 80.0);
+        if let Some(batch) = c.commit() {
+            at = scrolled(&batch, at);
+        }
+    }
+    let key = c.key(2).unwrap();
+    let content = c.nodes[key as usize]
+        .scroll
+        .as_ref()
+        .unwrap()
+        .content
+        .unwrap();
+    assert_eq!(at, content.height - 400.0);
+
+    // Item 50 in the middle of the viewport.
+    c.apply(Op::Command {
+        id: 2,
+        command: Command::ScrollToIndex {
+            index: 50,
+            animated: false,
+            view_position: 0.5,
+            view_offset: 0.0,
+        },
+    })
+    .unwrap();
+    at = scrolled(&c.commit().unwrap(), at);
+    for _ in 0..4 {
+        render_binds(&mut c, &mut next_id, &mut cells, 80.0);
+        if let Some(batch) = c.commit() {
+            at = scrolled(&batch, at);
+        }
+    }
+    let list = c.nodes[key as usize].list.as_ref().unwrap();
+    assert_eq!(list.item_at(50) + 40.0 - at, 200.0);
+    assert!(!list.pinned(), "settled");
+
+    // Scrolled by the user, the list stays where it is put.
+    c.set_scroll_offset(2, 0.0, at - 600.0, u32::MAX);
+    c.commit();
+    assert!(render_binds(&mut c, &mut next_id, &mut cells, 120.0) > 0);
+    let batch = c.commit().unwrap();
+    assert!(
+        !batch
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::Command { id: 2, .. })),
+        "no scroll command after the user scrolled"
+    );
+}
+
+#[test]
+fn animated_scroll_commands_retarget_while_rows_are_measured() {
+    let mut c = core();
+    estimated_list(&mut c);
+    c.commit();
+    let (mut next_id, mut cells) = (100, Vec::new());
+    render_binds(&mut c, &mut next_id, &mut cells, 80.0);
+    c.commit();
+    c.apply(Op::Command {
+        id: 2,
+        command: Command::ScrollToEnd { animated: true },
+    })
+    .unwrap();
+    let first = scrolled(&c.commit().unwrap(), 0.0);
+    let mut target = first;
+    // The platform starts the animation; the window follows it to the
+    // end, whose rows are measured: the animation is retargeted.
+    c.set_scroll_offset(2, 0.0, 1000.0, 1);
+    c.commit();
+    c.set_scroll_offset(2, 0.0, first - 10.0, 1);
+    c.commit();
+    let mut issued = 1;
+    for _ in 0..4 {
+        render_binds(&mut c, &mut next_id, &mut cells, 80.0);
+        if let Some(batch) = c.commit() {
+            for item in &batch.items {
+                if let MountItem::Command {
+                    id: 2,
+                    command: Command::ScrollTo { y, animated, .. },
+                } = item
+                {
+                    assert!(animated);
+                    target = *y;
+                    issued += 1;
+                }
+            }
+        }
+    }
+    assert!(issued > 1 && target > first, "retargeted");
+    let key = c.key(2).unwrap();
+    let content = c.nodes[key as usize]
+        .scroll
+        .as_ref()
+        .unwrap()
+        .content
+        .unwrap();
+    assert_eq!(target, content.height - 400.0);
+}
+
 #[test]
 fn animated_background_colors_replace_gradients() {
     let mut c = core();

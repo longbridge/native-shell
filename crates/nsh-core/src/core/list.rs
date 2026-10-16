@@ -23,6 +23,14 @@
 //! with a role (`slot="header"`, ...) and are never recycled. Each cell is a
 //! Taffy root of its own (its width follows the list's cross axis), so
 //! scrolling relays out dirty cells only.
+//!
+//! # Scroll commands
+//!
+//! `scrollToEnd` / `scrollToIndex` resolve with estimated sizes for rows
+//! never rendered, so the first offset is off. Their target stays pinned:
+//! after each round of measurements the list follows it (`follow_pin`),
+//! retargeting an animated scroll in flight, until the rows in the
+//! viewport are measured, the user scrolls away or the items change.
 
 use rustc_hash::FxHashMap;
 
@@ -105,6 +113,48 @@ enum PendingScroll {
     To(f32),
 }
 
+/// What a list scroll command asked to show: kept after the command, so
+/// the offset follows the target while the cells around it are measured
+/// (estimated sizes put the first offset off).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum PinTarget {
+    /// `scrollToEnd`.
+    End,
+    /// `scrollToIndex`.
+    Index {
+        index: u32,
+        view_position: f32,
+        view_offset: f32,
+    },
+}
+
+/// A pinned scroll target and the offset the list was last sent to for
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Pin {
+    target: PinTarget,
+    at: f32,
+    /// An animated scroll the platform has not finished: the pin follows
+    /// by retargeting it, and the user moving away is only noticed once
+    /// it landed.
+    animating: bool,
+}
+
+/// How a pinned list follows its target (`ListState::follow_pin`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum Follow {
+    /// Already there.
+    Stay,
+    /// Scroll by this much now (with the anchoring `ScrollBy`).
+    By(f32),
+    /// Retarget the animated scroll to this offset.
+    To(f32),
+}
+
+/// How far a reported offset may be from a pinned one and still count as
+/// the same (platforms round offsets to pixels).
+const PIN_SLACK: f32 = 1.0;
+
 /// A sticky cell's range of travel, in content coordinates along the main
 /// axis: it sits at `start` and is pushed down with the scroll offset
 /// until `end`.
@@ -170,6 +220,9 @@ pub(super) struct ListState {
     moved: Vec<(u32, u32)>,
     /// Scroll that keeps the visible content in place after a splice.
     splice_anchor: f32,
+    /// The target of the last scroll command, until it is reached with
+    /// measured cells or the user scrolls away.
+    pin: Option<Pin>,
 }
 
 impl ListState {
@@ -203,6 +256,7 @@ impl ListState {
             pending: Vec::new(),
             moved: Vec::new(),
             splice_anchor: 0.0,
+            pin: None,
         }
     }
 
@@ -216,6 +270,8 @@ impl ListState {
         if removed == 0 && inserted == 0 {
             return;
         }
+        // The visible content keeps its place instead.
+        self.pin = None;
         // The first visible item and where it is in the viewport.
         let anchor = (!self.inverted && self.count > 0 && self.viewport > 0.0).then(|| {
             let top = self.natural_offset();
@@ -309,6 +365,97 @@ impl ListState {
             self.offset = at;
             self.dirty = true;
         }
+        if let Some(pin) = &mut self.pin
+            && self.pending.is_empty()
+        {
+            if (at - pin.at).abs() <= PIN_SLACK {
+                if pin.animating {
+                    // Landed: a correction may follow.
+                    pin.animating = false;
+                    self.dirty = true;
+                }
+            } else if !pin.animating {
+                // The user scrolled away.
+                self.pin = None;
+            }
+        }
+    }
+
+    /// Keeps following `target` after a scroll command sent the list to
+    /// `offset` (animated or not); `None` (a plain offset) ends the pin.
+    pub(super) fn pin(&mut self, target: Option<PinTarget>, offset: f32, animated: bool) {
+        self.pin = target.map(|target| Pin {
+            target,
+            at: offset,
+            animating: animated,
+        });
+    }
+
+    /// The content offset for `target` with the sizes known now.
+    pub(super) fn target_offset(&self, target: PinTarget) -> f32 {
+        match target {
+            PinTarget::End => self.end_offset(),
+            PinTarget::Index {
+                index,
+                view_position,
+                view_offset,
+            } => self.offset_for_index(index, view_position, view_offset),
+        }
+    }
+
+    /// After measurements: where a pinned list goes for its target, which
+    /// moved as estimated sizes became real ones. The pin ends once the
+    /// list is there and every item in the viewport is measured (nothing
+    /// visible can move it any more).
+    pub(super) fn follow_pin(&mut self, anchored: f32) -> Follow {
+        let Some(mut pin) = self.pin else {
+            return Follow::Stay;
+        };
+        if self.viewport <= 0.0 {
+            return Follow::Stay;
+        }
+        let target = self.target_offset(pin.target);
+        if pin.animating {
+            // The platform moves an animation in flight along with the
+            // anchoring scroll.
+            pin.at += anchored;
+            let follow = if (target - pin.at).abs() > PIN_SLACK {
+                pin.at = target;
+                Follow::To(target)
+            } else {
+                Follow::Stay
+            };
+            self.pin = Some(pin);
+            return follow;
+        }
+        let delta = target - self.offset;
+        if delta != 0.0 {
+            self.jump(target);
+        }
+        pin.at = target;
+        self.pin = (!self.viewport_measured()).then_some(pin);
+        if delta == 0.0 {
+            Follow::Stay
+        } else {
+            Follow::By(delta)
+        }
+    }
+
+    /// Whether a scroll command's target is still followed.
+    #[cfg(test)]
+    pub(super) fn pinned(&self) -> bool {
+        self.pin.is_some()
+    }
+
+    /// Whether every item overlapping the viewport has its measured size.
+    fn viewport_measured(&self) -> bool {
+        let start = self.natural_offset();
+        self.items_in(start, start + self.viewport)
+            .is_none_or(|(first, last)| {
+                self.sizes[first as usize..=last as usize]
+                    .iter()
+                    .all(|s| !s.is_nan())
+            })
     }
 
     // --- Geometry ----------------------------------------------------------
@@ -1190,6 +1337,32 @@ mod tests {
         l.splice(90, 2, 0);
         assert_eq!(l.offset, offset);
         assert_eq!(l.count, 101);
+    }
+
+    #[test]
+    fn pins_follow_until_landed_measured_or_scrolled_away() {
+        let mut l = list(100, 50.0, 400.0);
+        // An animated scroll to the end: retargeted when the end moves,
+        // corrected once it landed.
+        l.pin(Some(PinTarget::End), 4600.0, true);
+        l.issue_scroll_to(4600.0);
+        l.measured(99, 90.0);
+        assert_eq!(l.follow_pin(0.0), Follow::To(4640.0));
+        l.issue_scroll_to(4640.0);
+        l.reported(3000.0, 2);
+        assert!(l.pinned(), "in flight");
+        l.reported(4640.0, 2);
+        l.measured(98, 60.0);
+        assert_eq!(l.follow_pin(0.0), Follow::By(10.0));
+        assert_eq!(l.offset, 4650.0);
+        assert!(l.pinned(), "rows in the viewport not measured yet");
+        // The user scrolls away: the pin ends.
+        l.reported(4000.0, 2);
+        assert!(!l.pinned());
+        // Splices end it too.
+        l.pin(Some(PinTarget::End), 4650.0, false);
+        l.splice(0, 1, 0);
+        assert!(!l.pinned());
     }
 
     #[test]

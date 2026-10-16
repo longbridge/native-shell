@@ -13,7 +13,7 @@ use nsh_animation::AnimationProp;
 use slab::Slab;
 use taffy::{AvailableSpace, NodeId as LayoutId, Overflow, Position, TaffyTree};
 
-use self::list::{ExtraKind, ListState};
+use self::list::{ExtraKind, Follow, ListState, PinTarget};
 pub use self::measure::Measurement;
 use crate::{
     geometry::{Rect, Size},
@@ -3959,6 +3959,14 @@ impl<M: TextEngine> Core<M> {
             // Inverted lists keep their distance from the end instead;
             // `maintainVisibleContentPosition` follows the end near it.
             anchor += list.anchor_end();
+            // The last scroll command's target moves as its cells are
+            // measured: the list follows it.
+            let mut retarget = None;
+            match list.follow_pin(anchor) {
+                Follow::Stay => {}
+                Follow::By(delta) => anchor += delta,
+                Follow::To(offset) => retarget = Some(offset),
+            }
 
             // Scroll commands for the list, now that sizes are known: the
             // window follows a jump in this same commit.
@@ -3967,22 +3975,39 @@ impl<M: TextEngine> Core<M> {
                     continue;
                 }
                 let list = self.nodes[key as usize].list.as_mut().expect("list");
-                let (offset, animated) = match *command {
+                let (pin, animated) = match *command {
                     Command::ScrollToIndex {
                         index,
                         animated,
                         view_position,
                         view_offset,
                     } => (
-                        list.offset_for_index(index, view_position, view_offset),
+                        Some(PinTarget::Index {
+                            index,
+                            view_position,
+                            view_offset,
+                        }),
                         animated,
                     ),
-                    Command::ScrollToEnd { animated } => (list.end_offset(), animated),
-                    Command::ScrollTo { x, y, animated } => {
-                        (if horizontal { x } else { y }, animated)
+                    Command::ScrollToEnd { animated } => (Some(PinTarget::End), animated),
+                    Command::ScrollTo { animated, .. } => (None, animated),
+                    _ => continue,
+                };
+                let offset = match (pin, &*command) {
+                    (Some(pin), _) => list.target_offset(pin),
+                    (None, &Command::ScrollTo { x, y, .. }) => {
+                        if horizontal {
+                            x
+                        } else {
+                            y
+                        }
                     }
                     _ => continue,
                 };
+                // An offset of the app's own ends the pin.
+                list.pin(pin, offset, animated);
+                // A new command replaces the pin's retargeting.
+                retarget = None;
                 if !animated {
                     list.jump(offset);
                 }
@@ -3993,6 +4018,24 @@ impl<M: TextEngine> Core<M> {
                     (0.0, offset)
                 };
                 *command = Command::ScrollTo { x, y, animated };
+            }
+            if let Some(offset) = retarget {
+                self.nodes[key as usize]
+                    .list
+                    .as_mut()
+                    .expect("list")
+                    .issue_scroll_to(offset);
+                let (x, y) = if horizontal {
+                    (offset, 0.0)
+                } else {
+                    (0.0, offset)
+                };
+                let command = Command::ScrollTo {
+                    x,
+                    y,
+                    animated: true,
+                };
+                self.commands.push((id, command));
             }
 
             let list = self.nodes[key as usize].list.as_mut().expect("list");
