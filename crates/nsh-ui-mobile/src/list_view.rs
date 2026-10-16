@@ -34,7 +34,6 @@ pub enum ListViewVariant {
 }
 
 impl Component for ListView {
-    const NAME: &'static str = "nsh.list_view";
     type Props = ListViewProps;
     type Event = NoEvent;
 

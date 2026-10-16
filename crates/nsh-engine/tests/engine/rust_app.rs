@@ -26,7 +26,6 @@ struct CounterProps {
 }
 
 impl Component for Counter {
-    const NAME: &'static str = "app.counter";
     type Props = CounterProps;
     type Event = NoEvent;
 
@@ -124,7 +123,6 @@ struct Navigation {
 }
 
 impl Component for Navigation {
-    const NAME: &'static str = "app.navigation";
     type Props = ();
     type Event = NoEvent;
 
@@ -225,7 +223,6 @@ struct WithCard {
 }
 
 impl Component for WithCard {
-    const NAME: &'static str = "app.with_card";
     type Props = ();
     type Event = NoEvent;
 
@@ -330,7 +327,6 @@ struct BackCounter {
 }
 
 impl Component for BackCounter {
-    const NAME: &'static str = "app.back_counter";
     type Props = ();
     type Event = NoEvent;
 
@@ -410,7 +406,6 @@ struct Measured {
 }
 
 impl Component for Measured {
-    const NAME: &'static str = "app.measured";
     type Props = ();
     type Event = NoEvent;
 
@@ -489,7 +484,6 @@ struct ButtonRows {
 }
 
 impl Component for ButtonRows {
-    const NAME: &'static str = "app.button_rows";
     type Props = ();
     type Event = NoEvent;
 
@@ -564,7 +558,6 @@ struct WithSheet {
 }
 
 impl Component for WithSheet {
-    const NAME: &'static str = "app.with_sheet";
     type Props = ();
     type Event = NoEvent;
 

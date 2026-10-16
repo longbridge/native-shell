@@ -29,7 +29,6 @@ pub struct Gallery {
 }
 
 impl Component for Gallery {
-    const NAME: &'static str = "gallery.gallery";
     type Props = ();
     type Event = NoEvent;
 

@@ -381,7 +381,6 @@ impl Form {
 }
 
 impl Component for Form {
-    const NAME: &'static str = "gallery.form";
     type Props = ();
     type Event = NoEvent;
 
@@ -426,7 +425,6 @@ struct AutoGrow {
 }
 
 impl Component for AutoGrow {
-    const NAME: &'static str = "gallery.form.auto_grow";
     type Props = ();
     type Event = NoEvent;
 
@@ -479,7 +477,6 @@ impl SelectionDemo {
 }
 
 impl Component for SelectionDemo {
-    const NAME: &'static str = "gallery.form.selection";
     type Props = ();
     type Event = NoEvent;
 
@@ -576,7 +573,6 @@ impl MessageBar {
 }
 
 impl Component for MessageBar {
-    const NAME: &'static str = "gallery.form.message_bar";
     type Props = ();
     type Event = NoEvent;
 

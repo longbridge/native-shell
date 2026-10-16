@@ -362,7 +362,6 @@ impl Images {
 }
 
 impl Component for Images {
-    const NAME: &'static str = "gallery.images";
     type Props = ();
     type Event = NoEvent;
 

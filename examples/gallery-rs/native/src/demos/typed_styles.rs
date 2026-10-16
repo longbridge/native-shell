@@ -92,7 +92,6 @@ pub(crate) struct TypedStyles {
 }
 
 impl Component for TypedStyles {
-    const NAME: &'static str = "gallery.typed_styles";
     type Props = ();
     type Event = NoEvent;
 

@@ -18,7 +18,6 @@ pub struct GroupProps {
 }
 
 impl Component for Group {
-    const NAME: &'static str = "nsh.group";
     type Props = GroupProps;
     type Event = NoEvent;
 

@@ -24,7 +24,6 @@ struct Sketch {
 }
 
 impl Component for Sketch {
-    const NAME: &'static str = "app.sketch";
     type Props = ();
     type Event = NoEvent;
 

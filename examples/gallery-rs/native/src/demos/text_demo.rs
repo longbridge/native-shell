@@ -104,7 +104,6 @@ impl TextDemo {
 }
 
 impl Component for TextDemo {
-    const NAME: &'static str = "gallery.text_demo";
     type Props = ();
     type Event = NoEvent;
 

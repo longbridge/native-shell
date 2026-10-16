@@ -15,7 +15,8 @@ use crate::{Command, Dialog, JsonValue, LayoutAnimation, ROOT_ID, StatusBarSetti
 
 /// A JS object of functions (`#[module]` implements it).
 pub trait Module {
-    /// Its JS name (the struct's: `Alert`).
+    /// Its JS name: the type's own (`#[module] impl Alert`: `Alert`), which
+    /// `#[module]` writes; JS calls its functions by it (`Alert.alert`).
     const NAME: &'static str;
     /// Documentation (the `impl` block's doc comment).
     const DOC: &'static str;

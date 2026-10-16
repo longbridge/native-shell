@@ -18,7 +18,6 @@ use crate::{
 struct Insets;
 
 impl Component for Insets {
-    const NAME: &'static str = "gallery.insets";
     type Props = ();
     type Event = NoEvent;
 
@@ -170,7 +169,6 @@ fn locked(_: &mut RenderCx<'_, Gallery>) -> Screen {
 struct DraftInput;
 
 impl Component for DraftInput {
-    const NAME: &'static str = "gallery.draft_input";
     type Props = ();
     type Event = NoEvent;
 
@@ -326,7 +324,6 @@ pub(crate) struct Navigation {
 }
 
 impl Component for Navigation {
-    const NAME: &'static str = "gallery.navigation";
     type Props = ();
     type Event = NoEvent;
 

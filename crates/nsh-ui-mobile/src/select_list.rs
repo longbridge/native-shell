@@ -34,7 +34,6 @@ pub enum SelectListEvent {
 }
 
 impl Component for SelectList {
-    const NAME: &'static str = "nsh.select_list";
     type Props = SelectListProps;
     type Event = SelectListEvent;
 

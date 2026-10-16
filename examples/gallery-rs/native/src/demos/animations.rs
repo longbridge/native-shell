@@ -83,7 +83,6 @@ impl Curves {
 }
 
 impl Component for Curves {
-    const NAME: &'static str = "gallery.animations.curves";
     type Props = ();
     type Event = NoEvent;
 
@@ -198,7 +197,6 @@ impl Composition {
 }
 
 impl Component for Composition {
-    const NAME: &'static str = "gallery.animations.composition";
     type Props = ();
     type Event = NoEvent;
 
@@ -341,7 +339,6 @@ impl Springs {
 }
 
 impl Component for Springs {
-    const NAME: &'static str = "gallery.animations.springs";
     type Props = ();
     type Event = NoEvent;
 
@@ -403,7 +400,6 @@ impl Interpolations {
 }
 
 impl Component for Interpolations {
-    const NAME: &'static str = "gallery.animations.interpolations";
     type Props = ();
     type Event = NoEvent;
 
@@ -479,7 +475,6 @@ struct HidingHeader {
 }
 
 impl Component for HidingHeader {
-    const NAME: &'static str = "gallery.animations.hiding_header";
     type Props = ();
     type Event = NoEvent;
 
@@ -544,7 +539,6 @@ struct Layout {
 }
 
 impl Component for Layout {
-    const NAME: &'static str = "gallery.animations.layout";
     type Props = ();
     type Event = NoEvent;
 
@@ -582,7 +576,6 @@ impl Component for Layout {
 pub(crate) struct Animations;
 
 impl Component for Animations {
-    const NAME: &'static str = "gallery.animations";
     type Props = ();
     type Event = NoEvent;
 

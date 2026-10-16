@@ -72,7 +72,6 @@ fn controls(content: impl IntoIterator<Item = AnyElement>) -> AnyElement {
 }
 
 impl Component for Media {
-    const NAME: &'static str = "gallery.media";
     type Props = ();
     type Event = NoEvent;
 

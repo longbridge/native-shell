@@ -59,7 +59,6 @@ impl ProgressRing {
 }
 
 impl Component for ProgressRing {
-    const NAME: &'static str = "gallery.canvas.progress_ring";
     type Props = ();
     type Event = NoEvent;
 
@@ -212,7 +211,6 @@ impl Chart {
 }
 
 impl Component for Chart {
-    const NAME: &'static str = "gallery.canvas.chart";
     type Props = ();
     type Event = NoEvent;
 
@@ -256,7 +254,6 @@ struct Clock {
 }
 
 impl Component for Clock {
-    const NAME: &'static str = "gallery.canvas.clock";
     type Props = ();
     type Event = NoEvent;
 
@@ -430,7 +427,6 @@ impl Compositing {
 }
 
 impl Component for Compositing {
-    const NAME: &'static str = "gallery.canvas.compositing";
     type Props = ();
     type Event = NoEvent;
 
@@ -463,7 +459,6 @@ struct Sketch {
 }
 
 impl Component for Sketch {
-    const NAME: &'static str = "gallery.canvas.sketch";
     type Props = ();
     type Event = NoEvent;
 
@@ -520,7 +515,6 @@ impl Component for Sketch {
 pub(crate) struct CanvasDemo;
 
 impl Component for CanvasDemo {
-    const NAME: &'static str = "gallery.canvas";
     type Props = ();
     type Event = NoEvent;
 

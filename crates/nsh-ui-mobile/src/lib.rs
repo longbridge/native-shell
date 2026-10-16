@@ -72,3 +72,33 @@ pub fn registry() -> Registry {
 pub fn specs() -> Vec<Arc<ComponentSpec>> {
     registry().specs()
 }
+
+#[cfg(test)]
+mod tests {
+    /// The exports are named after the types (`std::any::type_name`): a
+    /// renamed type, or a compiler that formats type names differently,
+    /// changes what apps import.
+    #[test]
+    fn the_exports_are_pinned() {
+        let registry = super::registry();
+        let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
+        assert_eq!(
+            components,
+            [
+                "Button",
+                "Card",
+                "Group",
+                "KeyboardAvoidingView",
+                "ListView",
+                "SafeAreaView",
+                "SelectList",
+                "Sheet",
+                "StatusBar",
+                "Stepper",
+                "TextField",
+            ]
+        );
+        let modules: Vec<_> = registry.module_specs().iter().map(|m| m.name).collect();
+        assert_eq!(modules, ["ActionSheet", "Alert", "Keyboard", "StatusBar"]);
+    }
+}

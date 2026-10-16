@@ -150,7 +150,6 @@ impl Stepper {
 }
 
 impl Component for Stepper {
-    const NAME: &'static str = "nsh.stepper";
     type Props = StepperProps;
     type Event = StepperEvent;
     const METHODS: &'static [Method<Self>] = Self::JS_METHODS;

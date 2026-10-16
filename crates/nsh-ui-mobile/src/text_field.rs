@@ -64,7 +64,6 @@ impl TextField {
 }
 
 impl Component for TextField {
-    const NAME: &'static str = "nsh.text_field";
     type Props = TextFieldProps;
     type Event = TextFieldEvent;
 

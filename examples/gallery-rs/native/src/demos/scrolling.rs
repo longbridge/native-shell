@@ -41,7 +41,6 @@ enum SwitchEvent {
 }
 
 impl Component for Switch {
-    const NAME: &'static str = "gallery.switch";
     type Props = SwitchProps;
     type Event = SwitchEvent;
 
@@ -144,7 +143,6 @@ struct Pager {
 }
 
 impl Component for Pager {
-    const NAME: &'static str = "gallery.scrolling.pager";
     type Props = ();
     type Event = NoEvent;
 
@@ -219,7 +217,6 @@ struct Cards {
 }
 
 impl Component for Cards {
-    const NAME: &'static str = "gallery.scrolling.cards";
     type Props = ();
     type Event = NoEvent;
 
@@ -306,7 +303,6 @@ impl Default for Events {
 }
 
 impl Component for Events {
-    const NAME: &'static str = "gallery.scrolling.events";
     type Props = ();
     type Event = NoEvent;
 
@@ -434,7 +430,6 @@ impl Zoom {
 }
 
 impl Component for Zoom {
-    const NAME: &'static str = "gallery.scrolling.zoom";
     type Props = ();
     type Event = NoEvent;
 
@@ -541,7 +536,6 @@ impl Feed {
 }
 
 impl Component for Feed {
-    const NAME: &'static str = "gallery.scrolling.feed";
     type Props = ();
     type Event = NoEvent;
 
@@ -602,7 +596,6 @@ pub(crate) struct Scrolling {
 }
 
 impl Component for Scrolling {
-    const NAME: &'static str = "gallery.scrolling";
     type Props = ();
     type Event = NoEvent;
 

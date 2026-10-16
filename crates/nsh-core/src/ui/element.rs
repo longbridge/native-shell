@@ -1775,7 +1775,7 @@ impl<C: Component> ComponentElement<C> {
     pub(crate) fn new(props: C::Props) -> Self {
         let mut node = ElNode::new(Tag::View);
         node.kind = ElKind::Component(ComponentEl {
-            name: C::NAME,
+            name: super::component::name_of::<C>(),
             make: super::component::make_instance::<C>,
             spec: ComponentSpec::of::<C>,
             props: Box::new(props),
@@ -1810,7 +1810,9 @@ impl<C: Component> ComponentElement<C> {
     pub fn items(mut self, list: super::VirtualList) -> Self {
         match <C::Props as super::Props>::ITEMS {
             Some(name) => self.node.children.push(list.into_items(name)),
-            None => log::error!(target: "js", "{} has no `Items` prop to fill", C::NAME),
+            None => {
+                log::error!(target: "js", "{} has no `Items` prop to fill", super::component::name_of::<C>())
+            }
         }
         self
     }

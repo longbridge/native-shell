@@ -2,7 +2,11 @@
 //! (derived), the [`Registry`] a surface renders from, and the JS glue and
 //! TypeScript declarations generated from them ([`declarations`]).
 
-use std::{any::Any, fmt, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    fmt,
+    sync::Arc,
+};
 
 use rustc_hash::FxHashMap;
 
@@ -18,12 +22,16 @@ use crate::JsonValue;
 /// come from JS (or from the component that renders it); its events go to
 /// JS. Resources it owns are freed by `Drop`; its timers end with it.
 ///
+/// It is registered under its type's name ([`std::any::type_name`]:
+/// `nsh_ui_mobile::button::Button`) and exported to JS as the type's own
+/// name (`Button`), so neither is written by hand
+/// ([`Registry::register`]).
+///
 /// ```ignore
 /// #[derive(Default)]
 /// pub struct Button;
 ///
 /// impl Component for Button {
-///     const NAME: &str = "nsh.button";
 ///     type Props = ButtonProps;
 ///     type Event = ButtonEvent;
 ///
@@ -33,10 +41,6 @@ use crate::JsonValue;
 /// }
 /// ```
 pub trait Component: Default + 'static {
-    /// Its registered name (`nsh.button`); the JS export is the last part
-    /// in Pascal case (`Button`).
-    const NAME: &'static str;
-
     /// Its props (`#[derive(Props)]`).
     type Props: Props;
 
@@ -104,7 +108,7 @@ pub trait Component: Default + 'static {
 /// A component's code panicked ([`Component::catch_error`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComponentError {
-    /// The component that failed (its registered name).
+    /// The component that failed (its registered name: its type's).
     pub component: &'static str,
     /// What its code panicked with.
     pub message: String,
@@ -286,9 +290,10 @@ impl Event for NoEvent {
 /// from it ([`declarations`]).
 #[derive(Debug, Clone)]
 pub struct ComponentSpec {
-    /// Its registered name (`nsh.button`).
+    /// Its registered name: its type's ([`std::any::type_name`]:
+    /// `nsh_ui_mobile::button::Button`), unique within one binary.
     pub name: &'static str,
-    /// Its JS export (`Button`).
+    /// Its JS export: the type's own name (`Button`).
     pub export: String,
     /// Documentation.
     pub doc: &'static str,
@@ -320,9 +325,10 @@ impl ComponentSpec {
                 returns: m.returns.map(|ts| ts(&mut types)),
             })
             .collect();
+        let name = name_of::<C>();
         Self {
-            name: C::NAME,
-            export: export_name(C::NAME),
+            name,
+            export: export_name(name).to_owned(),
             doc: C::Props::doc(),
             props,
             events,
@@ -361,22 +367,19 @@ impl ComponentSpec {
     }
 }
 
-/// `nsh.tab_bar` -> `TabBar`.
-fn export_name(name: &str) -> String {
-    let last = name.rsplit('.').next().unwrap_or(name);
-    let mut out = String::with_capacity(last.len());
-    let mut upper = true;
-    for c in last.chars() {
-        if c == '_' || c == '-' {
-            upper = true;
-        } else if upper {
-            out.push(c.to_ascii_uppercase());
-            upper = false;
-        } else {
-            out.push(c);
-        }
-    }
-    out
+/// The registered name of component `C`: its type's. It is only compared
+/// within one binary, so the format of [`std::any::type_name`] may change
+/// between compilers; the exports, which JS sees, are pinned by tests.
+pub(crate) fn name_of<C: Component>() -> &'static str {
+    std::any::type_name::<C>()
+}
+
+/// A type's own name, its JS export: `nsh_ui_mobile::tab_bar::TabBar` ->
+/// `TabBar` (a generic one's without its arguments: `app::Picker<app::Fruit>`
+/// -> `Picker`).
+fn export_name(type_name: &str) -> &str {
+    let path = type_name.split('<').next().unwrap_or(type_name);
+    path.rsplit("::").next().unwrap_or(path)
 }
 
 /// An instance: a component's state and props, their types erased.
@@ -492,7 +495,7 @@ impl<C: Component> AnyInstance for Instance<C> {
     }
 
     fn name(&self) -> &'static str {
-        C::NAME
+        name_of::<C>()
     }
 
     fn call(
@@ -587,12 +590,16 @@ pub(crate) fn make_instance<C: Component>() -> Box<dyn AnyInstance> {
 struct ComponentType {
     spec: Arc<ComponentSpec>,
     make: fn() -> Box<dyn AnyInstance>,
+    /// Tells two types of the same name apart (two versions of a crate).
+    id: TypeId,
 }
 
 #[derive(Clone)]
 struct ModuleType {
     spec: Arc<ModuleSpec>,
     functions: &'static [Function],
+    /// The type that implements it.
+    type_name: &'static str,
 }
 
 /// What a UI set exports to JS: its components and modules, and what it
@@ -627,26 +634,70 @@ impl Registry {
         Self::default()
     }
 
-    /// Registers component `C` under [`Component::NAME`].
+    /// Registers component `C` under its type's name, exported to JS as
+    /// the type's own name ([`ComponentSpec::name`], [`ComponentSpec::export`]).
+    ///
+    /// # Panics
+    ///
+    /// When `C` is registered already, another type of the same name is
+    /// (two versions of one crate), or another component of the set has the
+    /// same export: a mistake in the code, caught by the app's first run.
+    #[track_caller]
     pub fn register<C: Component>(&mut self) -> &mut Self {
-        Arc::make_mut(&mut self.types).insert(
-            C::NAME,
+        let spec = ComponentSpec::of::<C>();
+        let types = Arc::make_mut(&mut self.types);
+        if let Some(old) = types.get(spec.name) {
+            let set = self.ui_set.or(self.namespace);
+            panic!("{}", same_name(spec.name, old.id, TypeId::of::<C>(), set));
+        }
+        if let Some(other) = types.values().find(|t| t.spec.export == spec.export) {
+            panic!(
+                "components `{}` and `{}` are both exported as `{}`{}: rename one",
+                other.spec.name,
+                spec.name,
+                spec.export,
+                of_set(self.ui_set.or(self.namespace)),
+            );
+        }
+        types.insert(
+            spec.name,
             ComponentType {
-                spec: Arc::new(ComponentSpec::of::<C>()),
+                spec: Arc::new(spec),
                 make: make_instance::<C>,
+                id: TypeId::of::<C>(),
             },
         );
         self
     }
 
     /// Registers module `M`: its functions on a JS object named
-    /// [`Module::NAME`].
+    /// [`Module::NAME`] (merged into the component exported by that name, if
+    /// the set has one).
+    ///
+    /// # Panics
+    ///
+    /// When the set has a module of that name already.
+    #[track_caller]
     pub fn module<M: Module>(&mut self) -> &mut Self {
-        Arc::make_mut(&mut self.modules).insert(
+        let type_name = std::any::type_name::<M>();
+        let modules = Arc::make_mut(&mut self.modules);
+        if let Some(old) = modules.get(M::NAME) {
+            panic!(
+                "{}",
+                same_module(
+                    M::NAME,
+                    old.type_name,
+                    type_name,
+                    self.ui_set.or(self.namespace)
+                )
+            );
+        }
+        modules.insert(
             M::NAME,
             ModuleType {
                 spec: Arc::new(ModuleSpec::of::<M>()),
                 functions: M::FUNCTIONS,
+                type_name,
             },
         );
         self
@@ -662,21 +713,31 @@ impl Registry {
     }
 
     /// The components and modules of all of `sets`, for finding them by
-    /// name (the core's view of the sets a host serves; names are unique
-    /// across them). Not a module of its own.
+    /// name (the core's view of the sets a host serves). Not a module of its
+    /// own. Components of different sets may share an export (JS imports
+    /// them from different modules), not a name.
+    ///
+    /// # Panics
+    ///
+    /// When two sets register the same component, two types of the same
+    /// name, or modules of the same name (JS calls their functions by it).
+    #[track_caller]
     pub fn merged(sets: &[Registry]) -> Self {
         let mut out = Self::default();
         for set in sets {
             let types = Arc::make_mut(&mut out.types);
             for (name, ty) in set.types.iter() {
-                if types.insert(name, ty.clone()).is_some() {
-                    log::warn!("two UI sets register component `{name}`");
+                if let Some(old) = types.insert(name, ty.clone()) {
+                    panic!("{}, by two UI sets", same_name(name, old.id, ty.id, None));
                 }
             }
             let modules = Arc::make_mut(&mut out.modules);
             for (name, m) in set.modules.iter() {
-                if modules.insert(name, m.clone()).is_some() {
-                    log::warn!("two UI sets register module `{name}`");
+                if let Some(old) = modules.insert(name, m.clone()) {
+                    panic!(
+                        "{}, by two UI sets",
+                        same_module(name, old.type_name, m.type_name, None)
+                    );
                 }
             }
         }
@@ -766,10 +827,10 @@ impl Registry {
         specs
     }
 
-    /// The registered components, by name.
+    /// The registered components, by export.
     pub fn specs(&self) -> Vec<Arc<ComponentSpec>> {
         let mut specs: Vec<_> = self.types.values().map(|t| t.spec.clone()).collect();
-        specs.sort_by_key(|s| s.name);
+        specs.sort_by(|a, b| a.export.cmp(&b.export).then(a.name.cmp(b.name)));
         specs
     }
 
@@ -777,6 +838,35 @@ impl Registry {
     pub(crate) fn make(&self, name: &str) -> Option<(Arc<ComponentSpec>, Box<dyn AnyInstance>)> {
         self.types.get(name).map(|t| (t.spec.clone(), (t.make)()))
     }
+}
+
+/// The message of two registrations under component name `name`.
+fn same_name(name: &str, old: TypeId, new: TypeId, set: Option<&str>) -> String {
+    if old == new {
+        format!("component `{name}` is registered twice{}", of_set(set))
+    } else {
+        format!(
+            "two different types named `{name}` are registered{} (two versions of one crate?)",
+            of_set(set)
+        )
+    }
+}
+
+/// The message of two modules named `name`.
+fn same_module(name: &str, old: &str, new: &str, set: Option<&str>) -> String {
+    if old == new {
+        format!("module `{old}` is registered twice{}", of_set(set))
+    } else {
+        format!(
+            "modules `{old}` and `{new}` are both named `{name}`{}: rename one",
+            of_set(set)
+        )
+    }
+}
+
+/// ` in `nsh/ui/mobile`` for a registry with a specifier.
+fn of_set(set: Option<&str>) -> String {
+    set.map(|s| format!(" in `{s}`")).unwrap_or_default()
 }
 
 /// The declarations of what `registry`'s specs export: one component per
@@ -995,7 +1085,6 @@ mod tests {
     }
 
     impl Component for Stepper {
-        const NAME: &'static str = "test.number_stepper";
         type Props = StepperProps;
         type Event = StepperEvent;
         const METHODS: &'static [Method<Self>] = Self::JS_METHODS;
@@ -1021,11 +1110,11 @@ mod tests {
             "  onLimit?: (data: number) => void;",
             "  onReset?: () => void;",
             "/** Picks a number. */",
-            "export interface NumberStepperRef {",
+            "export interface StepperRef {",
             "  /** Jumps to `value`. */\n  jumpTo(value: number): void;",
             "  value(): Promise<number>;",
-            "export interface NumberStepperProps extends Omit<ComponentHostProps, \"ref\"> {\n  ref?: NumberStepperRef | ((ref: NumberStepperRef) => void);",
-            "export declare const NumberStepper: ((props: NumberStepperProps) => JSX.Element);",
+            "export interface StepperProps extends Omit<ComponentHostProps, \"ref\"> {\n  ref?: StepperRef | ((ref: StepperRef) => void);",
+            "export declare const Stepper: ((props: StepperProps) => JSX.Element);",
         ] {
             assert!(ts.contains(line), "missing {line:?} in\n{ts}");
         }
@@ -1045,5 +1134,67 @@ mod tests {
         );
         assert_eq!(StepperEvent::Limit(3).data(), serde_json::json!(3));
         assert_eq!(StepperEvent::Reset.name(), "reset");
+    }
+
+    #[test]
+    fn components_are_named_after_their_types() {
+        let mut registry = Registry::ui_set("test/ui");
+        registry.register::<Stepper>();
+        let specs = registry.specs();
+        assert_eq!(specs[0].name, "nsh_core::ui::component::tests::Stepper");
+        assert_eq!(specs[0].export, "Stepper");
+        assert_eq!(export_name("app::picker::Picker<app::Fruit>"), "Picker");
+        assert_eq!(export_name("Bare"), "Bare");
+    }
+
+    mod other {
+        use crate::ui::prelude::*;
+
+        /// Another component exported as `Stepper`.
+        #[derive(Default)]
+        pub(super) struct Stepper;
+
+        impl Component for Stepper {
+            type Props = ();
+            type Event = NoEvent;
+
+            fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+                view()
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "components `nsh_core::ui::component::tests::Stepper` and `nsh_core::ui::component::tests::other::Stepper` are both exported as `Stepper` in `test/ui`"
+    )]
+    fn two_components_of_one_set_cannot_share_an_export() {
+        Registry::ui_set("test/ui")
+            .register::<Stepper>()
+            .register::<other::Stepper>();
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "component `nsh_core::ui::component::tests::Stepper` is registered twice"
+    )]
+    fn a_component_is_registered_once() {
+        Registry::new().register::<Stepper>().register::<Stepper>();
+    }
+
+    #[test]
+    fn sets_may_share_exports_but_not_components() {
+        let mut a = Registry::ui_set("test/a");
+        a.register::<Stepper>();
+        let mut b = Registry::ui_set("test/b");
+        b.register::<other::Stepper>();
+        let merged = Registry::merged(&[a.clone(), b]);
+        assert_eq!(merged.specs().len(), 2);
+        let twice = std::panic::catch_unwind(|| Registry::merged(&[a.clone(), a]));
+        let message = *twice.unwrap_err().downcast::<String>().unwrap();
+        assert_eq!(
+            message,
+            "component `nsh_core::ui::component::tests::Stepper` is registered twice, by two UI sets"
+        );
     }
 }

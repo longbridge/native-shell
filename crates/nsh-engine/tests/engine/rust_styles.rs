@@ -26,7 +26,6 @@ struct Card {
 }
 
 impl Component for Card {
-    const NAME: &'static str = "app.styled_card";
     type Props = ();
     type Event = NoEvent;
 

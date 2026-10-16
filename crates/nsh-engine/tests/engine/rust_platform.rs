@@ -147,7 +147,6 @@ impl Assets for CrateAssets {
 struct Label;
 
 impl Component for Label {
-    const NAME: &'static str = "app.label";
     type Props = ();
     type Event = NoEvent;
 
@@ -198,7 +197,6 @@ struct Frames {
 }
 
 impl Component for Frames {
-    const NAME: &'static str = "app.frames";
     type Props = ();
     type Event = NoEvent;
 
@@ -258,7 +256,6 @@ struct Direction {
 }
 
 impl Component for Direction {
-    const NAME: &'static str = "app.direction";
     type Props = ();
     type Event = NoEvent;
 
@@ -313,7 +310,6 @@ fn components_set_the_layout_direction() {
 struct Device;
 
 impl Component for Device {
-    const NAME: &'static str = "app.device";
     type Props = ();
     type Event = NoEvent;
 

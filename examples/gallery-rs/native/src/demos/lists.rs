@@ -32,7 +32,6 @@ struct Grid {
 }
 
 impl Component for Grid {
-    const NAME: &'static str = "gallery.lists.grid";
     type Props = ();
     type Event = NoEvent;
 
@@ -125,7 +124,6 @@ struct Contacts {
 }
 
 impl Component for Contacts {
-    const NAME: &'static str = "gallery.lists.contacts";
     type Props = ();
     type Event = NoEvent;
 
@@ -215,7 +213,6 @@ impl Chat {
 }
 
 impl Component for Chat {
-    const NAME: &'static str = "gallery.lists.chat";
     type Props = ();
     type Event = NoEvent;
 
@@ -327,7 +324,6 @@ struct More {
 }
 
 impl Component for More {
-    const NAME: &'static str = "gallery.lists.more";
     type Props = ();
     type Event = NoEvent;
 
@@ -470,7 +466,6 @@ pub(crate) struct Lists {
 }
 
 impl Component for Lists {
-    const NAME: &'static str = "gallery.lists";
     type Props = ();
     type Event = NoEvent;
 

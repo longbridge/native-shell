@@ -37,7 +37,6 @@ impl Physics {
 }
 
 impl Component for Physics {
-    const NAME: &'static str = "gallery.physics";
     type Props = ();
     type Event = NoEvent;
 

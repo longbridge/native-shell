@@ -62,7 +62,6 @@ pub enum AvoidBehavior {
 }
 
 impl Component for KeyboardAvoidingView {
-    const NAME: &'static str = "nsh.keyboard_avoiding_view";
     type Props = KeyboardAvoidingViewProps;
     type Event = NoEvent;
 

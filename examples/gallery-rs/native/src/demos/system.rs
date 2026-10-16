@@ -131,7 +131,6 @@ fn chosen(labels: &[&str], index: i32) -> String {
 }
 
 impl Component for System {
-    const NAME: &'static str = "gallery.system";
     type Props = ();
     type Event = NoEvent;
 

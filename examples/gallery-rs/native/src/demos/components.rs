@@ -64,7 +64,6 @@ struct MobileComponents {
 }
 
 impl Component for MobileComponents {
-    const NAME: &'static str = "gallery.components.mobile";
     type Props = ();
     type Event = NoEvent;
 
@@ -140,7 +139,6 @@ struct PressFeedback {
 }
 
 impl Component for PressFeedback {
-    const NAME: &'static str = "gallery.components.press_feedback";
     type Props = ();
     type Event = NoEvent;
 
@@ -207,7 +205,6 @@ struct PressableSheet {
 }
 
 impl Component for PressableSheet {
-    const NAME: &'static str = "gallery.components.sheet";
     type Props = ();
     type Event = NoEvent;
 
@@ -291,7 +288,6 @@ impl LayoutAnimations {
 }
 
 impl Component for LayoutAnimations {
-    const NAME: &'static str = "gallery.components.layout_animations";
     type Props = ();
     type Event = NoEvent;
 
@@ -355,7 +351,6 @@ struct Accessory {
 }
 
 impl Component for Accessory {
-    const NAME: &'static str = "gallery.components.accessory";
     type Props = ();
     type Event = NoEvent;
 
@@ -436,7 +431,6 @@ struct AvoidingPage {
 }
 
 impl Component for AvoidingPage {
-    const NAME: &'static str = "gallery.components.avoiding";
     type Props = ();
     type Event = NoEvent;
 
@@ -503,7 +497,6 @@ struct ModalOptions {
 }
 
 impl Component for ModalOptions {
-    const NAME: &'static str = "gallery.components.modal_options";
     type Props = ();
     type Event = NoEvent;
 
@@ -578,7 +571,6 @@ struct PlatformInfo {
 }
 
 impl Component for PlatformInfo {
-    const NAME: &'static str = "gallery.components.platform";
     type Props = ();
     type Event = NoEvent;
 
@@ -665,7 +657,6 @@ impl Component for PlatformInfo {
 pub(crate) struct Components;
 
 impl Component for Components {
-    const NAME: &'static str = "gallery.components";
     type Props = ();
     type Event = NoEvent;
 

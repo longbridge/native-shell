@@ -51,7 +51,6 @@ impl Card {
 }
 
 impl Component for Card {
-    const NAME: &'static str = "gallery.gestures.card";
     type Props = ();
     type Event = NoEvent;
 
@@ -131,7 +130,6 @@ impl Default for Ball {
 }
 
 impl Component for Ball {
-    const NAME: &'static str = "gallery.gestures.ball";
     type Props = ();
     type Event = NoEvent;
 
@@ -199,7 +197,6 @@ struct TouchLog {
 }
 
 impl Component for TouchLog {
-    const NAME: &'static str = "gallery.gestures.touch_log";
     type Props = ();
     type Event = NoEvent;
 
@@ -269,7 +266,6 @@ impl Gestures {
 }
 
 impl Component for Gestures {
-    const NAME: &'static str = "gallery.gestures";
     type Props = ();
     type Event = NoEvent;
 

@@ -32,7 +32,6 @@ pub enum CardVariant {
 }
 
 impl Component for Card {
-    const NAME: &'static str = "nsh.card";
     type Props = CardProps;
     type Event = NoEvent;
 

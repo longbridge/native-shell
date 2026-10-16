@@ -77,7 +77,6 @@ fn setting(props: &StatusBarProps) -> StatusBarSetting {
 }
 
 impl Component for StatusBar {
-    const NAME: &'static str = "nsh.status_bar";
     type Props = StatusBarProps;
     type Event = NoEvent;
 

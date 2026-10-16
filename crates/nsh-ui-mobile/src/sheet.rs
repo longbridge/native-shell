@@ -76,7 +76,6 @@ impl Sheet {
 }
 
 impl Component for Sheet {
-    const NAME: &'static str = "nsh.sheet";
     type Props = SheetProps;
     type Event = SheetEvent;
 

@@ -32,7 +32,6 @@ struct FlipCard {
 }
 
 impl Component for FlipCard {
-    const NAME: &'static str = "gallery.styles.flip_card";
     type Props = ();
     type Event = NoEvent;
 
@@ -275,7 +274,6 @@ impl Styles {
 }
 
 impl Component for Styles {
-    const NAME: &'static str = "gallery.styles";
     type Props = ();
     type Event = NoEvent;
 

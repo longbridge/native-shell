@@ -2910,7 +2910,6 @@ mod components {
     }
 
     impl Component for Tally {
-        const NAME: &'static str = "test.tally";
         type Props = TallyProps;
         type Event = TallyEvent;
 
@@ -2989,7 +2988,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.tally".into()),
+                    prop: Prop::Component(std::any::type_name::<Tally>().into()),
                 },
                 prop("label", json!("Hits")),
                 Op::Create {
@@ -3109,7 +3108,6 @@ mod components {
     }
 
     impl Component for Card {
-        const NAME: &'static str = "test.card";
         type Props = CardProps;
         type Event = NoEvent;
 
@@ -3138,7 +3136,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.card".into()),
+                    prop: Prop::Component(std::any::type_name::<Card>().into()),
                 },
                 // The glue's node for `header`, then its JSX.
                 Op::Create {
@@ -3238,7 +3236,6 @@ mod components {
     }
 
     impl Component for Outer {
-        const NAME: &'static str = "test.outer";
         type Props = OuterProps;
         type Event = OuterEvent;
 
@@ -3277,7 +3274,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.outer".into()),
+                    prop: Prop::Component(std::any::type_name::<Outer>().into()),
                 },
                 Op::Insert {
                     parent: ROOT_ID,
@@ -3331,7 +3328,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.tally".into()),
+                    prop: Prop::Component(std::any::type_name::<Tally>().into()),
                 },
                 Op::SetProp {
                     id: 2,
@@ -3386,7 +3383,6 @@ mod components {
     struct SwatchProps {}
 
     impl Component for Swatch {
-        const NAME: &'static str = "test.swatch";
         type Props = SwatchProps;
         type Event = NoEvent;
 
@@ -3414,7 +3410,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.swatch".into()),
+                    prop: Prop::Component(std::any::type_name::<Swatch>().into()),
                 },
                 Op::Insert {
                     parent: ROOT_ID,
@@ -3460,7 +3456,6 @@ mod components {
     }
 
     impl Component for Rows {
-        const NAME: &'static str = "test.rows";
         type Props = RowsProps;
         type Event = NoEvent;
 
@@ -3494,7 +3489,7 @@ mod components {
             },
             Op::SetProp {
                 id: 2,
-                prop: Prop::Component("test.rows".into()),
+                prop: Prop::Component(std::any::type_name::<Rows>().into()),
             },
         ];
         ops.extend(child(4));
@@ -3595,7 +3590,6 @@ mod components {
     }
 
     impl Component for Clock {
-        const NAME: &'static str = "test.clock";
         type Props = ClockProps;
         type Event = ClockEvent;
 
@@ -3647,7 +3641,6 @@ mod components {
     struct LoaderProps {}
 
     impl Component for Loader {
-        const NAME: &'static str = "test.loader";
         type Props = LoaderProps;
         type Event = NoEvent;
 
@@ -3721,7 +3714,7 @@ mod components {
                 ],
             )
         };
-        mount(&mut c, 2, "test.clock");
+        mount(&mut c, 2, std::any::type_name::<Clock>());
         assert_eq!(texts(&c.commit().unwrap()), ["0 narrow"]);
 
         // The interval (a task: a timer, then an update) ticks to 3,
@@ -3762,12 +3755,12 @@ mod components {
         assert!(texts(&c.commit().unwrap()).contains(&"10 wide".to_owned()));
 
         // A task with background work and a tokio timer.
-        mount(&mut c, 4, "test.loader");
+        mount(&mut c, 4, std::any::type_name::<Loader>());
         assert!(texts(&c.commit().unwrap()).contains(&"loading".to_owned()));
         run_until(&mut c, |s| s.iter().any(|t| t == "loaded 3628800"));
 
         // A released component's tasks end with it.
-        mount(&mut c, 6, "test.clock");
+        mount(&mut c, 6, std::any::type_name::<Clock>());
         c.commit();
         assert_eq!(c.components.executor.task_count(), 1);
         apply(
@@ -3794,7 +3787,6 @@ mod components {
     }
 
     impl Component for Form {
-        const NAME: &'static str = "test.form";
         type Props = FormProps;
         type Event = NoEvent;
 
@@ -3855,7 +3847,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.form".into()),
+                    prop: Prop::Component(std::any::type_name::<Form>().into()),
                 },
                 Op::Insert {
                     parent: ROOT_ID,
@@ -3965,7 +3957,6 @@ mod components {
     }
 
     impl Component for Theming {
-        const NAME: &'static str = "test.theming";
         type Props = WithChildren;
         type Event = NoEvent;
 
@@ -3986,7 +3977,6 @@ mod components {
     struct AccentSwatch;
 
     impl Component for AccentSwatch {
-        const NAME: &'static str = "test.accent_swatch";
         type Props = FormProps;
         type Event = NoEvent;
 
@@ -4018,13 +4008,13 @@ mod components {
                 },
             ]
         };
-        let mut ops = host(2, "test.theming");
+        let mut ops = host(2, std::any::type_name::<Theming>());
         ops.push(Op::Create {
             id: 4,
             tag: Tag::View,
         });
-        ops.extend(host(6, "test.accent_swatch"));
-        ops.extend(host(8, "test.accent_swatch"));
+        ops.extend(host(6, std::any::type_name::<AccentSwatch>()));
+        ops.extend(host(8, std::any::type_name::<AccentSwatch>()));
         for (parent, child) in [(4, 6), (2, 4), (ROOT_ID, 2), (ROOT_ID, 8)] {
             ops.push(Op::Insert {
                 parent,
@@ -4058,7 +4048,6 @@ mod components {
     }
 
     impl Component for Sheet {
-        const NAME: &'static str = "test.sheet";
         type Props = FormProps;
         type Event = NoEvent;
 
@@ -4110,7 +4099,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.sheet".into()),
+                    prop: Prop::Component(std::any::type_name::<Sheet>().into()),
                 },
                 Op::Insert {
                     parent: ROOT_ID,
@@ -4208,7 +4197,6 @@ mod components {
     }
 
     impl Component for Inbox {
-        const NAME: &'static str = "test.inbox";
         type Props = FormProps;
         type Event = NoEvent;
 
@@ -4256,7 +4244,7 @@ mod components {
                 },
                 Op::SetProp {
                     id: 2,
-                    prop: Prop::Component("test.inbox".into()),
+                    prop: Prop::Component(std::any::type_name::<Inbox>().into()),
                 },
                 Op::Insert {
                     parent: ROOT_ID,
@@ -4305,7 +4293,6 @@ mod components {
     }
 
     impl Component for Boundary {
-        const NAME: &'static str = "test.boundary";
         type Props = WithChildren;
         type Event = NoEvent;
 
@@ -4339,7 +4326,6 @@ mod components {
     }
 
     impl Component for Faulty {
-        const NAME: &'static str = "test.faulty";
         type Props = FaultyProps;
         type Event = NoEvent;
 
@@ -4366,12 +4352,12 @@ mod components {
                 },
             ]
         };
-        let mut ops = host(2, "test.boundary");
+        let mut ops = host(2, std::any::type_name::<Boundary>());
         ops.push(Op::Create {
             id: 4,
             tag: Tag::View,
         });
-        ops.extend(host(6, "test.faulty"));
+        ops.extend(host(6, std::any::type_name::<Faulty>()));
         for (parent, child) in [(4, 6), (2, 4), (ROOT_ID, 2)] {
             ops.push(Op::Insert {
                 parent,
@@ -4384,7 +4370,13 @@ mod components {
 
         // A listener panics: the boundary shows its fallback.
         assert!(c.component_event(6, EventKind::Press, &EventPayload::None));
-        assert_eq!(texts(&c.commit().unwrap()), ["oops: test.faulty (pressed)"]);
+        assert_eq!(
+            texts(&c.commit().unwrap()),
+            [format!(
+                "oops: {} (pressed)",
+                std::any::type_name::<Faulty>()
+            )]
+        );
         // Again: the content is back.
         assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
         c.commit();
@@ -4399,7 +4391,10 @@ mod components {
         );
         assert_eq!(
             texts(&c.commit().unwrap()),
-            ["oops: test.faulty (exploded)"]
+            [format!(
+                "oops: {} (exploded)",
+                std::any::type_name::<Faulty>()
+            )]
         );
     }
 
@@ -4411,7 +4406,6 @@ mod components {
     }
 
     impl Component for Sentence {
-        const NAME: &'static str = "test.sentence";
         type Props = ();
         type Event = NoEvent;
 
@@ -4501,7 +4495,6 @@ mod touch {
     }
 
     impl Component for Pad {
-        const NAME: &'static str = "test.pad";
         type Props = PadProps;
         type Event = NoEvent;
 
@@ -4741,7 +4734,6 @@ mod touch {
     }
 
     impl Component for Card {
-        const NAME: &'static str = "test.card";
         type Props = ();
         type Event = NoEvent;
 
@@ -4804,7 +4796,6 @@ mod painter {
     }
 
     impl Component for Label {
-        const NAME: &'static str = "test.label";
         type Props = ();
         type Event = NoEvent;
 

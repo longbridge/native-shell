@@ -39,8 +39,7 @@ pub enum ButtonEvent {
     Press,                               // `onPress?: () => void`
 }
 
-impl Component for Button {
-    const NAME: &'static str = "nsh.button";       // JS export: `Button`
+impl Component for Button {                // JS export: `Button`, the type's name
     type Props = ButtonProps;
     type Event = ButtonEvent;
 
@@ -58,6 +57,14 @@ impl Component for Button {
 }
 ```
 
+- **Names come from the type**: `Registry::register::<Button>()` registers it under `std::any::type_name`
+  (`nsh_ui_mobile::button::Button`: the key the JS face sets as the host's `component` prop and the core finds it
+  by, only compared within one binary) and exports it as the type's own name (`Button`; a generic type's without
+  its arguments). A second registration of a type, two types of the same name (two versions of a crate) or two
+  components of one set with the same export panic at registration (`Registry::merged` likewise for the sets a
+  host serves, also for modules of the same name); components of different sets may share an export. A test
+  pins `nsh/ui/mobile`'s exports (`nsh-ui-mobile` `the_exports_are_pinned`). A module's JS name is its type's
+  too (`#[module] impl Alert`: `Alert`).
 - **Props** are a struct, **events** an enum; the derives produce the decoding of `$name` values from JS, defaults,
   and the TypeScript types (doc comments included). Field and variant names become camel case in JS. Value types
   implement `JsValue` (numbers, `bool`, strings, `Color`, `Option`, `Vec`, `JsonValue`, `ui::Style` (an inline
@@ -286,7 +293,8 @@ sends it to the root (`uiTheme`) before anything renders; a new theme renders ev
 
 ## The host node and ids
 
-In JS a component is a view (the host element `view`) with a `component` prop naming it (`nsh.button`): its **host**. `Core::apply` sees the
+In JS a component is a view (the host element `view`) with a `component` prop naming it (its registered name,
+`nsh_ui_mobile::button::Button`): its **host**. `Core::apply` sees the
 prop, creates an instance and from then on intercepts the ops on the host (`intercept`): the host is the root of the
 component's expansion, the elements its render returns below the root become nodes the core creates itself. Apps
 without components pay one check per op.

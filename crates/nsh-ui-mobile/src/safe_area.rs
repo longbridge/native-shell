@@ -31,7 +31,6 @@ pub enum Edge {
 }
 
 impl Component for SafeAreaView {
-    const NAME: &'static str = "nsh.safe_area_view";
     type Props = SafeAreaViewProps;
     type Event = NoEvent;
 

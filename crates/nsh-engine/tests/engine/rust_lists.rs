@@ -120,7 +120,6 @@ struct Own {
 }
 
 impl Component for Own {
-    const NAME: &'static str = "app.own_list";
     type Props = ();
     type Event = NoEvent;
 
@@ -266,7 +265,6 @@ struct Stocks {
 }
 
 impl Component for Stocks {
-    const NAME: &'static str = "app.stocks";
     type Props = ();
     type Event = NoEvent;
 
@@ -404,7 +402,6 @@ struct Asker {
 }
 
 impl Component for Asker {
-    const NAME: &'static str = "app.asker";
     type Props = ();
     type Event = NoEvent;
 

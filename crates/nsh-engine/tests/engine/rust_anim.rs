@@ -55,7 +55,6 @@ impl Jumper {
 }
 
 impl Component for Jumper {
-    const NAME: &'static str = "app.jumper";
     type Props = ();
     type Event = NoEvent;
 

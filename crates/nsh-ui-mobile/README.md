@@ -7,7 +7,8 @@ colors, the core lays it out in the same pass as everything else, and its intera
 stays native. JS only gets the events the component emits.
 
 - **One file per component** (`src/button.rs`), registered in `registry()` (`src/lib.rs`). Start with
-  `use nsh_core::ui::prelude::*;`.
+  `use nsh_core::ui::prelude::*;`. The JS export is the type's name (`pub struct Button` is `Button`): no name is
+  written by hand, and `the_exports_are_pinned` (`src/lib.rs`) lists them all.
 - **Props are a struct** (`#[derive(Clone, PartialEq, Props)]`), **events an enum** (`#[derive(Event)]`, or `NoEvent`),
   choices an enum (`#[derive(PropEnum)]`). The bundler generates the `nsh/ui/mobile` export and its TypeScript
   declarations from them, doc comments included, so apps write `<Button title="Save" onPress={save} />` with full

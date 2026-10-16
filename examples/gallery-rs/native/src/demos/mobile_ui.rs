@@ -111,7 +111,6 @@ enum HeaderEvent {
 }
 
 impl Component for Header {
-    const NAME: &'static str = "gallery.mobile_ui.header";
     type Props = HeaderProps;
     type Event = HeaderEvent;
 
@@ -321,7 +320,6 @@ pub(crate) struct MobileUi {
 }
 
 impl Component for MobileUi {
-    const NAME: &'static str = "gallery.mobile_ui";
     type Props = ();
     type Event = NoEvent;
 

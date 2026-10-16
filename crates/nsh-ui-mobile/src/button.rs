@@ -44,7 +44,6 @@ pub enum ButtonEvent {
 }
 
 impl Component for Button {
-    const NAME: &'static str = "nsh.button";
     type Props = ButtonProps;
     type Event = ButtonEvent;
 

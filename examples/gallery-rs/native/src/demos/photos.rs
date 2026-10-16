@@ -69,7 +69,6 @@ pub(crate) struct Photos {
 }
 
 impl Component for Photos {
-    const NAME: &'static str = "gallery.photos";
     type Props = ();
     type Event = NoEvent;
 
