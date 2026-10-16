@@ -1,4 +1,4 @@
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 
 const styles = {
   tile: {
@@ -15,9 +15,9 @@ const styles = {
 
 function Tile(props: { label: string; style?: object; dark?: boolean }) {
   return (
-    <view style={[styles.tile, props.style]}>
-      <text style={[styles.label, props.dark && { color: "#ffffff" }]}>{props.label}</text>
-    </view>
+    <View style={[styles.tile, props.style]}>
+      <Text style={[styles.label, props.dark && { color: "#ffffff" }]}>{props.label}</Text>
+    </View>
   );
 }
 
@@ -26,9 +26,9 @@ function App() {
   const picked = signal(1);
 
   return (
-    <scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
-      <view style={{ padding: 20, paddingTop: 24, gap: 20 }}>
-        <view style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
+    <Scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }}>
+      <View style={{ padding: 20, paddingTop: 24, gap: 20 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
           <Tile label="boxShadow" style={{ boxShadow: "0 6px 16px rgba(0,0,0,0.18)" }} />
           <Tile label="dashed border" style={{ borderWidth: 2, borderStyle: "dashed", borderColor: "#8250df" }} />
           <Tile label="gradient" dark style={{ backgroundImage: "linear-gradient(135deg, #54aeff, #8250df)" }} />
@@ -38,30 +38,30 @@ function App() {
           <Tile label="rotate + scale" style={{ backgroundColor: "#ddf4ff", transform: [{ rotate: "-8deg" }, { scale: 0.9 }] }} />
           <Tile label="outline" style={{ outlineWidth: 2, outlineColor: "#bf3989", outlineOffset: 3 }} />
           <Tile label="opacity 0.5" dark style={{ backgroundColor: "#1f2328", opacity: 0.5 }} />
-        </view>
+        </View>
 
-        <view style={{ gap: 10 }}>
-          <text style={{ fontSize: 13, fontWeight: "600", color: "#6e7781" }}>STYLE ARRAYS: TAP TO SELECT</text>
-          <view style={{ flexDirection: "row", gap: 10 }}>
-            <each of={["Small", "Medium", "Large"]}>
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#6e7781" }}>STYLE ARRAYS: TAP TO SELECT</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Each of={["Small", "Medium", "Large"]}>
               {(size, i) => (
-                <view
+                <View
                   onPress={() => picked.set(picked() === i() ? -1 : i())}
                   style={[
                     { flex: 1, padding: 12, borderRadius: 10, backgroundColor: "#ffffff", alignItems: "center", borderWidth: 3, borderColor: "transparent" },
                     picked() === i() && styles.selected,
                   ]}
                 >
-                  <text style={{ color: "#1f2328" }}>{size()}</text>
-                </view>
+                  <Text style={{ color: "#1f2328" }}>{size()}</Text>
+                </View>
               )}
-            </each>
-          </view>
-        </view>
+            </Each>
+          </View>
+        </View>
 
-        <view style={{ gap: 10 }}>
-          <text style={{ fontSize: 13, fontWeight: "600", color: "#6e7781" }}>TRANSITIONS: TAP THE BOX</text>
-          <view
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#6e7781" }}>TRANSITIONS: TAP THE BOX</Text>
+          <View
             onPress={() => on.set(!on())}
             style={{
               height: 72,
@@ -76,11 +76,11 @@ function App() {
               transitionTimingFunction: "ease-in-out",
             }}
           >
-            <text style={{ color: "#ffffff", fontWeight: "600" }}>{on() ? "On" : "Off"}</text>
-          </view>
-        </view>
-      </view>
-    </scroll>
+            <Text style={{ color: "#ffffff", fontWeight: "600" }}>{on() ? "On" : "Off"}</Text>
+          </View>
+        </View>
+      </View>
+    </Scroll>
   );
 }
 

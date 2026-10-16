@@ -1,4 +1,4 @@
-import { mount, signal, type YNode } from "nsh";
+import { Input, mount, Scroll, signal, Text, View, type YNode } from "nsh";
 
 const field = {
   fontSize: 16,
@@ -28,13 +28,13 @@ function App() {
   const submit = () => sent.set(`#${++tries}: signed up ${name() || "nobody"} <${email() || "no e-mail"}>`);
 
   return (
-    <scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
-      <view style={{ padding: 16, paddingTop: 24, gap: 12 }}>
-        <text style={{ fontSize: 22, fontWeight: "700" }}>Sign up</text>
-        <text style={label}>Focused: {focused()}</text>
+    <Scroll style={{ flex: 1, backgroundColor: "#f6f8fa" }} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+      <View style={{ padding: 16, paddingTop: 24, gap: 12 }}>
+        <Text style={{ fontSize: 22, fontWeight: "700" }}>Sign up</Text>
+        <Text style={label}>Focused: {focused()}</Text>
 
-        <text style={label}>Name (controlled, return goes to the next field)</text>
-        <input
+        <Text style={label}>Name (controlled, return goes to the next field)</Text>
+        <Input
           style={field}
           value={name()}
           onChangeText={(t) => name.set(t)}
@@ -47,8 +47,8 @@ function App() {
           onFocus={() => focused.set("name")}
         />
 
-        <text style={label}>E-mail</text>
-        <input
+        <Text style={label}>E-mail</Text>
+        <Input
           ref={emailInput}
           style={field}
           value={email()}
@@ -64,8 +64,8 @@ function App() {
           onFocus={() => focused.set("e-mail")}
         />
 
-        <text style={label}>Password (uncontrolled)</text>
-        <input
+        <Text style={label}>Password (uncontrolled)</Text>
+        <Input
           ref={passwordInput}
           style={field}
           secureTextEntry
@@ -77,8 +77,8 @@ function App() {
           onFocus={() => focused.set("password")}
         />
 
-        <text style={label}>Code (number pad, 6 digits)</text>
-        <input
+        <Text style={label}>Code (number pad, 6 digits)</Text>
+        <Input
           style={{ ...field, letterSpacing: 8, textAlign: "center", fontSize: 22 }}
           value={code()}
           onChangeText={(t) => code.set(t.replace(/[^0-9]/g, ""))}
@@ -88,8 +88,8 @@ function App() {
           onFocus={() => focused.set("code")}
         />
 
-        <text style={label}>About you (grows with its text, 200 max)</text>
-        <input
+        <Text style={label}>About you (grows with its text, 200 max)</Text>
+        <Input
           ref={notesInput}
           multiline
           maxLength={200}
@@ -101,18 +101,18 @@ function App() {
           onFocus={() => focused.set("notes")}
           onBlur={() => focused.set("nothing")}
         />
-        <text style={{ ...label, textAlign: "right" }}>{`${notes().length}/200`}</text>
+        <Text style={{ ...label, textAlign: "right" }}>{`${notes().length}/200`}</Text>
 
-        <view
+        <View
           onPress={submit}
           activeOpacity={0.6}
           style={{ padding: 14, borderRadius: 10, backgroundColor: "#0969da", alignItems: "center" }}
         >
-          <text style={{ color: "#ffffff", fontWeight: "600" }}>Sign up</text>
-        </view>
-        <text style={{ color: "#1a7f37" }}>{sent()}</text>
-      </view>
-    </scroll>
+          <Text style={{ color: "#ffffff", fontWeight: "600" }}>Sign up</Text>
+        </View>
+        <Text style={{ color: "#1a7f37" }}>{sent()}</Text>
+      </View>
+    </Scroll>
   );
 }
 

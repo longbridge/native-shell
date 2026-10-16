@@ -1,5 +1,5 @@
 // ListView: 1,000 recycled rows the app renders; plain or inset, with or without dividers.
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, ListView } from "nsh/ui/mobile";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({
@@ -10,9 +10,9 @@ const people = Array.from({ length: 1000 }, (_, i) => ({
 
 function Header(props: { inset: () => boolean; dividers: () => boolean; toggleInset: () => void; toggleDividers: () => void }) {
   return (
-    <view style={{ padding: 16, paddingTop: 24, gap: 8 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>ListView</text>
-      <view style={{ flexDirection: "row", gap: 8 }}>
+    <View style={{ padding: 16, paddingTop: 24, gap: 8 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>ListView</Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
         <Button class="flex-1" variant="secondary" title={props.inset() ? "Plain" : "Inset"} onPress={props.toggleInset} />
         <Button
           class="flex-1"
@@ -20,8 +20,8 @@ function Header(props: { inset: () => boolean; dividers: () => boolean; toggleIn
           title={props.dividers() ? "No dividers" : "Dividers"}
           onPress={props.toggleDividers}
         />
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 
@@ -44,10 +44,10 @@ function App() {
       }
     >
       {(person) => (
-        <view style={{ flexDirection: "row", alignItems: "center" }}>
-          <text style={{ flex: 1, fontWeight: "600" }}>{person().name}</text>
-          <text style={{ color: "#737373" }}>{person().role}</text>
-        </view>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Text style={{ flex: 1, fontWeight: "600" }}>{person().name}</Text>
+          <Text style={{ color: "#737373" }}>{person().role}</Text>
+        </View>
       )}
     </ListView>
   );

@@ -1,5 +1,5 @@
 // TextField: labels, placeholders, controlled and uncontrolled text, secure entry.
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, TextField } from "nsh/ui/mobile";
 
 function App() {
@@ -7,8 +7,8 @@ function App() {
   const submitted = signal("");
   const locked = signal(false);
   return (
-    <view style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 16 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>TextField</text>
+    <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>TextField</Text>
       <TextField
         label="Name (controlled)"
         placeholder="Your name"
@@ -17,7 +17,7 @@ function App() {
         onSubmit={(v) => submitted.set(v)}
         disabled={locked()}
       />
-      <text style={{ color: "#737373" }}>{`Hello, ${name() || "nobody"}`}</text>
+      <Text style={{ color: "#737373" }}>{`Hello, ${name() || "nobody"}`}</Text>
       <TextField label="Password" placeholder="At least 8 characters" secure />
       <TextField label="Notes (no clear button)" defaultValue="Uncontrolled" clearable={false} />
       <Button
@@ -25,8 +25,8 @@ function App() {
         title={locked() ? "Enable the name" : "Disable the name"}
         onPress={() => locked.set(!locked())}
       />
-      <text style={{ color: "#737373" }}>{submitted() ? `Submitted: ${submitted()}` : "Press return to submit."}</text>
-    </view>
+      <Text style={{ color: "#737373" }}>{submitted() ? `Submitted: ${submitted()}` : "Press return to submit."}</Text>
+    </View>
   );
 }
 

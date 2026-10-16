@@ -1,4 +1,4 @@
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing } from "nsh/animated";
 
 const TRACK = 240;
@@ -13,7 +13,7 @@ const curves: [string, Easing][] = [
 
 function Button(props: { label: string; onPress: () => void }) {
   return (
-    <text
+    <Text
       onPress={props.onPress}
       activeOpacity={0.6}
       style={{
@@ -27,7 +27,7 @@ function Button(props: { label: string; onPress: () => void }) {
       }}
     >
       {props.label}
-    </text>
+    </Text>
   );
 }
 
@@ -53,15 +53,15 @@ function App() {
   };
 
   return (
-    <view style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, paddingTop: 24, gap: 16 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Native animation</text>
-      <view style={{ gap: 8 }}>
-        <each of={curves}>
+    <View style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, paddingTop: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Native animation</Text>
+      <View style={{ gap: 8 }}>
+        <Each of={curves}>
           {(c, i) => (
-            <view style={{ gap: 2 }}>
-              <text style={{ fontSize: 12, color: "#64748b" }}>{c()[0]}</text>
-              <view style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: "#e2e8f0" }}>
-                <view
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: 12, color: "#64748b" }}>{c()[0]}</Text>
+              <View style={{ width: TRACK + 16, height: 16, borderRadius: 8, backgroundColor: "#e2e8f0" }}>
+                <View
                   style={{
                     width: 16,
                     height: 16,
@@ -70,13 +70,13 @@ function App() {
                     transform: [{ translateX: dots[i()] }],
                   }}
                 />
-              </view>
-            </view>
+              </View>
+            </View>
           )}
-        </each>
-      </view>
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-        <view
+        </Each>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+        <View
           style={{
             width: 64,
             height: 64,
@@ -85,16 +85,16 @@ function App() {
             transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }],
           }}
         />
-        <text style={{ flex: 1, color: "#475569", fontSize: 13 }}>
+        <Text style={{ flex: 1, color: "#475569", fontSize: 13 }}>
           Rotation and color are interpolated from one native value.
-        </text>
-      </view>
-      <view style={{ flexDirection: "row", gap: 10 }}>
+        </Text>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10 }}>
         <Button label="Race" onPress={race} />
         <Button label="Spin" onPress={turn} />
-      </view>
-      <text style={{ color: "#64748b" }}>{status()}</text>
-    </view>
+      </View>
+      <Text style={{ color: "#64748b" }}>{status()}</Text>
+    </View>
   );
 }
 

@@ -1,7 +1,7 @@
 // The module the home page's host app shows: what an assistant could
 // generate for "How did AAPL and NVDA do?" — a card with a range picker,
 // a chart and an action. Sized for a region about 300 points wide.
-import { mount, signal, computed } from "nsh";
+import { computed, mount, signal, Text, View } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 type Range = "1D" | "1W" | "1M";
@@ -82,15 +82,15 @@ function Chart(props: { range: () => Range }) {
 
 function Legend(props: { color: string; symbol: string; value: () => string; strong?: boolean }) {
   return (
-    <view class="flex-1 gap-0.5">
-      <view class="flex-row items-center gap-1.5">
-        <view style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: props.color }} />
-        <text class="text-xs text-zinc-500">{props.symbol}</text>
-      </view>
-      <text class={props.strong ? "text-lg font-semibold text-zinc-900" : "text-lg font-semibold text-zinc-500"}>
+    <View class="flex-1 gap-0.5">
+      <View class="flex-row items-center gap-1.5">
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: props.color }} />
+        <Text class="text-xs text-zinc-500">{props.symbol}</Text>
+      </View>
+      <Text class={props.strong ? "text-lg font-semibold text-zinc-900" : "text-lg font-semibold text-zinc-500"}>
         {props.value()}
-      </text>
-    </view>
+      </Text>
+    </View>
   );
 }
 
@@ -101,42 +101,42 @@ function App() {
   const ranges: Range[] = ["1D", "1W", "1M"];
 
   return (
-    <view class="flex-1 bg-white px-4 pt-4 pb-4 gap-3.5">
-      <view class="flex-row items-center justify-between">
-        <text class="text-[15px] font-semibold text-zinc-900">NVDA vs AAPL</text>
-        <view class="flex-row rounded-lg bg-zinc-100 p-0.5">
-          <each of={ranges}>
+    <View class="flex-1 bg-white px-4 pt-4 pb-4 gap-3.5">
+      <View class="flex-row items-center justify-between">
+        <Text class="text-[15px] font-semibold text-zinc-900">NVDA vs AAPL</Text>
+        <View class="flex-row rounded-lg bg-zinc-100 p-0.5">
+          <Each of={ranges}>
             {(r) => (
-              <view
+              <View
                 onPress={() => range.set(r())}
                 class="rounded-md px-2 py-1 transition-colors"
                 classList={{ "bg-white shadow-sm": range() === r() }}
               >
-                <text class={range() === r() ? "text-xs font-semibold text-zinc-900" : "text-xs text-zinc-500"}>{r()}</text>
-              </view>
+                <Text class={range() === r() ? "text-xs font-semibold text-zinc-900" : "text-xs text-zinc-500"}>{r()}</Text>
+              </View>
             )}
-          </each>
-        </view>
-      </view>
+          </Each>
+        </View>
+      </View>
 
-      <view class="flex-row">
+      <View class="flex-row">
         <Legend color={BLUE} symbol="NVDA" value={() => change(data().b)} strong />
         <Legend color={SLATE} symbol="AAPL" value={() => change(data().a)} />
-      </view>
+      </View>
 
       <Chart range={range} />
 
-      <view
+      <View
         onPress={() => alert.update((v) => !v)}
         activeOpacity={0.7}
         class="h-10 flex-row items-center justify-center gap-1.5 rounded-xl transition-colors"
         classList={{ "bg-zinc-900": !alert(), "bg-emerald-50": alert() }}
       >
-        <text class={alert() ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-white"}>
+        <Text class={alert() ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-white"}>
           {alert() ? "✓  Alert set at +10%" : "Alert me at +10%"}
-        </text>
-      </view>
-    </view>
+        </Text>
+      </View>
+    </View>
   );
 }
 

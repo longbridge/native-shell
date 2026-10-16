@@ -1,4 +1,4 @@
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { PanResponder } from "nsh/gesture";
 
@@ -10,8 +10,8 @@ function DragCard() {
   const y = createNativeValue(0);
   const flings = signal(0);
   return (
-    <view style={{ height: 150, borderRadius: 12, backgroundColor: "#eaeef2", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-      <view
+    <View style={{ height: 150, borderRadius: 12, backgroundColor: "#eaeef2", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <View
         pan={{ x, y }}
         onPanEnd={(e) => {
           flings.update((n) => n + 1);
@@ -29,10 +29,10 @@ function DragCard() {
           transform: [{ translateX: x }, { translateY: y }],
         }}
       >
-        <text style={{ color: "#ffffff", fontWeight: "700" }}>Drag me</text>
-        <text style={{ color: "#ffffff", fontSize: 12 }}>released {flings()}×</text>
-      </view>
-    </view>
+        <Text style={{ color: "#ffffff", fontWeight: "700" }}>Drag me</Text>
+        <Text style={{ color: "#ffffff", fontSize: 12 }}>released {flings()}×</Text>
+      </View>
+    </View>
   );
 }
 
@@ -52,9 +52,9 @@ function ResponderDot() {
     onPanResponderTerminate: () => state.set("taken over"),
   });
   return (
-    <view style={{ gap: 6 }}>
-      <view style={{ height: 110, borderRadius: 12, backgroundColor: "#eaeef2", overflow: "hidden" }}>
-        <view
+    <View style={{ gap: 6 }}>
+      <View style={{ height: 110, borderRadius: 12, backgroundColor: "#eaeef2", overflow: "hidden" }}>
+        <View
           {...responder.panHandlers}
           style={{
             position: "absolute",
@@ -67,9 +67,9 @@ function ResponderDot() {
             transform: [{ translateX: pos().x }, { translateY: pos().y }],
           }}
         />
-      </view>
-      <text style={{ color: muted, fontSize: 13 }}>PanResponder: {state()}</text>
-    </view>
+      </View>
+      <Text style={{ color: muted, fontSize: 13 }}>PanResponder: {state()}</Text>
+    </View>
   );
 }
 
@@ -79,9 +79,9 @@ function App() {
   const dot = signal(0);
   const under = signal(0);
   return (
-    <view style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
-      <view style={{ flexDirection: "row", gap: 10 }}>
-        <view
+    <View style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View
           onPressIn={() => add("pressIn")}
           onPressOut={() => add("pressOut")}
           onPress={() => add("press")}
@@ -89,49 +89,49 @@ function App() {
           activeOpacity={0.5}
           style={{ flex: 1, padding: 14, borderRadius: 12, backgroundColor: "#0969da", alignItems: "center" }}
         >
-          <text style={{ color: "#ffffff", fontWeight: "600" }}>activeOpacity</text>
-        </view>
-        <view
+          <Text style={{ color: "#ffffff", fontWeight: "600" }}>activeOpacity</Text>
+        </View>
+        <View
           onPress={() => add("underlay")}
           underlayColor="#ddf4ff"
           style={{ flex: 1, padding: 14, borderRadius: 12, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#d0d7de", alignItems: "center" }}
         >
-          <text style={{ fontWeight: "600" }}>underlayColor</text>
-        </view>
-        <view
+          <Text style={{ fontWeight: "600" }}>underlayColor</Text>
+        </View>
+        <View
           onPress={() => add("active:")}
           class="flex-1 items-center rounded-xl bg-emerald-600 p-3.5 transition active:scale-95 active:bg-emerald-800"
         >
-          <text class="font-semibold text-white">active:</text>
-        </view>
-      </view>
-      <text style={{ color: muted, fontSize: 13 }}>{log().join(" · ") || "Tap, hold, or slide off a button"}</text>
+          <Text class="font-semibold text-white">active:</Text>
+        </View>
+      </View>
+      <Text style={{ color: muted, fontSize: 13 }}>{log().join(" · ") || "Tap, hold, or slide off a button"}</Text>
 
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-        <view
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+        <View
           hitSlop={24}
           onPress={() => dot.update((n) => n + 1)}
           style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#cf222e", margin: 12 }}
         />
-        <text style={{ flex: 1 }}>hitSlop 24: the dot takes taps around it ({dot()})</text>
-      </view>
+        <Text style={{ flex: 1 }}>hitSlop 24: the dot takes taps around it ({dot()})</Text>
+      </View>
 
-      <view style={{ height: 52 }}>
-        <view
+      <View style={{ height: 52 }}>
+        <View
           onPress={() => under.update((n) => n + 1)}
           style={{ flex: 1, borderRadius: 12, backgroundColor: "#1a7f37", alignItems: "center", justifyContent: "center" }}
         >
-          <text style={{ color: "#ffffff" }}>Under an overlay: {under()}</text>
-        </view>
-        <view
+          <Text style={{ color: "#ffffff" }}>Under an overlay: {under()}</Text>
+        </View>
+        <View
           pointerEvents="none"
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 12, borderWidth: 3, borderColor: "#bf8700", borderStyle: "dashed" }}
         />
-      </view>
+      </View>
 
       <DragCard />
       <ResponderDot />
-    </view>
+    </View>
   );
 }
 

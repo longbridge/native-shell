@@ -1,5 +1,5 @@
 // Sheet: a bottom panel dragged down, tapped outside or closed with a button.
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, Sheet } from "nsh/ui/mobile";
 
 function App() {
@@ -7,9 +7,9 @@ function App() {
   const closes = signal(0);
   const opens = signal(0);
   return (
-    <view style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 12 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Sheet</text>
-      <text style={{ color: "#737373" }}>{`Opened ${opens()} times, closed by the user ${closes()} times`}</text>
+    <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Sheet</Text>
+      <Text style={{ color: "#737373" }}>{`Opened ${opens()} times, closed by the user ${closes()} times`}</Text>
       <Button title="Open the sheet" onPress={() => {
           open.set(true);
           opens.set(opens() + 1);
@@ -22,12 +22,12 @@ function App() {
           closes.set(closes() + 1);
         }}
       >
-        <text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</text>
-        <text style={{ color: "#737373" }}>Drag the panel down, tap the dimmed backdrop or press Done.</text>
+        <Text style={{ fontSize: 17, fontWeight: "600" }}>Share the photo</Text>
+        <Text style={{ color: "#737373" }}>Drag the panel down, tap the dimmed backdrop or press Done.</Text>
         <Button title="Copy link" variant="secondary" onPress={() => open.set(false)} />
         <Button title="Done" onPress={() => open.set(false)} />
       </Sheet>
-    </view>
+    </View>
   );
 }
 

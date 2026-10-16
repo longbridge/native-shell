@@ -1,4 +1,4 @@
-import { effect, mount, signal, type YNode } from "nsh";
+import { effect, mount, signal, Text, View, type YNode } from "nsh";
 import { List } from "nsh/list";
 
 const tints = ["#fde2e4", "#e2ece9", "#dfe7fd", "#fff1e6", "#e8e8e4", "#cddafd"];
@@ -44,23 +44,23 @@ function Feed() {
         visible.set(viewableItems.length ? `${viewableItems[0].index}–${viewableItems[viewableItems.length - 1].index}` : "")
       }
       ListHeaderComponent={
-        <view style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }}>
-          <text style={{ flex: 1, color: muted }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }}>
+          <Text style={{ flex: 1, color: muted }}>
             {posts().length} posts, visible {visible()}
-          </text>
-          <text onPress={() => list.scrollToIndex({ index: 30, viewPosition: 0.5 })} style={{ color: "#0969da" }}>
+          </Text>
+          <Text onPress={() => list.scrollToIndex({ index: 30, viewPosition: 0.5 })} style={{ color: "#0969da" }}>
             #30
-          </text>
-          <text onPress={() => list.scrollToOffset({ offset: 0 })} style={{ color: "#0969da" }}>
+          </Text>
+          <Text onPress={() => list.scrollToOffset({ offset: 0 })} style={{ color: "#0969da" }}>
             Top
-          </text>
-        </view>
+          </Text>
+        </View>
       }
     >
       {(post) => (
-        <view style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
-          <text style={{ fontSize: 16 }}>{post().title}</text>
-        </view>
+        <View style={{ padding: 16, borderRadius: 10, backgroundColor: "#ffffff" }}>
+          <Text style={{ fontSize: 16 }}>{post().title}</Text>
+        </View>
       )}
     </List>
   );
@@ -72,9 +72,9 @@ function Grid() {
   return (
     <List each={items} numColumns={3} estimatedItemSize={80} style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 8 }}>
       {(item) => (
-        <view style={{ height: item().height, borderRadius: 10, backgroundColor: tints[item().id % tints.length], alignItems: "center", justifyContent: "center" }}>
-          <text style={{ fontWeight: "600" }}>{item().id}</text>
-        </view>
+        <View style={{ height: item().height, borderRadius: 10, backgroundColor: tints[item().id % tints.length], alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontWeight: "600" }}>{item().id}</Text>
+        </View>
       )}
     </List>
   );
@@ -94,18 +94,18 @@ function Contacts() {
   return (
     <List each={rows} stickyHeaderIndices={headers} estimatedItemSize={44} style={{ flex: 1, backgroundColor: "#ffffff" }}>
       {(row) => (
-        <if
+        <If
           when={"header" in row()}
           else={
-            <view style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
-              <text style={{ fontSize: 16 }}>{(row() as { name: string }).name}</text>
-            </view>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eaeef2" }}>
+              <Text style={{ fontSize: 16 }}>{(row() as { name: string }).name}</Text>
+            </View>
           }
         >
-          <view style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
-            <text style={{ fontWeight: "700", color: muted }}>{(row() as { header: string }).header}</text>
-          </view>
-        </if>
+          <View style={{ backgroundColor: "#eaeef2", paddingHorizontal: 16, paddingVertical: 6 }}>
+            <Text style={{ fontWeight: "700", color: muted }}>{(row() as { header: string }).header}</Text>
+          </View>
+        </If>
       )}
     </List>
   );
@@ -116,7 +116,7 @@ type Tab = "feed" | "grid" | "contacts";
 function App() {
   const tab = signal<Tab>("feed");
   const button = (id: Tab, label: string) => (
-    <text
+    <Text
       onPress={() => (tab() === id ? toTop.update((n) => n + 1) : tab.set(id))}
       style={{
         flex: 1,
@@ -129,15 +129,15 @@ function App() {
       }}
     >
       {label}
-    </text>
+    </Text>
   );
   return (
-    <view style={{ flex: 1, backgroundColor: "#f6f8fa", paddingTop: 24 }}>
-      <view style={{ flexDirection: "row", marginHorizontal: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
+    <View style={{ flex: 1, backgroundColor: "#f6f8fa", paddingTop: 24 }}>
+      <View style={{ flexDirection: "row", marginHorizontal: 12, padding: 3, borderRadius: 10, backgroundColor: "#e1e4e8" }}>
         {button("feed", "Feed")}
         {button("grid", "Grid")}
         {button("contacts", "Sticky")}
-      </view>
+      </View>
       {() => {
         switch (tab()) {
           case "feed":
@@ -148,7 +148,7 @@ function App() {
             return <Contacts />;
         }
       }}
-    </view>
+    </View>
   );
 }
 

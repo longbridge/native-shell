@@ -1,13 +1,13 @@
 // Stepper: its own value, a controlled one with a fractional step, and its ref.
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button, Group, Stepper, type StepperRef } from "nsh/ui/mobile";
 
 function Row(props: { label: string; children: any }) {
   return (
-    <view style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <text>{props.label}</text>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <Text>{props.label}</Text>
       {props.children}
-    </view>
+    </View>
   );
 }
 
@@ -16,9 +16,9 @@ function App() {
   const asked = signal("");
   let own!: StepperRef;
   return (
-    <view style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 24, gap: 20 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Stepper</text>
-      <Group footer={<text>Hold − or + to keep stepping.</text>}>
+    <View style={{ flex: 1, backgroundColor: "#f5f5f5", padding: 16, paddingTop: 24, gap: 20 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Stepper</Text>
+      <Group footer={<Text>Hold − or + to keep stepping.</Text>}>
         <Row label="Own value (0–10)">
           <Stepper ref={own} defaultValue={3} min={0} max={10} />
         </Row>
@@ -38,8 +38,8 @@ function App() {
           asked.set(`It was ${was}`);
         }}
       />
-      <text style={{ color: "#737373" }}>{asked()}</text>
-    </view>
+      <Text style={{ color: "#737373" }}>{asked()}</Text>
+    </View>
   );
 }
 

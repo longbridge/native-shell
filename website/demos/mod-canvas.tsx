@@ -1,4 +1,4 @@
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas, Path2D } from "nsh/canvas";
 
@@ -7,13 +7,13 @@ const heart = new Path2D("M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9
 
 function Chip(props: { label: string; onPress: () => void }) {
   return (
-    <text
+    <Text
       onPress={props.onPress}
       activeOpacity={0.6}
       style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "#e0e7ff", color: "#4338ca", fontWeight: "600" }}
     >
       {props.label}
-    </text>
+    </Text>
   );
 }
 
@@ -28,8 +28,8 @@ function App() {
   };
 
   return (
-    <view style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, paddingTop: 24, gap: 16 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Canvas</text>
+    <View style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, paddingTop: 24, gap: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Canvas</Text>
       <Canvas
         style={{ height: 170, borderRadius: 12, backgroundColor: "#fff" }}
         draw={(ctx, { width, height }) => {
@@ -56,7 +56,7 @@ function App() {
           ctx.stroke();
         }}
       />
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
         <Canvas
           style={{ width: 110, height: 110 }}
           draw={(ctx, { width, height }) => {
@@ -91,12 +91,12 @@ function App() {
             ctx.restore();
           }}
         />
-      </view>
-      <view style={{ flexDirection: "row", gap: 10 }}>
+      </View>
+      <View style={{ flexDirection: "row", gap: 10 }}>
         <Chip label="New point" onPress={() => data.update((v) => [...v.slice(1), Math.round(Math.random() * 90) + 5])} />
         <Chip label="Animate ring" onPress={go} />
-      </view>
-    </view>
+      </View>
+    </View>
   );
 }
 

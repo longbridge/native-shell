@@ -1,42 +1,42 @@
 // Card: elevated and outlined, with a header and a footer slot.
-import { mount, signal } from "nsh";
+import { mount, Scroll, signal, Text, View } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";
 
 function App() {
   const likes = signal(0);
   return (
-    <scroll style={{ flex: 1, backgroundColor: "#ffffff" }}>
-      <view style={{ padding: 16, paddingTop: 24, gap: 16 }}>
-        <text style={{ fontSize: 22, fontWeight: "700" }}>Card</text>
+    <Scroll style={{ flex: 1, backgroundColor: "#ffffff" }}>
+      <View style={{ padding: 16, paddingTop: 24, gap: 16 }}>
+        <Text style={{ fontSize: 22, fontWeight: "700" }}>Card</Text>
         <Card
-          header={<text>Weekly summary</text>}
+          header={<Text>Weekly summary</Text>}
           footer={
-            <view style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
               <Button title="Reset" variant="plain" onPress={() => likes.set(0)} />
               <Button title={`Like (${likes()})`} onPress={() => likes.set(likes() + 1)} />
-            </view>
+            </View>
           }
         >
-          <text>You walked 42 km this week, 8 km more than last week.</text>
-          <text style={{ color: "#737373" }}>The header, this body and the footer are the app's JSX.</text>
+          <Text>You walked 42 km this week, 8 km more than last week.</Text>
+          <Text style={{ color: "#737373" }}>The header, this body and the footer are the app's JSX.</Text>
         </Card>
         <Card variant="outlined">
-          <text style={{ fontWeight: "600" }}>Outlined</text>
-          <text>A border, no shadow, and no header or footer: only children.</text>
+          <Text style={{ fontWeight: "600" }}>Outlined</Text>
+          <Text>A border, no shadow, and no header or footer: only children.</Text>
         </Card>
         <Card
           variant="outlined"
           header={
-            <view style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <view style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
-              <text>Ada Lovelace</text>
-            </view>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#a78bfa" }} />
+              <Text>Ada Lovelace</Text>
+            </View>
           }
         >
-          <text>A header can be any row, such as an avatar and a name.</text>
+          <Text>A header can be any row, such as an avatar and a name.</Text>
         </Card>
-      </view>
-    </scroll>
+      </View>
+    </Scroll>
   );
 }
 

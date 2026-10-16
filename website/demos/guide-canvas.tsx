@@ -1,4 +1,4 @@
-import { type GestureResponderEvent, mount, signal } from "nsh";
+import { type GestureResponderEvent, mount, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Canvas, Path2D } from "nsh/canvas";
 
@@ -7,9 +7,9 @@ const heart = new Path2D("M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.
 
 function Button(props: { label: string; onPress: () => void }) {
   return (
-    <view onPress={props.onPress} activeOpacity={0.6} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: "#0969da" }}>
-      <text style={{ color: "#ffffff", fontWeight: "600" }}>{props.label}</text>
-    </view>
+    <View onPress={props.onPress} activeOpacity={0.6} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: "#0969da" }}>
+      <Text style={{ color: "#ffffff", fontWeight: "600" }}>{props.label}</Text>
+    </View>
   );
 }
 
@@ -31,8 +31,8 @@ function App() {
   const point = (e: GestureResponderEvent): [number, number] => [e.locationX, e.locationY];
 
   return (
-    <view style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+    <View style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
         <Canvas
           style={{ width: 110, height: 110 }}
           draw={(ctx, { width, height }) => {
@@ -59,7 +59,7 @@ function App() {
             ctx.fillText(`${Math.round(target() * 100)}%`, cx, cy);
           }}
         />
-        <view style={{ gap: 10 }}>
+        <View style={{ gap: 10 }}>
           <Button label="Animate the ring" onPress={go} />
           <Canvas
             style={{ width: 48, height: 48 }}
@@ -71,8 +71,8 @@ function App() {
               ctx.fill(heart);
             }}
           />
-        </view>
-      </view>
+        </View>
+      </View>
 
       <Canvas
         style={{ height: 150, borderRadius: 10, backgroundColor: "#ffffff" }}
@@ -128,7 +128,7 @@ function App() {
           }
         }}
       />
-    </view>
+    </View>
   );
 }
 

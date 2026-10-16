@@ -1,4 +1,4 @@
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Animated, createNativeValue, Easing, LayoutAnimation } from "nsh/animated";
 
 const TRACK = 250;
@@ -7,9 +7,9 @@ const palette = ["#fd8c73", "#f2cc60", "#4ac26b", "#54aeff", "#8250df"];
 
 function Chip(props: { label: string; onPress: () => void }) {
   return (
-    <view onPress={props.onPress} activeOpacity={0.6} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, backgroundColor: "#ddf4ff" }}>
-      <text style={{ color: "#0969da", fontWeight: "600" }}>{props.label}</text>
-    </view>
+    <View onPress={props.onPress} activeOpacity={0.6} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, backgroundColor: "#ddf4ff" }}>
+      <Text style={{ color: "#0969da", fontWeight: "600" }}>{props.label}</Text>
+    </View>
   );
 }
 
@@ -53,10 +53,10 @@ function App() {
   const wide = signal(false);
 
   return (
-    <view style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
-      <text style={{ fontWeight: "600" }}>Transition (style changes animate)</text>
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <view
+    <View style={{ flex: 1, backgroundColor: "#f6f8fa", padding: 16, paddingTop: 24, gap: 14 }}>
+      <Text style={{ fontWeight: "600" }}>Transition (style changes animate)</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
           onPress={() => on.set(!on())}
           style={{
             width: 64,
@@ -70,16 +70,16 @@ function App() {
             transitionTimingFunction: "ease-in-out",
           }}
         />
-        <view class="size-10 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
-        <view class="size-10 rounded-full bg-emerald-500 animate-pulse" />
-        <text style={{ flex: 1, color: muted, fontSize: 13 }}>Tap the square. animate-spin / animate-pulse run natively.</text>
-      </view>
+        <View class="size-10 rounded-full border-4 border-zinc-300 border-t-blue-600 animate-spin" />
+        <View class="size-10 rounded-full bg-emerald-500 animate-pulse" />
+        <Text style={{ flex: 1, color: muted, fontSize: 13 }}>Tap the square. animate-spin / animate-pulse run natively.</Text>
+      </View>
 
-      <text style={{ fontWeight: "600" }}>timing and spring</text>
-      <view style={{ gap: 8 }}>
-        <view style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#0969da", transform: [{ translateX: timed }] }} />
-        <view style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: "#bf3989", transform: [{ translateX: sprung }] }} />
-        <view
+      <Text style={{ fontWeight: "600" }}>timing and spring</Text>
+      <View style={{ gap: 8 }}>
+        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#0969da", transform: [{ translateX: timed }] }} />
+        <View style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: "#bf3989", transform: [{ translateX: sprung }] }} />
+        <View
           style={{
             height: 8,
             borderRadius: 4,
@@ -90,13 +90,13 @@ function App() {
           }}
         />
         <Chip label="Move" onPress={run} />
-      </view>
+      </View>
 
-      <text style={{ fontWeight: "600" }}>Animated.sequence / stagger</text>
-      <view style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 10, height: 64 }}>
-        <each of={palette}>
+      <Text style={{ fontWeight: "600" }}>Animated.sequence / stagger</Text>
+      <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", gap: 10, height: 64 }}>
+        <Each of={palette}>
           {(color, i) => (
-            <view
+            <View
               style={{
                 width: 32,
                 height: 32,
@@ -109,20 +109,20 @@ function App() {
               }}
             />
           )}
-        </each>
-      </view>
-      <view style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        </Each>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Chip label="Play" onPress={play} />
         <Chip label="Stop" onPress={() => show.stop()} />
-        <text style={{ color: muted }}>{status()}</text>
-      </view>
+        <Text style={{ color: muted }}>{status()}</Text>
+      </View>
 
-      <text style={{ fontWeight: "600" }}>LayoutAnimation</text>
-      <view style={{ flexDirection: wide() ? "column" : "row", gap: 8 }}>
-        <each of={palette}>
-          {(color) => <view style={{ height: wide() ? 18 : 40, flex: wide() ? undefined : 1, borderRadius: 6, backgroundColor: color() }} />}
-        </each>
-      </view>
+      <Text style={{ fontWeight: "600" }}>LayoutAnimation</Text>
+      <View style={{ flexDirection: wide() ? "column" : "row", gap: 8 }}>
+        <Each of={palette}>
+          {(color) => <View style={{ height: wide() ? 18 : 40, flex: wide() ? undefined : 1, borderRadius: 6, backgroundColor: color() }} />}
+        </Each>
+      </View>
       <Chip
         label={wide() ? "Back to a row" : "Stack them"}
         onPress={() => {
@@ -130,7 +130,7 @@ function App() {
           wide.set(!wide());
         }}
       />
-    </view>
+    </View>
   );
 }
 

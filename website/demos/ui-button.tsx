@@ -1,5 +1,5 @@
 // Button: the four variants, a disabled button and press counting.
-import { mount, signal } from "nsh";
+import { mount, signal, Text, View } from "nsh";
 import { Button } from "nsh/ui/mobile";
 
 function App() {
@@ -7,15 +7,15 @@ function App() {
   const enabled = signal(true);
   const press = () => presses.set(presses() + 1);
   return (
-    <view style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 12 }}>
-      <text style={{ fontSize: 22, fontWeight: "700" }}>Button</text>
-      <text style={{ color: "#737373" }}>{`Pressed ${presses()} times`}</text>
+    <View style={{ flex: 1, backgroundColor: "#ffffff", padding: 16, paddingTop: 24, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Button</Text>
+      <Text style={{ color: "#737373" }}>{`Pressed ${presses()} times`}</Text>
       <Button title="Primary" onPress={press} />
       <Button title="Secondary" variant="secondary" onPress={press} />
       <Button title="Danger" variant="danger" onPress={press} />
       <Button title="Plain" variant="plain" onPress={press} />
       <Button title={enabled() ? "Enabled" : "Disabled"} disabled={!enabled()} onPress={press} />
-      <view style={{ flexDirection: "row", gap: 12 }}>
+      <View style={{ flexDirection: "row", gap: 12 }}>
         <Button class="flex-1" title="Reset" variant="secondary" onPress={() => presses.set(0)} />
         <Button
           class="flex-1"
@@ -23,9 +23,9 @@ function App() {
           variant="plain"
           onPress={() => enabled.set(!enabled())}
         />
-      </view>
+      </View>
       <Button title="Custom corners" class="rounded-full" accessibilityLabel="A button with round ends" onPress={press} />
-    </view>
+    </View>
   );
 }
 
