@@ -224,9 +224,28 @@ pub(crate) fn create(
     Ok(hwnd)
 }
 
+/// The window is in full screen ([`toggle_full_screen`]).
+pub(crate) fn is_full_screen(hwnd: HWND) -> bool {
+    data(hwnd).is_some_and(|d| {
+        let placement = d.windowed.take();
+        let full = placement.is_some();
+        d.windowed.set(placement);
+        full
+    })
+}
+
 /// Takes a top-level window to full screen on its monitor (no frame, over
 /// the taskbar), or back to where it was.
 pub(crate) fn toggle_full_screen(hwnd: HWND) {
+    toggle_full_screen_inner(hwnd);
+    // Neither the menu bar nor a hidden title bar's area show in full
+    // screen.
+    if let Some(surface) = surface_of(hwnd) {
+        crate::chrome::full_screen_changed(&surface);
+    }
+}
+
+fn toggle_full_screen_inner(hwnd: HWND) {
     let Some(data) = data(hwnd) else { return };
     if !data.top_level {
         return;

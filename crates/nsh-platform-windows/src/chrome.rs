@@ -40,8 +40,7 @@ use windows::{
             Direct2D::ID2D1DeviceContext,
             Gdi::{
                 CreateSolidBrush, DT_CENTER, DT_HIDEPREFIX, DT_SINGLELINE, DT_VCENTER,
-                DeleteObject, DrawTextW, FillRect, GetMonitorInfoW, GetWindowDC, HDC,
-                MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, ReleaseDC, SetBkMode,
+                DeleteObject, DrawTextW, FillRect, GetWindowDC, HDC, ReleaseDC, SetBkMode,
                 SetTextColor, TRANSPARENT,
             },
         },
@@ -151,8 +150,6 @@ pub(crate) struct Chrome {
     entries: RefCell<Vec<Entry>>,
     /// The context menu to show once the batch is applied.
     popup: RefCell<Option<Popup>>,
-    /// In full screen: the placement and style to restore.
-    fullscreen: RefCell<Option<(WINDOWPLACEMENT, i32)>>,
 }
 
 fn top_level(hwnd: HWND) -> bool {
@@ -170,7 +167,7 @@ fn zoomed(hwnd: HWND) -> bool {
 pub(crate) fn hidden(surface: &Surface) -> bool {
     let c = &surface.chrome;
     c.style.get() == TitleBarStyle::Hidden
-        && c.fullscreen.borrow().is_none()
+        && !crate::window::is_full_screen(surface.hwnd())
         && top_level(surface.hwnd())
 }
 
@@ -345,7 +342,7 @@ fn close(hwnd: HWND) {
 
 fn toggle_maximize(surface: &Surface) {
     let hwnd = surface.hwnd();
-    if surface.chrome.fullscreen.borrow().is_some() {
+    if crate::window::is_full_screen(hwnd) {
         return;
     }
     let show = if zoomed(hwnd) {
@@ -357,58 +354,16 @@ fn toggle_maximize(surface: &Surface) {
     let _ = unsafe { ShowWindow(hwnd, show) };
 }
 
-/// Enters full screen (a borderless window covering its monitor) or
-/// restores the window as it was.
+/// Enters or leaves full screen (`crate::window::toggle_full_screen`, which
+/// F11 runs too; it tells [`full_screen_changed`]).
 fn toggle_fullscreen(surface: &Surface) {
-    let hwnd = surface.hwnd();
-    let c = &surface.chrome;
-    let saved = c.fullscreen.borrow_mut().take();
-    // SAFETY: plain calls on a live window with local values.
-    unsafe {
-        match saved {
-            Some((placement, style)) => {
-                SetWindowLongW(hwnd, GWL_STYLE, style);
-                let _ = SetWindowPlacement(hwnd, &placement);
-                show_menu_bar(surface);
-                frame_changed(hwnd);
-            }
-            None => {
-                let mut placement = WINDOWPLACEMENT {
-                    length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
-                    ..Default::default()
-                };
-                if GetWindowPlacement(hwnd, &mut placement).is_err() {
-                    return;
-                }
-                let style = GetWindowLongW(hwnd, GWL_STYLE);
-                let mut info = MONITORINFO {
-                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-                    ..Default::default()
-                };
-                let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                if !GetMonitorInfoW(monitor, &mut info).as_bool() {
-                    return;
-                }
-                *c.fullscreen.borrow_mut() = Some((placement, style));
-                show_menu_bar(surface);
-                SetWindowLongW(
-                    hwnd,
-                    GWL_STYLE,
-                    (style as u32 & !WS_OVERLAPPEDWINDOW.0) as i32,
-                );
-                let r = info.rcMonitor;
-                let _ = SetWindowPos(
-                    hwnd,
-                    Some(HWND_TOP),
-                    r.left,
-                    r.top,
-                    r.right - r.left,
-                    r.bottom - r.top,
-                    SWP_FRAMECHANGED | SWP_NOOWNERZORDER,
-                );
-            }
-        }
-    }
+    crate::window::toggle_full_screen(surface.hwnd());
+}
+
+/// The window entered or left full screen: the menu bar and the title
+/// bar's area follow (neither shows in full screen).
+pub(crate) fn full_screen_changed(surface: &Surface) {
+    show_menu_bar(surface);
     update_area(surface);
     surface.invalidate();
 }
@@ -825,8 +780,9 @@ fn show_menu_bar(surface: &Surface) {
     let hwnd = surface.hwnd();
     let c = &surface.chrome;
     let menu = c.menu.borrow().clone();
-    let shown =
-        menu.filter(|_| c.style.get() == TitleBarStyle::Default && c.fullscreen.borrow().is_none());
+    let shown = menu.filter(|_| {
+        c.style.get() == TitleBarStyle::Default && !crate::window::is_full_screen(hwnd)
+    });
     let mut entries = Vec::new();
     // SAFETY: menus made, set and destroyed on this thread; the old bar is
     // destroyed once the window no longer shows it.
