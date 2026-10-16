@@ -89,7 +89,8 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
 - Watching ignores `Access` events: inotify (Linux) reports reads, FSEvents does not, so the build's own reads of the
   sources would start the next build, forever.
 - `nsh run` defaults to the host that runs on this machine: `--target catalyst` on macOS, `--target linux` (the GTK
-  host, `crates/nsh-linux-host`, run in place: it needs no app bundle) on Linux. Both hosts are stopped with the run
+  host, `crates/nsh-linux-host`, run in place: it needs no app bundle) on Linux. `--target macos` runs the AppKit host
+  (`crates/nsh-macos-host`) in place too: it makes itself a regular app without a bundle. The hosts are stopped with the run
   (Ctrl-C, SIGTERM, the session ending); a host that exits with an error ends it with its kept output.
 - `nsh run --target android` forwards the dev server's port to the device (`adb reverse tcp:<port> tcp:<port>`,
   `android::Reverse`) and removes that rule, and only that one (`adb reverse --remove tcp:<port>`), however the run
@@ -191,7 +192,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
 - A Cargo workspace in `<app>/.nsh/rust`, written on every command (files only when they change): `cli` (the
   command line, `nsh_cli::main_with` of the mobile UI and the app's set), `ios-host` / `ios-app` (the development
   host and the release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`),
-  `linux-host` / `linux-app` (the same on Linux, `nsh_platform_linux::set_ui_sets`) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime looks up when an engine starts). They
+  `linux-host` / `linux-app` and `macos-host` / `macos-app` (the same on Linux and macOS, `nsh_platform_linux` /
+  `nsh_platform_macos::set_ui_sets`) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime looks up when an engine starts). They
   build against nsh's sources (the checkout the running `nsh` was built in, or `NSH_SOURCE`) with nsh's `Cargo.lock`
   and target directory, so only the app's code and what links it compile; the binaries are named after the app
   (`nsh-app-<package>-cli`).
@@ -199,8 +201,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
   (`NSH_RUST_APP` names the workspace). Everything then knows the app's set: the bundler keeps its imports, bytecode
   links against its exports, `.nsh/types` declares it (`.nsh/types/<specifier>.d.ts`, found through tsconfig's `"*"`
   path, which falls back to `node_modules`), `nsh trace` renders it. The hosts `run` and `package` need are built
-  for the app instead of taken from the runtime (iOS `--target` triples; Linux's `linux-host` / `linux-app` for this
-  machine; Android: the prebuilt `classes.dex` with
+  for the app instead of taken from the runtime (iOS `--target` triples; Linux's and macOS's `*-host` / `*-app` for
+  this machine; Android: the prebuilt `classes.dex` with
   the app's `libnsh.so` for each ABI of the prebuilt runtime, cross-compiled with the NDK).
 - `nsh dev` / `nsh run` watch the crate too: a change to its `.rs` files, `Cargo.toml` or `assets/` ends the app's
   command line with exit code 75, and `nsh` builds it and runs the command again (the app restarts; JS and TSX edits

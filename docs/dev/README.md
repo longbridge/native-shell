@@ -19,6 +19,7 @@ For people working on native-shell itself (`AGENTS.md` at the root is the short 
 | [signed-packages.md](signed-packages.md) | Keys, packages, verification, revocation |
 | [embedding.md](embedding.md) | `nsh package`, the iOS / Android SDKs, native components |
 | [tooling.md](tooling.md) | `.nsh/types`, the dev server, hot reload, symbolication |
+| [macos.md](macos.md) | The macOS backend (AppKit): building, how each area maps to AppKit, `--script` checks, what differs |
 | [linux.md](linux.md) | The Linux backend (GTK 4): building, how each area maps to GTK, `--script` checks, what differs |
 | [web.md](web.md) | The WebAssembly runtime of the website's demos: `LocalEngine`, the clock, the DOM protocol |
 | [performance.md](performance.md) | Baselines |

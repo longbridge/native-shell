@@ -1,0 +1,109 @@
+# The macOS backend (AppKit)
+
+`crates/nsh-platform-macos` renders nsh apps with AppKit views, Core Animation and CoreText. `crates/nsh-macos-host` is
+its development host (`nsh run --target macos`), `crates/nsh-macos-app` the release runner of `nsh package --target
+macos`. It follows the Linux backend's desktop design (`linux.md`: nsh picks views itself, scroll views keep offsets of
+their own, nsh draws screens, headers and modals, sheets are centered cards, `desktop={{…}}` props apply) with the iOS
+backend's Apple drawing (CoreText, Core Graphics, Core Animation layers, ImageIO, `NSURLSession`, AVFoundation, WebKit).
+Mac Catalyst (`nsh-platform-ios` on `aarch64-apple-ios-macabi`) stays the default `nsh run` target on macOS: it is
+UIKit, phone-style. User-facing page: `website/docs/macos.md`.
+
+## Building and checking
+
+The crates need only Xcode's command line tools (the macOS SDK) and, for QuickJS, clang. Off macOS they are empty (like
+the other platform crates off their targets). They are built for the machine itself, so the CLI finds them in
+`target/<profile>` and builds them first in a checkout; `cargo xtask dist` puts them in `dist/nsh/runtime/macos/`.
+
+```sh
+cargo clippy -p nsh-platform-macos -p nsh-macos-host -p nsh-macos-app --all-targets --features nsh-platform-macos/dev
+cargo test -p nsh-platform-macos --features dev   # needs no window server: tests do not start AppKit
+cargo build -p nsh-macos-host                     # ./target/debug/nsh-macos-host
+```
+
+Features: `js` (default; JS apps; without it the crate only runs Rust apps and links no QuickJS) and `dev` (the dev
+server client, log forwarding, the error overlay: `dev.rs`). The runtime needs macOS 14 (`NSView`'s display links).
+
+## Architecture
+
+- **One view per node.** Each node is an `NshView` (`view.rs`, a flipped, layer-backed `NSView` subclass holding the
+  node's `ViewState`). The core lays everything out: a view sits at its frame (`place()`: the origin, a sticky shift,
+  mirrored lists), and its transform, opacity and visibility are its layer's. AppKit resets a layer-backed view's
+  anchor, position and transform when it moves the view, so `place()` sets them again every time, with the anchor at
+  the top left (transforms are conjugated around the transform origin).
+- **Children live in a container** when the view needs one: scroll views always (the container's bounds origin is
+  the scroll offset, as `NSClipView` scrolls, so a scroll is one call), and views that clip their children and cast a
+  shadow (clipping a layer clips its shadow). Hosted AppKit views (text fields, headers, videos, web views) are
+  `ViewState::natives`, above the children.
+- **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
+  `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
+  contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
+  backing store. Implicit animations are off for every change nsh makes (`surface::quiet`).
+- **One hop per commit.** The engine runs on its own thread; its sink queues each commit and wakes the main queue once
+  (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
+  Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared
+  between surfaces.
+- **Text is typeset on the engine thread** by CoreText (`text.rs`, the iOS engine with `NSFont`); the main thread
+  draws the finished `CTLine`s.
+- **Frames**: native animations, JS frame requests, scroll glides, transitions and toasts run on the root view's display
+  link (`NSView::displayLinkWithTarget_selector`) while something animates. The link does not fire while the window is
+  occluded or minimized or the screen is locked; while frames are wanted and it has not ticked for 100 ms a 60 Hz
+  main-queue timer ticks instead, so animations still end (a transition detaches its views when it does).
+- **Embedding**: `AppView` (`app.rs`) is one surface as a view; `run_app` opens one in a window with a standard menu
+  (Hide, Quit; Edit's undo / cut / copy / paste / select all, which fields answer; Minimize, Close). `set_ui_sets`
+  replaces the default `nsh/ui/mobile` set for apps with Rust components of their own.
+
+## How each area maps to AppKit
+
+| Area | Module | AppKit |
+|---|---|---|
+| Text | `text.rs` | CoreText on the engine thread, `CTLine`s drawn in `drawRect:`; decorations CoreText lacks drawn by hand (iOS); `selectable` text's range selection, desktop style: drag, double-click word, triple-click paragraph, Shift extends, Cmd+A / Cmd+C (the root's `selectAll:` / `copy:`), Escape clears |
+| Decoration | `decor.rs`, `visual.rs` | The view's layer for one radius (circular or continuous), shape layers for differing radii and borders whose sides differ or are dashed / dotted; box and inset shadows, gradients, outlines, filters (iOS's `visual.rs`); `apply` caches what it set, so per-frame calls are cheap |
+| Images | `image.rs`, `blur.rs` | ImageIO decoding off the main thread, downsampled to the view; an LRU cache (128 MB); `asset:/`, http(s) (`NSURLSession`), `file:`, `data:`; tint as a colored layer masked by the image; animated GIF / APNG / WebP as a keyframe animation of `contents` |
+| Canvas | `canvas.rs` | The recorded drawing replayed with Core Graphics (iOS); drawings that clear or composite go into a transparency layer, so they only touch the canvas's own pixels |
+| Scroll views | `scroll.rs` | Offsets of their own, shown by the container's bounds origin; trackpad scrolls follow the system's phases and momentum (rubber banding while the fingers are down, a spring back after), notched wheels move 10 points per line and stay on their view for 200 ms; mouse drags scroll as on Catalyst; snapping and paging glide from where the fingers lift; sticky cells; the indicator and refresh spinner in an overlay view that lets the mouse through; the keyboard scrolls as on Linux; a field that gets the focus is scrolled into view |
+| Input | `input.rs` | The root's `hitTest:` takes every mouse event over an app view, and nsh picks the view itself (transforms inverted, `overflow`, `pointerEvents`, hit slop, hidden screens, views animating out); a hosted view under the pointer gets the event from AppKit, even below `pointerEvents: none` overlays (`native_at`). Touches for the responder system, `panActivation` gates, presses, long presses, pressed and hovered states, cursors (`NSCursor`), native pans, trackpad pinch and rotation (Control + wheel pinches), the mouse's back button goes back |
+| Text inputs | `text_input.rs` | `NSTextField` / `NSSecureTextField`, multiline `NSTextView` in an `NSScrollView`, hosted at the content box, borderless (the view draws the decoration); edit counts drop stale JS values; offsets are `NSString`'s UTF-16; a click outside a field that edits leaves the focus in it (the root refuses first responder during a mouse press), `blur()` and Escape hand it over |
+| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) visible; headers are AppKit views (an `NSButton` back button with `chevron.left`, `NSTextField` titles, large titles, header items) of a fixed height reported to the core; a screen the app removes leaves as an image (`renderInContext`), since the core empties it in the next batches; Escape (unless a field has the focus), Option+Left, Cmd+[ and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close) |
+| Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close |
+| Transitions | `transition.rs` | `LayoutAnimation`, style transitions and keyframes on frame callbacks (Linux's) |
+| Dialogs, toasts | `system.rs` | `NSAlert` as a sheet on the window (the last regular button is the default, Cancel is Escape); toasts are a view the root hosts at its bottom |
+| Video | `native.rs` | AVFoundation (loaded at run time, as on iOS): an `AVPlayerLayer` in a view that lets the mouse through, or AVKit's `AVPlayerView` with `controls` |
+| Web views | `native.rs` | `WKWebView` (iOS's bridge: `ReactNativeWebView.postMessage`, injected JS, the `webview` capability's navigation policy); `scrollEnabled` is ignored (macOS's web view has no scroll view) |
+| Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent`'s `NSView` fills the node's view; `ComponentContext::emit` / `set_size` from any thread |
+| Accessibility | `access.rs` | `NSAccessibility` setters on the views: roles and subroles, labels, values, states, `testID` as the identifier; `accessible={true}` hides the children; live regions announced |
+| Environment | `system.rs` | Color scheme: the app's appearance when it forces one, else the root's effective appearance (the root's appearance is set to the app's, so hosted controls follow); locale and RTL from `NSLocale`, reduce motion and VoiceOver from `NSWorkspace` (live), the backing scale factor, the OS version; `Platform.OS` `"macos"`, idiom `desktop`, font scale 1, safe area and keyboard height 0 |
+| Clipboard | `system.rs` | `NSPasteboard` |
+| Networking | `net.rs` | `NSURLSession` (the iOS backend's) |
+| Dev | `dev.rs` | The dev server client on its own thread; a status line and the error overlay above the surface; Cmd+R reloads the latest build |
+
+## Checking a change: `--script`
+
+`nsh-macos-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or new
+lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.png>`, `tap <x> <y> [count]`, `rtap`,
+`drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `notch` (a mouse wheel),
+`hover`, `type <text>`, `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
+`quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
+`NSApp.currentEvent`).
+
+```sh
+nsh build examples/gallery -o /tmp/gallery
+./target/debug/nsh-macos-host --bundle /tmp/gallery/bundle.qbc --size 1200x800 \
+  --script "wait 1000; shot /tmp/a.png; tap 83 350; wait 500; shot /tmp/b.png; quit"
+```
+
+`shot` renders the window's content in process (`cacheDisplayInRect:`), so it needs no Screen Recording permission and
+works while the screen is locked. That rendering is not Core Animation's own: it ignores `maskedCorners`, cuts masks at
+their layer's bounds, ignores `shadowPath` and Core Image filters, and does not show sheets, `AVPlayerLayer` or
+`WKWebView` content. `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
+shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them.
+
+## Not implemented, or different
+
+- **Zooming scroll views**: `zoomTo` and the zoom props are ignored (as on Linux).
+- **`mixBlendMode`**, `brightness()` above 1. Backdrop blur is a Core Image filter on a sublayer; screenshots cannot
+  show it.
+- **Inputs**: content types / autofill, keyboard types, autocapitalization, letter spacing; input accessory views are
+  never shown (there is no software keyboard); `keyboardShouldPersistTaps` is ignored.
+- **Accessibility**: `accessibilityActions`.
+- **No desktop equivalent**: the status bar, haptics; the safe area and keyboard height are 0.
+- **Packaged apps** are signed ad hoc; to distribute one, sign it with a Developer ID and notarize it.
