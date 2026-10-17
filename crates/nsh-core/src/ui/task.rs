@@ -98,6 +98,9 @@ pub(crate) enum Action {
     Direction(super::services::Direction),
     /// Sets the app's appearance.
     Appearance(crate::platform::Appearance),
+    /// Measures the node with the layout of the commit the action goes out
+    /// with; the measurement resolves the slot.
+    Measure(NodeId, AnswerSlot<Option<crate::Measurement>>),
 }
 
 /// A clipboard read waiting for the platform's answer.

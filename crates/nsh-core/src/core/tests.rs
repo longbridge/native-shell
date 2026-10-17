@@ -4150,6 +4150,104 @@ mod components {
         );
     }
 
+    /// Measures its box when pressed (and a ref no element carries).
+    #[derive(Default)]
+    struct Ruler {
+        target: Option<ElementRef>,
+        unused: Option<ElementRef>,
+        shown: String,
+    }
+
+    impl Component for Ruler {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+            self.target = Some(cx.element_ref());
+            self.unused = Some(cx.element_ref());
+        }
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view()
+                .p_4()
+                .child(
+                    view().pl(px(10.0)).child(
+                        view()
+                            .element_ref(self.target.as_ref().unwrap())
+                            .w(px(30.0))
+                            .h(px(20.0)),
+                    ),
+                )
+                .child(text(self.shown.clone()))
+                .child(view().w(px(5.0)).h(px(5.0)).on_press(cx.listener(
+                    |this: &mut Self, _, cx| {
+                        let target = this.target.as_ref().unwrap().measure();
+                        let unused = this.unused.as_ref().unwrap().measure();
+                        cx.spawn(|this, _| async move {
+                            let (m, none) = (target.await, unused.await);
+                            this.update(move |this: &mut Self, cx| {
+                                let m = m.expect("laid out");
+                                this.shown = format!(
+                                    "{},{} {}x{} at {},{} {}",
+                                    m.frame.x,
+                                    m.frame.y,
+                                    m.frame.width,
+                                    m.frame.height,
+                                    m.page_x,
+                                    m.page_y,
+                                    none.is_none()
+                                );
+                                cx.notify();
+                            })
+                            .await;
+                        })
+                        .detach();
+                    },
+                )))
+        }
+    }
+
+    #[test]
+    fn element_refs_measure_with_the_commits_layout() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Ruler>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component(std::any::type_name::<Ruler>().into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button listens to presses");
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        // The frame in its parent (past the parent's padding), the corner
+        // in the surface (past the component's padding too); the ref no
+        // element carries measures nothing.
+        let shown = run_until(&mut c, |s| s.iter().any(|t| t.contains(" at ")));
+        assert_eq!(shown.last().unwrap(), "10,0 30x20 at 26,16 true");
+    }
+
     /// Provides an accent to what is below it, through the app's JSX.
     #[derive(Default)]
     struct Theming {

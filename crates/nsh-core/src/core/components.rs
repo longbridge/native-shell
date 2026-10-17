@@ -264,6 +264,9 @@ pub(super) struct Components {
     next_clipboard_read: u32,
     /// The ends of the animations components started, by id.
     animations: FxHashMap<nsh_animation::AnimationId, AnswerSlot<bool>>,
+    /// Elements to measure once this commit is laid out
+    /// ([`crate::ui::ElementRef::measure`]).
+    pub(super) measures: Vec<(NodeId, AnswerSlot<Option<crate::Measurement>>)>,
     /// The components' own lists, by node.
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
     /// The insets screens and modals reported (`onInsets`).
@@ -303,6 +306,7 @@ impl Default for Components {
             clipboard_reads: FxHashMap::default(),
             next_clipboard_read: 1,
             animations: FxHashMap::default(),
+            measures: Vec::new(),
             virtual_lists: FxHashMap::default(),
             insets: FxHashMap::default(),
             js_back: false,
@@ -2454,6 +2458,7 @@ impl<M: TextEngine> Core<M> {
             Action::Frame(answer) => self.wait_frame(answer),
             Action::Direction(change) => self.change_direction(change),
             Action::Appearance(appearance) => self.set_appearance(appearance),
+            Action::Measure(id, answer) => self.components.measures.push((id, answer)),
             Action::ImageInfo(uri, answer) => {
                 let id = self.components.next_image_info;
                 self.components.next_image_info += 1;

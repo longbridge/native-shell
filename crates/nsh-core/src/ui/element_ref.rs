@@ -11,10 +11,10 @@ use std::{
 };
 
 use super::{
-    Component, Context,
+    Answer, Component, Context,
     task::{Action, Executor, Updated, WeakComponent},
 };
-use crate::{Command, JsonValue, NodeId};
+use crate::{Command, JsonValue, Measurement, NodeId};
 
 /// One element of a component's render: made once
 /// ([`super::Context::element_ref`], in `setup`), put on an element each
@@ -167,6 +167,21 @@ impl ElementRef {
             name: name.into(),
             args,
         });
+    }
+
+    /// Where the element is (TS: `ref.measure()`): its frame in its parent
+    /// and its top left corner in the root view it is in (the surface or
+    /// its modal; scroll offsets applied), from the layout of the commit
+    /// this call goes out with, so changes made before it count. `None`
+    /// when no rendered element carries the ref or it is not laid out.
+    /// Await it in a task.
+    pub fn measure(&self) -> Answer<Option<Measurement>> {
+        let (answer, slot) = Answer::new();
+        match (self.node(), self.executor.upgrade()) {
+            (Some(node), Some(executor)) => executor.act(Action::Measure(node, slot)),
+            _ => slot.borrow_mut().deliver(None),
+        }
+        answer
     }
 }
 
