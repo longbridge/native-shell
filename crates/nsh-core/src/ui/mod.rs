@@ -1,18 +1,22 @@
 //! Components written in Rust: the UI sets' components (`nsh-ui-mobile`),
 //! run by the core on the engine thread.
 //!
-//! A [`Component`] renders a tree of elements ([`view`], [`text`],
-//! [`image`], other components) styled with typed methods ([`Styled`]:
-//! `.px_4()`, `.rounded_xl()`, `.bg(theme.primary)`) that lower into the
-//! same rules as Tailwind classes. The core expands the tree into nodes of
-//! its own, diffs it against the previous render and lays it out in the same
-//! pass as everything else, so a component sizes like any view, with no
-//! round trip. Events on its elements go to the component first
-//! ([`RenderCx::listener`]); it decides what reaches JS ([`Context::emit`])
-//! and calls [`Context::notify`] to render again. State lives in the
-//! component (`Self`), set up from the first props ([`Component::setup`]),
-//! changed by listeners, timers and async tasks ([`Context::spawn`]); a render
-//! subscribes to what it reads of the environment ([`RenderCx::window`]).
+//! A [`Component`] is a function that runs once ([`Component::view`]) and
+//! makes a tree of elements ([`view`], [`text`], [`image`], other
+//! components) styled with typed methods ([`Styled`]: `.px_4()`,
+//! `.rounded_xl()`, `.bg(theme().primary)`) that lower into the same rules
+//! as Tailwind classes. The core expands the tree into nodes of its own and
+//! lays it out in the same pass as everything else, so a component sizes
+//! like any view, with no round trip. What changes is bound: a text, prop
+//! or style given a signal, a memo, a [`Prop`] or a closure is a render
+//! effect whose runs patch that part alone, and a region ([`dynamic`],
+//! [`If`], [`Each`], [`catch_error`]) makes its own elements again. State
+//! is signals the view makes (under the component's owner: they go with
+//! it), changed by listeners, timers and tasks ([`ambient::spawn`]); the
+//! component's listeners hear its elements' events first and decide what
+//! reaches JS ([`Scope::emit`]). The environment and the theme are signals
+//! too ([`ambient::window`], [`ambient::theme`]): reading one in a binding
+//! subscribes it.
 //!
 //! Props are a struct (`#[derive(Props)]`), events an enum
 //! (`#[derive(Event)]`); their JS face (`nsh-js`) and TypeScript

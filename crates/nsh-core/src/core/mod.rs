@@ -1138,10 +1138,10 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// One round of a commit: renders, layout, lists, commands, into the
+    /// One round of a commit: views, layout, lists, commands, into the
     /// mount items.
     fn commit_round(&mut self) {
-        // Components whose props or state changed render first.
+        // The views' patches and the views to make first.
         self.render_components();
         self.sync_back();
         // Platforms animate the frames, insertions and removals that follow

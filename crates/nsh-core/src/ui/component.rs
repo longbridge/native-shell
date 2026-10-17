@@ -19,7 +19,7 @@ use crate::JsonValue;
 
 /// A component written in Rust: a function that runs once ([`Self::view`])
 /// and makes its view, binding what changes to signals. Its props come from
-/// JS (or from the component that renders it), its events go to JS.
+/// JS (or from the component whose view has it), its events go to JS.
 /// `#[component]` on a function makes the type and this impl.
 ///
 /// It is registered under its type's name ([`std::any::type_name`]:
@@ -215,7 +215,7 @@ pub trait Props: Clone + PartialEq + 'static {
     #[doc(hidden)]
     const ITEMS: Option<&'static str> = None;
 
-    /// Its children are made only while the render places them
+    /// Its children are made only while the view places them
     /// (`#[prop(lazy)]`).
     #[doc(hidden)]
     const LAZY_CHILDREN: bool = false;
@@ -246,9 +246,9 @@ pub trait Props: Clone + PartialEq + 'static {
         self.clone()
     }
 
-    /// An instance's props take `new`'s (a parent that renders again):
-    /// held props update their readers; returns whether another field
-    /// changed.
+    /// An instance's props take `new`'s (a parent's region made the
+    /// element again): held props update their readers; returns whether
+    /// another field changed.
     #[doc(hidden)]
     fn update_from(&mut self, new: &Self) -> bool {
         if self == new {
@@ -333,7 +333,7 @@ pub struct ComponentSpec {
     pub methods: Vec<MethodSpec>,
     /// The named TypeScript types they use.
     pub types: TsTypes,
-    /// JS makes the children only while the render places them
+    /// JS makes the children only while the view places them
     /// (`#[prop(lazy)]` on its `Children`): the core tells it with a
     /// `$children` event on the host.
     pub lazy_children: bool,
@@ -406,7 +406,7 @@ fn export_name(type_name: &str) -> &str {
 /// An instance: a component's props and view, their types erased.
 pub(crate) trait AnyInstance {
     fn set_prop(&mut self, name: &str, value: Option<JsonValue>) -> Result<bool, PropError>;
-    /// Props from the component that renders this one.
+    /// Props from the component whose view has this one.
     fn set_props(&mut self, props: &dyn Any);
     fn set_slot(&mut self, name: &'static str, filled: bool);
     fn set_children(&mut self, present: bool);

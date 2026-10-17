@@ -121,7 +121,7 @@ struct PropAttr {
     rename: Option<String>,
     /// More names a `PropEnum` variant is read from.
     aliases: Vec<String>,
-    /// `Children` made only while the render places them.
+    /// `Children` made only while the view places them.
     lazy: bool,
 }
 
@@ -194,14 +194,14 @@ enum Kind {
 ///   JS clearing a prop restores it.
 /// - `Option<Slot>`: a named slot, JSX the app passes in that prop.
 /// - `Children`: the JSX children; with `#[prop(lazy)]` JS makes them only
-///   while the render places them (made again each time it does, released
+///   while the view places them (made again each time it does, released
 ///   when it stops: a sheet's content starts fresh when it opens).
 /// - `Items`: virtualized rows (in JS `each`, a row renderer and `List`'s
 ///   data props), at most one, and not with `Children`.
 ///
 /// `#[prop(rename = "…")]` sets the JS name. The struct's doc comment
 /// documents the component in TypeScript, the fields' its props. The props
-/// also get `Default` (every field at its default), for Rust renders:
+/// also get `Default` (every field at its default), for Rust views:
 /// `ButtonProps { title: "+1".into(), ..Default::default() }`.
 #[proc_macro_derive(Props, attributes(prop))]
 pub fn derive_props(input: TokenStream) -> TokenStream {
@@ -414,8 +414,8 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     };
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
-        /// Every prop at its default (`..Default::default()` when Rust
-        /// renders the component).
+        /// Every prop at its default (`..Default::default()` when a Rust
+        /// view makes the component).
         impl #impl_generics ::core::default::Default for #name #ty_generics #where_clause {
             fn default() -> Self {
                 <Self as #ui::Props>::initial()

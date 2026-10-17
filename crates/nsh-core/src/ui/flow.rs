@@ -1,12 +1,10 @@
 //! Elements that change: [`dynamic`], [`If`] and [`Each`] (TS:
 //! `{() => …}`, `<If>`, `<Each>`).
 //!
-//! Each is a region of its parent's children. In a component that runs
-//! once, a region is a binding: when what it reads changes, its elements are
-//! made again (an `If` only when its condition flips; an `Each` only for the
-//! rows that came, keeping the others) and the core reconciles the region's
-//! nodes alone. In a component that renders again, a region is made once
-//! per render, like any other element.
+//! Each is a region of its parent's children and a binding: when what it
+//! reads changes, its elements are made again (an `If` only when its
+//! condition flips; an `Each` only for the rows that came, keeping the
+//! others) and the core reconciles the region's nodes alone.
 
 use std::{
     cell::{Cell, RefCell},

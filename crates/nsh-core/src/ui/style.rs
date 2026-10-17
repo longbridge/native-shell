@@ -5,10 +5,12 @@
 //! independent of the app's Tailwind theme, so a component looks the same
 //! in every app.
 //!
-//! What changes without a render is native, as with classes: theme colors
-//! carry a light and a dark value ([`AdaptiveColor`]), `.active(|s| …)`,
-//! `.hover(…)` and `.focus(…)` follow the view's interaction states. What a
-//! render knows (disabled, a variant) is plain Rust: `.when(cond, …)`.
+//! Some changes are native, as with classes: theme colors carry a light
+//! and a dark value ([`AdaptiveColor`]), `.active(|s| …)`, `.hover(…)` and
+//! `.focus(…)` follow the view's interaction states. Others are bindings: a
+//! method given a signal or a closure (`.w(move || px(width.get()))`),
+//! `.style_when(signal, …)`, `.style_with(…)`. What is known when the view
+//! is made (a variant) is plain Rust: `.when(cond, …)`.
 
 use std::{
     fmt,
@@ -105,7 +107,7 @@ pub const fn rgba(hex: u32) -> Color {
 }
 
 /// A color for each appearance: the platform switches between them
-/// without a render. Theme colors are adaptive; a plain [`Color`] is the
+/// with nothing running. Theme colors are adaptive; a plain [`Color`] is the
 /// same in both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct AdaptiveColor {
@@ -2915,7 +2917,7 @@ pub trait Styled: Sized {
         self
     }
 
-    // Variants (native: no render).
+    // Variants (native: nothing runs).
 
     /// `f`'s styles while `when` holds: a value decides once, a signal or a
     /// closure switches them as it changes (Tailwind's classes made

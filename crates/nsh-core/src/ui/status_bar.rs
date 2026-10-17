@@ -13,7 +13,7 @@ use crate::{StatusBarConfig, StatusBarSetting};
 /// tasks.
 pub(crate) type SharedStatusBars = Rc<RefCell<StatusBars>>;
 
-/// A setting a component added ([`super::add_status_bar`]).
+/// A setting a component added ([`super::ambient::add_status_bar`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StatusBarEntry(u64);
 

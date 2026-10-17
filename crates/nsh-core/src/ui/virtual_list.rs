@@ -143,11 +143,11 @@ pub(crate) type SeparatorFn = Rc<dyn Fn() -> AnyElement>;
 /// The rows' identities, hashed, read in a binding.
 pub(crate) type KeysFn = Rc<dyn Fn() -> Rc<[u64]>>;
 
-/// A list of the component's own rows, as the render makes it.
+/// A list of the component's own rows, as a view makes it.
 #[derive(Clone)]
 pub(crate) struct VirtualListEl {
     pub(crate) config: ListConfig,
-    /// How many rows: in a view, a binding that updates the list in place.
+    /// How many rows: bound, a binding that updates the list in place.
     pub(crate) count: Reactive<u32>,
     pub(crate) row: RowFn,
     /// The rows' identities, for splices (rows keep their cells and sizes
@@ -165,14 +165,12 @@ pub(crate) struct VirtualListEl {
 /// the rows near the viewport exist. `row(at)` builds the row at `at`
 /// (`at.index()`) from the component's data.
 ///
-/// In a component that runs once, each cell's content is made once: when
-/// the cell shows another row its position changes, and only the bindings
-/// that read it run again (`text(move || rows.with(|r| r[at.index()].name.clone()))`).
-/// `count` can be a signal or a closure there: the list grows and shrinks
-/// in place. In a component that renders again, `row` runs again when the
-/// cell shows another row and when the component renders. Give the rows'
-/// identities with [`VirtualList::keys`] when rows come and go other than
-/// at the end.
+/// Each cell's content is made once: when the cell shows another row its
+/// position changes, and only the bindings that read it run again
+/// (`text(move || rows.with(|r| r[at.index()].name.clone()))`). `count`
+/// can be a signal or a closure: the list grows and shrinks in place. Give
+/// the rows' identities with [`VirtualList::keys`] when rows come and go
+/// other than at the end.
 pub fn virtual_list<R: IntoElement>(
     count: impl IntoReactive<usize>,
     row: impl Fn(Position) -> R + 'static,
@@ -213,7 +211,7 @@ impl VirtualList {
     }
 
     /// One of the list's own cells (header, footer, empty), outside the
-    /// recycling: rendered with the component, kept while the render has it.
+    /// recycling: made with the view, kept while the view has it.
     fn extra(mut self, slot: CellSlot, key: &'static str, content: AnyElement) -> Self {
         self.0
             .children
@@ -223,7 +221,7 @@ impl VirtualList {
     }
 
     /// The rows' identities, in order (any hashable id per row), read in a
-    /// binding in a component that runs once (once per render otherwise):
+    /// binding:
     /// `.keys(move || rows.with(|r| r.iter().map(|r| r.id).collect::<Vec<_>>()))`.
     pub fn keys<K: Hash, I: IntoIterator<Item = K>>(
         mut self,
@@ -243,7 +241,7 @@ impl VirtualList {
     }
 
     /// Above the rows, scrolling with them (TS: `ListHeaderComponent`):
-    /// part of this render, so its state and handlers are the
+    /// part of this view, so its state and handlers are the
     /// component's, and it is never recycled.
     pub fn header(self, header: impl IntoElement) -> Self {
         self.extra(CellSlot::Header, "\0header", header.into_element())

@@ -139,7 +139,8 @@ pub(crate) struct Executor {
     /// Native animation nodes and animations made so far (their ids are
     /// odd: JS's are even).
     animation_ids: std::cell::Cell<u32>,
-    /// Live derived nodes, for renders deriving them again.
+    /// Live derived nodes, for what derives them again (a region or a row
+    /// made again).
     derived: RefCell<super::animated::Derived>,
     /// The components' listeners of the back button.
     pub(crate) back: Rc<RefCell<super::back::BackListeners>>,
@@ -324,7 +325,7 @@ pub struct Answer<T> {
     slot: Rc<RefCell<Output<T>>>,
 }
 
-/// The answer to a dialog ([`super::dialog`]): the index of the
+/// The answer to a dialog ([`super::ambient::dialog`]): the index of the
 /// button pressed, -1 when it was dismissed.
 pub type DialogAnswer = Answer<i32>;
 

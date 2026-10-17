@@ -1,6 +1,6 @@
 //! `Sheet`: a panel that slides up from the bottom over a dimmed backdrop,
 //! dragged down to close. The drag and the springs run natively: the panel
-//! follows the finger with no render per frame.
+//! follows the finger with no engine work per frame.
 
 use nsh_core::ui::prelude::*;
 
