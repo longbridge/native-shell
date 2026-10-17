@@ -1,6 +1,32 @@
 # Reactive Rust components (design proposal)
 
-Status: accepted; being implemented.
+Status: implemented. `docs/dev/components.md` is the reference for the API as built; this page keeps the proposal
+and its reasons. Where the implementation differs from the proposal:
+
+- **The shape.** `#[component] fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement`:
+  `Scope` is typed by the event, not the component (it only emits, reads the insets and registers methods), and the
+  trait's one function is `Component::view`. Methods are an API type (`#[methods] impl StepperApi`, `&self` methods
+  over the signals they read and write) the view registers with `cx.methods(..)` and the component names with
+  `#[component(methods = StepperApi)]`; Rust calls them with `ComponentRef::api::<StepperApi>()`.
+- **Bindings queue patches, not ops.** A binding's run queues a `Patch` with the part's new value (`core/views.rs`),
+  which the core applies against what it applied last with the field diffs it has for host props, styles and list
+  layouts, so the kind-by-kind prop diff, style lowering and class merging stay in one place. `Expanded`,
+  `reconcile_children` and `reconcile_node` stay too: they mount a view and reconcile a region's elements by key.
+- **Rows read a `Position`.** A list cell's content, and the wrapper of an app's row, is made once and reads its row
+  through a `Position` (signals of its index and the row count): a memo of the list's count and keys moves the
+  cells' index signals before the bindings that read them run, so a splice runs only the moved rows' bindings.
+- **Error boundaries reset.** `catch_error(|| view, |error, reset| fallback)`: `reset.reset()` makes the view again.
+  Failures go to the nearest boundary of the owner they happened under (`boundary_of`), never by walking the tree.
+- **Modules keep a context for sync functions.** A sync `#[module]` function may take `&mut ModuleCx` (the
+  platform's services, applied in order right after the call); an `async fn` takes none and uses the free functions.
+- **Views JS made adopt the owner above them.** A component JS creates among another's JS children is made once its
+  host is in the tree, under the owner of where the component above places its children, so context and failures
+  reach it.
+- **The first frame costs more.** "The first render costs about the same" did not hold: 200 Buttons take ~40%
+  more core time to mount (1.04ms against 0.75ms; JS is unchanged), the bindings' computations and the props'
+  signals that make every later update cost only what it changes (`docs/dev/performance.md`). A binding's first
+  value is applied with its element's static parts, not as a patch after them.
+- **One pull request**, not one per step: the old model went in the same change.
 
 Rust components move from today's model (a component's `render` runs again on every change, the core rebuilds its
 element tree and diffs it against the last one) to the model TSX already uses: **a component runs once, signals drive
