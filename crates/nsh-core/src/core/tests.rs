@@ -2721,6 +2721,63 @@ fn sibling_positions() {
 }
 
 #[test]
+fn text_inherits_a_rows_positional_classes() {
+    let mut c = core();
+    view_with_classes(&mut c, 2, "");
+    let add_row = |c: &mut Core<FakeEngine>, row: NodeId| {
+        apply(
+            c,
+            vec![
+                Op::Create {
+                    id: row,
+                    tag: Tag::View,
+                },
+                class_op(row, "text-black last:text-white"),
+                Op::Create {
+                    id: row + 1,
+                    tag: Tag::Text,
+                },
+                Op::CreateText {
+                    id: row + 2,
+                    text: "label".into(),
+                },
+                Op::Insert {
+                    parent: row + 1,
+                    child: row + 2,
+                    before: None,
+                },
+                Op::Insert {
+                    parent: row,
+                    child: row + 1,
+                    before: None,
+                },
+                Op::Insert {
+                    parent: 2,
+                    child: row,
+                    before: None,
+                },
+            ],
+        );
+    };
+    let color = |batch: &MountBatch, id: NodeId| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::Text { id: t, text, .. } if *t == id => Some(text.spans[0].style.color),
+            _ => None,
+        })
+    };
+    add_row(&mut c, 10);
+    add_row(&mut c, 20);
+    let batch = c.commit().unwrap();
+    assert_eq!(color(&batch, 11), Some(Color(0x0000_00ff)));
+    assert_eq!(color(&batch, 21), Some(Color(0xffff_ffff)));
+    // A row after it: the label of the row that was last turns back.
+    add_row(&mut c, 30);
+    let batch = c.commit().unwrap();
+    assert_eq!(color(&batch, 21), Some(Color(0x0000_00ff)));
+    assert_eq!(color(&batch, 31), Some(Color(0xffff_ffff)));
+}
+
+#[test]
 fn fractional_translations_follow_the_size() {
     let mut c = core();
     view_with_classes(&mut c, 2, "w-20 h-10 -translate-x-1/2 translate-y-full");
