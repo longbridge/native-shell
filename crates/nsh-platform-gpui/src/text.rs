@@ -473,12 +473,14 @@ impl TextEngine for GpuiTextEngine {
 
     fn prepare(&self, text: &AttributedText) -> Prepared {
         let s = &text.text;
-        // The UTF-16 offset of every byte: a character's bytes all have
-        // its start's, so an offset maps to the boundary it starts at.
         let mut utf16 = Vec::with_capacity(s.len() + 1);
         let mut u = 0u32;
+        // Every byte of a character maps to the character's offset, so the
+        // first byte at an offset is always a character boundary.
         for c in s.chars() {
-            utf16.extend(std::iter::repeat_n(u, c.len_utf8()));
+            for _ in 0..c.len_utf8() {
+                utf16.push(u);
+            }
             u += c.len_utf16() as u32;
         }
         utf16.push(u);

@@ -173,7 +173,7 @@ pub struct AppView {
 
 impl AppView {
     /// A view with no app yet (in `cx.new(|cx| AppView::new(...))`).
-    pub fn new(options: AppOptions, _window: &mut Window, cx: &mut Context<Self>) -> AppView {
+    pub fn new(options: AppOptions, window: &mut Window, cx: &mut Context<Self>) -> AppView {
         crate::rt::init(cx);
         bind_keys(cx);
         let surface = Surface::new(initial_environment());
@@ -181,6 +181,7 @@ impl AppView {
         surface.entity.set(Some(cx.entity_id()));
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
+        crate::system::watch_environment(&surface, window, cx);
         AppView {
             surface,
             focus: cx.focus_handle().tab_stop(true),
@@ -264,7 +265,7 @@ impl AppView {
             Appearance::Dark => Some(true),
             _ => None,
         });
-        self.surface.invalidate();
+        crate::system::host_appearance_changed(&self.surface);
         crate::rt::flush(cx);
     }
 
@@ -326,6 +327,14 @@ impl Focusable for AppView {
 
 impl Render for AppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let surface = SurfaceElement {
+            surface: self.surface.clone(),
+            focus: self.focus.clone(),
+            view: cx.entity().downgrade(),
+        };
+        // A dev session draws its status line and error overlay above.
+        #[cfg(feature = "dev")]
+        let surface = crate::dev::wrap(self, surface.into_any_element(), cx);
         // The div registers the view's tab stop, which only GPUI's own
         // elements can.
         gpui::div()
@@ -334,11 +343,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_prev))
             .size_full()
-            .child(SurfaceElement {
-                surface: self.surface.clone(),
-                focus: self.focus.clone(),
-                view: cx.entity().downgrade(),
-            })
+            .child(surface)
     }
 }
 
@@ -389,6 +394,7 @@ pub fn open_app_window(
             AppSource::DevServer(url) => crate::dev::start(&view, url, cx),
         }
         let focus = view.read(cx).focus.clone();
+        crate::system::own_window(view.read(cx).surface());
         window.focus(&focus, cx);
         view
     })?;

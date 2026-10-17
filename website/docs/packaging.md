@@ -8,7 +8,7 @@ group: platforms
 # Packaging
 
 `nsh package` turns an app into something you can install: a `.app` for the iOS simulator, a signed `.ipa` for iOS
-devices, a signed `.apk` for Android, an ad hoc signed `.app` for macOS, a directory and `.tar.gz` for Linux, or a directory and `.zip` for Windows. It combines a release build of your app with the **prebuilt runtime** that
+devices, a signed `.apk` for Android, an ad hoc signed `.app` for macOS, a directory and `.tar.gz` for Linux, or a directory and `.zip` for Windows; `--target gpui` makes this machine's desktop package with the GPUI runner. It combines a release build of your app with the **prebuilt runtime** that
 ships with nsh, so it needs no Rust toolchain, no Xcode project and no Gradle.
 
 ```sh
@@ -62,7 +62,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 
 | Flag | Description |
 |---|---|
-| `--target <ios \| ios-simulator \| android \| macos \| linux \| windows>` | What to build for (required). |
+| `--target <ios \| ios-simulator \| android \| macos \| linux \| windows \| gpui>` | What to build for (required). |
 | `-o, --out <dir>` | Output directory. Default `out`. |
 | `--name <name>` | Display name. |
 | `--id <id>` | Bundle identifier, such as `com.example.app`. |
@@ -74,7 +74,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 | `--keystore <file>` | Android: a release keystore (default: the debug key). |
 | `--key-alias <alias>` | Android: the key alias in the keystore. |
 | `--keystore-password <password>` | Android: the keystore password; also read from `NSH_KEYSTORE_PASSWORD`. |
-| `--run` | Install and launch afterwards: in the iOS simulator, or on the Android device or emulator `adb` sees; macOS, Linux and Windows apps are launched on this machine. Not for `--target ios`. |
+| `--run` | Install and launch afterwards: in the iOS simulator, or on the Android device or emulator `adb` sees; macOS, Linux, Windows and GPUI apps are launched on this machine. Not for `--target ios`. |
 
 ## iOS simulator
 
@@ -175,6 +175,16 @@ No tools are needed. Package on Windows: the runner is built for the machine it 
 embed the icon. The app runs from wherever its directory is copied; nothing is installed. See
 [Windows](./windows.md#packaging).
 
+## GPUI
+
+```sh
+nsh package App.tsx --target gpui --run
+```
+
+Writes what `--target macos`, `--target windows` or `--target linux` writes on this machine, with GPUI's release
+runner (`nsh-gpui-app`) as the executable instead of the native backend's. Package on the OS the app is for: the
+runner is built for the machine it is built on. See [GPUI](./gpui.md#packaging).
+
 ## Icons
 
 Give one square PNG, ideally 1024×1024, in `nsh.json` (`"icon": "icon.png"`) or with `--icon`:
@@ -201,6 +211,7 @@ imports, next to the prebuilt runtime:
 | macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nshc`, `nsh/assets/…` |
 | Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nshc`, `nsh/assets/…` |
 | Windows | the `nsh-windows-app.exe` executable, renamed `<Name>.exe` | `<Name>\nsh\bundle.nshc`, `nsh\assets\…` |
+| GPUI | the `nsh-gpui-app` executable, renamed as on this machine's OS | as on this machine's OS |
 
 A packaged app registers no [native components](./native-components.md); for those, embed nsh in your own app.
 
@@ -209,10 +220,10 @@ A packaged app registers no [native components](./native-components.md); for tho
 `nsh package` looks for the prebuilt runtime next to the CLI (`bin/../runtime` in the distribution). In a checkout of
 nsh it uses `target/<triple>/<profile>` and `target/android/<profile>`, with the CLI's own profile (a debug CLI uses
 debug runtimes): build them with `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim` (or `aarch64-apple-ios`
-for devices) and `cargo xtask android` (add `--release` for a release CLI); `nsh-macos-app` (on macOS), `nsh-linux-app` (on Linux) and `nsh-windows-app` (on Windows) are built for this
-machine in `target/<profile>` (`cargo build -p nsh-macos-app`, `cargo build -p nsh-linux-app`, `cargo build -p nsh-windows-app`). The environment variable `NSH_RUNTIME`
+for devices) and `cargo xtask android` (add `--release` for a release CLI); `nsh-macos-app` (on macOS), `nsh-linux-app` (on Linux), `nsh-windows-app` (on Windows) and `nsh-gpui-app` (on any of them) are built for this
+machine in `target/<profile>` (`cargo build -p nsh-macos-app`, `cargo build -p nsh-linux-app`, `cargo build -p nsh-windows-app`, `cargo build -p nsh-gpui-app`). The environment variable `NSH_RUNTIME`
 points the CLI at another directory laid out like the distribution's `runtime/` (`ios/iphoneos`,
-`ios/iphonesimulator`, `android/release`, `macos`, `linux`, `windows`, ...).
+`ios/iphonesimulator`, `android/release`, `macos`, `linux`, `windows`, `gpui`, ...).
 
 ## See also
 
