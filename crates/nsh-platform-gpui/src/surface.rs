@@ -290,7 +290,7 @@ impl Surface {
             log::error!("cannot start the engine: the surface is not in a GPUI app yet");
             return;
         };
-        let family = crate::text::ui_family();
+        let family: Arc<str> = Arc::from(&*crate::text::ui_family_for(&text_system));
         let theme = self.host_theme.borrow().clone();
         match Engine::start_with(
             config,

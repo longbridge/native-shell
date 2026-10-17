@@ -76,10 +76,14 @@ const CACHE_LINES: u32 = 4096;
 
 // --- Fonts ------------------------------------------------------------------------------
 
-/// The family of the platform's UI font, as `GpuiTextEngine::new` takes it
-/// (each engine resolves it to an installed family).
+/// The family of the UI font: the one [`ui_family_for`] resolved (a
+/// surface does when it starts), else GPUI's name for the system's.
 pub(crate) fn ui_family() -> Arc<str> {
-    Arc::from(SYSTEM_UI)
+    UI_FAMILY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map_or_else(|| Arc::from(SYSTEM_UI), |(_, f)| f.clone())
 }
 
 /// UI fonts of Linux desktops, in order of preference: GPUI's own name for
@@ -104,18 +108,32 @@ const TEXT_FALLBACKS: &[&str] = &["DejaVu Sans", "Noto Sans Symbols 2", "Noto Sa
 #[cfg(not(target_os = "linux"))]
 const TEXT_FALLBACKS: &[&str] = &[];
 
+/// Monospace families, in order of preference (the first installed one
+/// stands for `monospace`; static fonts before variable ones, which GPUI
+/// draws at one weight).
 #[cfg(target_os = "macos")]
-const MONOSPACE: &[&str] = &["Menlo", "Monaco", "Courier New"];
+pub(crate) const MONOSPACE: &[&str] = &["Menlo", "SF Mono", "Monaco", "Courier New"];
 #[cfg(windows)]
-const MONOSPACE: &[&str] = &["Cascadia Mono", "Consolas", "Courier New"];
+pub(crate) const MONOSPACE: &[&str] = &["Cascadia Mono", "Consolas", "Courier New"];
 #[cfg(not(any(target_os = "macos", windows)))]
-const MONOSPACE: &[&str] = &[
-    "Adwaita Mono",
+pub(crate) const MONOSPACE: &[&str] = &[
     "DejaVu Sans Mono",
     "Noto Sans Mono",
     "Liberation Mono",
     "Ubuntu Mono",
+    "Adwaita Mono",
+    "Cantarell Mono",
 ];
+
+/// The first installed of [`MONOSPACE`] (GPUI resolves exact family
+/// names only, no generic `monospace`).
+pub(crate) fn monospace_family(system: &TextSystem) -> Option<SharedString> {
+    let installed = system.all_font_names();
+    MONOSPACE
+        .iter()
+        .find(|f| installed.iter().any(|i| i.eq_ignore_ascii_case(f)))
+        .map(|f| SharedString::from(*f))
+}
 
 #[cfg(any(target_os = "macos", windows))]
 const SERIF: &[&str] = &["Times New Roman", "Times"];
@@ -187,29 +205,29 @@ fn ui_font(system: &TextSystem, installed: &FxHashMap<String, String>) -> String
         .map_or_else(|| SYSTEM_UI.to_owned(), |f| f.clone())
 }
 
-thread_local! {
-    /// [`ui_font`] as of a [`FONT_GENERATION`], for [`ui_family_for`].
-    static UI_FAMILY: RefCell<Option<(u64, SharedString)>> = const { RefCell::new(None) };
-}
+/// [`ui_font`] as of a [`FONT_GENERATION`]: what [`ui_family`] answers.
+static UI_FAMILY: Mutex<Option<(u64, Arc<str>)>> = Mutex::new(None);
 
-/// The family text views set `fontFamily` unset in, for other drawing
-/// that names the UI font (canvas text): GPUI's own name for it is a
-/// variable font on GNOME, which GPUI draws at one weight only.
+/// The family text views set `fontFamily` unset in, resolved with
+/// `system` (when fonts changed since last time): what everything that
+/// names the UI font is set in, as GPUI's own name for it is a variable
+/// font on GNOME, which GPUI draws at one weight only.
 pub(crate) fn ui_family_for(system: &TextSystem) -> SharedString {
     let generation = FONT_GENERATION.load(Ordering::Acquire);
-    UI_FAMILY.with_borrow_mut(|f| match f {
-        Some((g, family)) if *g == generation => family.clone(),
+    let mut current = UI_FAMILY.lock().unwrap_or_else(|e| e.into_inner());
+    match &*current {
+        Some((g, family)) if *g == generation => SharedString::from(family.to_string()),
         _ => {
             let installed: FxHashMap<String, String> = system
                 .all_font_names()
                 .into_iter()
                 .map(|n| (n.to_lowercase(), n))
                 .collect();
-            let family = SharedString::from(ui_font(system, &installed));
-            *f = Some((generation, family.clone()));
-            family
+            let family = ui_font(system, &installed);
+            *current = Some((generation, Arc::from(family.as_str())));
+            SharedString::from(family)
         }
-    })
+    }
 }
 
 /// Bumped when any engine registers a font: engines resolve families
