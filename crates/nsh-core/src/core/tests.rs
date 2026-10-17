@@ -4609,6 +4609,98 @@ mod components {
         assert_eq!(shown, ["accent 0 clicks 1", "accent 1 clicks 1"]);
     }
 
+    /// A counter that hands its handle to the surface when set up.
+    #[derive(Default)]
+    struct Owner {
+        count: u32,
+    }
+
+    /// The owner's handle, for whoever wants to change it.
+    #[derive(Default)]
+    struct OwnerHandle(Option<WeakComponent<Owner>>);
+
+    impl Component for Owner {
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
+            let weak = cx.weak();
+            cx.update_global(|h: &mut OwnerHandle, _| h.0 = Some(weak));
+        }
+
+        fn render(&self, _: &FormProps, _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(text(format!("count {}", self.count)))
+        }
+    }
+
+    /// Changes the owner through its handle when pressed.
+    #[derive(Default)]
+    struct Remote;
+
+    impl Component for Remote {
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let handle = cx.global::<OwnerHandle>().0.clone();
+            view().on_press(cx.listener(move |_: &mut Self, _, _| {
+                if let Some(owner) = &handle {
+                    drop(owner.update(|owner, cx| {
+                        owner.count += 1;
+                        cx.notify();
+                    }));
+                }
+            }))
+        }
+    }
+
+    #[test]
+    fn a_component_changes_another_through_its_weak_handle() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Owner>().register::<Remote>();
+        c.set_components(registry);
+        let mut ops = Vec::new();
+        for (id, name) in [
+            (2, std::any::type_name::<Owner>()),
+            (4, std::any::type_name::<Remote>()),
+        ] {
+            ops.push(Op::Create { id, tag: Tag::View });
+            ops.push(Op::SetProp {
+                id,
+                prop: Prop::Component(name.into()),
+            });
+            ops.push(Op::Insert {
+                parent: ROOT_ID,
+                child: id,
+                before: None,
+            });
+        }
+        apply(&mut c, ops);
+        assert_eq!(texts(&c.commit().unwrap()), ["count 0"]);
+
+        // The press updates the owner, not the remote, before the commit.
+        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
+        c.run_component_tasks();
+        assert_eq!(texts(&c.commit().unwrap()), ["count 1"]);
+
+        // Once the owner is gone, the handle changes nothing.
+        apply(
+            &mut c,
+            vec![
+                Op::Remove {
+                    parent: ROOT_ID,
+                    child: 2,
+                },
+                Op::Release { id: 2 },
+            ],
+        );
+        c.commit();
+        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
+        c.run_component_tasks();
+        assert!(c.commit().is_none_or(|b| texts(&b).is_empty()));
+    }
+
     /// A sheet that follows drags natively and springs back when let go.
     #[derive(Default)]
     struct Sheet {
