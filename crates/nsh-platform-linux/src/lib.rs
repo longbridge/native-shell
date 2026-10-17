@@ -19,6 +19,7 @@ mod access;
 mod animation;
 mod app;
 mod canvas;
+mod chrome;
 mod decor;
 #[cfg(feature = "dev")]
 pub mod dev;

@@ -15,6 +15,9 @@ use crate::{
     text::TextEngine,
 };
 
+/// The states the platform reports ([`Core::set_states`]).
+const REPORTED: u8 = state::PRESSED | state::HOVERED | state::FOCUSED;
+
 /// The `class` and `classList` props as set.
 #[derive(Debug, Default)]
 pub(super) struct ClassNames {
@@ -79,9 +82,13 @@ impl<M: TextEngine> Core<M> {
     /// tracks ([`MountItem::TrackStates`]); see [`crate::tailwind::state`].
     pub fn set_states(&mut self, id: NodeId, states: u8) {
         let Ok(key) = self.key(id) else { return };
-        let mask = state::PRESSED | state::HOVERED | state::FOCUSED;
+        self.set_node_states(key, states);
+    }
+
+    /// [`Self::set_states`] by key.
+    fn set_node_states(&mut self, key: Key, states: u8) {
         let node = &mut self.nodes[key as usize];
-        let new = node.states & !mask | states & mask;
+        let new = node.states & !REPORTED | states & REPORTED;
         if new == node.states {
             return;
         }
@@ -278,12 +285,21 @@ impl<M: TextEngine> Core<M> {
             };
         if tracked != node.tracked {
             node.tracked = tracked;
+            // The platform stops reporting the states it no longer tracks,
+            // and keeps the rest as they are: forget them here too, or a
+            // state set before (a hover, a press) would outlive the pointer
+            // and come back when the classes read it again.
+            let stale = node.states & REPORTED & !tracked;
+            let states = node.states & REPORTED & tracked;
             if node.created {
                 let id = node.id;
                 self.mount.push(MountItem::TrackStates {
                     id,
                     states: tracked,
                 });
+            }
+            if stale != 0 {
+                self.set_node_states(key, states);
             }
         }
     }

@@ -3091,11 +3091,10 @@ fn apply_bound_decor(slot: &Slot, animator: &Animator) {
 /// animated bindings.
 fn apply_dynamic(slot: &Slot, animator: &Animator) {
     if let Native::Canvas(canvas) = &slot.native {
-        for &(prop, node) in &slot.bindings {
-            if let AnimationProp::CanvasArg(k) = prop {
-                canvas.set_value(k, animator.eval(node));
-            }
-        }
+        canvas.set_values(slot.bindings.iter().filter_map(|&(prop, node)| match prop {
+            AnimationProp::CanvasArg(k) => Some((k, animator.eval(node))),
+            _ => None,
+        }));
     }
     let view = slot.native.view();
     let mut background = slot.style.background_color;

@@ -720,6 +720,7 @@ fn draw_into(
     cx.offscreen = offscreen;
     let root = surface.root.clone();
     draw_view(&mut cx, &root, Mat4::new(), (0.0, 0.0));
+    crate::chrome::draw(surface, dc, scale);
     let drawn = std::mem::take(&mut cx.drawn);
     drop(cx);
     // SAFETY: closes the `BeginDraw` above; the target is unset so that

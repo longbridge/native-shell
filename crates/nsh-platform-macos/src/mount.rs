@@ -5,7 +5,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind};
+use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind, canvas::Damage};
 use rustc_hash::FxHashMap;
 
 use crate::{surface::Surface, view::NshView};
@@ -55,13 +55,17 @@ impl Mounter {
         self.stale.borrow_mut().clear();
     }
 
-    /// `view`'s drawing changed (on every frame of an animation of a
-    /// canvas's values): it is drawn again now if it can be seen, else when
-    /// it shows ([`Mounter::revisit`]). Lists keep rows out of sight, and a
-    /// pulse on each of them would otherwise redraw them all on every frame.
-    pub(crate) fn draw_when_shown(&self, view: &NshView) {
+    /// `view`'s drawing changed in `damage` (on every frame of an animation
+    /// of a canvas's values): that is drawn again now if it can be seen,
+    /// else the whole view when it shows ([`Mounter::revisit`]). Lists keep
+    /// rows out of sight, and a pulse on each of them would otherwise
+    /// redraw them all on every frame.
+    pub(crate) fn draw_when_shown(&self, view: &NshView, damage: Damage) {
         if view.shown() {
-            view.redraw();
+            match damage {
+                Damage::Rect(r) => view.redraw_rect(r),
+                _ => view.redraw(),
+            }
         } else if view.set_stale(true) {
             self.stale.borrow_mut().push(view.clone());
         }
@@ -233,7 +237,7 @@ impl Mounter {
             } => {
                 if let Some(view) = self.get(*id) {
                     crate::text::set(view, text, layout, *content);
-                    self.draw_when_shown(view);
+                    self.draw_when_shown(view, Damage::All);
                     crate::access::text_changed(view);
                 }
             }
@@ -308,7 +312,7 @@ impl Mounter {
             MountItem::Canvas { id, drawing } => {
                 if let Some(view) = self.get(*id) {
                     crate::canvas::set(surface, view, drawing.clone());
-                    self.draw_when_shown(view);
+                    self.draw_when_shown(view, Damage::All);
                 }
             }
             MountItem::Gestures { id, values } => {

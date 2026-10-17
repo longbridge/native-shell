@@ -62,6 +62,8 @@ pub(crate) const WM_NSH_WAKE: u32 = WM_APP + 1;
 pub(crate) const WM_NSH_TICK: u32 = WM_APP + 2;
 /// A closure from another thread ([`invoke`]); `lparam` owns it.
 const WM_NSH_CALL: u32 = WM_APP + 3;
+/// A context menu to show ([`crate::chrome::show_popup`]).
+pub(crate) const WM_NSH_MENU: u32 = WM_APP + 4;
 
 const CLASS: PCWSTR = w!("NshWindow");
 const DISPATCH_CLASS: PCWSTR = w!("NshDispatcher");
@@ -222,9 +224,28 @@ pub(crate) fn create(
     Ok(hwnd)
 }
 
+/// The window is in full screen ([`toggle_full_screen`]).
+pub(crate) fn is_full_screen(hwnd: HWND) -> bool {
+    data(hwnd).is_some_and(|d| {
+        let placement = d.windowed.take();
+        let full = placement.is_some();
+        d.windowed.set(placement);
+        full
+    })
+}
+
 /// Takes a top-level window to full screen on its monitor (no frame, over
 /// the taskbar), or back to where it was.
 pub(crate) fn toggle_full_screen(hwnd: HWND) {
+    toggle_full_screen_inner(hwnd);
+    // Neither the menu bar nor a hidden title bar's area show in full
+    // screen.
+    if let Some(surface) = surface_of(hwnd) {
+        crate::chrome::full_screen_changed(&surface);
+    }
+}
+
+fn toggle_full_screen_inner(hwnd: HWND) {
     let Some(data) = data(hwnd) else { return };
     if !data.top_level {
         return;
@@ -485,6 +506,30 @@ fn handle(
     match msg {
         WM_NSH_WAKE => surface.drain(),
         WM_NSH_TICK => surface.tick(),
+        WM_NSH_MENU => crate::chrome::show_popup(surface),
+        WM_NCCALCSIZE => return crate::chrome::nc_calc_size(surface, hwnd, wparam, lparam),
+        WM_NCHITTEST if data.top_level => {
+            return crate::chrome::nc_hit_test(surface, hwnd, lparam);
+        }
+        WM_NCMOUSEMOVE | WM_NCMOUSELEAVE | WM_NCLBUTTONDOWN | WM_NCLBUTTONUP
+        | WM_NCLBUTTONDBLCLK => {
+            return crate::chrome::nc_mouse(surface, hwnd, msg, wparam);
+        }
+        WM_NCACTIVATE if data.top_level => {
+            return crate::chrome::nc_activate(surface, hwnd, wparam, lparam);
+        }
+        WM_NCPAINT if data.top_level => {
+            // SAFETY: default handling, then the dark menu bar's line.
+            let r = unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            crate::chrome::paint_menu_bar_line(surface, hwnd);
+            return Some(r);
+        }
+        // `WM_UAHDRAWMENU`, `WM_UAHDRAWMENUITEM`: the menu bar.
+        0x0091 | 0x0092 => return crate::chrome::draw_menu_bar(surface, hwnd, msg, lparam),
+        WM_COMMAND if (wparam.0 >> 16) & 0xFFFF == 0 && lparam.0 == 0 => {
+            crate::chrome::menu_command(surface, (wparam.0 & 0xFFFF) as u16);
+            return Some(LRESULT(0));
+        }
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
             // SAFETY: paired Begin / EndPaint on this window.
@@ -538,6 +583,7 @@ fn handle(
                 // SAFETY: a valid structure for this window.
                 let _ = unsafe { TrackMouseEvent(&mut track) };
             }
+            crate::chrome::client_mouse_moved(surface);
             let (x, y) = point(lparam);
             crate::input::pointer(surface, mouse_event(PointerKind::Move, x, y, 0, 1, surface));
         }

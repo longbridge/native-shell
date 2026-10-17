@@ -319,7 +319,7 @@ fn rust_components_pass_content_to_rust_components() {
 }
 
 /// A Rust component takes the Android back button while it listens; when
-/// it no longer handles it, the app exits.
+/// it no longer handles it, the platform goes back.
 #[derive(Default)]
 struct BackCounter {
     presses: u32,
@@ -383,15 +383,15 @@ fn rust_components_take_the_back_button() {
         }
         false
     };
-    // Handled: no exit.
+    // Handled: it does not go back.
     assert!(press(
         &|i| matches!(i, MountItem::Text { text, .. } if text.text == "presses 1")
     ));
-    // Not handled, and JS does not listen: the app exits.
+    // Not handled, and JS does not listen: the platform goes back.
     assert!(press(&|i| matches!(
         i,
         MountItem::Command {
-            command: nsh_core::Command::ExitApp,
+            command: nsh_core::Command::Back,
             ..
         }
     )));

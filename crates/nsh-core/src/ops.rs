@@ -171,6 +171,7 @@ events! {
     NativeEvent = "onNativeEvent": "A registered native component emitted an event (payload: [`EventPayload::Native`]).",
     Clipboard = "onClipboard": "A clipboard read finished (root only; payload: `id`, `has`: whether it holds text, `text`: the text, unless only `has` was asked).",
     KeyCommand = "onKeyCommand": "A key matched a binding of `nsh/keymap` (root only; payload: the binding's id, [`crate::keymap::KeyBinding::id`]).",
+    Menu = "onMenu": "A menu item was chosen: the application menu's or a context menu's (root only; desktops; payload: `id`), or a context menu closed (`closed`: true, after its item).",
 }
 
 /// What an input holds, for the system's autofill and suggestions
@@ -884,6 +885,10 @@ pub enum Command {
     LayoutAnimation(LayoutAnimation),
     /// Leave the app (Android back handling; on the root).
     ExitApp,
+    /// What the back button does when none of the app's listeners took
+    /// it: the innermost stack pops (or asks, with `preventBack`); with
+    /// none, the app leaves on Android (on the root).
+    Back,
     /// Reload a web view.
     Reload,
     /// Go back in a web view's history.
@@ -989,6 +994,9 @@ pub enum Command {
         /// Only whether it holds text (`Clipboard.hasString`).
         has_only: bool,
     },
+    /// A desktop command (on the root; `nsh/desktop`): the window, its
+    /// title bar, menus. Mobile platforms ignore it.
+    Desktop(Box<crate::desktop::DesktopCommand>),
     /// A call on a registered native component (`ref.command(name, args)`).
     Native {
         /// The command.
@@ -1343,6 +1351,13 @@ pub enum Prop {
     /// `testID`: an identifier for UI tests.
     #[prop(js = "testID")]
     TestId(Option<Arc<str>>),
+    /// `windowDrag` (desktops): pressing the view drags the window, as its
+    /// title bar would (double-clicking maximizes it); `false` keeps a part
+    /// of a draggable view clickable. The nearest view that sets it
+    /// decides; text fields and views with press or touch handlers inside
+    /// a draggable view stay clickable without it.
+    #[prop(desktop = "windowDrag")]
+    WindowDrag(Option<bool>),
     /// `allowFontScaling`: follow the system text size (default true).
     #[prop(js = "allowFontScaling", default = true, on = TEXT | INPUT)]
     AllowFontScaling(bool),

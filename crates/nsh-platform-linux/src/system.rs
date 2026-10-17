@@ -476,12 +476,14 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
         Command::Dialog(dialog) => show_dialog(surface, dialog),
         Command::Toast { text, long } => show_toast(surface, text, *long),
         Command::Announce(text) => crate::access::announce(&surface.root, text),
+        Command::Desktop(command) => crate::chrome::command(surface, command),
         Command::SetClipboard(text) => {
             if let Some(display) = gdk::Display::default() {
                 display.clipboard().set_text(text);
             }
         }
         Command::ReadClipboard { id, has_only } => read_clipboard(surface, *id, *has_only),
+        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             // Closing destroys the window, whose handler stops the surface:
             // not while the surface is applying this batch.

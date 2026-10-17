@@ -191,6 +191,8 @@ pub(crate) struct Surface {
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
+    /// The window's chrome: title bar, menus ([`crate::chrome`]).
+    pub(crate) chrome: crate::chrome::Chrome,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
     /// The app's keyboard shortcuts ([`crate::keymap`]).
@@ -235,6 +237,7 @@ impl Surface {
             asset_base: RefCell::new(None),
             native: Default::default(),
             keymap: Default::default(),
+            chrome: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         // CoreText's first use loads fonts and caches (tens of
@@ -356,6 +359,8 @@ impl Surface {
         });
         crate::navigation::surface_resized(self, width, height);
         crate::system::surface_resized(self, width, height);
+        // Full screen and the window's size change the title bar's area.
+        crate::chrome::update_area(self);
         self.await_layout(Size::new(width, height));
     }
 

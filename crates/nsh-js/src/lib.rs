@@ -15,6 +15,7 @@ mod canvas;
 mod components;
 mod console;
 mod declarations;
+mod desktop;
 mod dom;
 mod env;
 mod error;

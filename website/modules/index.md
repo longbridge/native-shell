@@ -20,7 +20,7 @@ import { Button, SafeAreaView } from "nsh/ui/mobile";
 - **`nsh` and `nsh/<module>`** are the primitives and the environment: reactivity, lists, canvas, animation, gestures, device information. Every UI set builds on them.
 - **`nsh/ui/<set>`** is a whole UI for one form factor. Today that is `nsh/ui/mobile`: navigation, modals, the status bar, system dialogs and components such as `Button` and `TextField` (see [Components](../components/index.md)).
 
-There is no catch-all module: each API lives in exactly one place. Platform-only APIs live in `nsh/ios` and `nsh/android`; both can be imported on every platform, so one bundle runs everywhere (their calls do nothing elsewhere, and `isAvailable` tells you which platform you are on).
+There is no catch-all module: each API lives in exactly one place. Platform-only APIs live in `nsh/ios`, `nsh/android` and `nsh/desktop` (macOS, Windows, Linux); all can be imported on every platform, so one bundle runs everywhere (their calls do nothing elsewhere, and `isAvailable` tells you which platform you are on).
 
 Types are generated from the runtime: `nsh init`, `nsh build`, `nsh dev` and `nsh trace` write `.nsh/types` next to your app, so the TypeScript declarations always match the runtime you build with (see [Project structure](../docs/project-structure.md)).
 
@@ -41,6 +41,7 @@ Types are generated from the runtime: `nsh init`, `nsh build`, `nsh dev` and `ns
 | `nsh/accessibility` | `AccessibilityInfo`, `screenReaderEnabled`, `reduceMotion` | [nsh/accessibility](./nsh-accessibility.md) |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | [nsh/ios](./nsh-ios.md) |
 | `nsh/android` | `isAvailable`, `Toast`, `BackHandler`, `setStatusBarBackgroundColor` | [nsh/android](./nsh-android.md) |
+| `nsh/desktop` | `isAvailable`, `Window` (title, title bar, maximize, full screen), `titleBar`, `Menu` (application menu, context menus) | [nsh/desktop](./nsh-desktop.md) |
 | `nsh/webview` | `WebView` | [nsh/webview](./nsh-webview.md) |
 | `nsh/video` | `Video` | [nsh/video](./nsh-video.md) |
 | `nsh/ui/mobile` | Navigation (`createNavigator`, `Stack`, `Screen`, `Modal`), `SafeAreaView`, `StatusBar`, `Alert`, `ActionSheet`, `Keyboard`, `Button`, `TextField`, ... | [Components](../components/index.md) |

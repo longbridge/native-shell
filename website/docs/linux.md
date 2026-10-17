@@ -9,7 +9,8 @@ group: platforms
 
 nsh apps also run on Linux. The Linux backend renders them with GTK 4 widgets and lays out text with Pango; the core,
 the reactive graph, the renderer, Taffy layout and the `nsh/ui/mobile` components are the same as on iOS and Android,
-so one bundle runs everywhere. On Linux, `Platform.OS` is `"linux"` and the `desktop={{…}}` props apply.
+so one bundle runs everywhere. On Linux, `Platform.OS` is `"linux"` and the `desktop={{…}}` props apply. The window's title, a title bar of the app's own, the menu bar and context menus come from
+[`nsh/desktop`](../modules/nsh-desktop.md).
 
 ## Requirements
 

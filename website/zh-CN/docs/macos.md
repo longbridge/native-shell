@@ -9,7 +9,8 @@ group: platforms
 
 nsh 应用也能作为原生 Mac 应用运行。macOS 后端用 AppKit 视图和 Core Animation 渲染应用，用 CoreText 排版文字；核心、响应式图、
 渲染器、Taffy 布局和 `nsh/ui/mobile` 组件与 iOS、Android 上完全相同，因此同一个 bundle 可以在所有平台上运行。在 macOS 上，
-`Platform.OS` 为 `"macos"`，并会应用 `desktop={{…}}` 属性。
+`Platform.OS` 为 `"macos"`，并会应用 `desktop={{…}}` 属性。窗口标题、自定义标题栏、
+菜单栏和右键菜单由 [`nsh/desktop`](../modules/nsh-desktop.md) 提供。
 
 它不是 [Mac Catalyst](./getting-started.md#mac-catalystmacos-上默认)。Mac Catalyst 仍是 macOS 上 `nsh run` 的默认目标：
 它在 iPhone 尺寸的窗口中运行 iOS 后端（UIKit），行为与手机一致。macOS 后端的行为则是桌面应用：鼠标、触控板和键盘输入，
@@ -104,7 +105,8 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 `AppView::load` 会替换正在运行的内容；`stop` 结束应用。`asset_base` 指定 `asset:/` URI 从哪里解析（`AssetBase::Directory`
 或 `AssetBase::Http`）。字节码 bundle（`bundle.nshc`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：字节码是受信任的输入，
 只能从你自己应用的文件中加载。如果应用只是一个 nsh 应用，`run_app(source, options)` 会在窗口中打开一个 `AppView`，带有标准菜单
-（关于、隐藏、退出、编辑、最小化、缩放、进入全屏、关闭），并运行到窗口关闭为止。
+（关于、隐藏、退出、编辑、最小化、缩放、进入全屏、关闭），应用可以用 `Menu.setApplicationMenu`
+（[`nsh/desktop`](../modules/nsh-desktop.md)）替换它，并运行到窗口关闭为止。
 
 原生组件通过 `AppView::register_component` 注册，见[原生组件](./native-components.md#在-macos-上注册rust)。
 

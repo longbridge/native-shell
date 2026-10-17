@@ -465,6 +465,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                         e.bool(animated);
                     }
                     Command::ExitApp => e.int(3),
+                    Command::Back => e.int(24),
                     Command::Reload => e.int(4),
                     Command::GoBack => e.int(5),
                     Command::GoForward => e.int(6),
@@ -566,7 +567,9 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     | Command::SetStatusBar(_)
                     | Command::ScrollToIndex { .. }
                     | Command::Measure { .. }
-                    | Command::ScrollToEnd { .. } => e.int(-1),
+                    | Command::ScrollToEnd { .. }
+                    // Desktops only.
+                    | Command::Desktop(_) => e.int(-1),
                 }
             }
         }

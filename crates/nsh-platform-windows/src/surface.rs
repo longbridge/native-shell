@@ -154,6 +154,8 @@ pub(crate) struct Surface {
     pub(crate) keymap: crate::keymap::KeymapState,
     /// Hosted items drawn by the last frame ([`Hosted::placed`]).
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
+    /// The window's chrome: title bar, menus ([`crate::chrome`]).
+    pub(crate) chrome: crate::chrome::Chrome,
     /// Called after the surface is resized (development overlays).
     pub(crate) on_resized: RefCell<Vec<ResizeHandler>>,
     /// Keys the window takes before anything focused sees them (the
@@ -200,6 +202,7 @@ impl Surface {
             placed: RefCell::default(),
             on_resized: RefCell::default(),
             shortcuts: RefCell::default(),
+            chrome: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         let weak = Rc::downgrade(&surface);

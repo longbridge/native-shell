@@ -29,10 +29,14 @@ final class BackCallbacks {
 
         @Override
         public void onBackStarted(BackEvent event) {
-            // Only a pop follows the finger; modals and JS decide on release.
+            // Only a pop follows the finger; modals and the app's listeners
+            // (they hear the button before the stack) decide on release.
             stack = mounter.wantsBack() ? mounter.backStack() : null;
-            if (stack != null && !mounter.hasShownModal() && stack.canSwipe()) stack.backStarted();
-            else stack = null;
+            if (stack != null && !mounter.hasShownModal() && !mounter.listensToBack() && stack.canSwipe()) {
+                stack.backStarted();
+            } else {
+                stack = null;
+            }
         }
 
         @Override

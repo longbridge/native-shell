@@ -2058,6 +2058,13 @@ impl<M: TextEngine> Core<M> {
                     flags |= dirty::VIEW_PROPS;
                 }
             }
+            Prop::WindowDrag(value) => {
+                let props = node.props.get_or_insert_default();
+                if props.window_drag != value {
+                    props.window_drag = value;
+                    flags |= dirty::VIEW_PROPS;
+                }
+            }
             Prop::Accessibility(prop) => {
                 // A label changing on mounted props goes alone: it is
                 // the one that follows app state (a count, a value).

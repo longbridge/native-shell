@@ -157,6 +157,7 @@ define_class!(
 
 /// The window or its screen changed (scale, ...).
 pub(crate) fn window_changed(surface: &Rc<Surface>) {
+    crate::chrome::window_changed(surface);
     update(surface);
 }
 
@@ -359,6 +360,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
     match command {
         Command::Dialog(dialog) => show_dialog(surface, dialog),
         Command::Toast { text, long } => show_toast(surface, text, *long),
+        Command::Desktop(command) => crate::chrome::command(surface, command),
         Command::Announce(text) => crate::access::announce(
             surface.root.ns(),
             text,
@@ -372,6 +374,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
                 .setString_forType(&NSString::from_str(text), unsafe { NSPasteboardTypeString });
         }
         Command::ReadClipboard { id, has_only } => read_clipboard(surface, *id, *has_only),
+        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             if let Some(window) = surface.root.ns().window() {
                 window.close();

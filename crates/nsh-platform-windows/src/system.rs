@@ -197,7 +197,8 @@ pub(crate) fn environment_applied(surface: &Surface) {
     if !hwnd.is_invalid() {
         crate::window::set_dark_title_bar(hwnd, dark(surface));
     }
-    surface.invalidate();
+    // Menus follow the scheme; the caption buttons are drawn again.
+    crate::chrome::appearance_changed(surface);
 }
 
 /// `MountItem::Appearance`: the app forces light or dark (or follows the
@@ -446,6 +447,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
                 clipboard_answer(*id, has, text),
             );
         }
+        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             // Closing destroys the window, whose handler stops the surface:
             // not while the surface is applying this batch, so the message
@@ -462,6 +464,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
             }
         }
         Command::Announce(text) => crate::access::announce(surface, text),
+        Command::Desktop(command) => crate::chrome::command(surface, command),
         // The status bar is a phone's; layout animations arrive as mount
         // items.
         Command::StatusBar(_) | Command::SetStatusBar(_) | Command::LayoutAnimation(_) => {}

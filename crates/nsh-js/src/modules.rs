@@ -20,7 +20,7 @@ use nsh_core::ui::{ComponentSpec, ModuleSpec, Registry};
 use rquickjs::qjs;
 
 use crate::{
-    animated, canvas, components, dom, env, keymap, list, platform_modules,
+    animated, canvas, components, desktop, dom, env, keymap, list, platform_modules,
     reactive::{self, Native},
     touch,
 };
@@ -235,6 +235,11 @@ pub(crate) const MODULES: &[NativeModule] = &[
         name: "nsh/ios",
         exports: platform_modules::IOS_EXPORTS,
         types: platform_modules::IOS_TYPES,
+    },
+    NativeModule {
+        name: "nsh/desktop",
+        exports: desktop::EXPORTS,
+        types: desktop::TYPES,
     },
     NativeModule {
         name: "nsh/webview",

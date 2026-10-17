@@ -117,6 +117,12 @@ pub struct Environment {
     pub window: (f32, f32),
     /// Insets not covered by system UI (notch, home indicator, title bar).
     pub safe_area: Insets,
+    /// The title bar's area while the app hides it (desktops,
+    /// [`crate::desktop::TitleBarStyle::Hidden`]): `top` is its height,
+    /// `left` and `right` the widths the system's window controls take at
+    /// its ends (`bottom` is 0); all 0 while the system shows its title
+    /// bar.
+    pub title_bar: Insets,
     /// Height of the software keyboard over the surface; 0 when hidden.
     pub keyboard_height: f32,
     /// Duration of the keyboard's show / hide animation in seconds.
@@ -150,6 +156,7 @@ impl Default for Environment {
         Self {
             window: (0.0, 0.0),
             safe_area: Insets::default(),
+            title_bar: Insets::default(),
             keyboard_height: 0.0,
             keyboard_duration: 0.25,
             color_scheme: ColorScheme::Light,

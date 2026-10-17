@@ -120,6 +120,8 @@ pub(crate) struct Surface {
     pub(crate) native: crate::native::NativeState,
     /// The app's keyboard shortcuts ([`crate::keymap`]).
     pub(crate) keymap: crate::keymap::KeymapState,
+    /// The window's chrome: title bar, menus ([`crate::chrome`]).
+    pub(crate) chrome: crate::chrome::Chrome,
 }
 
 impl Surface {
@@ -150,6 +152,7 @@ impl Surface {
             access: RefCell::new(Arc::default()),
             native: Default::default(),
             keymap: Default::default(),
+            chrome: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         let weak = Rc::downgrade(&surface);
