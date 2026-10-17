@@ -5,13 +5,15 @@
 //! dist/nsh/runtime/ios/iphoneos/nsh-ios-app                    packaged app runner
 //! dist/nsh/runtime/ios/iphonesimulator/{nsh-ios-app,nsh-ios-host}
 //! dist/nsh/runtime/ios/maccatalyst/nsh-ios-host                development host
+//! dist/nsh/runtime/macos/{nsh-macos-host,nsh-macos-app}        development host, packaged app runner
 //! dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        development host, packaged app runner
 //! dist/nsh/runtime/android/{release,dev}/                      classes.dex, lib/<abi>/libnsh.so
 //! dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  embedding in iOS apps
 //! dist/nsh/embed/android/{nsh,nsh-dev}.aar                     embedding in Android apps
 //! ```
 //!
-//! The iOS runtimes and SDK need Xcode: they are built on macOS only. The
+//! The iOS runtimes and SDK need Xcode: they are built on macOS only, as is
+//! the macOS (AppKit) runtime, built for this machine. The
 //! Linux runtime is built for this machine, on Linux only (where it runs,
 //! GTK 4 and Pango must be installed).
 
@@ -43,6 +45,16 @@ pub(crate) fn dist() -> anyhow::Result<()> {
 
     if cfg!(target_os = "macos") {
         ios_runtimes(&release, &out)?;
+        for (package, what) in [
+            ("nsh-macos-host", "the development host for macOS"),
+            ("nsh-macos-app", "the release runner for macOS"),
+        ] {
+            cargo(&["build", "--release", "-p", package], what)?;
+            copy(
+                &release.join("release").join(package),
+                &out.join("runtime/macos").join(package),
+            )?;
+        }
     }
     if cfg!(target_os = "linux") {
         for (package, what) in [

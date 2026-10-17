@@ -18,11 +18,11 @@ const copy = zh
   ? {
       eyebrow: '为 AI 生成界面而设计',
       title: ['AI 生成的界面，', '原生地运行在你的应用里'],
-      lead: 'Native Shell 支持 iOS、Android 和 Linux 应用在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的平台原生视图渲染。macOS AppKit 后端和 Windows Win32 / Direct2D 后端正在开发中。',
+      lead: 'Native Shell 支持 iOS、Android、Linux 和 macOS 应用在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的平台原生视图渲染。Windows Win32 / Direct2D 后端正在开发中。',
       start: '阅读简介',
       try: '在线试用',
       meta: [
-        ['phone', 'iOS · Android · Linux 已支持；macOS · Windows 开发中'],
+        ['phone', 'iOS · Android · Linux · macOS 已支持；Windows 开发中'],
         ['scale', '开源 · Apache-2.0'],
         ['building', '由长桥（Longbridge）构建'],
       ],
@@ -54,11 +54,11 @@ const copy = zh
   : {
       eyebrow: 'Built for AI-generated UI',
       title: ['AI-generated UI,', 'native in your app.'],
-      lead: 'Native Shell lets iOS, Android and Linux apps load modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with real native views. The macOS AppKit and Windows Win32 / Direct2D backends are in development.',
+      lead: 'Native Shell lets iOS, Android, Linux and macOS apps load modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with real native views. The Windows Win32 / Direct2D backend is in development.',
       start: 'Read the introduction',
       try: 'Try the playground',
       meta: [
-        ['phone', 'iOS · Android · Linux supported; macOS · Windows in development'],
+        ['phone', 'iOS · Android · Linux · macOS supported; Windows in development'],
         ['scale', 'Open source · Apache-2.0'],
         ['building', 'Built at Longbridge'],
       ],
@@ -123,7 +123,7 @@ const platforms = zh
       { name: 'iOS', detail: 'UIKit · iOS 15+', status: '已支持', kind: 'ok' },
       { name: 'Android', detail: 'Android View · API 28+', status: '已支持', kind: 'ok' },
       { name: 'Linux', detail: 'GTK 4', status: '已支持', kind: 'ok' },
-      { name: 'macOS', detail: 'AppKit', status: '开发中', kind: 'wip' },
+      { name: 'macOS', detail: 'AppKit · macOS 14+', status: '已支持', kind: 'ok' },
       { name: 'Windows', detail: 'Win32 · Direct2D', status: '开发中', kind: 'wip' },
       { name: 'Web', detail: 'WebAssembly → DOM', status: '仅用于演示', kind: 'demo' },
     ]
@@ -131,7 +131,7 @@ const platforms = zh
       { name: 'iOS', detail: 'UIKit · iOS 15+', status: 'Supported', kind: 'ok' },
       { name: 'Android', detail: 'Android View · API 28+', status: 'Supported', kind: 'ok' },
       { name: 'Linux', detail: 'GTK 4', status: 'Supported', kind: 'ok' },
-      { name: 'macOS', detail: 'AppKit', status: 'In development', kind: 'wip' },
+      { name: 'macOS', detail: 'AppKit · macOS 14+', status: 'Supported', kind: 'ok' },
       { name: 'Windows', detail: 'Win32 · Direct2D', status: 'In development', kind: 'wip' },
       { name: 'Web', detail: 'WebAssembly → DOM', status: 'Demos only', kind: 'demo' },
     ];

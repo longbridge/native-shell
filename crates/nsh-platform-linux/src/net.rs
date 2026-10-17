@@ -520,7 +520,11 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         let settled = total;
         drain(&mut total);
-        assert!(total - settled <= 1 << 16, "{} bytes while paused", total - settled);
+        assert!(
+            total - settled <= 1 << 16,
+            "{} bytes while paused",
+            total - settled
+        );
         assert!(total < LEN);
         task.pause(false);
         total += body(&rx).len();

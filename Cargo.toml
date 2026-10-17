@@ -27,6 +27,7 @@ nsh-bundler = { path = "crates/nsh-bundler", default-features = false }
 nsh-platform-ios = { path = "crates/nsh-platform-ios", default-features = false }
 nsh-platform-android = { path = "crates/nsh-platform-android", default-features = false }
 nsh-platform-linux = { path = "crates/nsh-platform-linux", default-features = false }
+nsh-platform-macos = { path = "crates/nsh-platform-macos", default-features = false }
 nsh-dev = { path = "crates/nsh-dev" }
 
 anyhow = "1"
@@ -89,21 +90,29 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "NSCache",
   "NSData",
   "NSDictionary",
+  "NSDate",
+  "NSDistributedNotificationCenter",
   "NSEnumerator",
   "NSError",
+  "NSGeometry",
+  "NSKeyValueObserving",
   "NSLocale",
   "NSNotification",
   "NSObject",
   "NSOperation",
+  "NSProcessInfo",
   "NSRange",
   "NSRunLoop",
   "NSSet",
   "NSStream",
   "NSString",
+  "NSThread",
+  "NSTimer",
   "NSURL",
   "NSURLRequest",
   "NSURLResponse",
   "NSURLSession",
+  "NSUserDefaults",
   "NSValue",
 ] }
 objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
@@ -193,6 +202,8 @@ objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
   "UIVisualEffect",
   "UIVisualEffectView",
 ] }
+# The macOS performance monitor's per-process GPU time (the IO registry).
+objc2-io-kit = { version = "0.3.2", default-features = false, features = ["std", "libc"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "CFArray",
@@ -210,6 +221,8 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
   "CGColor",
   "CGColorSpace",
   "CGContext",
+  "CGEvent",
+  "CGEventTypes",
   "CGGradient",
   "CGImage",
   "CGPath",
@@ -242,6 +255,7 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
   "objc2-core-foundation",
   "objc2-core-graphics",
   "CADisplayLink",
+  "CAFrameRateRange",
   "CALayer",
   "CATransform3D",
   "CAAnimation",
@@ -253,6 +267,65 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
   "CABase",
 ] }
 dispatch2 = "0.3.1"
+# The macOS backend (AppKit).
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "block2",
+  "objc2-core-foundation",
+  "objc2-core-graphics",
+  "objc2-quartz-core",
+  "NSAccessibility",
+  "NSAccessibilityConstants",
+  "NSAccessibilityCustomAction",
+  "NSAccessibilityElement",
+  "NSAccessibilityProtocols",
+  "NSAlert",
+  "NSAnimationContext",
+  "NSAppearance",
+  "NSApplication",
+  "NSAttributedString",
+  "NSBezierPath",
+  "NSBitmapImageRep",
+  "NSButton",
+  "NSButtonCell",
+  "NSCell",
+  "NSColor",
+  "NSColorSpace",
+  "NSControl",
+  "NSCursor",
+  "NSEvent",
+  "NSFont",
+  "NSFontDescriptor",
+  "NSGraphics",
+  "NSGraphicsContext",
+  "NSImage",
+  "NSImageRep",
+  "NSLayoutConstraint",
+  "NSMenu",
+  "NSMenuItem",
+  "NSParagraphStyle",
+  "NSPasteboard",
+  "NSProgressIndicator",
+  "NSResponder",
+  "NSRunningApplication",
+  "NSScreen",
+  "NSScrollView",
+  "NSSecureTextField",
+  "NSText",
+  "NSTextContainer",
+  "NSTextField",
+  "NSTextFieldCell",
+  "NSTextInputClient",
+  "NSTextInputContext",
+  "NSTextStorage",
+  "NSTextView",
+  "NSTrackingArea",
+  "NSUserInterfaceItemIdentification",
+  "NSView",
+  "NSVisualEffectView",
+  "NSWindow",
+  "NSWorkspace",
+] }
 
 [profile.release]
 opt-level = 3

@@ -8,7 +8,7 @@ order: 2
 
 nsh 的所有操作都通过一个命令 `nsh` 完成：打包和编译应用、运行开发服务器、启动开发宿主、打包可安装的应用。你可以使用无需 Rust 的预构建发行包，也可以从仓库源码构建。
 
-除了 `nsh` 本身，每个目标平台还需要平台自己的工具：iOS 和 Mac Catalyst 需要 Xcode，Android 需要 Android SDK，Linux 需要 GTK 4。
+除了 `nsh` 本身，每个目标平台还需要平台自己的工具：iOS 和 Mac Catalyst 需要 Xcode，macOS 需要 Xcode 命令行工具，Android 需要 Android SDK，Linux 需要 GTK 4。
 
 ## 预构建发行包
 
@@ -20,6 +20,7 @@ dist/nsh/runtime/ios/iphoneos/nsh-ios-app                    # runs packaged app
 dist/nsh/runtime/ios/iphonesimulator/{nsh-ios-app,nsh-ios-host}
 dist/nsh/runtime/ios/maccatalyst/nsh-ios-host                # the Mac Catalyst development host
 dist/nsh/runtime/android/{release,dev}/                      # classes.dex, lib/<abi>/libnsh.so
+dist/nsh/runtime/macos/{nsh-macos-host,nsh-macos-app}        # the macOS (AppKit) development host and release runner
 dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        # the Linux development host and release runner
 dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  # embedding in iOS apps
 dist/nsh/embed/android/{nsh,nsh-dev}.aar                     # embedding in Android apps
@@ -32,7 +33,7 @@ export PATH="$PWD/dist/nsh/bin:$PATH"
 nsh --version
 ```
 
-发行包由源码仓库中的 `cargo xtask dist` 生成（见下文）。其中的 `nsh` 可执行文件是为该机器构建的。在装有 Xcode 的 Mac 上，它包含 iOS 运行时（Apple Silicon）；在 Linux 上，它改为包含为该机器构建的 Linux 运行时。两者都包含 Android 运行时。
+发行包由源码仓库中的 `cargo xtask dist` 生成（见下文）。其中的 `nsh` 可执行文件是为该机器构建的。在装有 Xcode 的 Mac 上，它包含 iOS 和 macOS 运行时（Apple Silicon）；在 Linux 上，它改为包含为该机器构建的 Linux 运行时。两者都包含 Android 运行时。
 
 ## 从源码构建
 
@@ -50,6 +51,7 @@ cargo build -p nsh-cli          # ./target/debug/nsh
 cargo build -p nsh-ios-host --target aarch64-apple-ios-macabi   # nsh run (Mac Catalyst window)
 cargo build -p nsh-ios-host --target aarch64-apple-ios-sim      # nsh run --target ios
 cargo xtask android --dev                                       # nsh run --target android
+cargo build -p nsh-macos-host                                   # nsh run --target macos (built for you in a checkout)
 cargo build -p nsh-linux-host                                   # nsh run on Linux (built for you in a checkout)
 ```
 
@@ -59,10 +61,11 @@ cargo build -p nsh-linux-host                                   # nsh run on Lin
 cargo build -p nsh-ios-app --target aarch64-apple-ios-sim       # nsh package --target ios-simulator
 cargo build -p nsh-ios-app --target aarch64-apple-ios           # nsh package --target ios
 cargo xtask android                                             # nsh package --target android
+cargo build -p nsh-macos-app                                    # nsh package --target macos
 cargo build -p nsh-linux-app                                    # nsh package --target linux
 ```
 
-从源码构建的 CLI 会按自身的 profile 在 `target/<triple>/<profile>`（Linux 运行时为本机构建，位于 `target/<profile>`）和 `target/android/<profile>[-dev]` 中查找运行时：`./target/debug/nsh` 使用 debug 运行时，`./target/release/nsh` 使用 release 运行时。请用相同的 profile 构建两者（若希望应用更快，给所有命令都加上 `--release`）。
+从源码构建的 CLI 会按自身的 profile 在 `target/<triple>/<profile>`（macOS 和 Linux 运行时为本机构建，位于 `target/<profile>`）和 `target/android/<profile>[-dev]` 中查找运行时：`./target/debug/nsh` 使用 debug 运行时，`./target/release/nsh` 使用 release 运行时。请用相同的 profile 构建两者（若希望应用更快，给所有命令都加上 `--release`）。
 
 > [!TIP]
 > 设置 `NSH_RUNTIME=/path/to/runtime` 后，无论 CLI 位于何处，`nsh` 都会使用这个目录作为运行时，其结构与发行包的 `runtime/` 相同。
@@ -87,6 +90,13 @@ cargo build -p nsh-linux-app                                    # nsh package --
 sdkmanager "platforms;android-35" "build-tools;35.0.1" "platform-tools"
 ```
 
+### macOS
+
+- **Xcode 命令行工具**（`xcode-select --install`）：构建运行时需要其中的 SDK 和 clang，打包应用需要 `codesign` 和 `sips`。
+- 应用要求 macOS 14 及以上。
+
+见 [macOS](./macos.md)。
+
 ### Linux
 
 - **GTK 4.14** 及以上；构建运行时还需要它们的开发包和 clang：`libgtk-4-dev clang`（Debian、Ubuntu 24.04 及以上）、`gtk4 clang`（Arch）、`gtk4-devel clang`（Fedora）。
@@ -104,6 +114,7 @@ sdkmanager "platforms;android-35" "build-tools;35.0.1" "platform-tools"
 |---|---|---|
 | `nsh init`, `nsh build`, `nsh trace`, `nsh dev` | 可以 | 可以 |
 | `nsh run`（Mac Catalyst，macOS 上的默认目标） | 可以 | 不可以 |
+| `nsh run --target macos`, `nsh package --target macos` | 可以 | 不可以 |
 | `nsh run --target linux`（Linux 上的默认目标）, `nsh package --target linux` | 不可以 | 可以 |
 | `nsh run --target ios`, `nsh package --target ios` / `ios-simulator` | 可以，需要 Xcode | 不可以 |
 | `nsh run --target android`, `nsh package --target android` | 可以 | 可以，需从源码构建 |

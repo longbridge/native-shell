@@ -61,4 +61,38 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   median ~5µs vs ~14µs in JS, commit ~15µs vs ~22µs. Scrolling a 1000-row `List` (avatar, two texts, a bound color)
   6000 pt: ~77µs vs ~150µs of JS per rebinding frame, commit ~205µs vs ~276µs.
 
+## The performance monitor (`nsh_engine::perf`)
+
+`PerfMonitor` collects one surface's timings for an on-screen monitor (`--fps`; the macOS backend's `fps.rs` draws it)
+or an app's own tooling (`AppView::perf_monitor`), modeled on gpui-kit's `gpui-fps`. The engine thread records each
+wake-up that committed (`CommitTiming`: the core's apply / render / layout / diff, and the rest as the app's code) once
+`EngineControl::set_perf_monitor` installs one; the platform records its main-thread work (`record_work`), closes a
+frame at each display refresh (`vsync`: a refresh in which something changed is a shown frame) and the batches'
+engine-to-main-thread latency. `snapshot()` gives the rates over the last second, the distributions over the last 120
+frames / commits (mean, p95, max, the share over one refresh), the engine's busy share and the process' CPU and memory
+(`ProcessSampler`: `getrusage`, the physical footprint on Apple platforms, the resident set on Linux / Android). The
+first frames and commits are cold and not counted. Without a monitor nothing is timed (one `Option` per wake-up and
+per frame). Other platforms need only call `record_work` / `vsync` / `record_latency` where the macOS surface does and
+draw a panel.
+
+- macOS (release, Apple silicon, 1200×800 window, 120 Hz ProMotion screen; `nsh-macos-host --fps --trace` with
+  `--script`, two alternating runs of each; main-thread ms per shown frame as p50 / p95). The display link delivers
+  120 Hz in every case (refresh gaps p50 8.33 ms). Before = the backend without the two drawing fixes below:
+
+  | Scenario | Before: main p50 / p95, CPU | After: main p50 / p95, CPU |
+  |---|---|---|
+  | Stocks, idle (a tick every 50 ms, pulsing canvases) | 3.2–3.5 / 5.9–6.8 ms, 59–67% | 2.5–2.7 / 5.2–5.6 ms, 47–55% |
+  | Stocks, scrolling the watchlist | 3.5–3.6 / 7.5–7.7 ms, 64–69% | 3.0–3.4 / 6.3–6.7 ms, 59–64% |
+  | Lists grid, scrolling | 0.4–0.6 / 6.3–6.4 ms, 33–34% | 0.3–0.6 / 2.0–5.9 ms, 14–32% |
+  | Animations demo | 0.2–0.5 / 0.2–0.8 ms | 0.1–0.3 / 0.2–0.6 ms |
+
+  Single runs move by ~20% (other processes); earlier runs of Stocks without the fixes read p95 ~10.7 ms with 8–12%
+  of frames over 8.3 ms. Sampled (`sample`), the main thread on Stocks is ~85% busy before and after, ~75% of it
+  Core Animation drawing layers (`drawRect:` recorded ~18% → ~11%, the backing store replay the rest): the demo
+  redraws its 524×340 chart canvas on every frame for a pulsing dot. Per Stocks tick the engine applies ~230 ops
+  into 60–110 mount items in ~0.8–1.2 ms (`nsh trace --width 1200 --height 800 --wait 300 --duration 2000`).
+  The fixes: drawing views clip to their bounds (AppKit redrew every text of a scroll view on every scroll step,
+  ~150 per wheel event in Lists, ~3.5 ms each event in a debug build), and canvases out of sight are not redrawn by
+  their animations.
+
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

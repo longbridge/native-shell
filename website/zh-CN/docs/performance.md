@@ -169,6 +169,14 @@ nsh run App.tsx --target android --trace --release
 会在真实宿主上输出同样的 commit 日志行，使用的是平台自己的文本引擎。在嵌入式应用中，`NshAppView(trace: true)` 和
 `new NshView(context, true)` 的作用相同。
 
+### 在屏幕上：`--fps`
+
+```sh
+nsh run App.tsx --target macos --fps --release
+```
+
+会在运行中的应用上方显示帧率、每帧和每次 commit 的开销，以及 CPU、GPU 和内存（[macOS：性能监视器](./macos.md#性能监视器)）。
+
 > [!TIP]
 > 单次测量主要受 CPU 时钟状态影响：刚刚休眠过的线程会在一段时间内运行得更慢。请在同一台机器上比较多次运行的最小值，
 > 计时时优先使用 release 构建。

@@ -66,6 +66,8 @@ pub enum HostPlatform {
     Android,
     /// The Linux (GTK) host.
     Linux,
+    /// The macOS (AppKit) host.
+    MacOs,
     /// A platform this version does not know.
     #[serde(other)]
     Other,

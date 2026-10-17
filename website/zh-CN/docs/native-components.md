@@ -7,14 +7,14 @@ order: 3.3
 # 原生组件
 
 原生组件是由**嵌入方应用**按名称注册的视图：地图、相机预览、图表库，或者 iOS 上任意的 `UIView`、Android 上任意的
-`android.view.View`、Linux 上任意的 `gtk::Widget`。nsh 应用通过 [`nsh/native`](../modules/nsh-native.md) 提供的 `nativeComponent()` 声明它，然后像使用其他组件一样使用它。nsh
+`android.view.View`、macOS 上任意的 `NSView`、Linux 上任意的 `gtk::Widget`。nsh 应用通过 [`nsh/native`](../modules/nsh-native.md) 提供的 `nativeComponent()` 声明它，然后像使用其他组件一样使用它。nsh
 会把它和应用的其余部分一起布局，向它发送 props，把它的事件交给对应的处理函数，并转发通过 `ref` 发出的命令。
 
 nsh 本身就用系统原生视图渲染，所以原生组件只是同一视图层级里多出来的一个子视图：不存在层级叠放问题，它会像 `<View>`
 一样被裁剪、随内容滚动并接收触摸。
 
 > [!NOTE]
-> 只有在嵌入 nsh 的应用中（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[Linux](./linux.md#嵌入-gtk-应用)）才有原生组件。
+> 只有在嵌入 nsh 的应用中（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[macOS](./macos.md#嵌入-mac-应用)、[Linux](./linux.md#嵌入-gtk-应用)）才有原生组件。
 > 打包出的独立应用（`nsh package`）和开发宿主不会注册任何组件，因此在那里该元素会渲染成一个空视图（并记录一次“未知名称”日志）。
 
 ## 整体流程
@@ -329,6 +329,56 @@ fn register(app: &AppView, make_view: impl Fn() -> objc2::rc::Retained<UIView> +
 
 `ComponentContext::emit(name, data)` 发送一个事件（`data` 是 `serde_json::Value`），`set_size(width, height)`
 上报尺寸；两者都可以在任意线程调用。
+
+## 在 macOS 上注册（Rust）
+
+在 macOS 上，组件是一个 `NSView`，注册在 `nsh-platform-macos` 的 [`AppView`](./macos.md#嵌入-mac-应用) 上：
+
+```rust
+use std::rc::Rc;
+use nsh_core::JsonValue;
+use nsh_platform_macos::{
+    objc2::{rc::Retained, MainThreadMarker},
+    objc2_app_kit::{NSTextField, NSView},
+    objc2_foundation::NSString,
+    AppView, ComponentContext, NativeComponent,
+};
+
+struct Badge {
+    label: Retained<NSTextField>,
+    context: ComponentContext,
+}
+
+impl NativeComponent for Badge {
+    fn view(&self) -> Retained<NSView> {
+        Retained::into_super(Retained::into_super(self.label.clone()))
+    }
+
+    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>) {
+        if name == "text" {
+            let text = value.and_then(|v| v.as_str()).unwrap_or("");
+            self.label.setStringValue(&NSString::from_str(text));
+            self.context.set_size(120.0, 40.0);
+        }
+    }
+
+    fn command(&mut self, name: &str, args: &JsonValue) {
+        // 可选
+    }
+}
+
+fn register(app: &AppView, mtm: MainThreadMarker) {
+    app.register_component(
+        "embed.badge",
+        Rc::new(move |context: ComponentContext| -> Box<dyn NativeComponent> {
+            Box::new(Badge { label: NSTextField::labelWithString(&NSString::new(), mtm), context })
+        }),
+    );
+}
+```
+
+视图会铺满 nsh 布局出的容器；与 iOS 一样，`ComponentContext::emit` 和 `set_size`（单位为点）可在任意线程调用。请在
+`AppView::load` 之前注册；注册表属于一个 `AppView`（以及用同一个 `AppOptions` 创建的视图）。
 
 ## 在 Linux 上注册（Rust）
 
