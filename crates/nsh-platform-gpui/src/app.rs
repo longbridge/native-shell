@@ -216,6 +216,12 @@ impl AppView {
 
     /// Runs `app`, replacing what ran.
     pub fn load(&self, app: App) {
+        let access = match &app {
+            App::Js(bundle) => bundle.policy.access(),
+            // Native code reaches what the platform allows.
+            App::Rust(_) => nsh_engine::Policy::default().access(),
+        };
+        self.surface.native.set_access(Arc::new(access));
         let options = self.options.borrow();
         let config = EngineConfig {
             app,

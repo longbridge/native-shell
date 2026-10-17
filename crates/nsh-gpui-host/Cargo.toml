@@ -13,10 +13,14 @@ workspace = true
 log.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
-nsh-platform-gpui = { workspace = true, features = ["dev"] }
+nsh-platform-gpui = { workspace = true, features = ["dev", "webview"] }
 nsh-dev.workspace = true
 nsh-engine = { workspace = true, features = ["js"] }
 
 # Offscreen `shot` script steps (Linux reads the window from the X server).
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
-nsh-platform-gpui = { workspace = true, features = ["dev", "shot"] }
+nsh-platform-gpui = { workspace = true, features = ["dev", "shot", "webview"] }
+
+# Videos play through GStreamer, which Linux desktops have.
+[target.'cfg(target_os = "linux")'.dependencies]
+nsh-platform-gpui = { workspace = true, features = ["dev", "webview", "video"] }

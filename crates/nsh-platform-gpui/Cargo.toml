@@ -10,7 +10,7 @@ publish.workspace = true
 workspace = true
 
 [features]
-default = ["js"]
+default = ["js", "webview"]
 # JS apps (bundles, signed packages); without it, the library only runs a
 # Rust app and links no QuickJS.
 js = ["nsh-engine/js"]
@@ -19,6 +19,11 @@ dev = ["js", "dep:nsh-dev"]
 # `shot` script steps on macOS and Windows: GPUI renders the window's
 # frame offscreen (its `test-support`; development hosts only).
 shot = ["gpui/test-support", "gpui_platform/test-support"]
+# Web views (wry; on Linux GTK 3 and WebKitGTK 4.1, on an X11 window).
+webview = ["dep:wry", "dep:gtk", "dep:webkit2gtk"]
+# Videos (GStreamer 1.20+ with its base and good plug-ins; libav for most
+# codecs).
+video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 
 [dependencies]
 log.workspace = true
@@ -45,6 +50,10 @@ crossbeam-channel.workspace = true
 futures-channel.workspace = true
 futures-util.workspace = true
 nsh-dev = { workspace = true, features = ["client"], optional = true }
+wry = { workspace = true, optional = true }
+gstreamer = { workspace = true, optional = true }
+gstreamer-app = { workspace = true, optional = true }
+gstreamer-video = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # The desktop's settings (XDG settings portal, AT-SPI).
@@ -52,3 +61,5 @@ zbus.workspace = true
 # `shot` script steps read the window from the X server.
 raw-window-handle.workspace = true
 x11rb.workspace = true
+gtk = { workspace = true, optional = true }
+webkit2gtk = { workspace = true, optional = true }
