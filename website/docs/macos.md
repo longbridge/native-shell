@@ -1,6 +1,6 @@
 ---
 title: macOS
-description: Run nsh apps on macOS in AppKit windows, package them as .app bundles, embed them in a Mac app with AppView, and what the macOS backend does not support.
+description: Run nsh apps on macOS in AppKit windows, package them as .app bundles, embed them in a Mac app with AppView, and what differs on macOS.
 order: 13
 group: platforms
 ---
@@ -13,10 +13,8 @@ same as on iOS and Android, so one bundle runs everywhere. On macOS, `Platform.O
 `desktop={{…}}` props apply. The window's title, a title bar of the app's own, the menu bar and context menus come from
 [`nsh/desktop`](../modules/nsh-desktop.md).
 
-This is not [Mac Catalyst](./getting-started.md#mac-catalyst-default-on-macos), which stays the default `nsh run`
-target on macOS: Catalyst runs the iOS backend (UIKit) in an iPhone-sized window and behaves like a phone. The macOS
-backend behaves like a desktop app: mouse, trackpad and keyboard input, resizable windows, centered sheets and a menu
-bar.
+The macOS backend behaves like a desktop app: mouse, trackpad and keyboard input, resizable windows, centered sheets
+and a menu bar.
 
 ## Requirements
 

@@ -1,31 +1,31 @@
 ---
-title: Web API
-description: 每个 nsh 应用都能直接使用的浏览器风格全局对象——fetch、流、URL、文本编码、Blob 与 FormData、事件与中止信号、定时器和 console——以及它们与浏览器的差异。
+title: Global APIs
+description: The globals every nsh app has without an import — fetch, streams, URL, encoding, Blob and FormData, events and abort signals, Intl, timers and console — implemented natively in Rust.
 order: 15
 ---
 
-# Web API
+# Global APIs
 
-除了 ECMAScript 标准库，nsh 应用的 JS 环境还提供一组 Web 平台全局对象：`fetch` 及其 `Headers`、`Request`、`Response`；Streams 标准；`URL` 和 `URLSearchParams`；`TextEncoder` / `TextDecoder`；`Blob`、`File` 和 `FormData`；`EventTarget`、`Event` 和 `AbortController`；定时器、`requestAnimationFrame` 和 `console`；以及 QuickJS 缺少的用于数字与日期格式化的 `Intl`。它们都用 Rust 原生实现，遵循 WHATWG 标准，无需 import。很多为浏览器编写的库（HTTP 客户端、URL 与编码工具、流处理工具）可以直接使用。
+Besides the ECMAScript standard library, an nsh app's JS environment has a set of standard globals: `fetch` with `Headers`, `Request` and `Response`; the Streams Standard; `URL` and `URLSearchParams`; `TextEncoder` / `TextDecoder`; `Blob`, `File` and `FormData`; `EventTarget`, `Event` and `AbortController`; timers, `requestAnimationFrame` and `console`; and `Intl` for number and date formatting. They are implemented natively in Rust, follow the WHATWG standards, and need no import, so the many JavaScript libraries built on these standards (HTTP clients, URL and encoding helpers, stream utilities) work unchanged.
 
-这里没有 DOM：没有 `window`、`document`、`localStorage`、`XMLHttpRequest`、`WebSocket`、`crypto`，也没有 `structuredClone`。界面用[元素](../elements/index.md)和[组件](../components/index.md)搭建，而不是 HTML。
+This page lists every global an app has. UI is built with [elements](../elements/index.md) and [components](../components/index.md), and everything else an app uses comes from the [modules](./index.md) it imports.
 
-这些全局对象的 TypeScript 声明会生成到 `.nsh/types/nsh/globals.d.ts`（见[项目结构](../docs/project-structure.md)）。
+The TypeScript declarations of all of these are generated into `.nsh/types/nsh/globals.d.ts` (see [Project structure](../docs/project-structure.md)).
 
-| 分组 | 全局对象 |
+| Group | Globals |
 |---|---|
-| [控制台与计时](#控制台与计时) | `console`、`performance` |
-| [定时器与帧](#定时器与帧) | `setTimeout`、`setInterval`、`clearTimeout`、`clearInterval`、`queueMicrotask`、`requestAnimationFrame`、`cancelAnimationFrame` |
-| [Base64 与错误](#base64-与错误) | `atob`、`btoa`、`DOMException` |
-| [事件与中止信号](#事件与中止信号) | `EventTarget`、`Event`、`CustomEvent`、`AbortController`、`AbortSignal` |
-| [URL](#url) | `URL`、`URLSearchParams` |
-| [文本编码](#文本编码) | `TextEncoder`、`TextDecoder` |
-| [Blob 与表单数据](#blob-与表单数据) | `Blob`、`File`、`FormData` |
-| [Fetch](#fetch) | `fetch`、`Headers`、`Request`、`Response` |
-| [数字与日期格式化](#数字与日期格式化) | `Intl.NumberFormat`、`Intl.DateTimeFormat`、`toLocaleString` |
-| [流](#流) | `ReadableStream`、`WritableStream`、`TransformStream`、各类 reader、writer 和 controller、`ByteLengthQueuingStrategy`、`CountQueuingStrategy`、`TextEncoderStream`、`TextDecoderStream` |
+| [Console and timing](#console-and-timing) | `console`, `performance` |
+| [Timers and frames](#timers-and-frames) | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `requestAnimationFrame`, `cancelAnimationFrame` |
+| [Base64 and errors](#base64-and-errors) | `atob`, `btoa`, `DOMException` |
+| [Events and abort signals](#events-and-abort-signals) | `EventTarget`, `Event`, `CustomEvent`, `AbortController`, `AbortSignal` |
+| [URLs](#urls) | `URL`, `URLSearchParams` |
+| [Text encoding](#text-encoding) | `TextEncoder`, `TextDecoder` |
+| [Blobs and form data](#blobs-and-form-data) | `Blob`, `File`, `FormData` |
+| [Fetch](#fetch) | `fetch`, `Headers`, `Request`, `Response` |
+| [Number and date formatting](#number-and-date-formatting) | `Intl.NumberFormat`, `Intl.DateTimeFormat`, `toLocaleString` |
+| [Streams](#streams) | `ReadableStream`, `WritableStream`, `TransformStream`, readers, writers, controllers, `ByteLengthQueuingStrategy`, `CountQueuingStrategy`, `TextEncoderStream`, `TextDecoderStream` |
 
-## 控制台与计时
+## Console and timing
 
 ```ts
 declare var console: {
@@ -42,16 +42,16 @@ declare var performance: {
 };
 ```
 
-`console` 每次调用向运行时日志（target 为 `js`）写一行：`log` 和 `info` 为 info 级别，`debug`、`warn`、`error` 为各自的级别。多个参数以空格连接；字符串原样输出，错误对象带调用栈，函数输出为 `[Function name]`，对象和数组输出为 JSON（遇到循环引用时退回 `String(value)`）。
+`console` writes one line per call to the runtime's log (target `js`): `log` and `info` at info level, `debug`, `warn` and `error` at their levels. Arguments are joined with spaces; strings print verbatim, errors with their stack, functions as `[Function name]`, and objects and arrays as JSON (falling back to `String(value)` for cycles).
 
-设备连接开发服务器期间，日志会出现在运行 `nsh run` / `nsh dev` 的终端里，并带上设备名前缀，参见[开发服务器与调试](../docs/dev-server-and-debugging.md)。
+While a device is connected to the dev server, its log lines appear in the terminal running `nsh run` / `nsh dev`, prefixed with the device name; see [Dev server and debugging](../docs/dev-server-and-debugging.md).
 
 > [!NOTE]
-> 只有上面这五个方法。没有 `console.table`、`console.group`、`console.time`、`console.assert`，也不支持 `%s` / `%o` 格式占位符。
+> Only the five methods above exist. There is no `console.table`, `console.group`, `console.time` or `console.assert`, and no `%s` / `%o` format substitutions.
 
-`performance.now()` 就是 `requestAnimationFrame` 传给回调的那个时钟。`performance` 没有其他成员。
+`performance.now()` is the clock `requestAnimationFrame` passes to its callbacks. `performance` has no other members.
 
-## 定时器与帧
+## Timers and frames
 
 ```ts
 function setTimeout(handler: (...args: any[]) => void, timeout?: number, ...args: any[]): number;
@@ -64,12 +64,12 @@ function requestAnimationFrame(callback: (time: number) => void): number;
 function cancelAnimationFrame(id: number): void;
 ```
 
-定时器的行为与浏览器一致：缺省、负数或非有限的延迟视为 0，返回的 id 是正整数，清除不存在的 id 不会报错。`handler` 必须是函数（不会执行字符串形式的代码）。嵌套定时器不会被钳制到 4 ms。
+Timers behave as in browsers: a missing, negative or non-finite delay is 0, the returned id is a positive integer, and clearing an unknown id does nothing. `handler` must be a function (string handlers are not evaluated). Timers do not clamp nested delays to 4 ms.
 
 > [!WARNING]
-> `setTimeout` / `setInterval` 声明了额外的 `...args`，但目前并不会传给 handler。请改用闭包：`setTimeout(() => save(id), 100)`。
+> The extra `...args` of `setTimeout` / `setInterval` are declared but currently not passed to the handler. Use a closure instead: `setTimeout(() => save(id), 100)`.
 
-`requestAnimationFrame` 的回调在引擎产出下一帧时执行一次，同一帧的回调拿到相同的 `performance.now()` 时间。回调里再次请求的帧会在下一帧调用，所以常见的循环写法可以正常工作：
+`requestAnimationFrame` callbacks run once, at the next frame the engine produces, all with the same `performance.now()` time. A callback that requests another frame is called at the following frame, so the usual loop works:
 
 ```ts
 let start = 0;
@@ -82,9 +82,9 @@ requestAnimationFrame(tick);
 ```
 
 > [!TIP]
-> 在 JS 里逐帧驱动动画，意味着每一帧都要在 QuickJS 中执行你的代码。样式和变换的动画请优先使用 [nsh/animated](./nsh-animated.md)，它的驱动器在原生侧运行，不回调 JS（见[动画](../docs/animation.md)）。
+> Driving an animation from JS frame by frame runs your code on every frame in QuickJS. For animations of styles and transforms, prefer [nsh/animated](./nsh-animated.md), whose drivers run natively without calling back into JS (see [Animation](../docs/animation.md)).
 
-## Base64 与错误
+## Base64 and errors
 
 ```ts
 function atob(data: string): string;
@@ -98,9 +98,9 @@ class DOMException extends Error {
 }
 ```
 
-`atob` / `btoa` 与浏览器一样，在二进制字符串和 Base64 之间转换。`DOMException` 是被中止的操作所 reject 的值：不带 reason 调用 `AbortController.abort()` 得到名为 `"AbortError"` 的 `DOMException`，`AbortSignal.timeout` 得到名为 `"TimeoutError"` 的。
+`atob` / `btoa` convert between binary strings and Base64 as in browsers. `DOMException` is what aborted operations reject with: an `AbortController.abort()` without a reason gives a `DOMException` named `"AbortError"`, and `AbortSignal.timeout` one named `"TimeoutError"`.
 
-## 事件与中止信号
+## Events and abort signals
 
 ```ts
 class EventTarget {
@@ -162,7 +162,7 @@ class AbortSignal extends EventTarget {
 }
 ```
 
-这些就是 DOM 标准里的类，只有一处不同：没有节点树，事件只派发给目标本身。先执行捕获监听器，再执行其他监听器，与 DOM 在目标阶段的行为一致；`bubbles` 不起作用。这些类可以被继承，所以 `EventTarget` 可以当作一个小型事件发射器：
+These are the DOM Standard's classes with one difference: there is no tree, so an event is dispatched to its target only. Capture listeners run first, then the others, as the DOM does at the target; `bubbles` has no effect. The classes can be subclassed, which makes `EventTarget` a small event emitter:
 
 ```ts
 class Channel extends EventTarget {
@@ -176,9 +176,9 @@ channel.addEventListener("message", (e) => console.log((e as CustomEvent<string>
 channel.send("hello");
 ```
 
-它们与元素的事件（`onPress`、`onChangeText` 等）无关，后者是 props，参见[触摸与手势](../docs/touch-and-gestures.md)。
+These events are unrelated to the events of elements (`onPress`, `onChangeText`, ...), which are props; see [Touch and gestures](../docs/touch-and-gestures.md).
 
-`AbortSignal` 可以取消 `fetch` 请求和流的管道传输，也可以移除用 `{ signal }` 添加的监听器：
+`AbortSignal` cancels `fetch` requests and stream pipes, and removes listeners added with `{ signal }`:
 
 ```ts
 const controller = new AbortController();
@@ -191,7 +191,7 @@ fetch("https://api.example.com/search?q=nsh", { signal }).catch((e) => {
 controller.abort();
 ```
 
-## URL
+## URLs
 
 ```ts
 class URL {
@@ -236,7 +236,7 @@ class URLSearchParams {
 }
 ```
 
-URL 按 URL 标准解析。`searchParams` 是双向联动的：修改参数会重写查询串，设置 `search` 或 `href` 会重新解析参数。
+URLs are parsed per the URL Standard. A URL's `searchParams` is live in both directions: changing the parameters rewrites the query, and setting `search` or `href` parses it again.
 
 ```ts
 const url = new URL("/v1/items", "https://api.example.com");
@@ -245,11 +245,11 @@ url.searchParams.append("tag", "new");
 url.href; // "https://api.example.com/v1/items?page=2&tag=new"
 ```
 
-`URLSearchParams`（以及 `Headers`、`FormData`）的迭代器遍历的是创建迭代器那一刻的快照，并且带有迭代器辅助方法（`map`、`filter`、`toArray` 等）。
+The iterators of `URLSearchParams` (and of `Headers` and `FormData`) iterate over a snapshot taken when the iterator was created, and have the iterator helpers (`map`, `filter`, `toArray`, ...).
 
-`URL.createObjectURL(blob)` 返回一个 `blob:` URL，在调用 `revokeObjectURL` 之前都可以用 `fetch`（`GET`）读取。只有 `fetch` 认识这种 URL，`<Image>` 等元素不认识。
+`URL.createObjectURL(blob)` returns a `blob:` URL that `fetch` (with `GET`) can read until `revokeObjectURL` is called. Such URLs are understood by `fetch` only, not by `<Image>` or other elements.
 
-## 文本编码
+## Text encoding
 
 ```ts
 class TextEncoder {
@@ -268,9 +268,9 @@ class TextDecoder {
 }
 ```
 
-`TextDecoder` 支持的编码比浏览器少：UTF-8、UTF-16LE、UTF-16BE 和 windows-1252（按 Encoding 标准，`latin1`、`iso-8859-1`、`ascii` 等标签也指向它）。其他标签会抛出 `RangeError`。传入 `{ stream: true }` 时，被切断在两个分块之间的多字节序列会保留到下一次调用。
+`TextDecoder` knows fewer encodings than a browser: UTF-8, UTF-16LE, UTF-16BE and windows-1252 (which the labels `latin1`, `iso-8859-1`, `ascii` and the like also name, as the Encoding Standard specifies). Other labels throw a `RangeError`. With `{ stream: true }`, a multi-byte sequence cut between two chunks is kept for the next call.
 
-## Blob 与表单数据
+## Blobs and form data
 
 ```ts
 class Blob {
@@ -310,9 +310,9 @@ class FormData {
 type BlobPart = ArrayBuffer | ArrayBufferView | Blob | string;
 ```
 
-Blob 的字节保存在内存中，`slice` 共享这些字节而不是复制。Blob 只是内存中的值：`File` 背后没有文件系统访问，`FormData` 也没有从表单元素构造的方式。
+A blob holds its bytes in memory, and `slice` shares them instead of copying. Blobs are in-memory values only: there is no file system access behind `File`, and `FormData` has no constructor from a form element.
 
-`FormData` 作为请求体时以 `multipart/form-data` 发送；`Response.formData()` / `Request.formData()` 能解析 `multipart/form-data` 和 `application/x-www-form-urlencoded`。
+A `FormData` body is sent as `multipart/form-data`, and `Response.formData()` / `Request.formData()` parse both `multipart/form-data` and `application/x-www-form-urlencoded`.
 
 ```ts
 const form = new FormData();
@@ -354,7 +354,7 @@ type HeadersInit = Headers | Record<string, string> | Iterable<[string, string]>
 type BodyInit = ReadableStream<Uint8Array> | Blob | BufferSource | FormData | URLSearchParams | string;
 ```
 
-`fetch` 通过平台自身的网络栈发送 HTTP 和 HTTPS 请求：iOS 和 Mac Catalyst 上是 `NSURLSession`，Android 上是 `HttpURLConnection`。因此系统的代理设置、TLS 配置和证书信任都会生效。`data:` URL 和 `blob:` URL（来自 `URL.createObjectURL`）在本地直接应答，不经过网络；其他协议一律 reject。
+`fetch` sends HTTP and HTTPS requests through the platform's own network stack: `NSURLSession` on iOS and Mac Catalyst, `HttpURLConnection` on Android. So the system's proxy settings, TLS configuration and certificate trust apply. `data:` URLs and `blob:` URLs (from `URL.createObjectURL`) are answered locally without touching the network; any other scheme rejects.
 
 ```ts
 type Todo = { id: number; title: string; done: boolean };
@@ -368,7 +368,7 @@ async function loadTodos(): Promise<Todo[]> {
 }
 ```
 
-### Headers、Request 和 Response
+### Headers, Request and Response
 
 ```ts
 class Headers {
@@ -437,9 +437,9 @@ class Response implements Body {
 }
 ```
 
-### 流式传输
+### Streaming
 
-响应的 `body` 是一个字节流，网络每交付一段数据就填充一段，所以大的或长连接的响应（下载、server-sent events、流式输出的模型结果）可以边到达边处理。未读取的数据超过 1 MiB 时，请求会暂停，直到应用继续读取。
+A response's `body` is a byte stream filled as the network delivers data, so large or long-lived responses (downloads, server-sent events, streamed model output) can be processed while they arrive. When more than 1 MiB is waiting unread, the request is paused until the app reads again.
 
 ```ts
 const res = await fetch("https://api.example.com/events");
@@ -449,7 +449,7 @@ for await (const chunk of lines) {
 }
 ```
 
-请求体是 `ReadableStream` 时，会随网络栈的需要逐块上传；按 Fetch 标准的要求，需要传 `duplex: "half"`：
+A `ReadableStream` request body is uploaded chunk by chunk as the network asks for it; pass `duplex: "half"` as the Fetch Standard requires:
 
 ```ts
 await fetch("https://api.example.com/upload", {
@@ -459,21 +459,21 @@ await fetch("https://api.example.com/upload", {
 });
 ```
 
-### 与浏览器的差异
+### Differences from browsers
 
-- **没有 CORS，也没有 origin。** 应用不是网页：它可以访问[能力声明](../docs/sandbox-and-capabilities.md)允许的任何主机。`mode` 会被接受但被忽略。
-- **没有禁止设置的请求头。** 应用可以设置 `Cookie`、`User-Agent`、`Origin` 等任意请求头。未指定 `Accept` 时会发送 `Accept: */*`。
-- **`redirect: "manual"` 直接交付 3xx 响应本身**，带有状态码和 `Location` 头，而不是不透明的过滤响应。`"follow"` 会跟随重定向（每一跳都按能力声明检查）；`"error"` 在响应为重定向时 reject。
-- **`FormData` 请求体总是使用 `Content-Type: multipart/form-data; boundary=…`**，即使已经设置了 `Content-Type` 头。HTTP 库常常先设一个默认类型，只在检测到浏览器时才清除；缺少 boundary，服务器就无法解析请求体。
-- **`credentials`、`cache`、`referrer`、`referrerPolicy`、`integrity`、`keepalive` 和 `priority`** 会被校验并保存在 `Request` 对象上，但不会传给网络栈：缓存和 Cookie 的处理遵循平台网络栈自身的行为。
-- **能力声明。** 当应用在 `nsh.json` 中声明了 `network` 能力（或嵌入它的宿主应用授予的更少）时，访问未被允许的主机的请求根本不会发到网络，`fetch` 以 `TypeError` reject。参见[沙箱与能力](../docs/sandbox-and-capabilities.md)。
-- **错误。** 网络失败以 `TypeError` reject，消息以 `Network request failed:` 开头；中止则以 signal 的 `reason` reject。
+- **No CORS and no origin.** An app is not a web page: it may talk to any host its [capabilities](../docs/sandbox-and-capabilities.md) allow. `mode` is accepted and ignored.
+- **No forbidden headers.** An app may set `Cookie`, `User-Agent`, `Origin` and any other header. When no `Accept` header is given, `Accept: */*` is sent.
+- **`redirect: "manual"` delivers the 3xx response itself**, with its status and `Location` header, instead of an opaque filtered response. `"follow"` follows redirects (each hop is checked against the capabilities); `"error"` rejects when the response is a redirect.
+- **A `FormData` body always gets `Content-Type: multipart/form-data; boundary=…`**, even when a `Content-Type` header was set. HTTP libraries often set a default content type and clear it only where they detect a browser; without the boundary the server cannot parse the body.
+- **`credentials`, `cache`, `referrer`, `referrerPolicy`, `integrity`, `keepalive` and `priority`** are validated and kept on the `Request` object, but are not passed to the network stack: caching and cookie handling are those of the platform's stack.
+- **Capabilities.** When the app declares `network` capabilities in `nsh.json` (or the embedding app grants fewer), a request to a host that is not allowed never reaches the network and `fetch` rejects with a `TypeError`. See [Sandbox and capabilities](../docs/sandbox-and-capabilities.md).
+- **Errors.** Network failures reject with a `TypeError` whose message starts with `Network request failed:`; aborts reject with the signal's `reason`.
 
-在组件中加载数据的完整指南见[网络](../docs/networking.md)。
+See [Networking](../docs/networking.md) for a guide to loading data in components.
 
-## 流
+## Streams
 
-完整实现了 WHATWG Streams 标准：可读流（默认流和字节流、BYOB reader、`tee`、`pipeTo` / `pipeThrough`、`ReadableStream.from`、异步迭代）、可写流、转换流、两种排队策略以及文本编码流。
+The full WHATWG Streams Standard: readable streams (default and byte streams, BYOB readers, `tee`, `pipeTo` / `pipeThrough`, `ReadableStream.from`, async iteration), writable streams, transform streams, the two queuing strategies and the text encoding streams.
 
 ```ts
 class ReadableStream<R = any> {
@@ -595,11 +595,11 @@ class TextDecoderStream {
 }
 ```
 
-底层 source、sink 和 transformer 对象（`UnderlyingDefaultSource`、`UnderlyingByteSource`、`UnderlyingSink`、`Transformer`）以及 `StreamPipeOptions`（`preventAbort`、`preventCancel`、`preventClose`、`signal`）的结构与标准一致，完整声明见 `globals.d.ts`。
+The underlying source, sink and transformer objects (`UnderlyingDefaultSource`, `UnderlyingByteSource`, `UnderlyingSink`, `Transformer`) and `StreamPipeOptions` (`preventAbort`, `preventCancel`, `preventClose`, `signal`) have the standard shapes; their full declarations are in `globals.d.ts`.
 
-`TextEncoderStream` 会把被切断在两个字符串分块之间的代理对拼回一个字符，`TextDecoderStream` 会把切断在两个字节分块之间的多字节序列拼回完整字符。
+`TextEncoderStream` keeps a surrogate pair cut between two string chunks together, and `TextDecoderStream` a multi-byte sequence cut between two byte chunks.
 
-一个把文本按行切分的转换流：
+A transform stream that splits text into lines:
 
 ```ts
 function lines(): TransformStream<string, string> {
@@ -622,26 +622,26 @@ for await (const line of res.body!.pipeThrough(new TextDecoderStream()).pipeThro
 }
 ```
 
-## 数字与日期格式化
+## Number and date formatting
 
-QuickJS 自身没有 `Intl`；nsh 补上了一个，在 Rust 中格式化：`Intl.NumberFormat`、`Intl.DateTimeFormat` 和 `Intl.getCanonicalLocales`，以及数字和 BigInt 的 `toLocaleString`、日期的 `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString`，它们接受相同的 `locales` 和 `options`。它们的声明来自 TypeScript 自带的 `ES2023` 库，所以不在 `globals.d.ts` 中。
+QuickJS has no `Intl` of its own; nsh adds one, formatting in Rust: `Intl.NumberFormat`, `Intl.DateTimeFormat` and `Intl.getCanonicalLocales`, and the `toLocaleString` of numbers and BigInts and `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString` of dates, which take the same `locales` and `options`. Their declarations are TypeScript's own (the `ES2023` library), so they are not in `globals.d.ts`.
 
 ```ts
-(1234567.891).toLocaleString();                                              // "1,234,567.891"（en-US）
+(1234567.891).toLocaleString();                                              // "1,234,567.891" (en-US)
 (1234.5).toLocaleString("de-DE", { style: "currency", currency: "EUR" });  // "1.234,50 €"
 new Intl.NumberFormat("en", { notation: "compact" }).format(1_500_000);      // "1.5M"
-new Intl.NumberFormat("zh-CN", { notation: "compact" }).format(12_345);      // "1.2万"
+new Intl.NumberFormat("en", { style: "percent", signDisplay: "exceptZero" }).format(0.042); // "+4%"
 new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });   // "09:05"
 new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(date); // "Oct 16, 2026, 3:04 PM"
 ```
 
-不传 `locales` 时使用设备的区域设置（iOS 的 `NSLocale.currentLocale`、Android 的 `Locale.getDefault()`）；`nsh trace` 和 Web 上为 `en-US`。
+Without `locales`, the device's locale is used: its region format (iOS `NSLocale.currentLocale`, Android `Locale.getDefault()`), `en-US` in `nsh trace` and on the web.
 
-- **数字**：`decimal`、`percent`、`currency`（`currencyDisplay` 为 `symbol`、`narrowSymbol`、`code`）和 `unit`（常用单位：长度、质量、时长、数据大小、温度、速度）样式；`minimumIntegerDigits`、`minimum` / `maximumFractionDigits`、`minimum` / `maximumSignificantDigits`、`roundingPriority`、`trailingZeroDisplay`、`useGrouping`、`signDisplay`；`standard`、`scientific`、`engineering` 和 `compact` 记数法（`compactDisplay` 为 `short` / `long`）。舍入方式是四舍五入（远离零），按数字的书写形式进行（`1.005` 舍入为 `1.01`，与浏览器一致）。`format` 也精确地接受 BigInt 和十进制字符串。`formatToParts` 和 `resolvedOptions` 与浏览器一致。
-- **日期**：`weekday`、`year`、`month`（`numeric`、`2-digit`、`short`、`long`、`narrow`）、`day`、`hour`、`minute`、`second`、`fractionalSecondDigits`、`hour12` / `hourCycle`、`timeZoneName` 以及 `dateStyle` / `timeStyle`，使用公历。`timeZone` 支持设备时区、`UTC` 和偏移量（`"+08:00"`）；其他时区名会抛出 `RangeError`（没有时区数据库）。
-- **区域**：区域数据是一张常用语言的表（英语、德语、法语、西班牙语、意大利语、葡萄牙语、荷兰语、俄语、瑞典语、波兰语、土耳其语、印尼语、越南语、泰语、印地语、中文、日语、韩语）及其地区变体（`en-GB`、`en-IN`、`de-CH`、`es-MX`、`pt-PT`、`zh-TW` 等），而不是完整的 CLDR，所以细节可能与浏览器的输出不同。没有数据的区域会依次回退到下一个请求的区域、设备的区域、`en-US`；俄语、瑞典语、波兰语、土耳其语、印尼语、越南语、泰语和印地语的日期没有月份名（月份写成数字，星期用英语）。数字始终是拉丁数字。
-- **不支持**：`Intl.Collator`（`String.prototype.localeCompare` 是 QuickJS 自带的，不区分区域）、`PluralRules`、`RelativeTimeFormat`、`ListFormat`、`DisplayNames`、`Segmenter` 和 `Intl.Locale`；`currencySign: "accounting"` 和 `currencyDisplay: "name"` 分别按 `standard` 和 `code` 格式化。
+- **Numbers**: the `decimal`, `percent`, `currency` (`currencyDisplay` `symbol`, `narrowSymbol`, `code`) and `unit` (common units: lengths, masses, durations, data sizes, temperatures, speeds) styles; `minimumIntegerDigits`, `minimum` / `maximumFractionDigits`, `minimum` / `maximumSignificantDigits`, `roundingPriority`, `trailingZeroDisplay`, `useGrouping`, `signDisplay`; `standard`, `scientific`, `engineering` and `compact` notation (`compactDisplay` `short` / `long`). Rounding is half away from zero, on the number as written (`1.005` rounds to `1.01`, as in browsers). `format` also takes BigInts and decimal strings, exactly. `formatToParts` and `resolvedOptions` work as in browsers.
+- **Dates**: `weekday`, `year`, `month` (`numeric`, `2-digit`, `short`, `long`, `narrow`), `day`, `hour`, `minute`, `second`, `fractionalSecondDigits`, `hour12` / `hourCycle`, `timeZoneName` and `dateStyle` / `timeStyle`, in the Gregorian calendar. `timeZone` takes the device's zone, `UTC` or an offset (`"+08:00"`); other zone names throw a `RangeError` (there is no time zone database).
+- **Locales**: the locale data is a table of common languages (English, German, French, Spanish, Italian, Portuguese, Dutch, Russian, Swedish, Polish, Turkish, Indonesian, Vietnamese, Thai, Hindi, Chinese, Japanese, Korean) with their regional variants (`en-GB`, `en-IN`, `de-CH`, `es-MX`, `pt-PT`, `zh-TW`, ...), not the whole of CLDR, so details can differ from a browser's output. A locale without data falls back to the next one asked for, then the device's, then `en-US`; Russian, Swedish, Polish, Turkish, Indonesian, Vietnamese, Thai and Hindi dates have no month names (their months are written as numbers, their weekdays in English). Digits are always Latin.
+- **Not there**: `Intl.Collator` (`String.prototype.localeCompare` is QuickJS's, which ignores the locale), `PluralRules`, `RelativeTimeFormat`, `ListFormat`, `DisplayNames`, `Segmenter` and `Intl.Locale`; `currencySign: "accounting"` and `currencyDisplay: "name"` format as `standard` and `code`.
 
-## 性能
+## Performance
 
-这些类都是原生实现的：解析 URL、编解码文本、构建 multipart 请求体、搬运流的分块，都在 Rust 中完成，而不是在 QuickJS 里。不过 JS 的每次调用都要进入运行时，所以请优先使用整块缓冲区的操作（`res.json()`、`res.text()`、`encoder.encode(s)`），避免在 JS 里逐字节循环。参见[性能](../docs/performance.md)。
+All of these classes are native: parsing URLs, encoding and decoding text, building multipart bodies and moving stream chunks happen in Rust, not in QuickJS. Still, every call from JS crosses into the runtime, so prefer whole-buffer operations (`res.json()`, `res.text()`, `encoder.encode(s)`) over byte-by-byte loops in JS. See [Performance](../docs/performance.md).

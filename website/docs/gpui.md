@@ -14,11 +14,9 @@ Taffy layout and the `nsh/ui/mobile` components are the same as on every other p
 everywhere. `Platform.OS` is the OS it runs on (`"macos"`, `"windows"` or `"linux"`) and the `desktop={{…}}` props
 apply.
 
-> [!WARNING]
-> The GPUI backend is in development. Every element and module of the native [macOS](./macos.md) (AppKit),
-> [Windows](./windows.md) (Win32) and [Linux](./linux.md) (GTK) backends is there, but some draw differently
-> ([Differences](#differences)), and so far it has been tried on Linux only. For shipping desktop apps today, use the
-> native backends.
+Every element and module of the [macOS](./macos.md) (AppKit), [Windows](./windows.md) (Win32) and
+[Linux](./linux.md) (GTK) backends is there; where GPUI draws something its own way, [Differences](#differences)
+says how.
 
 ## How it works
 
@@ -143,7 +141,6 @@ What draws or behaves differently from the native desktop backends:
   not supported.
 - **Accessibility** goes through AccessKit: screen readers can activate, focus, set values and scroll elements into
   view everywhere; custom actions and the context-menu action are not passed on yet.
-- **Not yet tried on macOS and Windows**: it is built for them, but so far it has run on Linux only.
 
 For comparison, each native backend's own list: [macOS](./macos.md#what-differs-on-macos),
 [Windows](./windows.md#what-differs-on-windows), [Linux](./linux.md#what-differs-on-linux).

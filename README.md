@@ -1,7 +1,7 @@
 # Native Shell (nsh)
 
 **AI-generated UI, native in your app.** Native Shell renders UI written in TSX and Tailwind with each platform's
-own native views, on iOS, Android, macOS, Windows and Linux, not in a web view. Apps load these modules at run time,
+own UI: native views on iOS, Android, macOS, Windows and Linux, GPUI in GPUI apps and HTML on the web. Apps load these modules at run time,
 as plugins: written by a model or by your team, delivered as signed packages and run in a sandbox the host
 configures. The same module can also be a standalone app.
 
@@ -28,14 +28,14 @@ Documentation, guides and live demos: **[native-shell.com](https://native-shell.
 ## Features
 
 - **Real native UI.** Every element is a platform view (UIKit, Android views, AppKit, Win32 drawn with Direct2D,
-  GTK 4), laid out with flexbox and grid ([Taffy](https://github.com/DioxusLabs/taffy)). The system's text, input,
-  scrolling and accessibility just work, and native components such as maps and web views mix with nsh's views without
-  layering problems.
-- **Plugins, or standalone apps.** Put an `NshAppView` (iOS), `NshView` (Android) or `AppView` (desktop) on any screen
-  of an existing app and load modules into it at run time, from a bundle, the dev server or a downloaded signed
-  package: features ship without an app release, next to the host's own native components. The same module also
-  packages into an installable iOS, Android, macOS, Windows or Linux app with `nsh package`, with no Xcode project or
-  Gradle build.
+  GTK 4), a GPUI element or HTML, laid out with flexbox and grid ([Taffy](https://github.com/DioxusLabs/taffy)). The
+  system's text, input, scrolling and accessibility just work, and native components such as maps and web views layer
+  naturally with nsh's views.
+- **Plugins, or standalone apps.** Put an `NshAppView` (iOS), `NshView` (Android) or `AppView` (desktop and GPUI) on
+  any screen of an existing app, or `createPlayer` in a web page, and load modules into it at run time, from a bundle,
+  the dev server or a downloaded signed package: features ship on your own schedule, next to the host's own native
+  components. The same module also packages into an installable iOS, Android, macOS, Windows, Linux or GPUI app, or a
+  static website, with one `nsh package` command.
 - **AI-friendly: TSX + Tailwind.** A module is one TSX file of components, signals and Tailwind classes, the format models
   write best. Every element, prop and module has TypeScript declarations generated from the Rust sources, the docs are
   served to models as [llms.txt](https://native-shell.com/llms.txt), and `nsh trace` runs a module headless to check
@@ -43,9 +43,9 @@ Documentation, guides and live demos: **[native-shell.com](https://native-shell.
 - **Sandboxed and signed.** Each view runs its module in its own QuickJS VM, with memory, call-time and node limits,
   reaching only the capabilities the host grants. Packages are signed with Ed25519 by release keys an offline root
   certifies, and the device checks a revocation list.
-- **Fast, with no Node.js.** Only the app's code is JavaScript: signals, the renderer, layout, animation and every
+- **Fast, all in Rust.** Only the app's code is JavaScript: signals, the renderer, layout, animation and every
   module apps import are Rust, and each frame crosses to the UI thread as one batch. The single `nsh` binary bundles,
-  type-checks, serves hot reload and packages; module authors need neither npm nor Rust.
+  type-checks, serves hot reload and packages: it is the whole toolchain module authors need.
 
 | Platform | Drawn with | Embed with | Requires |
 |---|---|---|---|
@@ -54,10 +54,12 @@ Documentation, guides and live demos: **[native-shell.com](https://native-shell.
 | macOS | AppKit, Core Animation, CoreText | `AppView` (Rust, `nsh-platform-macos`) | macOS 14+ |
 | Windows | Win32, Direct2D, DirectWrite | `AppView` (Rust, `nsh-platform-windows`) | Windows 10 1809+ |
 | Linux | GTK 4, Pango | `AppView` (Rust, `nsh-platform-linux`) | GTK 4.14+ |
-| GPUI (macOS, Windows, Linux; in development) | GPUI (GPUI Fast) | `AppView` (Rust, a GPUI view, `nsh-platform-gpui`) | macOS, Windows; Linux with Vulkan |
+| GPUI (macOS, Windows, Linux) | GPUI (GPUI Fast) | `AppView` (Rust, a GPUI view, `nsh-platform-gpui`) | macOS, Windows; Linux with Vulkan |
+| Web | HTML, CSS | `createPlayer` (JavaScript) or an iframe | Modern browsers |
 
-A WebAssembly build runs the website's live demos. The GPUI backend (`nsh run --target gpui`, `nsh package --target gpui`)
-draws apps with GPUI on all three desktops and embeds in GPUI and GPUI Kit apps; it is in development.
+The GPUI backend (`nsh run --target gpui`, `nsh package --target gpui`) draws apps with GPUI on all three desktops and
+embeds in GPUI and GPUI Kit apps. The web platform (`nsh run --target web`, `nsh package --target web`) publishes apps
+as static sites and runs the website's live demos.
 
 ## Quick start
 

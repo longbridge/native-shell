@@ -1,6 +1,6 @@
 ---
 title: Linux
-description: 在 Linux 上用 GTK 4 窗口运行 nsh 应用、打包应用、用 AppView 嵌入 GTK 应用，以及 Linux 后端不支持的功能。
+description: 在 Linux 上用 GTK 4 窗口运行 nsh 应用、打包应用、用 AppView 嵌入 GTK 应用，以及 Linux 上的差异。
 order: 15
 group: platforms
 ---

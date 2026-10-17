@@ -9,9 +9,9 @@ Rust); layout uses Taffy; embedding native components such as maps or web views 
 toolchain is pure Rust and does not need Node.js; app developers get a prebuilt distribution (`cargo xtask dist`) and
 never need Rust either. Every platform has a native backend: iOS with UIKit views (`nsh-platform-ios`), Android with
 Android views (`nsh-platform-android`), macOS with AppKit views (`nsh-platform-macos`), Windows in Win32 windows drawn
-with Direct2D (`nsh-platform-windows`), Linux with GTK 4 widgets (`nsh-platform-linux`). A GPUI backend
-(`nsh-platform-gpui`: macOS, Windows and Linux, embeddable in GPUI / GPUI Kit apps) is in development; the web build
-only runs the website's demos. The only UI set is
+with Direct2D (`nsh-platform-windows`), Linux with GTK 4 widgets (`nsh-platform-linux`). The GPUI backend
+(`nsh-platform-gpui`) draws on macOS, Windows and Linux and embeds in GPUI / GPUI Kit apps; the web platform renders
+apps as HTML in a browser page. The only UI set is
 `nsh/ui/mobile` (it renders on every platform); a desktop set is planned.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
@@ -80,7 +80,7 @@ crates/
   nsh-windows-app/     Release runner on Windows: the executable of apps built by `nsh package --target windows`
   gpui/                The GPUI backend: a workspace of its own (`crates/gpui/Cargo.toml`, its own `Cargo.lock` and GPUI's dependencies),
                        excluded from the main one, so the main workspace's builds, tests and CI never build GPUI:
-  gpui/nsh-platform-gpui/ GPUI backend (macOS, Windows, Linux; in development): the Windows backend's retained `NshView` tree, input,
+  gpui/nsh-platform-gpui/ GPUI backend (macOS, Windows, Linux): the Windows backend's retained `NshView` tree, input,
                        scrolling and editing logic, painted by one GPUI element per surface (`render.rs`: `SurfaceElement`,
                        `DrawCx` with the transform and opacity GPUI lacks), text shaped by GPUI's text system on the engine
                        thread, the main-thread queue (`rt.rs`), GPUI events (`events.rs`, keys as Windows VK codes);
@@ -134,7 +134,9 @@ on any platform or JS crate.
 | components (`nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md` |
 
 Keep them current: a change that alters documented behavior updates its page (or the module doc) in the same commit,
-including the user-facing pages in `website/` (English and `zh-CN`).
+including the user-facing pages in `website/` (English and `zh-CN`). User-facing pages and the README are written in
+positive terms: what a platform or feature is and does, never what it is not or lacks ("Writing documentation" in
+`website/README.md`).
 
 ## Commands
 

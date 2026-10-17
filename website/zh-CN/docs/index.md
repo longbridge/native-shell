@@ -12,7 +12,7 @@ Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面*
 nsh 同时运行在手机和桌面上：iOS（UIKit）、Android（Android 视图）、macOS（AppKit）、Windows（用 Direct2D 绘制的 Win32 窗口）和 Linux（GTK 4）。每个平台都有自己的原生后端，同一个模块可以在所有这些平台上运行（[平台](./platforms.md)）。
 
 > [!IMPORTANT]
-> nsh 不是用 TypeScript 编写整个应用的框架。无论在手机还是桌面上，应用仍然是原生应用，照原来的方式构建和发布；nsh 是嵌在其中的一层，负责那些在发布之后才生成、修改或新增的界面。
+> nsh 是嵌在应用里的一层，负责那些在发布之后才生成、修改或新增的界面。无论在手机还是桌面上，应用仍然是原生应用，照原来的方式构建和发布。
 
 ## 为什么做 nsh
 
@@ -108,8 +108,8 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 - **原生视图。** 嵌入原生地图、WebView 或视频播放器没有层级问题，无障碍使用平台自己的树，文本输入是系统的输入。
 - **细粒度响应式。** 与 Solid 类似的[信号](./reactivity.md)，在原生层实现。组件只运行一次，只有读取了变化信号的表达式会重新执行。
 - **样式与 Tailwind**，在原生层解析：flexbox、CSS grid、阴影、渐变、滤镜、过渡（[样式](./styling.md)、[Tailwind](./tailwind.md)）。
-- **移动端 UI 组件集**（`nsh/ui/mobile`），组件用 Rust 编写、由 nsh 绘制，在每个平台上外观一致：[Button](../components/button.md)、[Card](../components/card.md)、[ListView](../components/list-view.md)、[导航](../components/navigation.md) 等。桌面布局用基础元素加上 `desktop={{…}}` 属性和 `Platform.select` 搭建（[平台特定代码](./platform-specific.md)）；目前还没有桌面 UI 套件。
-- **单一可执行文件的工具链。** 不需要 Node.js，也无需 NPM；`nsh` 负责构建模块、生成类型声明、以热模块替换的方式提供开发服务、打包和签名。
+- **移动端 UI 组件集**（`nsh/ui/mobile`），组件用 Rust 编写、由 nsh 绘制，在每个平台上外观一致：[Button](../components/button.md)、[Card](../components/card.md)、[ListView](../components/list-view.md)、[导航](../components/navigation.md) 等。桌面布局用基础元素加上 `desktop={{…}}` 属性和 `Platform.select` 搭建（[平台特定代码](./platform-specific.md)），桌面 UI 套件也在路上。
+- **单一可执行文件的工具链。** 一个 `nsh` 可执行文件负责构建模块、生成类型声明、以热模块替换的方式提供开发服务、打包和签名。
 
 ## 运行平台
 
@@ -120,13 +120,13 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 | macOS | 已支持（macOS 14+） | AppKit | 独立应用；通过 `AppView` 嵌入（[macOS](./macos.md)） |
 | Windows | 已支持（Windows 10 1809+） | Win32、Direct2D | 独立应用；通过 `AppView` 嵌入（[Windows](./windows.md)） |
 | Linux | 已支持（GTK 4.14+） | GTK 4 | 独立应用；通过 `AppView` 嵌入（[Linux](./linux.md)） |
-| Mac Catalyst | 仅用于开发 | UIKit | `nsh run` 在 Mac 上打开的 iPhone 尺寸窗口 |
-| Web（WebAssembly） | 仅用于演示 | DOM | 运行本站的示例，用 DOM 而不是原生视图绘制（[Web](./web.md)）；不是可发布的目标平台 |
-| GPUI（macOS、Windows、Linux） | 开发中 | GPUI | 用 [GPUI](https://gpui-kit.com) 绘制；通过 `AppView` 嵌入 GPUI 和 GPUI Kit 应用，`--target gpui`（[GPUI](./gpui.md)）；与原生桌面后端的功能对齐正在进行 |
+| GPUI（macOS、Windows、Linux） | 已支持 | GPUI | 独立应用；通过 `AppView` 嵌入 GPUI 和 GPUI Kit 应用（[GPUI](./gpui.md)） |
+| Web | 已支持（现代浏览器） | HTML | 静态网站；在网页中用 `createPlayer` 或 iframe 嵌入（[Web](./web.md)） |
+| Mac Catalyst | 用于开发 | UIKit | `nsh run` 在 Mac 上打开的 iPhone 尺寸窗口，用来查看模块在手机上的样子 |
 
 <div class="diagram-scroll">
-<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS、Android、Linux、macOS AppKit 和 Windows Win32 / Direct2D（已支持）和 Web（WebAssembly 渲染到 DOM，仅用于本站演示）。">
-<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS、Android、Linux、macOS AppKit 和 Windows Win32 / Direct2D（已支持）和 Web（WebAssembly 渲染到 DOM，仅用于本站演示）。">
+<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS、Android、Linux、macOS AppKit 和 Windows Win32 / Direct2D、三个桌面平台上的 GPUI，以及用 HTML 绘制的网页。">
+<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS、Android、Linux、macOS AppKit 和 Windows Win32 / Direct2D、三个桌面平台上的 GPUI，以及用 HTML 绘制的网页。">
 </div>
 
 ## 与其他方案的比较

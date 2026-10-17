@@ -182,7 +182,7 @@ and minor version (`"6.12"`): distributions number their releases in ways that c
 area and the keyboard height are 0, `colorScheme()` follows the desktop's setting (the XDG settings portal) live,
 `fontScale()` the desktop's text scaling and `PixelRatio.get()` the display's scale, fractional ones included.
 
-On [macOS](./macos.md) (the AppKit backend, not Mac Catalyst), `Platform.OS` is `"macos"`, the idiom `"desktop"` and
+On [macOS](./macos.md) (the AppKit backend), `Platform.OS` is `"macos"`, the idiom `"desktop"` and
 `Platform.Version` the macOS version. The safe area and the keyboard height are 0, `colorScheme()` follows the
 system's appearance live, `fontScale()` is 1 and `PixelRatio.get()` the display's backing scale.
 

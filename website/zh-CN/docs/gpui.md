@@ -12,9 +12,8 @@ Windows 和 Linux 上表现一致。它的主要用途是嵌入：`AppView` 是�
 显示 nsh 模块。核心、响应式图、渲染器、Taffy 布局和 `nsh/ui/mobile` 组件与其他所有平台完全相同，因此同一个 bundle 可以在所有
 平台上运行。`Platform.OS` 是它所运行的操作系统（`"macos"`、`"windows"` 或 `"linux"`），并会应用 `desktop={{…}}` 属性。
 
-> [!WARNING]
-> GPUI 后端正在开发中。原生 [macOS](./macos.md)（AppKit）、[Windows](./windows.md)（Win32）和 [Linux](./linux.md)（GTK）
-> 后端的元素和模块它都已具备，但部分绘制效果不同（见[差异](#差异)），而且目前只在 Linux 上试过。目前要发布桌面应用，请使用原生后端。
+[macOS](./macos.md)（AppKit）、[Windows](./windows.md)（Win32）和 [Linux](./linux.md)（GTK）后端的元素和模块它都具备；
+GPUI 用自己方式绘制的地方，见[差异](#差异)。
 
 ## 工作方式
 
@@ -125,7 +124,6 @@ gpui_platform::application().run(|cx| {
   `allowsBackForwardNavigationGestures`。
 - **无障碍**通过 AccessKit 实现：读屏软件在所有平台上都能激活、聚焦、设置值并把元素滚动到可见；自定义操作和上下文菜单操作
   尚未传递。
-- **尚未在 macOS 和 Windows 上试过**：已为它们构建，但目前只在 Linux 上运行过。
 
 可对照各原生后端自己的列表：[macOS](./macos.md#macos-上的差异)、[Windows](./windows.md#windows-上的差异)、
 [Linux](./linux.md#linux-上的差异)。

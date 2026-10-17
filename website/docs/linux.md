@@ -1,6 +1,6 @@
 ---
 title: Linux
-description: Run nsh apps on Linux in GTK 4 windows, package them, embed them in a GTK app with AppView, and what the Linux backend does not support.
+description: Run nsh apps on Linux in GTK 4 windows, package them, embed them in a GTK app with AppView, and what differs on Linux.
 order: 15
 group: platforms
 ---

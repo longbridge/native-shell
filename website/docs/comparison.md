@@ -50,7 +50,7 @@ What sets nsh apart:
 - The UI is a document or an existing web page: a web view shows it as it is.
 - The set of screens is fixed and small, and only content and order change: server-driven UI needs no runtime at all.
 - The whole app is written in a cross-platform framework already: its own update mechanism ships its code.
-- You need a large ecosystem of third-party packages, or a desktop UI kit with desktop controls today: nsh's components are the mobile set, and there is no desktop UI set yet.
+- You need a large ecosystem of third-party packages, or a desktop UI kit with desktop controls today: nsh's components are the mobile set.
 
 ## See also
 

@@ -208,7 +208,7 @@ if (BuildConfig.DEBUG) {
 
 ### macOS, Windows and Linux
 
-Desktop apps written in Rust embed modules with `AppView`, from the `nsh-platform-macos`, `nsh-platform-windows` and `nsh-platform-linux` crates: an `NSView`, a child window or a GTK widget that loads a built bundle. See [macOS](./macos.md#embedding-in-a-mac-app), [Windows](./windows.md#embedding-in-a-win32-app) and [Linux](./linux.md#embedding-in-a-gtk-app), and [Platforms](./platforms.md#embed-in-a-native-app) for what the desktop hosts do not offer yet.
+Desktop apps written in Rust embed modules with `AppView`, from the `nsh-platform-macos`, `nsh-platform-windows`, `nsh-platform-linux` and `nsh-platform-gpui` crates: an `NSView`, a child window, a GTK widget or a GPUI view that loads a built bundle. See [macOS](./macos.md#embedding-in-a-mac-app), [Windows](./windows.md#embedding-in-a-win32-app), [Linux](./linux.md#embedding-in-a-gtk-app) and [GPUI](./gpui.md), and [Platforms](./platforms.md#embed-in-a-native-app) for every host side by side.
 
 ### What the module may do
 

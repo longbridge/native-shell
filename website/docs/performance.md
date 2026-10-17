@@ -203,7 +203,7 @@ From nsh's own baselines (Apple silicon unless noted):
 | Gallery photo list, headless (debug) | First frame 653 ops / 224 nodes, ~2.7 ms |
 | Scrolling the photo list, Catalyst (release) | Rebinding one row while scrolling slowly ~0.4 ms; a whole screen of ~32 rows on a fast fling 0.9–1.6 ms |
 | Scrolling the photo list, Android emulator (arm64, release) | Rebinding one row ~0.3–0.4 ms (JS ~60 µs) |
-| Engine startup (release) | ~75–155 µs; the web APIs (`fetch`, `URL`, ...) cost nothing until first used, then ~90 µs |
+| Engine startup (release) | ~75–155 µs; the global APIs (`fetch`, `URL`, ...) cost nothing until first used, then ~90 µs |
 | Hot reload | ~120 ms from saving a file to the new version running; applying the update 0.2–0.5 ms |
 
 ## Checklist

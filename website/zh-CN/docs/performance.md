@@ -193,7 +193,7 @@ nsh run App.tsx --target macos --fps --release
 | Gallery 照片列表，无界面（debug） | 首帧 653 ops / 224 nodes，~2.7 ms |
 | 滚动照片列表，Catalyst（release） | 慢速滚动时重新绑定一行 ~0.4 ms；快速甩动时一整屏约 32 行 0.9–1.6 ms |
 | 滚动照片列表，Android 模拟器（arm64，release） | 重新绑定一行 ~0.3–0.4 ms（JS ~60 µs） |
-| 引擎启动（release） | ~75–155 µs；Web API（`fetch`、`URL` 等）在首次使用前没有任何开销，首次使用后 ~90 µs |
+| 引擎启动（release） | ~75–155 µs；全局 API（`fetch`、`URL` 等）在首次使用前没有任何开销，首次使用后 ~90 µs |
 | 热重载 | 从保存文件到新版本运行 ~120 ms；应用更新 0.2–0.5 ms |
 
 ## 检查清单

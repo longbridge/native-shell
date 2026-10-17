@@ -237,7 +237,7 @@ Libraries built on `fetch` (and on `AbortController`, `FormData` and streams) ge
 
 ## Related
 
-- [Web APIs](../modules/web-apis.md): every global, with its members.
+- [Global APIs](../modules/globals.md): every global, with its members.
 - [Sandbox and capabilities](./sandbox-and-capabilities.md): capabilities, limits and how the embedding app grants them.
 - [Images and assets](./images-and-assets.md): remote images.
 - [Lists](./lists.md#loading-more-onendreached): paging through an API.

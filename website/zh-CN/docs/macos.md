@@ -1,6 +1,6 @@
 ---
 title: macOS
-description: 在 macOS 上用 AppKit 窗口运行 nsh 应用、打包为 .app、用 AppView 嵌入 Mac 应用，以及 macOS 后端不支持的功能。
+description: 在 macOS 上用 AppKit 窗口运行 nsh 应用、打包为 .app、用 AppView 嵌入 Mac 应用，以及 macOS 上的差异。
 order: 13
 group: platforms
 ---
@@ -12,9 +12,7 @@ nsh 应用也能作为原生 Mac 应用运行。macOS 后端用 AppKit 视图和
 `Platform.OS` 为 `"macos"`，并会应用 `desktop={{…}}` 属性。窗口标题、自定义标题栏、
 菜单栏和右键菜单由 [`nsh/desktop`](../modules/nsh-desktop.md) 提供。
 
-它不是 [Mac Catalyst](./getting-started.md#mac-catalystmacos-上默认)。Mac Catalyst 仍是 macOS 上 `nsh run` 的默认目标：
-它在 iPhone 尺寸的窗口中运行 iOS 后端（UIKit），行为与手机一致。macOS 后端的行为则是桌面应用：鼠标、触控板和键盘输入，
-可调整大小的窗口，居中的表单和菜单栏。
+macOS 后端的行为是桌面应用：鼠标、触控板和键盘输入，可调整大小的窗口，居中的表单和菜单栏。
 
 ## 环境要求
 

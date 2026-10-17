@@ -208,7 +208,7 @@ if (BuildConfig.DEBUG) {
 
 ### macOS、Windows 和 Linux
 
-用 Rust 编写的桌面应用通过 `AppView` 嵌入模块，它来自 `nsh-platform-macos`、`nsh-platform-windows` 和 `nsh-platform-linux` 这几个 crate：一个 `NSView`、一个子窗口或一个 GTK 控件，加载构建好的 bundle。见 [macOS](./macos.md#嵌入-mac-应用)、[Windows](./windows.md#嵌入-win32-应用) 和 [Linux](./linux.md#嵌入-gtk-应用)；桌面宿主目前还缺少什么，见[平台](./platforms.md#嵌入原生应用)。
+用 Rust 编写的桌面应用通过 `AppView` 嵌入模块，它来自 `nsh-platform-macos`、`nsh-platform-windows`、`nsh-platform-linux` 和 `nsh-platform-gpui` 这几个 crate：一个 `NSView`、一个子窗口、一个 GTK 控件或一个 GPUI 视图，加载构建好的 bundle。见 [macOS](./macos.md#嵌入-mac-应用)、[Windows](./windows.md#嵌入-win32-应用)、[Linux](./linux.md#嵌入-gtk-应用) 和 [GPUI](./gpui.md)；各平台宿主的对照见[平台](./platforms.md#嵌入原生应用)。
 
 ### 模块能做什么
 

@@ -103,7 +103,7 @@ group: tools
 
 ## 运行时做的其他事情
 
-- **网络**：`fetch` 和其他 Web API 都是原生类。请求交给平台的 HTTP 栈（`NSURLSession`、`HttpURLConnection`），双向流式传输。
+- **网络**：`fetch` 和其他全局 API 都是原生类。请求交给平台的 HTTP 栈（`NSURLSession`、`HttpURLConnection`），双向流式传输。
 - **图片**在主线程之外下载和解码，按视图尺寸处理，并带有内存缓存。
 - **限制和能力**由运行时在 Rust 中强制执行：参见[沙箱与能力](./sandbox-and-capabilities.md)。
 - **热模块替换**同样是原生的：补丁由运行时在远低于一毫秒的时间内应用（参见[开发服务器与调试](./dev-server-and-debugging.md)）。
@@ -118,7 +118,7 @@ nsh 是一个 Rust workspace。编写应用时你永远不需要构建它（发�
 | `nsh-core` | 平台无关的核心：影子树、样式、Taffy 布局、文本合并、列表虚拟化、mount item；CSS 值和 Tailwind；Rust 组件的框架和主题。 |
 | `nsh-ui-mobile` | `nsh/ui/mobile` 的组件和模块（`Button`、`Card`、`SafeAreaView`、`Alert` 等），用 Rust 编写。 |
 | `nsh-animation` | 原生动画图：值、插值、timing / spring / decay。 |
-| `nsh-js` | QuickJS 宿主和 nsh 的运行时：响应式图、渲染器、所有原生模块、Web API、热模块替换、限制；以及这一切的 TypeScript 声明。 |
+| `nsh-js` | QuickJS 宿主和 nsh 的运行时：响应式图、渲染器、所有原生模块、全局 API、热模块替换、限制；以及这一切的 TypeScript 声明。 |
 | `nsh-engine` | 引擎线程：驱动 `nsh-js` 和 `nsh-core`，每帧向平台交付一个 batch。 |
 | `nsh-package` | 签名包：密钥、证书、吊销、信任库。 |
 | `nsh-bundler` | 打包器：rolldown、Oxc、nsh 的 JSX 编译器、source map、Tailwind 类名检查。 |

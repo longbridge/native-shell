@@ -12,7 +12,7 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 nsh runs on phones and desktops alike: iOS (UIKit), Android (Android views), macOS (AppKit), Windows (Win32 windows drawn with Direct2D) and Linux (GTK 4). Each platform has a native backend of its own, and the same module runs on all of them ([Platforms](./platforms.md)).
 
 > [!IMPORTANT]
-> nsh is not a framework for writing your whole app in TypeScript. On a phone or a desktop, the app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships.
+> nsh is the layer inside an app for UI that is generated, changed or added after it ships. On a phone or a desktop, the app stays a native app, built and released the way it always was.
 
 ## Why it exists
 
@@ -108,8 +108,8 @@ Because JavaScript only describes the UI and handles events, the work done in th
 - **Native views.** Embedding a native map, web view or video player has no layering problems, accessibility uses the platform's own tree, and text input is the system's.
 - **Fine-grained reactivity.** [Signals](./reactivity.md) like Solid's, implemented natively. Components run once; only the expressions that read a changed signal run again.
 - **Styles and Tailwind**, resolved natively: flexbox, CSS grid, shadows, gradients, filters, transitions ([Styling](./styling.md), [Tailwind](./tailwind.md)).
-- **A mobile UI set** (`nsh/ui/mobile`) whose components are written in Rust and drawn by nsh, so they look the same on every platform: [Button](../components/button.md), [Card](../components/card.md), [ListView](../components/list-view.md), [navigation](../components/navigation.md), and more. Desktop layouts are built from the primitives with `desktop={{…}}` props and `Platform.select` ([Platform-specific code](./platform-specific.md)); there is no desktop UI set yet.
-- **One binary toolchain.** No Node.js and no NPM; `nsh` builds modules, writes their type declarations, serves them with hot module replacement, packages and signs them.
+- **A mobile UI set** (`nsh/ui/mobile`) whose components are written in Rust and drawn by nsh, so they look the same on every platform: [Button](../components/button.md), [Card](../components/card.md), [ListView](../components/list-view.md), [navigation](../components/navigation.md), and more. Desktop layouts are built from the primitives with `desktop={{…}}` props and `Platform.select` ([Platform-specific code](./platform-specific.md)), and a desktop UI set is on the way.
+- **One binary toolchain.** A single `nsh` executable builds modules, writes their type declarations, serves them with hot module replacement, packages and signs them.
 
 ## Where it runs
 
@@ -120,13 +120,13 @@ Because JavaScript only describes the UI and handles events, the work done in th
 | macOS | Supported (macOS 14+) | AppKit | Standalone apps; embedded with `AppView` ([macOS](./macos.md)) |
 | Windows | Supported (Windows 10 1809+) | Win32, Direct2D | Standalone apps; embedded with `AppView` ([Windows](./windows.md)) |
 | Linux | Supported (GTK 4.14+) | GTK 4 | Standalone apps; embedded with `AppView` ([Linux](./linux.md)) |
-| Mac Catalyst | Development only | UIKit | The iPhone-sized window `nsh run` opens on a Mac |
-| Web (WebAssembly) | Demos only | DOM | Runs the examples on this site, drawn with the DOM rather than native views ([Web](./web.md)); not a target to ship to |
-| GPUI (macOS, Windows, Linux) | In development | GPUI | Drawn with [GPUI](https://gpui-kit.com); embedded with `AppView` in GPUI and GPUI Kit apps, `--target gpui` ([GPUI](./gpui.md)); parity with the native desktop backends is being worked on |
+| GPUI (macOS, Windows, Linux) | Supported | GPUI | Standalone apps; embedded with `AppView` in GPUI and GPUI Kit apps ([GPUI](./gpui.md)) |
+| Web | Supported (modern browsers) | HTML | Static sites; embedded in a page with `createPlayer` or an iframe ([Web](./web.md)) |
+| Mac Catalyst | For development | UIKit | The iPhone-sized window `nsh run` opens on a Mac, to see a module as on a phone |
 
 <div class="diagram-scroll">
-<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux, macOS with AppKit and Windows with Win32 / Direct2D (supported), and the web (WebAssembly to the DOM, for this site's demos only).">
-<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux, macOS with AppKit and Windows with Win32 / Direct2D (supported), and the web (WebAssembly to the DOM, for this site's demos only).">
+<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux, macOS with AppKit and Windows with Win32 / Direct2D, GPUI on all three desktops, and web pages drawn with HTML.">
+<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux, macOS with AppKit and Windows with Win32 / Direct2D, GPUI on all three desktops, and web pages drawn with HTML.">
 </div>
 
 ## How it compares
