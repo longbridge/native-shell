@@ -126,7 +126,9 @@ Input is a desktop's: the mouse, the trackpad (scrolling with momentum, pinch an
 `selectable` text is selected by dragging, double- and triple-clicking, and copied with Cmd+C. Escape, Option+Left,
 Cmd+[ and the mouse's back button go back in a stack or ask a modal to close; page and form sheets are cards centered
 in the window over a dimmed backdrop. A click anywhere in an `Input`, its padding too, puts the caret at the nearest
-point. `Alert` shows an `NSAlert` sheet on the window.
+point. `Alert` and `ActionSheet` show an `NSAlert` sheet on the window: up to two alert buttons in a row (the cancel
+button leftmost, the last regular one the default for Return), more buttons and an action sheet's options stacked in
+their order with the cancel button last and no default; Escape presses the cancel button.
 
 Not supported, or different:
 

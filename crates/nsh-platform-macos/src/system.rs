@@ -459,10 +459,9 @@ impl DialogAnswer {
     }
 }
 
-/// Shows `dialog` as a sheet on the surface's window. Buttons read left
-/// to right in the dialog's order; the last regular button is the default
-/// (Return), the cancel button answers Escape. Answers the button's index;
-/// -1 when the dialog cannot be shown.
+/// Shows `dialog` as a sheet on the surface's window, its buttons in the
+/// dialog's order (see the comment on `order`); the cancel button answers
+/// Escape. Answers the button's index; -1 when the dialog cannot be shown.
 fn show_dialog(surface: &Rc<Surface>, dialog: &Dialog) {
     let mtm = surface.mtm;
     let answer = Rc::new(DialogAnswer {
@@ -495,13 +494,27 @@ fn show_dialog(surface: &Rc<Surface>, dialog: &Dialog) {
     } else {
         &dialog.buttons[..]
     };
+    let cancel = buttons
+        .iter()
+        .position(|b| b.style == DialogButtonStyle::Cancel);
+    // NSAlert lays two buttons out in a row, its first button rightmost,
+    // and stacks three or more, its first button on top, except that it
+    // moves the Return button to the top. As on iOS, buttons in a row read
+    // in order with the cancel button leftmost, stacked ones (and an
+    // action sheet's options) in order with the cancel button last. Only
+    // an alert in a row has a default button (Return): its last regular
+    // one, rightmost; Return would reorder a stack. `order[n]` is the
+    // index of the alert's button n.
+    let stacked = dialog.sheet || buttons.len() >= 3;
+    let mut order: Vec<usize> = (0..buttons.len()).filter(|i| Some(*i) != cancel).collect();
+    if !stacked {
+        order.reverse();
+    }
+    order.extend(cancel);
     let default = (0..buttons.len())
         .rev()
-        .find(|i| buttons[*i].style == DialogButtonStyle::Default);
-    // NSAlert lays its first button out rightmost: buttons are added last
-    // first, so they read in order. `order[n]` is the index of the alert's
-    // button n.
-    let order: Vec<usize> = (0..buttons.len()).rev().collect();
+        .find(|i| buttons[*i].style == DialogButtonStyle::Default)
+        .filter(|_| !stacked);
     for &index in &order {
         let b = &buttons[index];
         let button = alert.addButtonWithTitle(&NSString::from_str(&b.text));
