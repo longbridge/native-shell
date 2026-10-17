@@ -1,4 +1,7 @@
 {
   "name": "Rust Gallery",
+  "icon": "icon.png",
+  "appearance": "system",
+  "theme": "theme.json",
   "rust": "native"
 }
