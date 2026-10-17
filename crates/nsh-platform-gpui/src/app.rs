@@ -175,6 +175,10 @@ impl AppView {
     /// A view with no app yet (in `cx.new(|cx| AppView::new(...))`).
     pub fn new(options: AppOptions, window: &mut Window, cx: &mut Context<Self>) -> AppView {
         crate::rt::init(cx);
+        // The focused field's caret follows the window's activation
+        // (`text_input::window_focus`, checked as the view is drawn).
+        cx.observe_window_activation(window, |_, _, cx| cx.notify())
+            .detach();
         bind_keys(cx);
         let surface = Surface::new(initial_environment());
         surface.appearance.set(options.appearance);
@@ -322,6 +326,116 @@ impl Drop for AppView {
 impl Focusable for AppView {
     fn focus_handle(&self, _cx: &GpuiApp) -> FocusHandle {
         self.focus.clone()
+    }
+}
+
+/// The window's input handler while a field of the surface has the focus
+/// (registered by the surface's element): text and input methods go to
+/// that field ([`crate::text_input::ime`]).
+impl gpui::EntityInputHandler for AppView {
+    fn text_for_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        adjusted: &mut Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<String> {
+        crate::text_input::ime::text_for_range(&self.surface, range, adjusted)
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _ignore_disabled_input: bool,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::UTF16Selection> {
+        crate::text_input::ime::selected_text_range(&self.surface)
+    }
+
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<std::ops::Range<usize>> {
+        crate::text_input::ime::marked_text_range(&self.surface)
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        crate::text_input::ime::unmark_text(&self.surface);
+        crate::rt::flush(cx);
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::replace_text_in_range(&self.surface, range, text);
+        crate::rt::flush(cx);
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        selected: Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::replace_and_mark_text_in_range(
+            &self.surface,
+            range,
+            text,
+            selected,
+        );
+        crate::rt::flush(cx);
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        _element_bounds: gpui::Bounds<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::Bounds<gpui::Pixels>> {
+        crate::text_input::ime::bounds_for_range(&self.surface, range)
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        point: gpui::Point<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        crate::text_input::ime::character_index_for_point(&self.surface, point)
+    }
+
+    fn set_selected_text_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::set_selected_text_range(&self.surface, range);
+        crate::rt::flush(cx);
+    }
+
+    fn text_length_utf16(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        crate::text_input::ime::text_length_utf16(&self.surface)
+    }
+
+    fn text_input_configuration(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> gpui::TextInputConfiguration {
+        crate::text_input::ime::configuration(&self.surface)
     }
 }
 

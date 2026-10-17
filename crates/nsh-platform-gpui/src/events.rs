@@ -59,12 +59,24 @@ fn cursor_style(c: Cursor) -> CursorStyle {
 pub(crate) fn install(
     surface: &Rc<Surface>,
     focus: &FocusHandle,
-    _view: &gpui::WeakEntity<crate::app::AppView>,
+    view: &gpui::WeakEntity<crate::app::AppView>,
     hitbox: &Hitbox,
-    _bounds: Bounds<Pixels>,
+    bounds: Bounds<Pixels>,
     window: &mut Window,
-    _cx: &mut App,
+    cx: &mut App,
 ) {
+    // The focused field's caret shows while the surface has the window's
+    // focus; text and input methods come through the input handler.
+    let has_focus = window.is_window_active() && focus.is_focused(window);
+    if crate::text_input::window_focus(surface, has_focus) {
+        window.refresh();
+    }
+    if crate::text_input::wants_text(surface)
+        && let Some(view) = view.upgrade()
+    {
+        window.handle_input(focus, gpui::ElementInputHandler::new(bounds, view), cx);
+    }
+
     if hitbox.is_hovered(window) {
         let (x, y) = root_point(surface, window.mouse_position());
         let c = crate::input::cursor(surface, x, y);
