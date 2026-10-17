@@ -146,6 +146,10 @@ impl Default for AppOptions {
 ///   their events and commands. [`AppView::on_error`] hears fatal errors.
 /// - The view draws only inside its bounds: the host's overlays (GPUI
 ///   Kit's dialogs, popovers, notifications) draw above it.
+/// - Open the host window with `inactive_frame_interval: None` in its
+///   `WindowOptions`: GPUI draws unfocused windows at 30 fps by default,
+///   which halves the surface's animations whenever the window does not
+///   have the keyboard (nsh's own windows set it).
 ///
 /// Most methods take `&self` and can be called through `view.read(cx)`:
 /// they hand work to the engine thread, whose next frame redraws the view.

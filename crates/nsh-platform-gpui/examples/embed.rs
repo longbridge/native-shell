@@ -143,6 +143,8 @@ fn main() {
         let bounds = Bounds::centered(None, size(px(420.0), px(360.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            // Full frame rate while unfocused too, as nsh's own windows.
+            inactive_frame_interval: None,
             ..Default::default()
         };
         cx.open_window(options, move |window, cx| {

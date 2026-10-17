@@ -123,8 +123,10 @@ import -window root -display :170 whole.png        # the display, if the window'
   filling a window, the process quits when the last window closes). `register_component` registers native
   components (GPUI elements); `set_theme` / `set_appearance` give the surface the host's theme and mode; `set_ui_sets`
   replaces the default `nsh/ui/mobile` set for apps with Rust components of their own. Several views are several
-  engines; nothing is global but the `rt` queue and the key bindings, which are per process. Embedding in a GPUI Kit
-  app (one GPUI, focus and Tab, overlays, themes): `embedding.md` "GPUI and GPUI Kit apps", `examples/embed-gpui`.
+  engines; nothing is global but the `rt` queue and the key bindings, which are per process. Windows showing surfaces
+  are opened with `inactive_frame_interval: None` (GPUI draws unfocused windows at 30 fps by default); a host must set
+  it in its own `WindowOptions` too. Embedding in a GPUI Kit app (one GPUI, focus and Tab, overlays, themes, frame
+  rate): `embedding.md` "GPUI and GPUI Kit apps", `examples/embed-gpui`.
 
 ## How each area maps to GPUI
 
