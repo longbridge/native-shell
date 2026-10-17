@@ -189,10 +189,10 @@ impl WebHost {
             };
             add(BRIDGE, UserScriptInjectionTime::Start);
             if let Some(js) = &p.injected_js_before {
-                add(&**js, UserScriptInjectionTime::Start);
+                add(js, UserScriptInjectionTime::Start);
             }
             if let Some(js) = &p.injected_js {
-                add(&**js, UserScriptInjectionTime::End);
+                add(js, UserScriptInjectionTime::End);
             }
         }
         if first || p.scroll_enabled != old.scroll_enabled {
