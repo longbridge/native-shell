@@ -1322,8 +1322,13 @@ impl Nav {
             && root.focus().is_none()
             && widget.is_ancestor(&surface.root)
         {
-            // Refused while another modal still covers it.
-            widget.grab_focus();
+            // Refused while another modal still covers it. A text field
+            // would select all its text otherwise, and the next key typed
+            // would replace it.
+            match widget.downcast_ref::<gtk::Text>() {
+                Some(text) => text.grab_focus_without_selecting(),
+                None => widget.grab_focus(),
+            };
         }
         match (motion, image) {
             (Some((duration, fade)), Some(node)) => {

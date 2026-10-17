@@ -6,6 +6,18 @@
 //! drains the queue and applies every batch in order ([`Surface::drain`]).
 //! Native animations and JS frame requests run on the root view's display
 //! link while there is something to do.
+//!
+//! The one exception to "the main thread never waits for JS": when the
+//! window resizes the root ([`Surface::resized`]), the main thread waits
+//! for the engine's layout at the new size, at most [`RESIZE_WAIT`], and
+//! applies it before AppKit draws the window at that size. Without it the
+//! content shows a frame late during a live resize, and not at all during
+//! AppKit's animated resizes (zoom, full screen): those run the run loop
+//! in a private mode (`_NSMoveTimerRunLoopMode`) where the main queue
+//! does not drain, so the window grew around stale content and showed its
+//! background in the new area until the animation ended. An engine that
+//! misses the deadline (JS busy) is not waited for again until it catches
+//! up, so a slow app resizes as before, a frame or more behind.
 
 use std::{
     cell::{Cell, RefCell},
@@ -38,7 +50,13 @@ enum Message {
     Error(String),
     Frame,
     HotUpdateFailed,
+    /// The engine laid the app out at this size ([`MountSink::resized`]).
+    Resized(Size),
 }
+
+/// How long the main thread waits for the layout at a new window size
+/// (a frame at 60 Hz): see the module doc.
+const RESIZE_WAIT: std::time::Duration = std::time::Duration::from_millis(16);
 
 thread_local! {
     /// The surfaces of this (main) thread, by key: the sink wakes one by
@@ -93,6 +111,10 @@ impl MountSink for Sink {
 
     fn hot_update_failed(&self) {
         self.send(Message::HotUpdateFailed);
+    }
+
+    fn resized(&self, size: Size) {
+        self.send(Message::Resized(size));
     }
 }
 
@@ -160,6 +182,11 @@ pub(crate) struct Surface {
     /// fallback timer is scheduled ([`Surface::watch_link`]).
     last_tick: Cell<f64>,
     fallback: Cell<bool>,
+    /// The engine missed the deadline of a resize ([`RESIZE_WAIT`]): later
+    /// resizes do not wait until it reports one done.
+    resize_late: Cell<bool>,
+    /// The background set under the root ([`crate::system`]).
+    pub(crate) background: Cell<Option<nsh_core::Color>>,
     on_error: RefCell<Option<ErrorHandler>>,
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
@@ -201,6 +228,8 @@ impl Surface {
             perf_on: Arc::new(AtomicBool::new(false)),
             last_tick: Cell::new(0.0),
             fallback: Cell::new(false),
+            resize_late: Cell::new(false),
+            background: Cell::new(None),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
@@ -270,6 +299,7 @@ impl Surface {
         crate::input::reset(self);
         crate::keymap::clear(self);
         self.js_frame.set(false);
+        self.resize_late.set(false);
         self.frame_callbacks.borrow_mut().clear();
     }
 
@@ -305,8 +335,10 @@ impl Surface {
         }
     }
 
-    /// The root view got a new size (the window's content area).
-    pub(crate) fn resized(&self, width: f32, height: f32) {
+    /// The root view got a new size (the window's content area): the
+    /// layout at that size is applied before this returns, unless the
+    /// engine takes longer than [`RESIZE_WAIT`] (see the module doc).
+    pub(crate) fn resized(self: &Rc<Self>, width: f32, height: f32) {
         {
             let mut s = self.root.state_mut();
             if s.frame.width == width && s.frame.height == height {
@@ -324,6 +356,47 @@ impl Surface {
         });
         crate::navigation::surface_resized(self, width, height);
         crate::system::surface_resized(self, width, height);
+        self.await_layout(Size::new(width, height));
+    }
+
+    /// Waits for the engine's layout at `size` and applies what it sent
+    /// meanwhile ([`Surface::resized`]).
+    fn await_layout(self: &Rc<Self>, size: Size) {
+        if self.resize_late.get() || self.mounter.try_borrow_mut().is_err() {
+            return;
+        }
+        let Some(rx) = self.rx.borrow().clone() else {
+            return;
+        };
+        if self.control.borrow().is_none() {
+            return;
+        }
+        let deadline = Instant::now() + RESIZE_WAIT;
+        let monitor = self.perf.borrow().clone();
+        let mut applied = false;
+        // Measured as main-thread work: the wait is part of the frame.
+        self.measure(true, || {
+            quiet(|| {
+                loop {
+                    let Ok(message) = rx.recv_deadline(deadline) else {
+                        self.resize_late.set(true);
+                        break;
+                    };
+                    let done = matches!(message, Message::Resized(s) if s == size);
+                    applied |= self.handle(message, monitor.as_deref());
+                    if done {
+                        break;
+                    }
+                }
+                if applied {
+                    self.write_animations();
+                    self.revisit();
+                }
+            })
+        });
+        if applied {
+            self.ensure_ticking();
+        }
     }
 
     /// Measures this surface's frames and commits into `monitor` from now
@@ -361,27 +434,7 @@ impl Surface {
         let mut applied = false;
         quiet(|| {
             for message in messages {
-                match message {
-                    Message::Batch(batch, sent) => {
-                        if let (Some(monitor), Some(sent)) = (&monitor, sent) {
-                            monitor.record_latency(sent.elapsed());
-                        }
-                        self.apply(&batch);
-                        applied = true;
-                    }
-                    Message::Error(message) => {
-                        log::error!("{message}");
-                        if let Some(f) = &*self.on_error.borrow() {
-                            f(&message);
-                        }
-                    }
-                    Message::Frame => self.js_frame.set(true),
-                    Message::HotUpdateFailed => {
-                        if let Some(f) = &*self.on_hot_update_failed.borrow() {
-                            f();
-                        }
-                    }
-                }
+                applied |= self.handle(message, monitor.as_deref());
             }
             if applied {
                 self.write_animations();
@@ -393,6 +446,34 @@ impl Surface {
             monitor.record_work(start.elapsed(), applied);
         }
         self.ensure_ticking();
+    }
+
+    /// Handles one message from the engine; returns whether it was a
+    /// batch (applied).
+    fn handle(self: &Rc<Self>, message: Message, monitor: Option<&PerfMonitor>) -> bool {
+        match message {
+            Message::Batch(batch, sent) => {
+                if let (Some(monitor), Some(sent)) = (monitor, sent) {
+                    monitor.record_latency(sent.elapsed());
+                }
+                self.apply(&batch);
+                return true;
+            }
+            Message::Error(message) => {
+                log::error!("{message}");
+                if let Some(f) = &*self.on_error.borrow() {
+                    f(&message);
+                }
+            }
+            Message::Frame => self.js_frame.set(true),
+            Message::HotUpdateFailed => {
+                if let Some(f) = &*self.on_hot_update_failed.borrow() {
+                    f();
+                }
+            }
+            Message::Resized(_) => self.resize_late.set(false),
+        }
+        false
     }
 
     fn apply(self: &Rc<Self>, batch: &MountBatch) {

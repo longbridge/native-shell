@@ -21,6 +21,8 @@
 //! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `Delete`, `F1` to `F12`, `space`, or one character (with its US layout key code); with modifiers before it, as in `cmd+a`, `shift+Tab` (`cmd`, `shift`, `alt`, `ctrl`). Keys go through the application (menus, key monitors such as `nsh/keymap`'s) while the window is key, else through the window (keys with `cmd` always through the application). |
 //! | `dark` / `light` | Switches the app's window to that appearance (as the system's would). |
 //! | `resize <w> <h>` | Resizes the window's content. |
+//! | `zoom` | Zooms the window, or unzooms it (the green button, Window > Zoom): AppKit's animated resize. |
+//! | `fullscreen` | Enters full screen, or leaves it (Window > Enter Full Screen). |
 //! | `quit` | Closes the window. |
 //!
 //! Mouse button and move events go through the application's event queue
@@ -71,6 +73,8 @@ enum Step {
     Key(String),
     Appearance(bool),
     Resize(f64, f64),
+    Zoom,
+    FullScreen,
     Quit,
 }
 
@@ -119,6 +123,8 @@ fn parse(script: &str) -> Vec<Step> {
             ("dark", []) => Some(Step::Appearance(true)),
             ("light", []) => Some(Step::Appearance(false)),
             ("resize", [w, h]) => Some(Step::Resize(*w, *h)),
+            ("zoom", []) => Some(Step::Zoom),
+            ("fullscreen", []) => Some(Step::FullScreen),
             ("quit", []) => Some(Step::Quit),
             _ => None,
         };
@@ -307,6 +313,8 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
             window.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
         }
         Step::Resize(w, h) => window.setContentSize(NSSize::new(w, h)),
+        Step::Zoom => window.performZoom(None),
+        Step::FullScreen => window.toggleFullScreen(None),
         Step::Quit => {
             window.close();
             return None;

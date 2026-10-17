@@ -10,7 +10,8 @@ Platform (main thread)       one main-queue hop per commit, applying MountItems 
 Input                        native gestures -> EngineControl::dispatch_event -> engine thread -> JS handler
 ```
 
-- The platform main thread never waits for JS.
+- The platform main thread never waits for JS (one bounded exception: macOS waits up to 16 ms for the layout at a new
+  window size, `macos.md`).
 - **Reactivity is native**: signals, memos, effects, owners and context are a graph in Rust (`crates/nsh-js/src/reactive.rs`,
   scheduled by Solid 1.9's algorithm) whose nodes are QuickJS objects of native classes, so the QuickJS GC sees the
   cycles through them. Apps reach it through `nsh` (`signal`, `computed`, `effect`, ...).

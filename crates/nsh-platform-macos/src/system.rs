@@ -23,9 +23,12 @@
 //! safe area and keyboard height are zero: desktop windows have neither.
 //!
 //! The app's appearance is set on the root view too, so the AppKit views
-//! it hosts (text fields, scroll bars) match the app, and the surface's
-//! background (white / neutral-950, as the Linux backend's) follows the
-//! scheme, as the root view has none of its own.
+//! it hosts (text fields, scroll bars) match the app. The surface's
+//! background, under the root view (which has none of its own), is the
+//! app's: the opaque background of its top view when that fills the root,
+//! else white / neutral-950 by the scheme (as the Linux backend's). It
+//! shows where the app has not drawn yet, as in the area a window grows
+//! by before the layout at its new size arrives.
 //!
 //! The status bar has no desktop equivalent. The clipboard is the general
 //! pasteboard; `hasString` only looks at the types on offer.
@@ -275,16 +278,42 @@ fn update(surface: &Surface) {
 
 /// The surface's environment changed: its background follows the scheme.
 pub(crate) fn environment_applied(surface: &Surface) {
-    let dark = surface.environment.get().color_scheme == ColorScheme::Dark;
+    follow_background(surface);
+}
+
+/// Sets the surface's background (see the module doc), if it changed.
+fn follow_background(surface: &Surface) {
+    let app = surface
+        .root
+        .container()
+        .subviews()
+        .firstObject()
+        .and_then(|v| crate::view::NshView::from_ns(&v))
+        .and_then(|top| {
+            let root = surface.root.state().frame;
+            let s = top.state();
+            let fills = s.frame.x <= 0.0
+                && s.frame.y <= 0.0
+                && s.frame.x + s.frame.width >= root.width
+                && s.frame.y + s.frame.height >= root.height;
+            let color = s.background();
+            (fills && color.0 & 0xff == 0xff).then_some(color)
+        });
+    let color = app.unwrap_or(
+        if surface.environment.get().color_scheme == ColorScheme::Dark {
+            nsh_core::Color::rgba(10, 10, 10, 255)
+        } else {
+            nsh_core::Color::rgba(255, 255, 255, 255)
+        },
+    );
+    if surface.background.replace(Some(color)) == Some(color) {
+        return;
+    }
     // The root's own layer is the app's (its style); the view holding it
     // is the surface's.
     let Some(layer) = crate::view::superview(surface.root.ns()).and_then(|v| v.layer()) else {
+        surface.background.set(None);
         return;
-    };
-    let color = if dark {
-        nsh_core::Color::rgba(10, 10, 10, 255)
-    } else {
-        nsh_core::Color::rgba(255, 255, 255, 255)
     };
     crate::surface::quiet(|| layer.setBackgroundColor(Some(&crate::text::cg_color(color))));
 }
@@ -357,7 +386,9 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
 
 /// A batch was applied. Hosted views (toasts) stay above the app's views
 /// by themselves ([`NshView::insert_before`]).
-pub(crate) fn end_batch(_surface: &Surface) {}
+pub(crate) fn end_batch(surface: &Surface) {
+    follow_background(surface);
+}
 
 /// The surface is `width` × `height`: toasts follow.
 pub(crate) fn surface_resized(surface: &Surface, width: f32, height: f32) {

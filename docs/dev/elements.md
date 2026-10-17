@@ -66,6 +66,10 @@ and reorders fast input). Events tell JS afterwards. Existing answers: input `ma
 express is let through and corrected in the event afterwards (a controlled `value` in `onChangeText`). `BackHandler` is
 of that kind: with a listener the press is taken, and JS exits the app when no listener handles it.
 
+One exception, bounded: on macOS a window resize waits up to 16 ms for the engine's layout at the new size, so the
+window never grows around stale content (AppKit's zoom animation would otherwise show none of it); an engine that
+misses the deadline is not waited for again until it catches up (`docs/dev/macos.md`, Architecture).
+
 ## Interaction and the environment
 
 - **Press feedback primitives** (native, no JS round trip): `activeOpacity`; `underlayColor` + `underlayOpacity` (default 0.85)
