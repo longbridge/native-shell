@@ -875,6 +875,7 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
 pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     let input = &surface.input;
     if !event.down {
+        crate::keymap::released(surface, &event);
         // `DefWindowProc` opens the window menu when Alt is released after
         // it saw no other key: swallow the release once Alt + key was ours.
         return event.vk == VK_MENU && input.alt_combo.replace(false);
