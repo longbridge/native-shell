@@ -1324,8 +1324,9 @@ pub trait Styled: Sized {
     }
 
     /// Stacking order among siblings.
-    fn z_index(mut self, z: i32) -> Self {
-        self.style().number(StyleKey::ZIndex, z as f32);
+    fn z_index(mut self, z: impl IntoReactive<i32>) -> Self {
+        self.style()
+            .bind_value(z, |s, z: i32| s.number(StyleKey::ZIndex, z as f32));
         self
     }
 
@@ -2380,73 +2381,87 @@ pub trait Styled: Sized {
     }
 
     /// Scales from the center (1 is the natural size).
-    fn scale(self, scale: f32) -> Self {
+    fn scale(self, scale: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::Scale, scale)
     }
 
     /// Scales horizontally.
-    fn scale_x(self, scale: f32) -> Self {
+    fn scale_x(self, scale: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::ScaleX, scale)
     }
 
     /// Scales vertically.
-    fn scale_y(self, scale: f32) -> Self {
+    fn scale_y(self, scale: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::ScaleY, scale)
     }
 
     /// Moves horizontally by `points` (after layout).
-    fn translate_x(self, points: f32) -> Self {
+    fn translate_x(self, points: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::TranslateX, points)
     }
 
     /// Moves vertically by `points` (after layout).
-    fn translate_y(self, points: f32) -> Self {
+    fn translate_y(self, points: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::TranslateY, points)
     }
 
     /// Rotates by `degrees`, clockwise.
-    fn rotate(self, degrees: f32) -> Self {
+    fn rotate(self, degrees: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::Rotate, degrees)
     }
 
     /// Rotates by `degrees` around the horizontal axis (3D; with
     /// [`Styled::perspective`] it tilts towards the viewer).
-    fn rotate_x(self, degrees: f32) -> Self {
+    fn rotate_x(self, degrees: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::RotateX, degrees)
     }
 
     /// Rotates by `degrees` around the vertical axis (3D).
-    fn rotate_y(self, degrees: f32) -> Self {
+    fn rotate_y(self, degrees: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::RotateY, degrees)
     }
 
     /// Slants vertical edges by `degrees` (iOS; Android has no skew).
-    fn skew_x(self, degrees: f32) -> Self {
+    fn skew_x(self, degrees: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::SkewX, degrees)
     }
 
     /// Slants horizontal edges by `degrees` (iOS).
-    fn skew_y(self, degrees: f32) -> Self {
+    fn skew_y(self, degrees: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::SkewY, degrees)
     }
 
     /// Looks at its 3D rotations from `points` away (smaller: stronger).
-    fn perspective(self, points: f32) -> Self {
+    fn perspective(self, points: impl IntoReactive<f32>) -> Self {
         self.transform_step(TransformKind::Perspective, points)
     }
 
     /// The step `kind` of its transform, by `amount`. The steps compose in
     /// CSS's order, whatever the order of the calls: perspective,
     /// translate, rotate, scale, then the 3D rotations and the skews.
-    fn transform_step(mut self, kind: TransformKind, amount: f32) -> Self {
-        self.style()
-            .push(Declaration::Transform(kind, Bits(amount)));
+    fn transform_step(mut self, kind: TransformKind, amount: impl IntoReactive<f32>) -> Self {
+        // Steps compose in order: after a bound part, a static step is
+        // applied with the bound ones too.
+        let style = self.style();
+        match amount.into_reactive() {
+            Reactive::Static(amount) if !style.is_bound() => {
+                style.push(Declaration::Transform(kind, Bits(amount)));
+            }
+            amount => style.bind(move |s| {
+                s.push(Declaration::Transform(kind, Bits(amount.get())));
+            }),
+        }
         self
     }
 
     /// No transform (also none of the steps set before).
     fn transform_none(mut self) -> Self {
-        self.style().push(Declaration::TransformNone);
+        let style = self.style();
+        if style.is_bound() {
+            style.bind(|s| s.push(Declaration::TransformNone));
+        } else {
+            style.push(Declaration::TransformNone);
+        }
         self
     }
 
