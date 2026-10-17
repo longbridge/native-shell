@@ -434,9 +434,29 @@ fn put_component(surface: &Surface, id: NodeId, component: Box<dyn NativeCompone
 
 /// Hosts `widget` in `view`, filling it at every frame.
 fn fill(view: &NshView, widget: &gtk::Widget) {
+    host(view, widget, false);
+}
+
+/// Hosts `widget` in `view` like [`fill`], mapped only while the view has
+/// a size. WebKit sizes a page's surface from its widget: mapped at 0 × 0
+/// (a view's frame comes after the view) and resized a frame later, a
+/// page sometimes never presents a frame and stays blank for good.
+#[cfg(feature = "webview")]
+fn fill_sized(view: &NshView, widget: &gtk::Widget) {
+    host(view, widget, true);
+}
+
+fn host(view: &NshView, widget: &gtk::Widget, sized: bool) {
     let frame = view.state().frame;
-    view.set_native(widget, bounds(frame.width, frame.height));
+    let has_size = |rect: Rect| rect.width >= 1.0 && rect.height >= 1.0;
+    let rect = bounds(frame.width, frame.height);
+    view.set_native(widget, rect);
+    // After `set_native`: parenting makes a widget child visible.
+    if sized {
+        widget.set_child_visible(has_size(rect));
+    }
     let weak = view.downgrade();
+    let hosted = widget.downgrade();
     // Runs at the start of the view's allocation, before it places its
     // natives: no allocation needs to be queued.
     view.on_resize(move |_, _| {
@@ -445,6 +465,10 @@ fn fill(view: &NshView, widget: &gtk::Widget) {
             let rect = bounds(s.frame.width, s.frame.height);
             for native in &mut s.natives {
                 native.rect = rect;
+            }
+            drop(s);
+            if sized && let Some(widget) = hosted.upgrade() {
+                widget.set_child_visible(has_size(rect));
             }
         }
     });

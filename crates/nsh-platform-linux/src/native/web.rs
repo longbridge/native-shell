@@ -73,7 +73,7 @@ use webkit6::{
     WebView, prelude::*,
 };
 
-use super::{Emitter, UNSCROLLABLE, error, fill};
+use super::{Emitter, UNSCROLLABLE, error, fill_sized};
 use crate::{decor::rgba, surface::Surface, view::NshView};
 
 /// The script message handler the bridge posts to.
@@ -113,6 +113,8 @@ pub(super) struct WebHost {
     props: Option<WebProps>,
     /// WebKit's own background (white), for views without an opaque one.
     default_background: gdk::RGBA,
+    /// A page to load once the web view is mapped ([`WebHost::load`]).
+    pending: Rc<RefCell<Option<WebSource>>>,
 }
 
 impl WebHost {
@@ -143,7 +145,7 @@ impl WebHost {
                 });
             })
         };
-        let handlers = vec![
+        let mut handlers = vec![
             decide_policy(&web, &shared),
             load_changed(&web, &shared),
             load_failed(&web, &shared),
@@ -151,13 +153,24 @@ impl WebHost {
                 log::warn!(target: "js", "web view: the page's process ended ({reason:?})");
             }),
         ];
+        let pending: Rc<RefCell<Option<WebSource>>> = Rc::default();
+        handlers.push(web.connect_map({
+            let pending = pending.clone();
+            move |web| {
+                let source = pending.borrow_mut().take();
+                if let Some(source) = source {
+                    load(web, &source);
+                }
+            }
+        }));
         history_keys(&web, surface);
-        fill(view, web.upcast_ref());
+        fill_sized(view, web.upcast_ref());
         WebHost {
             web,
             content,
             handlers,
             message: Some(message),
+            pending,
             props: None,
             default_background,
         }
@@ -225,13 +238,34 @@ impl WebHost {
         }
         // Scripts apply to pages loaded from now on: load again.
         if first || p.source != old.source || scripts_changed {
-            match &p.source {
-                WebSource::Uri(uri) => web.load_uri(uri),
-                WebSource::Html { html, base_url } => web.load_html(html, base_url.as_deref()),
-                WebSource::None => {}
-            }
+            self.load(&p.source);
         }
         self.props = Some(p.clone());
+    }
+}
+
+impl WebHost {
+    /// Loads `source`, once the web view is mapped. With WebKit's DMA-BUF
+    /// renderer, a page loaded before its web view is mapped sometimes
+    /// never shows (about one in six, on X11 and Wayland alike): it
+    /// loads, but the view stays blank for good, whatever happens to it
+    /// later. Loaded once mapped, as WebKit's MiniBrowser does, it always
+    /// shows.
+    fn load(&self, source: &WebSource) {
+        if self.web.is_mapped() {
+            self.pending.borrow_mut().take();
+            load(&self.web, source);
+        } else {
+            *self.pending.borrow_mut() = Some(source.clone());
+        }
+    }
+}
+
+fn load(web: &WebView, source: &WebSource) {
+    match source {
+        WebSource::Uri(uri) => web.load_uri(uri),
+        WebSource::Html { html, base_url } => web.load_html(html, base_url.as_deref()),
+        WebSource::None => {}
     }
 }
 
