@@ -65,7 +65,7 @@ pub(crate) fn header(screen: Screen) -> Screen {
 pub(crate) struct IconTile {
     name: IconName,
     size: f32,
-    tint: AdaptiveColor,
+    tint: Reactive<AdaptiveColor>,
     root: View,
 }
 
@@ -75,7 +75,7 @@ impl IconTile {
         Self {
             name,
             size: 40.0,
-            tint: colors::TEXT,
+            tint: Reactive::Static(colors::TEXT),
             root: view(),
         }
     }
@@ -86,9 +86,9 @@ impl IconTile {
         self
     }
 
-    /// The glyph's color.
-    pub(crate) fn tint(mut self, tint: impl Into<AdaptiveColor>) -> Self {
-        self.tint = tint.into();
+    /// The glyph's color (a color, or a signal or closure of one).
+    pub(crate) fn tint(mut self, tint: impl IntoReactive<AdaptiveColor>) -> Self {
+        self.tint = tint.into_reactive();
         self
     }
 }
@@ -552,9 +552,10 @@ impl IntoElement for Stat {
     }
 }
 
-/// A colored square and a label (and a value), for chart legends.
+/// A colored square and a label (and a value), for chart legends; the
+/// color can be bound.
 pub(crate) fn legend(
-    color: impl Into<AdaptiveColor>,
+    color: impl IntoReactive<AdaptiveColor>,
     label: impl IntoReactive<SharedString>,
     value: Option<impl IntoReactive<SharedString>>,
 ) -> View {
@@ -562,7 +563,7 @@ pub(crate) fn legend(
         .flex_row()
         .items_center()
         .gap(px(6.0))
-        .child(view().size(px(9.0)).rounded(px(2.5)).bg(color.into()))
+        .child(view().size(px(9.0)).rounded(px(2.5)).bg(color))
         .child(
             text(label)
                 .text_size(px(13.0))
