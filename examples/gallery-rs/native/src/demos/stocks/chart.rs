@@ -596,12 +596,12 @@ pub(crate) fn Chart(props: StockProps) -> impl IntoElement {
         }
     };
     let price_tone = computed(move || tone_of(focus.get().c - prev_close));
-    // The legends: their colors are fixed, so they are made again when the
-    // period's kind or the price's tone changes; their figures are bound.
+    // The legends: an intraday period's or the averages, made when the
+    // period's kind changes; their colors and figures are bound.
     let legends = dynamic(move || {
         if intraday.get() {
             vec![
-                legend(price_tone.get(), "Price", Some(move || p_of(focus.get().c))),
+                legend(price_tone, "Price", Some(move || p_of(focus.get().c))),
                 legend(colors::WARN, "Avg", Some(move || p_of(focus.get().a))),
                 legend(colors::FAINT, "Vol", Some(move || compact(focus.get().v))),
             ]

@@ -351,9 +351,7 @@ fn QuoteSection(props: StockProps) -> impl IntoElement {
                 .child(
                     view()
                         .bind_rotate(&turn.interpolate(&[0.0, 1.0], &[0.0, 180.0]))
-                        // `icon` takes a fixed tint: made again when the
-                        // tone changes.
-                        .child(dynamic(move || icon(IconName::ArrowUp, 20.0, tone.get()))),
+                        .child(icon(IconName::ArrowUp, 20.0, tone)),
                 )
                 .child(
                     view()

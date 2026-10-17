@@ -214,11 +214,23 @@ pub(crate) fn MarketButton() -> impl IntoElement {
                 .justify_center()
                 .style_when(running, |v| v.finish(Finish::Pill).border_1())
                 .style_when(move || !running.get(), |v| v.finish(Finish::Accent))
-                // `icon` takes a fixed tint: one icon per state.
-                .child(
-                    If::new(running, || icon(IconName::Pause, 13.0, colors::MUTED))
-                        .otherwise(|| icon(IconName::Play, 13.0, colors::ON_ACCENT)),
-                ),
+                .child(icon(
+                    Prop::bind(move || {
+                        if running.get() {
+                            IconName::Pause
+                        } else {
+                            IconName::Play
+                        }
+                    }),
+                    13.0,
+                    move || {
+                        if running.get() {
+                            colors::MUTED
+                        } else {
+                            colors::ON_ACCENT
+                        }
+                    },
+                )),
         ),
     )
 }
