@@ -16,8 +16,8 @@ use nsh_core::{
     Color, FontVariant,
     canvas::{
         CanvasFont, CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite,
-        Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp, arc_sweep,
-        fit_radii,
+        Damage, DamageScan, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint,
+        PathOp, arc_sweep, fit_radii,
     },
 };
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
@@ -43,6 +43,13 @@ pub(crate) struct CanvasViewIvars {
     values: RefCell<Vec<AnimationValue>>,
     /// Images it draws, by URI, once loaded.
     images: RefCell<FxHashMap<Arc<str>, Retained<UIImage>>>,
+    /// Finds what a change of slots redraws ([`CanvasView::set_values`]).
+    scan: RefCell<DamageScan>,
+    /// This frame's slot values (scratch space of
+    /// [`CanvasView::set_values`]).
+    pending: RefCell<Vec<(u16, AnimationValue)>>,
+    /// The slots that changed (scratch space too).
+    changed: RefCell<Vec<u16>>,
 }
 
 define_class!(
@@ -109,22 +116,58 @@ impl CanvasView {
         self.setNeedsDisplay();
     }
 
-    /// Sets slot `slot` to `value`; draws again if it changed.
-    pub(crate) fn set_value(&self, slot: u16, value: AnimationValue) {
-        let mut values = self.ivars().values.borrow_mut();
-        let i = slot as usize;
-        if values.len() <= i {
-            values.resize(i + 1, AnimationValue::Number(0.0));
+    /// Sets the drawing's native value slots (`(slot, value)`, every
+    /// bound slot on each frame) and draws again what changed: only the
+    /// operations reading a slot whose value changed, where they were and
+    /// where they are now ([`DamageScan`]).
+    pub(crate) fn set_values(&self, values: impl Iterator<Item = (u16, AnimationValue)>) {
+        let ivars = self.ivars();
+        let mut new = ivars.pending.borrow_mut();
+        let mut changed = ivars.changed.borrow_mut();
+        new.clear();
+        new.extend(values);
+        let mut slots = ivars.values.borrow_mut();
+        changed.clear();
+        for &(k, value) in new.iter() {
+            if slots.get(k as usize) != Some(&value) {
+                changed.push(k);
+            }
         }
-        if values[i] != value {
-            values[i] = value;
-            self.setNeedsDisplay();
+        if changed.is_empty() {
+            return;
+        }
+        let drawing = ivars.drawing.borrow();
+        let ops = drawing.as_ref().map_or(&[][..], |d| &d.ops[..]);
+        let mut scan = ivars.scan.borrow_mut();
+        let is_changed = |s: u16| changed.contains(&s);
+        let before = scan.damage(ops, |s| slot_number(&slots, s), is_changed);
+        for &(k, value) in new.iter() {
+            let i = k as usize;
+            if slots.len() <= i {
+                slots.resize(i + 1, AnimationValue::Number(0.0));
+            }
+            slots[i] = value;
+        }
+        let damage = match before {
+            Damage::All => before,
+            _ => before.union(scan.damage(ops, |s| slot_number(&slots, s), is_changed)),
+        };
+        match damage {
+            Damage::None => {}
+            Damage::Rect(r) => self.setNeedsDisplayInRect(CGRect::new(
+                CGPoint::new(r.x as CGFloat, r.y as CGFloat),
+                CGSize::new(r.width as CGFloat, r.height as CGFloat),
+            )),
+            Damage::All => self.setNeedsDisplay(),
         }
     }
 }
 
-/// An affine transform `[a, b, c, d, e, f]` (canvas order: `x' = a x + c y
-/// + e`).
+/// The number in slot `s` (0 while unset).
+fn slot_number(values: &[AnimationValue], s: u16) -> f32 {
+    values.get(s as usize).map_or(0.0, |v| v.number())
+}
+
 #[derive(Clone, Copy)]
 struct Affine([f64; 6]);
 
@@ -234,7 +277,7 @@ impl<'a> Replay<'a> {
     }
 
     fn n(&self, n: Num) -> f64 {
-        n.get(|s| self.values.get(s as usize).map_or(0.0, |v| v.number())) as f64
+        n.get(|s| slot_number(self.values, s)) as f64
     }
 
     fn color(&self, paint: &Paint) -> Option<Color> {

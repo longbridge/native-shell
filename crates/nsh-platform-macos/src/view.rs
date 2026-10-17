@@ -374,7 +374,10 @@ define_class!(
                 CGContext::scale_ctm(c, 1.0, -1.0);
             }
             crate::text::draw(ctx, &state);
-            crate::canvas::draw(ctx, &state);
+            // What Core Animation redraws (all of it, or a canvas's part
+            // that animated values changed), top down.
+            let dirty = CGContext::clip_bounding_box(c);
+            crate::canvas::draw(ctx, &state, dirty);
             CGContext::restore_g_state(c);
         }
 
@@ -996,6 +999,25 @@ impl NshView {
                 layer.setNeedsDisplay();
             }
         }
+    }
+
+    /// Part of what it draws changed (`rect`, in its own coordinates, y
+    /// down): only that is drawn again (a canvas's animated values).
+    pub(crate) fn redraw_rect(&self, rect: nsh_core::Rect) {
+        let Some(layer) = self.content_layer() else {
+            return;
+        };
+        // Layer space is y up unless its contents are flipped
+        // (`drawLayer:inContext:` flips the drawing the same way).
+        let y = if layer.contentsAreFlipped() {
+            rect.y as CGFloat
+        } else {
+            layer.bounds().size.height - (rect.y + rect.height) as CGFloat
+        };
+        layer.setNeedsDisplayInRect(CGRect::new(
+            CGPoint::new(rect.x as CGFloat, y),
+            CGSize::new(rect.width as CGFloat, rect.height as CGFloat),
+        ));
     }
 
     /// Whether any of it can be seen: in a window, not hidden, and not

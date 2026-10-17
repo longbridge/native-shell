@@ -4,7 +4,7 @@
 //! animator's design, `nsh-platform-android/src/anim.rs`).
 
 use nsh_animation::{AnimationProp, AnimationValue, Finished, Graph, NodeId};
-use nsh_core::{Color, GestureValues, MountItem};
+use nsh_core::{Color, GestureValues, MountItem, canvas::Damage};
 use rustc_hash::FxHashMap;
 
 use crate::{mount::Mounter, view::AnimValues};
@@ -195,12 +195,11 @@ impl UiAnimation {
             if moved.is_some() {
                 crate::text_input::animated(view);
             }
-            let mut redraw = false;
-            for &(k, value) in canvas.iter() {
-                redraw |= crate::canvas::set_arg(view, k, value);
-            }
-            if redraw {
-                mounter.draw_when_shown(view);
+            if !canvas.is_empty() {
+                let damage = crate::canvas::set_args(view, canvas);
+                if damage != Damage::None {
+                    mounter.draw_when_shown(view, damage);
+                }
             }
         }
     }
