@@ -25,7 +25,7 @@ Desktops have a second backend, and two more targets exist for development and f
 
 - **Mac Catalyst** runs the iOS backend in an iPhone-sized window (390×844) on a Mac. It is `nsh run`'s default target on macOS, because it is the quickest way to see how a module looks on a phone, without booting a simulator.
 - **Web** ([WebAssembly](./web.md)) runs the same engine in a browser and draws with the DOM. It powers the live demos and the [playground](/playground) on this site; it is not a target to ship apps to.
-- **[GPUI](./gpui.md)** draws modules with [GPUI](https://gpui-kit.com), the framework of the sibling project GPUI Kit, on macOS, Windows and Linux alike, for embedding in GPUI and GPUI Kit apps (`nsh run --target gpui`, `nsh package --target gpui`). It is in development: parity with the native backends above is being worked on, and those are what to ship desktop apps with today.
+- **[GPUI](./gpui.md)** draws modules with [GPUI](https://gpui-kit.com), the framework of the sibling project GPUI Kit, on macOS, Windows and Linux alike, for embedding in GPUI and GPUI Kit apps (`nsh run --target gpui`, `nsh package --target gpui`). It is in development: it has every element and module of the native backends above, some drawn differently ([Differences](./gpui.md#differences)), and has only been tried on Linux so far; ship desktop apps with the native backends today.
 
 ## Develop and package
 

@@ -96,8 +96,6 @@ pub(crate) struct DrawCx<'a> {
     pub(crate) scale: f32,
     /// The surface draws in its dark appearance.
     pub(crate) dark: bool,
-    /// The frame's time (seconds, the animation clock).
-    pub(crate) now: f64,
     /// The opacity everything is drawn with.
     pub(crate) opacity: f32,
     /// The clip in window coordinates.
@@ -122,7 +120,6 @@ impl<'a> DrawCx<'a> {
         app: &'a mut App,
         clip: Bounds<Pixels>,
         dark: bool,
-        now: f64,
     ) -> Self {
         let scale = window.scale_factor();
         crate::decor::new_pass();
@@ -132,7 +129,6 @@ impl<'a> DrawCx<'a> {
             transform: Mat4::new(),
             scale,
             dark,
-            now,
             opacity: 1.0,
             clip,
             matrix: None,
@@ -738,9 +734,8 @@ impl Element for SurfaceElement {
         if background.0 & 0xff != 0 {
             window.paint_quad(gpui::fill(bounds, hsla(background)));
         }
-        let now = surface.now();
         let drawn = {
-            let mut dcx = DrawCx::new(window, cx, bounds, dark, now);
+            let mut dcx = DrawCx::new(window, cx, bounds, dark);
             let origin = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
             draw_view(&mut dcx, &surface.root, Mat4::new(), origin);
             std::mem::take(&mut dcx.drawn)

@@ -13,8 +13,8 @@ Windows 和 Linux 上表现一致。它的主要用途是嵌入：`AppView` 是�
 平台上运行。`Platform.OS` 是它所运行的操作系统（`"macos"`、`"windows"` 或 `"linux"`），并会应用 `desktop={{…}}` 属性。
 
 > [!WARNING]
-> GPUI 后端正在开发中。与原生的 [macOS](./macos.md)（AppKit）、[Windows](./windows.md)（Win32）和 [Linux](./linux.md)（GTK）
-> 后端功能对齐的工作正在进行；在此之前，部分元素和模块缺失或绘制效果不同。目前要发布桌面应用，请使用原生后端。
+> GPUI 后端正在开发中。原生 [macOS](./macos.md)（AppKit）、[Windows](./windows.md)（Win32）和 [Linux](./linux.md)（GTK）
+> 后端的元素和模块它都已具备，但部分绘制效果不同（见[差异](#差异)），而且目前只在 Linux 上试过。目前要发布桌面应用，请使用原生后端。
 
 ## 工作方式
 
@@ -27,11 +27,14 @@ Windows 和 Linux 上表现一致。它的主要用途是嵌入：`AppView` 是�
 ## 环境要求
 
 - macOS、Windows 或 Linux，以及 GPUI 能使用的 GPU（macOS 上是 Metal，Windows 上是 DirectX，Linux 上是 Vulkan）。
-- Linux 上：Vulkan 驱动，以及带 `libxkbcommon` 的 Wayland 或 X11。从源码构建运行时还需要它们的开发包；在 Debian 和 Ubuntu 上：
+- Linux 上：Vulkan 驱动、带 `libxkbcommon` 的 Wayland 或 X11、GTK 3 和 WebKitGTK 4.1（Web 视图），以及 GStreamer 1.20
+  或更新版本及其 base 和 good 插件（视频）。Web 视图需要 X11：在 Wayland 桌面上请让应用运行在 Xwayland 下（把
+  `WAYLAND_DISPLAY=` 设为空），否则显示占位内容。从源码构建运行时还需要开发包；在 Debian 和 Ubuntu 上：
 
   ```sh
-  sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig-dev libfreetype-dev libssl-dev \
-    libvulkan1 libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev
+  sudo apt-get install clang libclang-dev pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev \
+    libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev libvulkan1 libgtk-3-dev libwebkit2gtk-4.1-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good
   ```
 
 ## 运行应用
@@ -102,13 +105,28 @@ gpui_platform::application().run(|cx| {
 
 ## 差异
 
-与原生桌面后端已知的不同之处：
+与原生桌面后端在绘制或行为上的不同之处：
 
-- **变换**：GPUI 没有针对矩形和字形的变换。平移和缩放绘制准确；旋转或斜切的视图按其边界绘制。
-- **不透明度**乘进视图所绘制内容的颜色中，而不是整组绘制，因此半透明视图中相互重叠的子视图会彼此透出。
-- **Web 视图和原生视图**是通过 GPUI 原生 surface 合成的平台视图。
-- **其余**原生后端支持的功能正在移植中；可对照各后端自己的列表：[macOS](./macos.md#macos-上的差异)、
-  [Windows](./windows.md#windows-上的差异)、[Linux](./linux.md#linux-上的差异)。
+- **变换**：旋转、斜切和透视的视图，其背景、边框和阴影会随之变换，但文字保持直立，图片、视频和画布按其边界绘制。
+- **不透明度**作用于每种颜色而不是整组，因此半透明视图中相互重叠的子视图会彼此透出；图片的不透明度（淡入、半透明视图）以
+  十六分之一为级变化。
+- **圆角裁剪**（带圆角的 `overflow: "hidden"`）会让子视图的背景和图片跟随圆角，但文字、边框、视频和原生组件按矩形裁剪。
+- **不绘制**：`filter: blur()`、`backdropFilter` 和 `mixBlendMode`；阴影会透过半透明填充显示；`borderCurve: "continuous"`
+  绘制为圆形圆角。
+- **画布文字**是近似的：旋转时保持直立，`maxWidth` 下缩小字号而不是压窄，渐变以单一颜色绘制，`strokeText` 绘制为填充，阴影
+  不模糊，合成操作和 `clearRect` 对它不起作用。
+- **滚动视图**不支持缩放（`zoomTo` 和缩放相关属性被忽略）。
+- **视频**在 Linux 上播放（GStreamer）；在 macOS 和 Windows 上显示占位内容并报告 `onError`。
+- **Web 视图**是位于 nsh 在该位置所绘制一切内容之上的原生视图。Linux 上需要 X11（见[环境要求](#环境要求)）；在 Xwayland
+  下页面一直是黑的（日志中有 "Failed to create GBM buffer"）时，请用 `WEBKIT_DISABLE_DMABUF_RENDERER=1` 运行应用。macOS 和
+  Windows 上裁剪祖先不会裁剪它们，加载失败也不会报告 `onError`。不支持 `source.baseUrl`、`scrollEnabled` 和
+  `allowsBackForwardNavigationGestures`。
+- **无障碍**通过 AccessKit 实现：读屏软件在所有平台上都能激活、聚焦、设置值并把元素滚动到可见；自定义操作和上下文菜单操作
+  尚未传递。
+- **尚未在 macOS 和 Windows 上试过**：已为它们构建，但目前只在 Linux 上运行过。
+
+可对照各原生后端自己的列表：[macOS](./macos.md#macos-上的差异)、[Windows](./windows.md#windows-上的差异)、
+[Linux](./linux.md#linux-上的差异)。
 
 ## 另见
 

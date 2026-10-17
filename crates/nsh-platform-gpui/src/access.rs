@@ -105,11 +105,6 @@ use crate::{
 /// The role of the surface's own node, which the views' nodes hang off.
 pub(crate) const ROLE: Role = Role::Group;
 
-/// What accessibility last exposed of a view: nothing, as the tree is
-/// rebuilt with every frame and AccessKit compares it with the last.
-#[derive(Debug, Default)]
-pub(crate) struct Applied;
-
 /// The text, the access and the kind of password of an input
 /// ([`crate::text_input::accessible_value`]).
 #[derive(Debug, Clone, Default, PartialEq)]

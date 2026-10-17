@@ -15,9 +15,10 @@ everywhere. `Platform.OS` is the OS it runs on (`"macos"`, `"windows"` or `"linu
 apply.
 
 > [!WARNING]
-> The GPUI backend is in development. Parity with the native [macOS](./macos.md) (AppKit), [Windows](./windows.md)
-> (Win32) and [Linux](./linux.md) (GTK) backends is being worked on; until then, some elements and modules are
-> missing or draw differently. For shipping desktop apps today, use the native backends.
+> The GPUI backend is in development. Every element and module of the native [macOS](./macos.md) (AppKit),
+> [Windows](./windows.md) (Win32) and [Linux](./linux.md) (GTK) backends is there, but some draw differently
+> ([Differences](#differences)), and so far it has been tried on Linux only. For shipping desktop apps today, use the
+> native backends.
 
 ## How it works
 
@@ -34,12 +35,15 @@ apply.
 ## Requirements
 
 - macOS, Windows or Linux, with a GPU GPUI can draw with (Metal on macOS, DirectX on Windows, Vulkan on Linux).
-- On Linux: a Vulkan driver, and Wayland or X11 with `libxkbcommon`. Building the runtime from a checkout also needs
-  their development packages; on Debian and Ubuntu:
+- On Linux: a Vulkan driver, Wayland or X11 with `libxkbcommon`, GTK 3 and WebKitGTK 4.1 (web views) and GStreamer
+  1.20 or later with its base and good plug-ins (videos). Web views need X11: on a Wayland desktop run the app under
+  Xwayland (`WAYLAND_DISPLAY=` empty), else they show a placeholder. Building the runtime from a checkout also needs
+  the development packages; on Debian and Ubuntu:
 
   ```sh
-  sudo apt-get install build-essential pkg-config libasound2-dev libfontconfig-dev libfreetype-dev libssl-dev \
-    libvulkan1 libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev
+  sudo apt-get install clang libclang-dev pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev \
+    libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev libvulkan1 libgtk-3-dev libwebkit2gtk-4.1-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good
   ```
 
 ## Running an app
@@ -115,16 +119,32 @@ so only load it from your own app's files.
 
 ## Differences
 
-What is known to differ from the native desktop backends:
+What draws or behaves differently from the native desktop backends:
 
-- **Transforms**: GPUI has no transform for quads and glyphs. Translations and scales draw exactly; a view that is
-  rotated or skewed draws at its bounds.
-- **Opacity** is multiplied into the colors of what a view draws rather than drawn as a group, so overlapping
-  children of a translucent view show through each other.
-- **Web views and native views** are platform views composited through GPUI's native surfaces.
-- **The rest** of what the native backends support is being ported; see each backend's own list for comparison:
-  [macOS](./macos.md#what-differs-on-macos), [Windows](./windows.md#what-differs-on-windows),
-  [Linux](./linux.md#what-differs-on-linux).
+- **Transforms**: rotated, skewed and projected views turn their backgrounds, borders and shadows, but text stays
+  upright, and images, videos and canvases draw at their bounds.
+- **Opacity** applies to each color rather than to a group, so overlapping children of a translucent view show
+  through each other; an image's opacity (a fade-in, a translucent view) changes in sixteenths.
+- **Rounded clips** (`overflow: "hidden"` with a radius) round the backgrounds and images of the children, but text,
+  borders, videos and native components are cut by the rectangle.
+- **Not drawn**: `filter: blur()`, `backdropFilter` and `mixBlendMode`; shadows show through translucent fills;
+  `borderCurve: "continuous"` draws circular corners.
+- **Canvas text** is approximated: upright under rotations, made smaller rather than narrower for `maxWidth`,
+  gradients paint it in one color, `strokeText` fills, its shadows are not blurred, and composite operations and
+  `clearRect` do not apply to it.
+- **Scroll views** do not zoom (`zoomTo` and the zoom props are ignored).
+- **Video** plays on Linux (GStreamer); on macOS and Windows a video shows a placeholder and reports `onError`.
+- **Web views** are native views above everything nsh draws at their place. On Linux they need X11 (see
+  [Requirements](#requirements)); where pages stay black under Xwayland ("Failed to create GBM buffer" in the log),
+  run the app with `WEBKIT_DISABLE_DMABUF_RENDERER=1`. On macOS and Windows clipping ancestors do not cut them and
+  failed loads report no `onError`. `source.baseUrl`, `scrollEnabled` and `allowsBackForwardNavigationGestures` are
+  not supported.
+- **Accessibility** goes through AccessKit: screen readers can activate, focus, set values and scroll elements into
+  view everywhere; custom actions and the context-menu action are not passed on yet.
+- **Not yet tried on macOS and Windows**: it is built for them, but so far it has run on Linux only.
+
+For comparison, each native backend's own list: [macOS](./macos.md#what-differs-on-macos),
+[Windows](./windows.md#what-differs-on-windows), [Linux](./linux.md#what-differs-on-linux).
 
 ## See also
 

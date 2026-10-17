@@ -149,8 +149,6 @@ pub(crate) struct Surface {
     /// Extra frame clients (transitions, glides, spinners): called on every
     /// frame until they return false ([`Surface::on_frame`]).
     frame_clients: RefCell<Vec<FrameClient>>,
-    /// The time of the current frame (seconds since the surface was made).
-    now: Cell<f64>,
     epoch: std::time::Instant,
     on_error: RefCell<Option<ErrorHandler>>,
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
@@ -210,7 +208,6 @@ impl Surface {
             appearance: Cell::default(),
             js_frame: Cell::new(false),
             frame_clients: RefCell::default(),
-            now: Cell::new(0.0),
             epoch: std::time::Instant::now(),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
@@ -246,20 +243,10 @@ impl Surface {
         self.key
     }
 
-    /// Pixels per point.
-    pub(crate) fn scale(&self) -> f32 {
-        self.scale.get()
-    }
-
     /// The surface's size in points.
     pub(crate) fn size(&self) -> (f32, f32) {
         let s = self.root.state();
         (s.frame.width, s.frame.height)
-    }
-
-    /// The current frame's time (seconds, the animation clock).
-    pub(crate) fn now(&self) -> f64 {
-        self.now.get()
     }
 
     /// Seconds since the surface was made (the animation clock).
@@ -520,7 +507,6 @@ impl Surface {
     /// views are).
     pub(crate) fn tick(self: &Rc<Self>) {
         let now = self.clock();
-        self.now.set(now);
         if self.anim.borrow().animating() {
             self.anim.borrow_mut().tick(now);
             self.write_animations();
