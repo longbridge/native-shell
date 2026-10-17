@@ -1,6 +1,6 @@
 # Packaging and embedding
 
-- `nsh package <entry> --target ios|ios-simulator|android|linux|macos|windows` builds an installable app from the prebuilt runtime: metadata from
+- `nsh package <entry> --target ios|ios-simulator|android|linux|macos|windows|gpui` builds an installable app from the prebuilt runtime: metadata from
   `nsh.json` next to the entry (`name`, `id`, `version`, `build`, `icon`; `appearance` also sets `UIUserInterfaceStyle`
   and a dark window theme, so the launch screen is in it) or flags. iOS: `.app`, `.ipa` with `--sign <identity>
   --profile <file.mobileprovision>` (entitlements come from the profile; icons are compiled by `actool` into `Assets.car`).
@@ -19,11 +19,20 @@
   `nsh\bundle.nshc`, `nsh\assets\` and `nsh\app.json` (the window title, the app id, which groups the app's windows in
   the taskbar, the version and the appearance, which the window opens in); plus the same as `<name>.zip`. No tools
   are needed; `--run` launches the executable.
+  GPUI: packaged as the native apps of the machine it runs on are (Linux's directory and `.tar.gz`, macOS' `.app`,
+  Windows' directory and `.zip`), with the GPUI release runner (`crates/nsh-gpui-app`) as the executable; it finds
+  `nsh/` next to itself, or `Contents/Resources/nsh` inside an app bundle (`nsh_gpui_app::resources`).
 - Embedding: iOS apps link `NativeShell.xcframework` and `import NativeShell` (Swift: `NshAppView`, a `UIView`;
   `NshTrust`, `NshPackage`, `NshLimits`, `NshError`); Android apps add `nsh.aar` and use `com.longbridge.nsh.NshView`.
   `*Dev` / `-dev` variants can also load from a dev server. See `examples/embed-*`. Rust desktop apps use the platform
   crate itself: `nsh_platform_linux::AppView` (a GTK widget), `nsh_platform_macos::AppView` (an `NSView`) or
   `nsh_platform_windows::AppView` (a child window of the app's `HWND`, run by the app's message loop; `windows.md`).
+  GPUI and GPUI Kit apps use `nsh_platform_gpui::AppView`, a GPUI view (`gpui.md`): `let view = cx.new(|cx|
+  AppView::new(options, window, cx));` inside a window, `view.read(cx).load(App::Js(bundle))`, then put the entity in
+  any element tree (in a GPUI Kit window, as a child of its `Root`); it fills the space its parent gives it and takes
+  the focus it is given (`Focusable`). The crate depends on `gpui-fast` 0.1 from crates.io (re-exported as
+  `nsh_platform_gpui::gpui`); GPUI Kit's `gpui-fast` feature makes `gpui_component` use that same crate, so both share
+  one GPUI. `open_app_window` opens a window showing an app in a running GPUI app.
 - **Native components** (`nsh/native`; `component.rs`, `ComponentBox.java`): the embedding app registers its own native
   views by name — Swift `NshAppView.register(component:) { context in … }` (`NshComponent`: `view`, `setProp`,
   `command`), Java `NshView.registerComponent(name, factory)` (`NshComponent`), Rust `AppView::register_component`

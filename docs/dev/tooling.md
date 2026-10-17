@@ -92,7 +92,9 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
 - `nsh run` defaults to the host that runs on this machine: `--target catalyst` on macOS, `--target linux` (the GTK
   host, `crates/nsh-linux-host`, run in place: it needs no app bundle) on Linux, `--target windows` (the Win32 host,
   `crates/nsh-windows-host`, run in place too) on Windows. `--target macos` runs the AppKit host
-  (`crates/nsh-macos-host`) in place too: it makes itself a regular app without a bundle. The hosts are stopped with the run
+  (`crates/nsh-macos-host`) in place too: it makes itself a regular app without a bundle. `--target gpui` runs the
+  GPUI host (`crates/nsh-gpui-host`) in place on any of the three; GPUI hosts report `HostPlatform::Gpui`, so the dev
+  server shows them `nsh run --target gpui`. The hosts are stopped with the run
   (Ctrl-C, SIGTERM, the session ending); a host that exits with an error ends it with its kept output. On Windows the host starts in a
   process group of its own (`CREATE_NEW_PROCESS_GROUP`), out of the console's Ctrl-C, so a stop is not taken for the
   host failing, and in a job object that kills it when the job closes (`run::KillOnClose`): Windows ends a child with
@@ -200,7 +202,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
   host and the release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`),
   `linux-host` / `linux-app`, `macos-host` / `macos-app` and `windows-host` / `windows-app` (the same on Linux, macOS
   and Windows, `nsh_platform_linux` / `nsh_platform_macos` / `nsh_platform_windows::set_ui_sets`; `windows-app` is a
-  windowed program, with no console) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime
+  windowed program, with no console), `gpui-host` / `gpui-app` (`nsh_platform_gpui::set_ui_sets`, under
+  `cfg(any(target_os = "linux", target_os = "macos", windows))`; `gpui-app` is a windowed program on Windows too) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime
   looks up when an engine starts). They
   build against nsh's sources (the checkout the running `nsh` was built in, or `NSH_SOURCE`) with nsh's `Cargo.lock`
   and target directory, so only the app's code and what links it compile; the binaries are named after the app
@@ -209,8 +212,8 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
   (`NSH_RUST_APP` names the workspace). Everything then knows the app's set: the bundler keeps its imports, bytecode
   links against its exports, `.nsh/types` declares it (`.nsh/types/<specifier>.d.ts`, found through tsconfig's `"*"`
   path, which falls back to `node_modules`), `nsh trace` renders it. The hosts `run` and `package` need are built
-  for the app instead of taken from the runtime (iOS `--target` triples; Linux's, macOS's and Windows' `*-host` /
-  `*-app` for this machine; Android: the prebuilt `classes.dex` with
+  for the app instead of taken from the runtime (iOS `--target` triples; Linux's, macOS's, Windows' and GPUI's
+  `*-host` / `*-app` for this machine; Android: the prebuilt `classes.dex` with
   the app's `libnsh.so` for each ABI of the prebuilt runtime, cross-compiled with the NDK).
 - `nsh dev` / `nsh run` watch the crate too: a change to its `.rs` files, `Cargo.toml` or `assets/` ends the app's
   command line with exit code 75, and `nsh` builds it and runs the command again (the app restarts; JS and TSX edits
@@ -223,15 +226,15 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
 ## Finding the runtimes
 
 The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distribution layout) or, in a checkout, in
-`target/<triple>/<profile>` (Linux's, macOS's and Windows', built for this machine, in `target/<profile>`, Windows'
-`nsh-windows-host.exe` / `nsh-windows-app.exe`) and `target/android/<profile>[-dev]` with the CLI's own profile (`NSH_RUNTIME` overrides). In a checkout (`<root>/target/<profile>/nsh` next to
+`target/<triple>/<profile>` (Linux's, macOS's, Windows' and GPUI's, built for this machine, in `target/<profile>`,
+Windows' `nsh-windows-host.exe` / `nsh-windows-app.exe`; the distribution has GPUI's in `runtime/gpui/` on each OS) and `target/android/<profile>[-dev]` with the CLI's own profile (`NSH_RUNTIME` overrides). In a checkout (`<root>/target/<profile>/nsh` next to
 `crates/nsh-ios-host`), the CLI builds what it needs with cargo first (`cargo build -p nsh-ios-host --target ...`,
 `cargo xtask android --dev`), so `nsh run` never uses a missing or stale host.
 
 ## Releases
 
 `.github/workflows/release.yml` runs `cargo xtask dist` on macOS (Apple silicon: the iOS, Mac Catalyst and macOS
-runtimes and the iOS SDK), Linux and Windows (x86_64), each with the Android runtime, checks that the packaged CLI
+runtimes and the iOS SDK), Linux and Windows (x86_64), each with the GPUI runtime of its OS and the Android runtime, checks that the packaged CLI
 makes and bundles a new app, and archives `dist/nsh` as one directory `nsh/` in `nsh-<platform>.tar.gz` (`.zip` on
 Windows), plus the embedding SDKs alone (`nsh-embed-ios.zip`, `nsh-embed-android.zip`), each with a `.sha256`. Asset
 names carry no version, so `releases/latest/download/<asset>` always resolves; the installers and package managers

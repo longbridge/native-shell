@@ -81,17 +81,6 @@ const SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long the script waits for the app's first views.
 const START_TIMEOUT: Duration = Duration::from_secs(20);
 
-thread_local! {
-    /// The appearance `dark` / `light` simulate (true: dark), instead of
-    /// the system's.
-    static DARK: Cell<Option<bool>> = const { Cell::new(None) };
-}
-
-/// The system appearance a script set (true: dark), if any.
-pub(crate) fn simulated_dark() -> Option<bool> {
-    DARK.with(Cell::get)
-}
-
 /// One step.
 #[derive(Debug, Clone, PartialEq)]
 enum Step {
@@ -236,10 +225,8 @@ async fn run_step(window: WindowHandle<AppView>, step: Step, cx: &mut AsyncApp) 
         Step::Type(text) => input(cx, &|s| crate::text_input::char_input(s, &text)),
         Step::Mark(text) => input(cx, &|s| crate::text_input::mark(s, &text)),
         Step::Key(vk, modifiers) => input(cx, &|s| press(s, vk, modifiers)),
-        Step::Dark(dark) => with_surface(window, cx, |s, window, _| {
-            DARK.with(|d| d.set(Some(dark)));
-            // The appearance is read while the surface is drawn.
-            s.invalidate();
+        Step::Dark(dark) => with_surface(window, cx, |_, window, _| {
+            crate::system::simulate_system_scheme(dark);
             window.refresh();
         })
         .is_some(),
