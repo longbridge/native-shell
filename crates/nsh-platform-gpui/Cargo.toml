@@ -63,3 +63,8 @@ raw-window-handle.workspace = true
 x11rb.workspace = true
 gtk = { workspace = true, optional = true }
 webkit2gtk = { workspace = true, optional = true }
+
+# A whole app: tests do not build it.
+[[example]]
+name = "embed"
+test = false

@@ -248,8 +248,11 @@ mod imp {
         fn drop(&mut self) {
             let _ = self.webview.set_visible(false);
             #[cfg(target_os = "linux")]
-            if let Some(surface) = self.surface.take() {
-                surface.release(self.webview.clone());
+            {
+                if let Some(surface) = self.surface.take() {
+                    surface.release(self.webview.clone());
+                }
+                linux::gone();
             }
         }
     }
@@ -446,6 +449,8 @@ mod imp {
             };
             match made {
                 Ok((webview, _native)) => {
+                    #[cfg(target_os = "linux")]
+                    linux::made();
                     #[cfg(target_os = "linux")]
                     linux::report_failures(&webview, self.emitter.clone());
                     *self.built.borrow_mut() = Some(Built {
@@ -687,8 +692,21 @@ mod imp {
         const GTK_POLL: Duration = Duration::from_millis(16);
 
         thread_local! {
-            /// GTK runs on this (main) thread, its loop pumped from GPUI's.
+            /// GTK's loop is pumped from GPUI's (GTK runs on this, the main,
+            /// thread).
             static GTK: Cell<bool> = const { Cell::new(false) };
+            /// The web views alive: the pump stops when the last goes.
+            static LIVE: Cell<usize> = const { Cell::new(0) };
+        }
+
+        /// A web view was made.
+        pub(super) fn made() {
+            LIVE.set(LIVE.get() + 1);
+        }
+
+        /// A web view went (and its windows with it, which takes GTK's loop).
+        pub(super) fn gone() {
+            LIVE.set(LIVE.get().saturating_sub(1));
         }
 
         /// Starts GTK on its X11 backend once, pumping its main loop from
@@ -707,6 +725,11 @@ mod imp {
                 loop {
                     while gtk::events_pending() {
                         gtk::main_iteration_do(false);
+                    }
+                    if LIVE.get() == 0 {
+                        // Started again by the next web view.
+                        GTK.set(false);
+                        break;
                     }
                     cx.background_executor().timer(GTK_POLL).await;
                 }

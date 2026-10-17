@@ -28,8 +28,8 @@
 //! The picture follows the corners of a rounded clipping view (GPUI rounds
 //! the sprite); the control bar is cut to the view's rectangle. Not
 //! supported: audio-only sources
-//! show nothing. The last frame of a video whose view goes away stays in
-//! the sprite atlas until the window closes.
+//! show nothing. When a video's item goes (after any removal animation),
+//! its frames leave the sprite atlas with the next frame.
 //!
 //! Without feature `video` (or when GStreamer cannot start), a video draws
 //! a neutral placeholder and reports `onError` for each source.
@@ -445,6 +445,17 @@ mod player {
             self.pipeline.borrow_mut().take();
         }
 
+        /// The frames it painted leave the atlas with the next frame (the
+        /// item outlives its control while a removal animation shows its
+        /// last frame).
+        fn release(&self) {
+            let retired = std::mem::take(&mut *self.retired.borrow_mut());
+            let current = self.frame.borrow_mut().take().map(|(frame, _)| frame.image);
+            for image in retired.into_iter().chain(current) {
+                crate::image::release_later(image);
+            }
+        }
+
         /// The frame shown goes (removed from the atlas at the next draw).
         fn retire_frame(&self) {
             if let Some((frame, painted)) = self.frame.borrow_mut().take()
@@ -748,6 +759,12 @@ mod player {
                 app,
             );
         });
+    }
+
+    impl Drop for VideoItem {
+        fn drop(&mut self) {
+            self.release();
+        }
     }
 
     impl Hosted for VideoItem {
