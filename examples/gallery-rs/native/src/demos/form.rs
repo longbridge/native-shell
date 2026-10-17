@@ -449,60 +449,18 @@ fn password_error(touched: Touched, password: &str) -> Option<&'static str> {
     (touched.password && password.encode_utf16().count() < 8).then_some("Use at least 8 characters")
 }
 
-/// What [`FormPage`] tells its scroll view.
-#[derive(Debug, Clone, PartialEq, Event)]
-enum FormEvent {
-    /// Dragging treats the keyboard as `MODES[i]` does.
-    Mode(u32),
-}
-
-/// The demo's page: the form in a scroll view whose keyboard dismiss mode
-/// the page picks. It renders again when the mode changes (a scroll view's
-/// `keyboard_dismiss_mode` is not a binding yet); the page in it runs once.
-#[derive(Debug)]
-pub(crate) struct Form {
-    /// The dismiss mode, an index into [`MODES`].
-    mode: usize,
-}
-
-impl Default for Form {
-    fn default() -> Self {
-        // On drag.
-        Self { mode: 1 }
-    }
-}
-
-impl Component for Form {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        view().flex_1().child(
-            scroll()
-                .flex_1()
-                .bg(colors::BACKGROUND)
-                .keyboard_dismiss_mode(MODES[self.mode].0)
-                .child(FormPage::element(()).on_event(cx.listener(
-                    |this: &mut Self, e: &FormEvent, cx| {
-                        let FormEvent::Mode(i) = *e;
-                        this.mode = i as usize;
-                        cx.notify();
-                    },
-                ))),
-        )
-    }
-}
-
-/// The form's cards and its sheet of inputs.
+/// The demo's page: the form's cards in a scroll view whose keyboard
+/// dismiss mode the page picks, and its sheet of inputs.
 #[component]
-fn FormPage(cx: Scope<FormEvent>) -> impl IntoElement {
+pub(crate) fn Form() -> impl IntoElement {
     let name = signal(String::new());
     let email = signal(String::new());
     let password = signal(String::new());
     let code = signal(String::new());
     let shout = signal(String::new());
     let notes = signal(String::new());
-    // Mirrors the scroll view's (its owner's) mode, an index into MODES.
+    // How dragging the scroll view treats the keyboard, an index into
+    // MODES: on drag.
     let mode = signal(1_usize);
     // What submitting found: up (sent) or danger, and what it says.
     let status = signal(None::<(Tone, String)>);
@@ -557,7 +515,6 @@ fn FormPage(cx: Scope<FormEvent>) -> impl IntoElement {
             .on_event(move |e: &SegmentedEvent| {
                 let SegmentedEvent::Change(i) = *e;
                 mode.set(i as usize);
-                cx.emit(FormEvent::Mode(i));
             }),
         )
         .child(caption(
@@ -909,16 +866,24 @@ fn FormPage(cx: Scope<FormEvent>) -> impl IntoElement {
         more.into_element(),
     ];
     let sheet_fx: Vec<FieldFx> = fx[f::SHEET..].to_vec();
-    view()
-        .child(
-            view().p_4().pb(px(40.0)).gap_4().children(
-                cards
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, card)| appear(i as u32).child(card)),
+    view().flex_1().child(
+        scroll()
+            .flex_1()
+            .bg(colors::BACKGROUND)
+            .keyboard_dismiss_mode(move || MODES[mode.get()].0)
+            .child(
+                view()
+                    .child(
+                        view().p_4().pb(px(40.0)).gap_4().children(
+                            cards
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, card)| appear(i as u32).child(card)),
+                        ),
+                    )
+                    .child(If::new(sheet, move || sheet_view(sheet, &sheet_fx))),
             ),
-        )
-        .child(If::new(sheet, move || sheet_view(sheet, &sheet_fx)))
+    )
 }
 
 /// The sheet of inputs (`open` while it shows), its fields animated by
