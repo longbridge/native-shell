@@ -373,13 +373,12 @@ impl Decor {
                 && kind != Kind::Text;
 
         // Corners of the layer itself. Core Animation draws nothing for a
-        // radius over half the short side (`rounded-full` is 9999).
-        let half = w.min(h) / 2.0;
-        let r = match shared {
-            Some(r) if w > 0.0 && h > 0.0 => r.min(half),
-            Some(r) => r,
-            None => 0.0,
-        } as CGFloat;
+        // radius over half the short side (`rounded-full` is 9999). Empty
+        // views get none: in-process renderings draw an empty layer's
+        // background as the corners of its radius (list cells the core
+        // never placed are 0 × 0 at their parent's origin).
+        let half = w.min(h).max(0.0) / 2.0;
+        let r = shared.map_or(0.0, |r| r.min(half)) as CGFloat;
         // Continuous corners need about 1.53 times their radius of straight
         // edge; past that Core Animation draws them with stray edges (in
         // process renderings): a circle or a pill is circular anyway.
