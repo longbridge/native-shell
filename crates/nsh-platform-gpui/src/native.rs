@@ -485,12 +485,32 @@ pub(crate) fn prepaint(surface: &Rc<Surface>, window: &mut Window, cx: &mut App)
 /// True when focus is inside one of the surface's components: keys go
 /// there, not to nsh.
 pub(crate) fn focused(surface: &Surface, window: &Window) -> bool {
-    surface
+    let in_frame = surface
         .native
         .focused
         .borrow()
         .iter()
-        .any(|(_, f)| f.is_focused(window))
+        .any(|(_, f)| f.is_focused(window));
+    in_frame
+        || surface.native.hosts.borrow().values().any(|h| match h {
+            Host::Component(item) => item.component.try_borrow().is_ok_and(|c| {
+                c.as_ref()
+                    .and_then(|c| c.focus_handle())
+                    .is_some_and(|f| f.is_focused(window))
+            }),
+            _ => false,
+        })
+}
+
+/// How many components the surface has.
+pub(crate) fn component_count(surface: &Surface) -> usize {
+    surface
+        .native
+        .hosts
+        .borrow()
+        .values()
+        .filter(|h| matches!(h, Host::Component(_)))
+        .count()
 }
 
 /// True when the component in node `id` takes the keyboard (a Tab stop).
