@@ -56,7 +56,7 @@ impl Component for Gallery {
             .flex_1()
             .bg(colors::BACKGROUND)
             .child(StatusBar::element(StatusBarProps {
-                bar_style: Some(bar_style),
+                bar_style: Some(bar_style).into(),
                 ..StatusBarProps::default()
             }))
             .child(stack().flex_1().child(index).children(pushed))

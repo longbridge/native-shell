@@ -930,6 +930,8 @@ pub struct ElNode {
 }
 
 crate::static_reactive!(AccessibilityState: AccessibilityState);
+crate::static_reactive!(EdgeInsets: EdgeInsets);
+crate::static_reactive!(Style: Style);
 
 /// A bound part of an element's props.
 pub(crate) type BoundAttrs = Rc<dyn Fn(&mut Attrs)>;
@@ -1165,21 +1167,23 @@ pub trait Element: IntoElement + Sized {
 
     /// Padding added to the element's own (from styles): insets of system
     /// UI, a keyboard.
-    fn inset_padding(mut self, insets: EdgeInsets) -> Self {
-        self.node().attrs.inset_padding = Some(insets);
+    fn inset_padding(mut self, insets: impl IntoReactive<EdgeInsets>) -> Self {
+        self.node()
+            .bind_attr(insets, |a, insets| a.inset_padding = Some(insets));
         self
     }
 
     /// Margin added to the element's own.
-    fn inset_margin(mut self, insets: EdgeInsets) -> Self {
-        self.node().attrs.inset_margin = Some(insets);
+    fn inset_margin(mut self, insets: impl IntoReactive<EdgeInsets>) -> Self {
+        self.node()
+            .bind_attr(insets, |a, insets| a.inset_margin = Some(insets));
         self
     }
 
     /// An inline style the app passed (a prop of type `Style`, React
     /// Native's names), over the element's styles.
-    fn inline_style(mut self, style: &Style) -> Self {
-        self.node().attrs.inline = style.0.clone();
+    fn inline_style(mut self, style: impl IntoReactive<Style>) -> Self {
+        self.node().bind_attr(style, |a, style| a.inline = style.0);
         self
     }
 }

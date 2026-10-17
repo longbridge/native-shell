@@ -2518,7 +2518,9 @@ impl<M: TextEngine> Core<M> {
                     });
                     let mut instance = Instance::new(row, None, Vec::new(), None);
                     instance.binding = self.list_binds(list);
-                    self.components.instances.insert(content, Box::new(instance));
+                    self.components
+                        .instances
+                        .insert(content, Box::new(instance));
                     self.components.mark(content);
                     let place = place.unwrap_or_else(|| Rc::new(|row, _| row.into_element()));
                     let mut wrapper =

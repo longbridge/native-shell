@@ -358,10 +358,10 @@ impl System {
             .title("Status bar")
             .subtitle("StatusBar: style and visibility, animated")
             .child(StatusBar::element(StatusBarProps {
-                bar_style: Some(style),
-                hidden: Some(self.bar_hidden),
-                animated: Some(true),
-                android: None,
+                bar_style: Some(style).into(),
+                hidden: Some(self.bar_hidden).into(),
+                animated: Some(true).into(),
+                android: None.into(),
             }))
             .child(
                 segmented(

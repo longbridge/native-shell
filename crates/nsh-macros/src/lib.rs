@@ -963,8 +963,10 @@ pub fn style_helpers(input: TokenStream) -> TokenStream {
         let Helper { doc, name, keys } = h;
         out.extend(quote! {
             #[doc = #doc]
-            fn #name(mut self, length: impl ::core::convert::Into<crate::ui::Length>) -> Self {
-                self.style().lengths(&[#(crate::style::StyleKey::#keys),*], length.into());
+            fn #name(mut self, length: impl crate::ui::IntoReactive<crate::ui::Length>) -> Self {
+                self.style().bind_value(length, |s, length: crate::ui::Length| {
+                    s.lengths(&[#(crate::style::StyleKey::#keys),*], length);
+                });
                 self
             }
         });

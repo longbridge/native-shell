@@ -65,6 +65,7 @@ struct EnvSignals {
     window: Memo<Size>,
     safe_area: Memo<EdgeInsets>,
     keyboard_height: Memo<f32>,
+    keyboard_duration: Memo<f32>,
     dark: Memo<bool>,
     font_scale: Memo<f32>,
     reduce_motion: Memo<bool>,
@@ -88,6 +89,7 @@ impl EnvSignals {
                 window: part!(window),
                 safe_area: part!(safe_area),
                 keyboard_height: part!(keyboard_height),
+                keyboard_duration: part!(keyboard_duration),
                 dark: part!(dark),
                 font_scale: part!(font_scale),
                 reduce_motion: part!(reduce_motion),
@@ -201,6 +203,11 @@ pub fn safe_area() -> EdgeInsets {
 /// `keyboard().height`).
 pub fn keyboard_height() -> f32 {
     env(|e| e.keyboard_height)
+}
+
+/// How long the keyboard's show / hide animation takes, in seconds.
+pub fn keyboard_duration() -> f32 {
+    env(|e| e.keyboard_duration)
 }
 
 /// Dark appearance (TS: `colorScheme() === "dark"`). Theme colors follow

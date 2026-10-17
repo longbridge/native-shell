@@ -4,7 +4,7 @@
 use std::{any::Any, fmt, marker::PhantomData, rc::Rc};
 
 use super::{
-    IntoReactive, Memo, ReadSignal, Reactive, Signal, computed,
+    IntoReactive, Memo, Reactive, ReadSignal, Signal, computed,
     reactive::{Node, with_data},
     signal,
 };
@@ -143,10 +143,8 @@ impl<T: Clone + PartialEq + 'static> Prop<T> {
         });
         let node = held.node();
         with_data(|d| {
-            d.held.insert(
-                node,
-                Box::new(Held { value, binding }) as Box<dyn Any>,
-            );
+            d.held
+                .insert(node, Box::new(Held { value, binding }) as Box<dyn Any>);
         });
         // The registration goes with the instance.
         super::cleanup(move || {

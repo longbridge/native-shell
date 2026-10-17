@@ -123,7 +123,10 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
     fn update(&mut self, _: &mut ErasedCx) {}
 
     fn cleanup(&mut self, _: &mut ErasedCx) {
-        for owner in [self.owner.take(), self.initial.take()].into_iter().flatten() {
+        for owner in [self.owner.take(), self.initial.take()]
+            .into_iter()
+            .flatten()
+        {
             owner.dispose();
         }
     }

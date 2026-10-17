@@ -179,7 +179,7 @@ impl Component for MobileComponents {
             )
             .child(
                 Card::element(CardProps {
-                    variant: CardVariant::Outlined,
+                    variant: CardVariant::Outlined.into(),
                     ..CardProps::default()
                 })
                 .child(text("An outlined card, children only.")),
@@ -670,8 +670,8 @@ impl Component for AvoidingPage {
         let fill = Style::from_json(JsonValue::from_iter([("flex", 1)])).unwrap_or_default();
         view().flex_1().child(
             KeyboardAvoidingView::element(KeyboardAvoidingViewProps {
-                behavior,
-                content_container_style: fill,
+                behavior: behavior.into(),
+                content_container_style: fill.into(),
                 ..KeyboardAvoidingViewProps::default()
             })
             .flex_1()

@@ -1,13 +1,6 @@
 //! `StatusBar`: what the status bar shows, rendered or set.
 
-use nsh_core::ui::{StatusBarEntry, StatusBarSetting, StatusBarStyle, prelude::*};
-
-/// A rendered status bar setting ([`StatusBarProps`]).
-#[derive(Debug, Default)]
-pub struct StatusBar {
-    /// Its place among the surface's settings.
-    entry: Option<StatusBarEntry>,
-}
+use nsh_core::ui::{StatusBarSetting, StatusBarStyle, prelude::*};
 
 /// What the status bar shows while this renders: the most recently
 /// mounted `StatusBar` wins, prop by prop, over what the functions set. In
@@ -16,13 +9,13 @@ pub struct StatusBar {
 #[derive(Debug, Clone, PartialEq, Props)]
 pub struct StatusBarProps {
     /// The content's color.
-    pub bar_style: Option<BarStyle>,
+    pub bar_style: Prop<Option<BarStyle>>,
     /// Hidden.
-    pub hidden: Option<bool>,
+    pub hidden: Prop<Option<bool>>,
     /// Animate changes of `barStyle` and `hidden`.
-    pub animated: Option<bool>,
+    pub animated: Prop<Option<bool>>,
     /// What only Android has.
-    pub android: Option<StatusBarAndroid>,
+    pub android: Prop<Option<StatusBarAndroid>>,
 }
 
 /// The props of a [`StatusBar`] only Android has.
@@ -69,42 +62,21 @@ pub enum BarAnimation {
 
 fn setting(props: &StatusBarProps) -> StatusBarSetting {
     StatusBarSetting {
-        style: props.bar_style.map(Into::into),
-        hidden: props.hidden,
-        animated: props.animated,
-        background: props.android.as_ref().and_then(|a| a.background_color),
+        style: props.bar_style.get().map(Into::into),
+        hidden: props.hidden.get(),
+        animated: props.animated.get(),
+        background: props.android.get().and_then(|a| a.background_color),
     }
 }
 
-impl Component for StatusBar {
-    type Props = StatusBarProps;
-    type Event = NoEvent;
-
-    fn setup(&mut self, props: &StatusBarProps, cx: &mut Context<'_, Self>) {
-        self.entry = Some(cx.add_status_bar(setting(props)));
-    }
-
-    fn props_changed(
-        &mut self,
-        _old: &StatusBarProps,
-        new: &StatusBarProps,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(entry) = self.entry {
-            cx.update_status_bar(entry, setting(new));
-        }
-    }
-
-    fn cleanup(&mut self, _props: &StatusBarProps, cx: &mut Context<'_, Self>) {
-        if let Some(entry) = self.entry.take() {
-            cx.remove_status_bar(entry);
-        }
-    }
-
-    fn render(&self, _props: &StatusBarProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        // Nothing to lay out.
-        view().hidden()
-    }
+/// A rendered status bar setting ([`StatusBarProps`]): over the others while
+/// it is mounted.
+#[component]
+pub fn StatusBar(props: StatusBarProps) -> impl IntoElement {
+    let entry = add_status_bar(untracked(|| setting(&props)));
+    effect(move || update_status_bar(entry, setting(&props)));
+    // Nothing to lay out.
+    view().hidden()
 }
 
 /// The status bar, set imperatively (under the rendered `StatusBar`s).
