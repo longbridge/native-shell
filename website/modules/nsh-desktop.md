@@ -130,7 +130,7 @@ type MenuItem =
 |---|---|
 | `label` | What the item shows. A role's item has a label of its own without it. |
 | `onSelect` | Called when the item is chosen, by a click or its shortcut. |
-| `shortcut` | Its keyboard shortcut: modifiers and a key joined by `+`, such as `"Mod+N"`, `"Mod+Shift+Z"`, `"Alt+F4"` or `"F11"`. `Mod` is Command on macOS and Control elsewhere; the other modifiers are `Cmd`, `Ctrl`, `Alt` (Option) and `Shift`. Keys are letters, digits, punctuation, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Space`, the arrows (`Up`, `Down`, `Left`, `Right`), `Home`, `End`, `PageUp`, `PageDown`, `F1`–`F24` and `Plus`. |
+| `shortcut` | Its keyboard shortcut, written in lowercase: modifiers and one key joined by `+`, such as `"mod+n"`, `"mod+shift+z"`, `"alt+f4"` or `"f11"`. `mod` is Command on macOS and Control elsewhere; the other modifiers are `cmd` (also `super` or `win`: Command, the Windows key, Super), `ctrl`, `alt` (also `option`) and `shift`. Keys are letters, digits, punctuation (the US layout's unshifted character, such as `,` or `/`), `enter`, `escape`, `tab`, `backspace`, `delete`, `space`, the arrows (`up`, `down`, `left`, `right`), `home`, `end`, `pageup`, `pagedown`, `f1`–`f24` and `plus`. Menus show it in the platform's own style (`⇧⌘N` on macOS, `Ctrl+Shift+N` on Windows). |
 | `enabled` | `false` grays the item out (default `true`). |
 | `checked` | Set (to `true` or `false`) for an item with a check mark. |
 | `submenu` | Makes the item a submenu (it needs a `label`). |
@@ -149,7 +149,7 @@ Roles:
 
 A role's item has the platform's label and shortcut unless it sets its own (macOS adds the app's name to `about`, `hide` and `quit`).
 
-Menu shortcuts come first, as in native apps: a key an item takes never reaches the focused text field or nsh's own keys. So give the editing shortcuts (`Mod+C`, `Mod+V`, `Mod+X`, `Mod+A`, `Mod+Z`) only to the edit roles, which pass them to the text field, and avoid keys without a modifier (`Escape`, the arrows, letters), which would take them from text fields and from back navigation.
+Menu shortcuts come first, as in native apps: a key an item takes never reaches the focused text field or nsh's own keys. So give the editing shortcuts (`mod+c`, `mod+v`, `mod+x`, `mod+a`, `mod+z`) only to the edit roles, which pass them to the text field, and avoid keys without a modifier (`escape`, the arrows, letters), which would take them from text fields and from back navigation.
 
 ```tsx
 import { effect, signal } from "nsh";
@@ -168,8 +168,8 @@ effect(() => {
     {
       label: "File",
       submenu: [
-        { label: "New", shortcut: "Mod+N", onSelect: () => createDocument() },
-        { label: "Open…", shortcut: "Mod+O", onSelect: () => openDocument() },
+        { label: "New", shortcut: "mod+n", onSelect: () => createDocument() },
+        { label: "Open…", shortcut: "mod+o", onSelect: () => openDocument() },
         !mac && { type: "separator" },
         !mac && { role: "quit", label: "Exit" },
       ],

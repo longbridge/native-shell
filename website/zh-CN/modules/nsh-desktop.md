@@ -130,7 +130,7 @@ type MenuItem =
 |---|---|
 | `label` | 菜单项显示的文字。带 role 的菜单项省略时使用自己的默认文字。 |
 | `onSelect` | 菜单项被选中时调用，无论是点击还是快捷键。 |
-| `shortcut` | 快捷键：修饰键和按键用 `+` 连接，例如 `"Mod+N"`、`"Mod+Shift+Z"`、`"Alt+F4"` 或 `"F11"`。`Mod` 在 macOS 上是 Command，其他平台是 Control；其他修饰键有 `Cmd`、`Ctrl`、`Alt`（Option）和 `Shift`。按键可以是字母、数字、标点、`Enter`、`Escape`、`Tab`、`Backspace`、`Delete`、`Space`、方向键（`Up`、`Down`、`Left`、`Right`）、`Home`、`End`、`PageUp`、`PageDown`、`F1`–`F24` 和 `Plus`。 |
+| `shortcut` | 快捷键，全部小写：修饰键和一个按键用 `+` 连接，例如 `"mod+n"`、`"mod+shift+z"`、`"alt+f4"` 或 `"f11"`。`mod` 在 macOS 上是 Command，其他平台是 Control；其他修饰键有 `cmd`（也可写 `super` 或 `win`：Command、Windows 键、Super）、`ctrl`、`alt`（也可写 `option`）和 `shift`。按键可以是字母、数字、标点（美式键盘布局上不按 Shift 时的字符，如 `,`、`/`）、`enter`、`escape`、`tab`、`backspace`、`delete`、`space`、方向键（`up`、`down`、`left`、`right`）、`home`、`end`、`pageup`、`pagedown`、`f1`–`f24` 和 `plus`。菜单按各平台自己的样式显示快捷键（macOS 上是 `⇧⌘N`，Windows 上是 `Ctrl+Shift+N`）。 |
 | `enabled` | `false` 时菜单项变灰（默认 `true`）。 |
 | `checked` | 设置（为 `true` 或 `false`）后菜单项带勾选标记。 |
 | `submenu` | 让菜单项成为子菜单（需要 `label`）。 |
@@ -149,7 +149,7 @@ Role：
 
 带 role 的菜单项默认使用平台的文字和快捷键，除非自己设置（macOS 会在 `about`、`hide` 和 `quit` 中加上应用名）。
 
-菜单快捷键的优先级最高，和原生应用一样：菜单项占用的按键不会再传给获得焦点的输入框，也不会触发 nsh 自己的按键处理。所以编辑快捷键（`Mod+C`、`Mod+V`、`Mod+X`、`Mod+A`、`Mod+Z`）只交给编辑类 role（它们会把按键转给输入框），也不要使用不带修饰键的键（`Escape`、方向键、字母），否则输入框和返回导航就收不到它们了。
+菜单快捷键的优先级最高，和原生应用一样：菜单项占用的按键不会再传给获得焦点的输入框，也不会触发 nsh 自己的按键处理。所以编辑快捷键（`mod+c`、`mod+v`、`mod+x`、`mod+a`、`mod+z`）只交给编辑类 role（它们会把按键转给输入框），也不要使用不带修饰键的键（`escape`、方向键、字母），否则输入框和返回导航就收不到它们了。
 
 ```tsx
 import { effect, signal } from "nsh";
@@ -168,8 +168,8 @@ effect(() => {
     {
       label: "File",
       submenu: [
-        { label: "New", shortcut: "Mod+N", onSelect: () => createDocument() },
-        { label: "Open…", shortcut: "Mod+O", onSelect: () => openDocument() },
+        { label: "New", shortcut: "mod+n", onSelect: () => createDocument() },
+        { label: "Open…", shortcut: "mod+o", onSelect: () => openDocument() },
         !mac && { type: "separator" },
         !mac && { role: "quit", label: "Exit" },
       ],

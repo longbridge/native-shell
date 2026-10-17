@@ -1108,7 +1108,7 @@ Menu.setApplicationMenu([
   {
     label: "File",
     submenu: [
-      { label: "New", shortcut: "Mod+N", onSelect: () => chosen.set("new") },
+      { label: "New", shortcut: "mod+n", onSelect: () => chosen.set("new") },
       { type: "separator" },
       { role: "quit" },
     ],

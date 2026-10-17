@@ -24,9 +24,9 @@ function App() {
     {
       label: "File",
       submenu: [
-        { label: "New", shortcut: "Mod+N", onSelect: () => say("File > New") },
-        { label: "Open…", shortcut: "Mod+O", onSelect: () => say("File > Open") },
-        { label: "Save", shortcut: "Mod+S", enabled: false },
+        { label: "New", shortcut: "mod+n", onSelect: () => say("File > New") },
+        { label: "Open…", shortcut: "mod+o", onSelect: () => say("File > Open") },
+        { label: "Save", shortcut: "mod+s", enabled: false },
         { type: "separator" },
         { label: "Recent", submenu: [{ label: "notes.txt", onSelect: () => say("Recent > notes.txt") }] },
         ...(mac ? [] : [{ type: "separator" } as const, { role: "quit", label: "Exit" } as const]),
@@ -51,7 +51,7 @@ function App() {
         {
           label: "System Title Bar",
           checked: !hidden(),
-          shortcut: "Mod+Shift+T",
+          shortcut: "mod+shift+t",
           onSelect: () => hidden.update((h) => !h),
         },
         { type: "separator" },

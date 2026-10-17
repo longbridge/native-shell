@@ -225,7 +225,7 @@ impl Decoder {
         let shortcut = match string(ctx, v, c"shortcut") {
             Some(text) => Some(
                 Shortcut::parse(&text, self.mac)
-                    .ok_or_else(|| format!("`{text}` is not a shortcut (\"Mod+Shift+N\")"))?,
+                    .ok_or_else(|| format!("`{text}` is not a shortcut (\"mod+shift+n\")"))?,
             ),
             None => role.and_then(|r| r.shortcut(self.mac)),
         };
@@ -515,13 +515,14 @@ export type MenuItem =
       label?: string;
       /** A standard item. */
       role?: MenuRole;
-      /** Its shortcut: modifiers and a key joined by `+`: `"Mod+N"`,
-       * `"Mod+Shift+Z"`, `"Alt+F4"`, `"F11"`. `Mod` is Command on macOS and
-       * Control elsewhere; `Cmd`, `Ctrl`, `Alt` (Option), `Shift`. Keys:
-       * letters, digits, punctuation, `Enter`, `Escape`, `Tab`, `Backspace`,
-       * `Delete`, `Space`, arrows (`Up`), `Home`, `End`, `PageUp`,
-       * `PageDown`, `F1`–`F24`, `Plus`. A role has its platform's by
-       * default. */
+      /** Its shortcut, in lowercase: modifiers and a key joined by `+`:
+       * `"mod+n"`, `"mod+shift+z"`, `"alt+f4"`, `"f11"`. `mod` is Command on
+       * macOS and Control elsewhere; `cmd` (`super`, `win`), `ctrl`, `alt`
+       * (`option`), `shift`. Keys: letters, digits, punctuation (the US
+       * layout's unshifted character), `enter`, `escape`, `tab`,
+       * `backspace`, `delete`, `space`, arrows (`up`), `home`, `end`,
+       * `pageup`, `pagedown`, `f1`–`f24`, `plus`. A role has its platform's
+       * by default. */
       shortcut?: string;
       /** It can be chosen (default true). */
       enabled?: boolean;

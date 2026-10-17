@@ -62,8 +62,8 @@ pub enum Key {
 }
 
 impl Key {
-    /// The key named `name` (`"N"`, `"Enter"`, `"F5"`, `"Plus"`), ignoring
-    /// case.
+    /// The key named `name` (`"n"`, `"enter"`, `"f5"`, `"plus"`), ignoring
+    /// case. A character is the US layout's unshifted one.
     pub fn parse(name: &str) -> Option<Key> {
         let mut chars = name.chars();
         if let (Some(c), None) = (chars.next(), chars.next()) {
@@ -123,7 +123,7 @@ impl Key {
     }
 }
 
-/// A keyboard shortcut of a menu item (`"Mod+Shift+N"`).
+/// A keyboard shortcut of a menu item (`"mod+shift+n"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Shortcut {
     /// The key.
@@ -150,12 +150,14 @@ impl Shortcut {
         }
     }
 
-    /// Parses `"Mod+Shift+N"`: modifiers and a key joined by `+` (case
-    /// does not matter). `Mod` (also `CmdOrCtrl`) is Command when
-    /// `mod_is_meta` (macOS), else Control; `Cmd` / `Meta` / `Super` is
-    /// Command, `Ctrl`, `Alt` / `Option`, `Shift`. `None` when it is not one.
+    /// Parses `"mod+shift+n"`: modifiers and one key joined by `+`, written
+    /// in lowercase (other cases are read too). `mod` is Command when
+    /// `mod_is_meta` (macOS), else Control; `cmd` / `super` / `win` is
+    /// Command (the Windows key, Super), then `ctrl`, `alt` / `option` and
+    /// `shift`. The key is a name ([`Key::parse`]) or the US layout's
+    /// unshifted character; `plus` is `+`. `None` when it is not one.
     pub fn parse(text: &str, mod_is_meta: bool) -> Option<Shortcut> {
-        // `+` itself is a key: "Mod++" or "Mod+Plus".
+        // `+` itself is a key: "mod+plus" (or "mod++").
         let (mods, key) = match text.strip_suffix("++") {
             Some(mods) => (mods, "+"),
             None => match text.rsplit_once('+') {
@@ -454,7 +456,7 @@ mod tests {
 
     #[test]
     fn shortcuts_parse() {
-        let s = Shortcut::parse("Mod+Shift+N", false).unwrap();
+        let s = Shortcut::parse("mod+shift+n", false).unwrap();
         assert_eq!(
             s,
             Shortcut {
@@ -463,27 +465,36 @@ mod tests {
                 ..Shortcut::key(Key::Char('n'))
             }
         );
+        // Labels stay the platform's style.
         assert_eq!(s.label(), "Ctrl+Shift+N");
+        // Other cases are read too.
+        assert_eq!(Shortcut::parse("Mod+Shift+N", false), Some(s));
         let mac = Shortcut::parse("cmdorctrl+,", true).unwrap();
         assert!(mac.meta && !mac.ctrl);
         assert_eq!(mac.key, Key::Char(','));
         assert_eq!(
-            Shortcut::parse("Ctrl++", false).unwrap().key,
+            Shortcut::parse("ctrl+plus", false).unwrap().key,
             Key::Char('+')
         );
-        assert_eq!(Shortcut::parse("Alt+F4", false).unwrap().key, Key::F(4));
         assert_eq!(
-            Shortcut::parse("F11", false).unwrap(),
+            Shortcut::parse("ctrl++", false).unwrap().key,
+            Key::Char('+')
+        );
+        assert_eq!(Shortcut::parse("alt+f4", false).unwrap().key, Key::F(4));
+        assert_eq!(
+            Shortcut::parse("f11", false).unwrap(),
             Shortcut::key(Key::F(11))
         );
-        assert_eq!(Shortcut::parse("Hyper+K", false), None);
-        assert_eq!(Shortcut::parse("Ctrl+F25", false), None);
+        let win = Shortcut::parse("win+option+pagedown", true).unwrap();
+        assert!(win.meta && win.alt && win.key == Key::PageDown);
+        assert_eq!(Shortcut::parse("hyper+k", false), None);
+        assert_eq!(Shortcut::parse("ctrl+f25", false), None);
     }
 
     #[test]
     fn shortcuts_find_items() {
-        let copy = Shortcut::parse("Ctrl+C", false).unwrap();
-        let new = Shortcut::parse("Ctrl+N", false).unwrap();
+        let copy = Shortcut::parse("ctrl+c", false).unwrap();
+        let new = Shortcut::parse("ctrl+n", false).unwrap();
         let action = |id, shortcut, role| {
             MenuItem::Action(MenuAction {
                 id,

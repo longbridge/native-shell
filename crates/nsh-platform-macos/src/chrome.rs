@@ -763,24 +763,24 @@ mod tests {
         let equivalent = |text: &str| key_equivalent(&Shortcut::parse(text, true).unwrap());
         // Lowercase: an uppercase key equivalent would add Shift.
         assert_eq!(
-            equivalent("Mod+Shift+N"),
+            equivalent("mod+shift+n"),
             (
                 "n".to_owned(),
                 NSEventModifierFlags::Command | NSEventModifierFlags::Shift
             )
         );
         assert_eq!(
-            equivalent("Ctrl+Alt+Left"),
+            equivalent("ctrl+alt+left"),
             (
                 "\u{f702}".to_owned(),
                 NSEventModifierFlags::Control | NSEventModifierFlags::Option
             )
         );
         assert_eq!(
-            equivalent("F5"),
+            equivalent("f5"),
             ("\u{f708}".to_owned(), NSEventModifierFlags::empty())
         );
-        assert_eq!(equivalent("Mod+Plus").0, "+");
-        assert_eq!(equivalent("Cmd+PageDown").0, "\u{f72d}");
+        assert_eq!(equivalent("mod+plus").0, "+");
+        assert_eq!(equivalent("cmd+pagedown").0, "\u{f72d}");
     }
 }
