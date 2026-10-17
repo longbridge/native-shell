@@ -2106,25 +2106,17 @@ pub(crate) fn draw_silhouette(
         return;
     }
     let k = cx.transform_scale();
-    let c = drawn.content;
-    let tint = cx.color(color);
+    let (ox, oy) = (drawn.content.x, drawn.content.y);
+    let tint = Some(cx.color(color));
     let mut glyphs = Vec::with_capacity(layout.glyphs.len() * offsets.len());
-    for line in &layout.lines {
-        for g in layout.glyphs[line.glyphs.clone()]
-            .iter()
-            .filter(|g| !g.attachment)
-        {
-            let (x, y) = (c.x + line.x + g.x, c.y + line.baseline);
-            for &(dx, dy) in offsets {
-                glyphs.push((cx.map(x + dx, y + dy), *g));
-            }
+    // Emoji draw in their own colors: they cast no silhouette.
+    for g in layout.glyphs.iter().filter(|g| !g.emoji) {
+        for &(dx, dy) in offsets {
+            let o = cx.map(ox + g.x + dx, oy + g.y + dy);
+            glyphs.push((o, g.font, g.id, px(g.size * k), tint));
         }
     }
-    cx.paint(|window, _| {
-        for (p, g) in glyphs {
-            let _ = window.paint_glyph(p, g.font, g.id, px(g.size * k), tint);
-        }
-    });
+    paint_glyphs(cx, glyphs);
 }
 
 /// The UTF-16 offset of the character at `(x, y)` (view coordinates), if
