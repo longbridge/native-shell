@@ -105,5 +105,7 @@ in a resizable split.
   colors and Tailwind palette names only: nsh also reads CSS colors (`rgb()`, names) GPUI Kit does not, and GPUI Kit
   reads gradients and `blue-500/50` that nsh rejects.
 - **From nsh to the host.** The app talks to the embedding app through the native components the latter registers
-  (`AppView::register_component`): their events and commands, as on the other platforms. `AppView::on_error` hears
+  (`AppView::register_component`): their events and commands, as on the other platforms. A component can render GPUI
+  Kit widgets in its box (`NativeComponent::render`), which take their own input: the example's "Extended hours" is a
+  GPUI Kit `Switch` (`src/switch.rs`, `host.switch`) that emits `change` to JS. `AppView::on_error` hears
   the app's fatal errors (also logged).

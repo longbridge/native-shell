@@ -7,8 +7,10 @@
 //! running its own nsh engine. The host's theme reaches them on every
 //! change ([`theme::nsh_theme`], `observe_global::<Theme>`), Tab moves
 //! through the host's widgets and the surfaces' fields alike, GPUI Kit's
-//! dialogs and notifications draw above the surfaces, and closing a pane
-//! drops its view, which stops its engine.
+//! dialogs and notifications draw above the surfaces, closing a pane
+//! drops its view, which stops its engine, and the apps' "Extended hours"
+//! switch is a GPUI Kit widget this app registers as a native component
+//! ([`switch`]).
 //!
 //! ```sh
 //! nsh build examples/embed-gpui/app -o examples/embed-gpui/build/app
@@ -17,6 +19,7 @@
 //!
 //! `cargo run -- <bundle.nshc or its directory>` runs another bundle.
 
+mod switch;
 mod theme;
 
 use std::path::{Path, PathBuf};
@@ -103,6 +106,9 @@ impl Shell {
             ..AppOptions::default()
         };
         let view = cx.new(|cx| AppView::new(options, window, cx));
+        // The app's switch is GPUI Kit's, drawn by this app.
+        view.read(cx)
+            .register_component(switch::NAME, std::rc::Rc::new(switch::HostSwitch::make));
         let theme = cx.theme();
         let (nsh_theme, appearance) = (theme::nsh_theme(theme), theme::appearance(theme.mode));
         view.update(cx, |view, cx| {
