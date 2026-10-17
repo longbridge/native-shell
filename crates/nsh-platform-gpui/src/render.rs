@@ -125,6 +125,7 @@ impl<'a> DrawCx<'a> {
         now: f64,
     ) -> Self {
         let scale = window.scale_factor();
+        crate::decor::new_pass();
         DrawCx {
             window,
             app,

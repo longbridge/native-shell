@@ -25,8 +25,9 @@
 //! once the pipeline can seek. `controls` draws a control bar of nsh's own
 //! (play / pause, a scrubber, the time), as the Windows backend does.
 //!
-//! Not supported: rounded corners of a clipping view do not cut the
-//! picture (GPUI's content masks are rectangles), and audio-only sources
+//! The picture follows the corners of a rounded clipping view (GPUI rounds
+//! the sprite); the control bar is cut to the view's rectangle. Not
+//! supported: audio-only sources
 //! show nothing. The last frame of a video whose view goes away stays in
 //! the sprite atlas until the window closes.
 //!
@@ -679,7 +680,11 @@ mod player {
                 );
             } else {
                 cx.fill_contours(
-                    &[vec![(bx - 5.0, cy - 8.0), (bx + 8.0, cy), (bx - 5.0, cy + 8.0)]],
+                    &[vec![
+                        (bx - 5.0, cy - 8.0),
+                        (bx + 8.0, cy),
+                        (bx - 5.0, cy + 8.0),
+                    ]],
                     white,
                 );
             }
@@ -764,18 +769,15 @@ mod player {
                 if let Some((frame, painted)) = &mut *slot {
                     let natural = (frame.size.0 as f32, frame.size.1 as f32);
                     let (x, y, fw, fh) = fit(mode, natural, size);
-                    let bounds = cx.rect(0.0, 0.0, w, h);
+                    let boxed = cx.rect(0.0, 0.0, w, h);
                     let picture = cx.rect(x, y, fw, fh);
+                    // GPUI rounds the sprite: the corners of the innermost
+                    // rounded clip (the view's own or a parent's) it reaches.
+                    let (bounds, corners) =
+                        cx.clip_rounded(boxed.intersect(&picture), gpui::Corners::default());
                     let image = frame.image.clone();
                     cx.paint(|window, _| {
-                        let _ = window.paint_image(
-                            bounds,
-                            picture,
-                            gpui::Corners::default(),
-                            image,
-                            0,
-                            false,
-                        );
+                        let _ = window.paint_image(bounds, picture, corners, image, 0, false);
                     });
                     *painted = true;
                 }

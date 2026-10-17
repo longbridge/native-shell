@@ -90,9 +90,6 @@ const PLATFORM: Platform = if cfg!(target_os = "macos") {
     Platform::Linux
 };
 
-/// The family the chrome's text is set in (the platform's UI font).
-const UI_FONT: &str = ".SystemUIFont";
-
 /// macOS: the title row's height, and where the traffic lights start.
 const MAC_TITLE_HEIGHT: f32 = 28.0;
 const TRAFFIC_LIGHTS_X: f32 = 9.0;
@@ -627,7 +624,7 @@ pub(crate) fn render(
         .flex()
         .flex_col()
         .relative()
-        .font_family(UI_FONT);
+        .font_family(crate::text::ui_family().to_string());
     if shows_bars && !hide && PLATFORM != Platform::Linux {
         root = root.child(title_row(surface, &theme));
     }

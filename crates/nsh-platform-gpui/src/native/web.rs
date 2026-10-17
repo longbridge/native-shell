@@ -680,6 +680,9 @@ mod imp {
 
         use crate::native::{Emitter, Geometry};
 
+        /// How long a web view's surface outlives the web view.
+        const RELEASE_DELAY: Duration = Duration::from_millis(500);
+
         /// How often pending GTK events are dispatched between GPUI's.
         const GTK_POLL: Duration = Duration::from_millis(16);
 
@@ -890,6 +893,16 @@ mod imp {
                     .clone()
                     .spawn(async move |cx| {
                         drop(webview);
+                        // GTK destroys the web view's X windows from its
+                        // loop: let it, before their parent goes (an X
+                        // error on a destroyed window aborts GTK).
+                        while gtk::events_pending() {
+                            gtk::main_iteration_do(false);
+                        }
+                        cx.background_executor().timer(RELEASE_DELAY).await;
+                        while gtk::events_pending() {
+                            gtk::main_iteration_do(false);
+                        }
                         let removed = self.window.update(cx, |_, window, _| {
                             window
                                 .enable_window_composition()?
