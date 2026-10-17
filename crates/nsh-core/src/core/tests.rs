@@ -6740,4 +6740,38 @@ mod views {
             items / n as usize
         );
     }
+
+    /// A leaf in a region of its own.
+    #[component]
+    fn Leafy() -> impl IntoElement {
+        view().child(dynamic(|| text("leaf")))
+    }
+
+    /// Shows a `Leafy` until pressed.
+    #[component]
+    fn Branch() -> impl IntoElement {
+        let shown = signal(true);
+        view()
+            .on_press(move |_: &()| shown.set(false))
+            .child(If::new(shown, || Leafy::element(())))
+    }
+
+    #[test]
+    fn a_released_view_releases_what_its_regions_made() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Branch>(|| ()));
+        let batch = c.commit().unwrap();
+        let leaf = text_node(&batch, "leaf");
+        let host = root_host(&batch);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Delete { id } if *id == leaf)),
+            "{:?}",
+            batch.items
+        );
+    }
 }

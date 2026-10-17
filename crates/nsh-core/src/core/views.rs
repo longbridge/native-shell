@@ -479,8 +479,9 @@ impl<M: TextEngine> Core<M> {
             .filter(|(_, s)| s.host == host)
             .map(|(&id, _)| id)
             .collect();
+        // Their nodes go too (a region inside another is released with it).
         for region in regions {
-            self.components.regions.remove(&region);
+            self.release_region(region);
         }
     }
 
