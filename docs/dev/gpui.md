@@ -94,7 +94,7 @@ sleep 5; import -window root -display :170 a.png
 |---|---|---|
 | Text | `text.rs` | GPUI's text system on the engine thread, lines broken by nsh, glyphs painted on the main thread (above). TODO: selection |
 | Decoration | `decor.rs` | Quads (`paint_quad`: background, rounded corners, borders), drop and inset shadows (`paint_drop_shadows`, `paint_inset_shadows`), linear gradients as a quad's `Background`, paths for shapes quads cannot draw. TODO |
-| Images | `image.rs` | TODO (decoded on worker threads into `RenderImage`s, which are BGRA; `paint_image`) |
+| Images | `image.rs` | Loaded and decoded (the `image` crate) on worker threads into `RenderImage`s (straight BGRA, a frame per animation frame), cached per location, drawn with `paint_image` (its corner radii). GPUI has no color matrix, blur, mipmaps or sprite opacity: a picture keeps a few variants made on the workers (halved when drawn small, blurred, filtered, tinted, opacity in 16 steps) and draws the closest ready one meanwhile. Textures leave the atlases when their last owner drops them |
 | Canvas | `canvas.rs` | TODO |
 | Scroll views | `scroll.rs` | The Windows backend's, unchanged: offsets of their own, deceleration, snapping, paging, sticky cells, the keyboard, the indicator dragged as a scroll bar |
 | Input | `input.rs`, `events.rs` | The Windows backend's hit testing, presses, responder and gestures, fed by GPUI's mouse, wheel and pinch events |
@@ -120,7 +120,8 @@ TODO: `nsh-gpui-host --script "<steps>"` (`script.rs`), ported from the Windows 
 - **Opacity** is multiplied into each color rather than drawn as a group: overlapping translucent children show
   through each other.
 - **Clips** are rectangles (GPUI's content masks): rounded `overflow: hidden` clips are not rounded yet.
-- TODO: images, canvas, text selection, text inputs, navigation and modals, dialogs, video, web views, native
+- **Image opacity** (a view's, a fade-in) steps in sixteenths: each step is a variant of the image's pixels.
+- TODO: canvas, text selection, text inputs, navigation and modals, dialogs, video, web views, native
   components, accessibility, the environment, window chrome and menus, the clipboard, the dev client and `--script`
   are being ported (each area's section above says how).
 - **Packaged apps** are laid out as the native backend's of the machine they are made on (a directory and `.tar.gz`
