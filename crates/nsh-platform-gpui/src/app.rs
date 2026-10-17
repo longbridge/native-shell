@@ -147,6 +147,14 @@ impl Default for AppOptions {
 /// - The view draws only inside its bounds: the host's overlays (GPUI
 ///   Kit's dialogs, popovers, notifications) draw above it.
 ///
+/// Most methods take `&self` and can be called through `view.read(cx)`:
+/// they hand work to the engine thread, whose next frame redraws the view.
+/// [`AppView::set_theme`], [`AppView::set_theme_json`] and
+/// [`AppView::set_appearance`] also change what the main thread draws (the
+/// surface's background, its light or dark environment) without waiting
+/// for the engine, so they take `cx` to redraw at once: call them through
+/// `view.update(cx, |view, cx| …)`.
+///
 /// ```no_run
 /// use gpui::{AppContext, Application, WindowOptions};
 /// use nsh_platform_gpui::{App, AppOptions, AppView, Bundle};
@@ -245,8 +253,14 @@ impl AppView {
         self.surface.start(config);
     }
 
-    /// Where `asset:/` URIs resolve from now on.
+    /// Where `asset:/` URIs resolve: at once for the images, videos and
+    /// web views the running app loads from now on, and for every app
+    /// loaded later. Fonts the running app already registered stay; a
+    /// running engine keeps reading the files it asks for itself (fonts)
+    /// from the base it was loaded with, until the next [`AppView::load`].
     pub fn set_asset_base(&self, base: Option<AssetBase>) {
+        crate::image::set_asset_base(&self.surface, base.clone());
+        self.surface.native.set_asset_base(base.clone());
         self.options.borrow_mut().asset_base = base;
     }
 
