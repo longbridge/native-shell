@@ -84,6 +84,23 @@ pub(crate) fn after_ms(ms: u64, f: impl FnOnce() + 'static) {
     .detach();
 }
 
+/// Runs `f` with the app on the main thread, soon: from inside an update
+/// (an event, a frame) as well, which cannot borrow the app again.
+pub(crate) fn with_app(f: impl FnOnce(&mut App) + 'static) {
+    let app = APP.with(|a| a.borrow().clone());
+    let Some(app) = app else {
+        log::warn!("nsh-platform-gpui: app call before init");
+        return;
+    };
+    app.spawn(async move |cx| {
+        cx.update(|cx| {
+            f(cx);
+            flush(cx);
+        });
+    })
+    .detach();
+}
+
 /// Notifies the views of every surface of this thread that changed since
 /// they were last drawn.
 pub(crate) fn flush(cx: &mut App) {

@@ -318,7 +318,10 @@ pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
     let (w, h) = (state.frame.width, state.frame.height);
     if clip {
         cx.push_clip_rounded(crate::geom::rect(0.0, 0.0, w, h), state.radii());
+        crate::text::draw_shadow(cx, &state);
     } else {
+        // Text shadows spread past the view, as CSS's do.
+        crate::text::draw_shadow(cx, &state);
         // The view's own content stays inside it, as a UIKit view's drawing
         // stays in its backing store.
         cx.push_clip_rect(0.0, 0.0, w, h);
