@@ -612,7 +612,17 @@ impl Prepared {
             EllipsizeMode::Tail => CTLineTruncationType::End,
             EllipsizeMode::Head => CTLineTruncationType::Start,
             EllipsizeMode::Middle => CTLineTruncationType::Middle,
-            EllipsizeMode::Clip => return None,
+            // The rest of the text on one line, cut where the box ends
+            // (not at the last word that fits).
+            EllipsizeMode::Clip => {
+                // SAFETY: the range lies within the string.
+                return Some(unsafe {
+                    self.typesetter().line(CFRange {
+                        location: start,
+                        length: self.length - start,
+                    })
+                });
+            }
         };
         // The token copies the attributes of the last character that is
         // not an attachment (a placeholder's would make it invisible).
@@ -748,7 +758,9 @@ impl TextEngine for CoreTextEngine {
             {
                 // SAFETY: a valid line.
                 let x = unsafe { truncated.pen_offset_for_flush(prepared.flush_factor(), width) };
-                last.origin.x = x;
+                // A clipped line wider than the box starts at its start edge
+                // and overflows the end (CSS), centered or not.
+                last.origin.x = x.max(0.0);
                 last.line = truncated;
             }
         }
