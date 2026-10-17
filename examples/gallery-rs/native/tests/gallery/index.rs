@@ -72,10 +72,29 @@ fn the_index_groups_the_demos() {
 #[test]
 fn navigation_pushes_its_screens() {
     let (engine, rx, mut screen) = crate::common::open("Navigation");
+    for label in [
+        "Native stack",
+        "Top",
+        "Bottom",
+        "Screens",
+        "ios.headerLargeTitle",
+        "Modals",
+        "See-through",
+        "Back button",
+        "Off: the back button pops this screen.",
+    ] {
+        assert!(
+            crate::common::shows(&screen, label),
+            "{label}: {:?}",
+            screen.texts
+        );
+    }
     for (label, title) in [
         ("Large title", "Large title"),
-        ("Custom header items and colors", "Custom"),
-        ("Unsaved changes (prevent_back)", "Unsaved changes"),
+        ("Custom header items", "Custom"),
+        ("Unsaved changes", "Unsaved changes"),
+        ("A deep stack", "Level 1"),
+        ("Deeper", "Level 2"),
     ] {
         crate::common::press(&engine, &rx, &mut screen, label);
         assert!(
@@ -84,4 +103,50 @@ fn navigation_pushes_its_screens() {
             screen.titles
         );
     }
+    assert!(
+        crate::common::shows(&screen, "2 deep in the stack"),
+        "{:?}",
+        screen.texts
+    );
+    crate::common::press(&engine, &rx, &mut screen, "To the index");
+    assert!(
+        !screen.titles.iter().any(|t| t.1 == "Navigation"),
+        "{:?}",
+        screen.titles
+    );
+}
+
+#[test]
+fn navigation_presents_its_modals() {
+    let (engine, rx, mut screen) = crate::common::open("Navigation");
+    crate::common::press(&engine, &rx, &mut screen, "Page sheet");
+    for label in [
+        "pageSheet",
+        "Close with the button, the back button (Android) or a swipe down (iOS sheets).",
+        "the modal's",
+    ] {
+        assert!(
+            crate::common::shows(&screen, label),
+            "{label}: {:?}",
+            screen.texts
+        );
+    }
+    crate::common::press(&engine, &rx, &mut screen, "Close");
+    assert!(
+        !crate::common::shows(&screen, "pageSheet"),
+        "{:?}",
+        screen.texts
+    );
+    crate::common::press(&engine, &rx, &mut screen, "Dialog");
+    assert!(
+        crate::common::shows(&screen, "A dialog"),
+        "{:?}",
+        screen.texts
+    );
+    crate::common::press(&engine, &rx, &mut screen, "OK");
+    assert!(
+        !crate::common::shows(&screen, "A dialog"),
+        "{:?}",
+        screen.texts
+    );
 }

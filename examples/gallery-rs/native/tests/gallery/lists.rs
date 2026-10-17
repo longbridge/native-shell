@@ -5,7 +5,7 @@
 
 use nsh_core::{EventKind, EventPayload, KeyboardDismissMode, MountItem, PayloadValue};
 
-use crate::common::{drain, press_text, shows};
+use crate::common::{drain, press, shows};
 
 #[test]
 fn lists_switch_tabs_and_change_their_rows() {
@@ -15,22 +15,30 @@ fn lists_switch_tabs_and_change_their_rows() {
         "Sections",
         "Chat",
         "More",
-        // The core reports the rows it shows.
-        "Visible 0–14",
-        "Item 60",
+        "Viewable items (at least half shown)",
+        "90 items, 3 columns",
+        "Jump to 60",
         "End",
         "0",
+        "84 pt",
         "1",
-        "— the end —",
+        "106 pt",
+        "End of the list",
     ] {
         assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
     }
+    // The core reports the rows it shows.
+    assert!(
+        screen.texts.iter().any(|t| t.1.starts_with("0–")),
+        "{:?}",
+        screen.texts
+    );
     // The header scrolls with the rows: it is in the grid's list.
     let grid = screen
-        .scroll_of(screen.find("0").unwrap())
+        .scroll_of(screen.find("84 pt").unwrap())
         .expect("the grid");
     assert_eq!(
-        screen.scroll_of(screen.find("Item 60").unwrap()),
+        screen.scroll_of(screen.find("Jump to 60").unwrap()),
         Some(grid)
     );
     engine.control().dispatch_event(
@@ -42,27 +50,43 @@ fn lists_switch_tabs_and_change_their_rows() {
         ]),
     );
     drain(&rx, &mut screen);
-    assert!(shows(&screen, "Visible 0–8"), "{:?}", screen.texts);
+    assert!(shows(&screen, "0–8  9 visible"), "{:?}", screen.texts);
 
-    press_text(&engine, &rx, &mut screen, "Sections");
-    for label in ["A", "Ada", "Alan", "B", "Barbara"] {
+    press(&engine, &rx, &mut screen, "Sections");
+    for label in [
+        "A",
+        "2",
+        "AL",
+        "Ada Lovelace",
+        "Analytical Engine notes",
+        "AK",
+        "B",
+        "Barbara Liskov",
+    ] {
         assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
     }
-    assert!(!shows(&screen, "Item 60"), "the grid is gone");
-    let contacts = screen.scroll_of(screen.find("Ada").unwrap()).unwrap();
+    assert!(!shows(&screen, "Jump to 60"), "the grid is gone");
+    let contacts = screen
+        .scroll_of(screen.find("Ada Lovelace").unwrap())
+        .unwrap();
     assert!(screen.sticky.contains(&contacts), "the letters stick");
 
     // The chat: type, then send.
-    press_text(&engine, &rx, &mut screen, "Chat");
-    assert!(shows(&screen, "Message 30"), "{:?}", screen.texts);
-    let send = screen.find("Send").expect("a send button");
-    let bar = screen.parents[&send];
-    let input = screen
-        .parents
+    press(&engine, &rx, &mut screen, "Chat");
+    for label in [
+        "Release room",
+        "30 messages, 0 older pages",
+        "Did the build go out?",
+        "09:00",
+    ] {
+        assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
+    }
+    let input = *screen
+        .events
         .iter()
-        .find(|&(&child, &parent)| parent == bar && child != send)
-        .map(|(&child, _)| child)
-        .expect("the message input");
+        .find(|(_, e)| e.contains(EventKind::SubmitEditing))
+        .expect("the message input")
+        .0;
     engine.control().dispatch_event(
         input,
         EventKind::ChangeText,
@@ -72,10 +96,23 @@ fn lists_switch_tabs_and_change_their_rows() {
         },
     );
     crate::common::drain(&rx, &mut screen);
-    press_text(&engine, &rx, &mut screen, "Send");
+    engine.control().dispatch_event(
+        input,
+        EventKind::SubmitEditing,
+        EventPayload::Text {
+            text: "Hello there".into(),
+            count: 1,
+        },
+    );
+    drain(&rx, &mut screen);
     assert!(shows(&screen, "Hello there"), "{:?}", screen.texts);
+    assert!(
+        shows(&screen, "31 messages, 0 older pages"),
+        "{:?}",
+        screen.texts
+    );
     let chat = screen
-        .scroll_of(screen.find("Message 30").unwrap())
+        .scroll_of(screen.find("Did the build go out?").unwrap())
         .unwrap();
     assert!(
         matches!(
@@ -96,40 +133,58 @@ fn lists_switch_tabs_and_change_their_rows() {
     engine.control().scroll(chat, 0.0, 0.0, u32::MAX);
     drain(&rx, &mut screen);
     assert!(
-        screen.texts.iter().any(|t| t.1.starts_with("Older")),
+        screen
+            .texts
+            .iter()
+            .any(|t| t.1.starts_with("Older message")),
+        "{:?}",
+        screen.texts
+    );
+    assert!(
+        shows(&screen, "51 messages, 1 older pages")
+            || shows(&screen, "71 messages, 2 older pages"),
         "{:?}",
         screen.texts
     );
 
     // The empty list: Add fills it, Clear empties it.
-    press_text(&engine, &rx, &mut screen, "More");
+    press(&engine, &rx, &mut screen, "More");
     for label in [
-        "Pull down to refresh (refreshed 0 times)",
+        "Pull to refresh",
+        "Pull the page down",
+        "refreshes",
+        "Horizontal scroll view",
+        "This week",
         "Today",
-        "A horizontal list of 1000 recycled cards",
-        "An empty list (0 items)",
+        "Horizontal list",
+        "1,000 recycled cards",
+        "Card 1",
+        "0 %",
+        "An empty list",
+        "0 items",
         "Nothing here yet: tap Add",
     ] {
         assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
     }
-    press_text(&engine, &rx, &mut screen, "Add");
-    press_text(&engine, &rx, &mut screen, "Add");
+    // A range chip selects itself: the note follows.
+    press(&engine, &rx, &mut screen, "Yesterday");
     assert!(
-        shows(&screen, "An empty list (2 items)"),
+        screen.texts.iter().filter(|t| t.1 == "Yesterday").count() == 2,
         "{:?}",
         screen.texts
     );
+    press(&engine, &rx, &mut screen, "Add");
+    press(&engine, &rx, &mut screen, "Add");
+    assert!(shows(&screen, "2 items"), "{:?}", screen.texts);
+    assert!(shows(&screen, "accent") && shows(&screen, "info"));
     assert!(shows(&screen, "Item 1") && shows(&screen, "Item 2"));
     assert!(!shows(&screen, "Nothing here yet: tap Add"));
     // A separator after the first row, in its cell.
-    let first = screen.parents[&screen.find("Item 1").unwrap()];
+    let row = screen.parents[&screen.find("Item 1").unwrap()];
+    let first = screen.parents[&row];
     let in_first = screen.parents.values().filter(|&&p| p == first).count();
     assert_eq!(in_first, 2, "the row and a separator");
-    press_text(&engine, &rx, &mut screen, "Clear");
-    assert!(
-        shows(&screen, "An empty list (0 items)"),
-        "{:?}",
-        screen.texts
-    );
+    press(&engine, &rx, &mut screen, "Clear");
+    assert!(shows(&screen, "0 items"), "{:?}", screen.texts);
     assert!(shows(&screen, "Nothing here yet: tap Add"));
 }
