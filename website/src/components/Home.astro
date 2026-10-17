@@ -18,11 +18,11 @@ const copy = zh
   ? {
       eyebrow: '为 AI 生成界面而设计',
       title: ['AI 生成的界面，', '原生地运行在你的应用里'],
-      lead: 'Native Shell 嵌入 iOS 和 Android 应用，在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的 UIKit 与 Android 视图渲染。无需发版。',
+      lead: 'Native Shell 支持 iOS、Android 和 Linux 应用在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的平台原生视图渲染。macOS 支持正在推进，Windows 也在开发中。',
       start: '阅读简介',
       try: '在线试用',
       meta: [
-        ['phone', 'iOS · Android；桌面端（GPUI）开发中'],
+        ['phone', 'iOS · Android · Linux 已支持；macOS 与 Windows 开发中'],
         ['scale', '开源 · Apache-2.0'],
         ['building', '由长桥（Longbridge）构建'],
       ],
@@ -45,7 +45,7 @@ const copy = zh
       howTitle: '在服务器上生成，在设备上被信任',
       howLead: '服务器负责生成、检查和签名；设备负责校验、隔离和渲染。信任边界清清楚楚。',
       platKicker: '平台',
-      platTitle: '先手机，再桌面',
+      platTitle: '从手机扩展到桌面',
       principleKicker: '原则',
       principle: ['模型负责编写界面，', '宿主决定它能做什么'],
       principleBody: '模块只能看到宿主授予的能力，只占用宿主允许的资源，只在签名校验通过后运行。剩下的——文本、输入、无障碍、动画——交给系统的原生视图。',
@@ -54,11 +54,11 @@ const copy = zh
   : {
       eyebrow: 'Built for AI-generated UI',
       title: ['AI-generated UI,', 'native in your app.'],
-      lead: 'Native Shell embeds in iOS and Android apps and loads modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with real UIKit and Android views. No app release.',
+      lead: 'Native Shell lets iOS, Android and Linux apps load modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with real native views. macOS support is underway, with Windows also in development.',
       start: 'Read the introduction',
       try: 'Try the playground',
       meta: [
-        ['phone', 'iOS · Android; desktop (GPUI) in development'],
+        ['phone', 'iOS · Android · Linux supported; macOS and Windows in development'],
         ['scale', 'Open source · Apache-2.0'],
         ['building', 'Built at Longbridge'],
       ],
@@ -81,7 +81,7 @@ const copy = zh
       howTitle: 'Generated on the server, trusted on the device.',
       howLead: 'The server generates, checks and signs; the device verifies, confines and renders. The trust boundary stays explicit.',
       platKicker: 'Platforms',
-      platTitle: 'Phones first, then desktop.',
+      platTitle: 'From phones to desktop.',
       principleKicker: 'Principle',
       principle: ['Models write the interface.', 'The host decides what it may do.'],
       principleBody: 'A module sees only the capabilities the host grants, uses only the resources it allows, and runs only after its signature checks out. Everything else — text, input, accessibility, animation — belongs to the system’s native views.',
@@ -110,25 +110,29 @@ const uses = zh
   ? [
       { tag: '设计初衷', label: 'AI 生成的界面', title: '用界面而不是文字回答', body: '模型为每次请求写一个模块，服务器检查并签名，应用在沙箱里原生地显示它。', code: 'ai', checks: ['每个回答一个 TSX 文件', '下发前完成类型检查与 trace', '只拥有宿主授予的能力'], cta: '为什么做 nsh', href: 'docs' },
       { tag: '', label: '原生应用插件', title: '发布之后再扩展应用', body: '在任意页面嵌入 NshAppView 或 NshView，承载团队、合作方或用户之后编写的功能。', code: 'host', checks: ['一个页面可以放多个模块', '宿主注册自己的原生组件', '更新无需发版与审核'], cta: '在 iOS 应用中嵌入', href: 'docs/embedding-ios' },
-      { tag: '', label: '独立应用', title: '也能组成完整的应用', body: '同样的模块可以用 nsh package 打成可安装的 iOS 或 Android 应用，适合试用和小工具。', code: 'app', checks: ['使用预编译的运行时', '不需要 Xcode 工程或 Gradle', '保存即热更新开发'], cta: '打包', href: 'docs/packaging' },
+      { tag: '', label: '独立应用', title: '也能组成完整的应用', body: '同样的模块可以用 nsh package 打成可安装的 iOS、Android 或 Linux 应用，适合试用和小工具。', code: 'app', checks: ['使用预编译的运行时', '不需要 Xcode 工程或 Gradle', '保存即热更新开发'], cta: '打包', href: 'docs/packaging' },
     ]
   : [
       { tag: 'Designed for', label: 'AI-generated UI', title: 'Answer with an interface', body: 'A model writes a module per request, your server checks and signs it, and the app shows it natively, in a sandbox.', code: 'ai', checks: ['One TSX file per answer', 'Type-checked and traced before it ships', 'Only the capabilities the host grants'], cta: 'Why nsh exists', href: 'docs' },
       { tag: '', label: 'Plugins for native apps', title: 'Extend the app after release', body: 'Embed an NshAppView or NshView on any screen and host features your team, partners or users write later.', code: 'host', checks: ['Several modules on one screen', 'The host’s own native components', 'Updates without a release or review'], cta: 'Embedding in iOS apps', href: 'docs/embedding-ios' },
-      { tag: '', label: 'Standalone apps', title: 'Or a whole app', body: 'The same modules can become an installable iOS or Android app with nsh package — for trying nsh and for small tools.', code: 'app', checks: ['The prebuilt runtime', 'No Xcode project or Gradle build', 'Hot reload while you develop'], cta: 'Packaging', href: 'docs/packaging' },
+      { tag: '', label: 'Standalone apps', title: 'Or a whole app', body: 'The same modules can become an installable iOS, Android or Linux app with nsh package — for trying nsh and for small tools.', code: 'app', checks: ['The prebuilt runtime', 'No Xcode project or Gradle build', 'Hot reload while you develop'], cta: 'Packaging', href: 'docs/packaging' },
     ];
 
 const platforms = zh
   ? [
       { name: 'iOS', detail: 'UIKit · iOS 15+', status: '已支持', kind: 'ok' },
       { name: 'Android', detail: 'Android View · API 28+', status: '已支持', kind: 'ok' },
-      { name: '桌面', detail: 'GPUI 后端', status: '开发中', kind: 'wip' },
+      { name: 'Linux', detail: 'GTK 4', status: '已支持', kind: 'ok' },
+      { name: 'macOS', detail: '桌面支持', status: '开发中', kind: 'wip' },
+      { name: 'Windows', detail: '桌面支持', status: '开发中', kind: 'wip' },
       { name: 'Web', detail: 'WebAssembly → DOM', status: '仅用于演示', kind: 'demo' },
     ]
   : [
       { name: 'iOS', detail: 'UIKit · iOS 15+', status: 'Supported', kind: 'ok' },
       { name: 'Android', detail: 'Android View · API 28+', status: 'Supported', kind: 'ok' },
-      { name: 'Desktop', detail: 'GPUI backend', status: 'In development', kind: 'wip' },
+      { name: 'Linux', detail: 'GTK 4', status: 'Supported', kind: 'ok' },
+      { name: 'macOS', detail: 'Desktop support', status: 'In development', kind: 'wip' },
+      { name: 'Windows', detail: 'Desktop support', status: 'In development', kind: 'wip' },
       { name: 'Web', detail: 'WebAssembly → DOM', status: 'Demos only', kind: 'demo' },
     ];
 
@@ -535,7 +539,7 @@ const icon = (name: string, size = 16) =>
   /* Platforms */
   .platforms-band { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); gap: 3rem; align-items: start; }
   .section-head--side { margin-bottom: 0; }
-  .platforms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden; background: var(--finish-card-bg); box-shadow: var(--finish-card); }
+  .platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden; background: var(--finish-card-bg); box-shadow: var(--finish-card); }
   .platform { display: grid; gap: 0.35rem; padding: 1.25rem 1.25rem 1.4rem; border-right: 1px solid var(--line); }
   .platform:last-child { border-right: 0; }
   .platform__name { font-size: 1.05rem; font-weight: 650; }
