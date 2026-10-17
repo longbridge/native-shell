@@ -1289,7 +1289,7 @@ impl<'a> Replay<'a> {
         if text.is_empty() || self.state.singular {
             return;
         }
-        let font = canvas_font(&self.state.font);
+        let font = canvas_font(self.text, &self.state.font);
         let size = self.state.font.size.max(0.1);
         let system: &gpui::TextSystem = self.text;
         let id = system.resolve_font(&font);
@@ -1514,11 +1514,11 @@ fn fill_rule(rule: FillRule) -> sk::FillRule {
 
 /// The GPUI font of a canvas font, as the text engine resolves it (so
 /// widths match `measureText`), with its OpenType features.
-fn canvas_font(font: &CanvasFont) -> Font {
+fn canvas_font(system: &gpui::TextSystem, font: &CanvasFont) -> Font {
     let style = font.text_style();
     let family = match &style.font_family {
         Some(f) => SharedString::from(f.name().to_string()),
-        None => SharedString::from(crate::text::ui_family().to_string()),
+        None => crate::text::ui_family_for(system),
     };
     let features: Vec<(String, u32)> = font.variant.tags().map(|t| (t.to_string(), 1)).collect();
     Font {

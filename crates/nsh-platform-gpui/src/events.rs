@@ -8,22 +8,51 @@
 //! focus handle is in the focus path. Positions become root coordinates
 //! (the surface's origin in the window subtracted); times are seconds of
 //! the surface's clock. Each handler ends with [`crate::rt::flush`].
+//!
+//! GPUI takes the cursor from the frame (`set_cursor_style` while
+//! painting): a move onto a view with another cursor draws the surface
+//! again. Touchpad scrolls carry GPUI's phases into [`crate::input::touchpad`]
+//! and touchpad pinches go to [`crate::input::touchpad_pinch`].
 
 use std::rc::Rc;
 
 use gpui::{
     App, Bounds, CursorStyle, DispatchPhase, FocusHandle, Hitbox, KeyDownEvent, KeyUpEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, ScrollDelta,
-    ScrollWheelEvent, Window, px,
+    MouseButton, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MouseUpEvent, PinchEvent, Pixels,
+    ScrollDelta, ScrollWheelEvent, TouchPhase, Window,
 };
 
 use crate::{
-    input::{Cursor, KeyEvent, PointerEvent, PointerKind, WheelEvent},
+    input::{Cursor, GesturePhase, KeyEvent, PointerEvent, PointerKind, WheelEvent},
     surface::Surface,
 };
 
-/// How many points a wheel line scrolls.
-const LINE: f32 = 40.0;
+/// How many points a wheel line scrolls. GPUI counts a notch as three
+/// lines on Linux and Windows (the systems' default), which then scrolls
+/// 48 points as the Windows backend does; macOS reports lines of its own
+/// (about one per notch, accelerated), counted as the macOS backend does.
+#[cfg(target_os = "macos")]
+const LINE: f32 = 10.0;
+#[cfg(not(target_os = "macos"))]
+const LINE: f32 = 16.0;
+
+fn gesture_phase(phase: TouchPhase) -> GesturePhase {
+    match phase {
+        TouchPhase::Started => GesturePhase::Began,
+        TouchPhase::Moved => GesturePhase::Moved,
+        TouchPhase::Ended => GesturePhase::Ended,
+        TouchPhase::Cancelled => GesturePhase::Cancelled,
+    }
+}
+
+/// Points the surface's hitbox: the cursor over `(x, y)` (root
+/// coordinates) for the next frame, which is drawn when it changed.
+fn update_cursor(surface: &Rc<Surface>, x: f32, y: f32) {
+    let c = crate::input::cursor(surface, x, y);
+    if surface.input.cursor.replace(c) != c {
+        surface.invalidate();
+    }
+}
 
 fn button(b: MouseButton) -> Option<u8> {
     Some(match b {
@@ -33,6 +62,27 @@ fn button(b: MouseButton) -> Option<u8> {
         MouseButton::Navigate(gpui::NavigationDirection::Back) => 3,
         MouseButton::Navigate(gpui::NavigationDirection::Forward) => 4,
     })
+}
+
+/// Ends the press of the primary button whose release never came (the
+/// window lost it to another one, a system gesture took it).
+fn cancel_press(surface: &Rc<Surface>, modifiers: &gpui::Modifiers) {
+    surface.input_pressed.set(surface.input_pressed.get() & !1);
+    crate::input::pointer(
+        surface,
+        PointerEvent {
+            kind: PointerKind::Cancel,
+            x: 0.0,
+            y: 0.0,
+            button: 0,
+            pointer: 1,
+            touch: false,
+            pen: false,
+            time: surface.clock(),
+            modifiers: crate::keys::modifiers(modifiers),
+            clicks: 0,
+        },
+    );
 }
 
 fn root_point(surface: &Surface, position: gpui::Point<Pixels>) -> (f32, f32) {
@@ -80,6 +130,7 @@ pub(crate) fn install(
     if hitbox.is_hovered(window) {
         let (x, y) = root_point(surface, window.mouse_position());
         let c = crate::input::cursor(surface, x, y);
+        surface.input.cursor.set(c);
         window.set_cursor_style(cursor_style(c), hitbox);
     }
 
@@ -87,7 +138,10 @@ pub(crate) fn install(
     let h = hitbox.clone();
     let f = focus.clone();
     window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble || !h.is_hovered(window) {
+        // Hit tested at the event's own position against the frame on
+        // screen: a press is the surface's whatever the window last saw
+        // (no move since it opened, keyboard input since).
+        if phase != DispatchPhase::Bubble || !h.is_hovered_at(e.position, window) {
             return;
         }
         let Some(button) = button(e.button) else {
@@ -97,6 +151,9 @@ pub(crate) fn install(
             window.focus(&f, cx);
         }
         let (x, y) = root_point(&s, e.position);
+        if button == 0 && s.input_pressed.get() & 1 != 0 {
+            cancel_press(&s, &e.modifiers);
+        }
         if button == 0 && crate::input::window_drag(&s, x, y) {
             window.start_window_move();
             return;
@@ -159,7 +216,10 @@ pub(crate) fn install(
         if phase != DispatchPhase::Bubble {
             return;
         }
-        let hovered = h.is_hovered(window);
+        let hovered = h.is_hovered_at(e.position, window);
+        if s.input_pressed.get() & 1 != 0 && e.pressed_button.is_none() {
+            cancel_press(&s, &e.modifiers);
+        }
         let pressed = s.input_pressed.get() != 0;
         let (x, y) = root_point(&s, e.position);
         let kind = if hovered || pressed {
@@ -170,10 +230,42 @@ pub(crate) fn install(
         } else {
             return;
         };
+        if hovered {
+            update_cursor(&s, x, y);
+        }
         crate::input::pointer(
             &s,
             PointerEvent {
                 kind,
+                x,
+                y,
+                button: 0,
+                pointer: 1,
+                touch: false,
+                pen: false,
+                time: s.clock(),
+                modifiers: crate::keys::modifiers(&e.modifiers),
+                clicks: 0,
+            },
+        );
+        crate::rt::flush(cx);
+    });
+
+    // The mouse left the window (moves outside it while a button is down
+    // still come as moves).
+    let s = surface.clone();
+    window.on_mouse_event(move |e: &MouseExitEvent, phase, _window, cx| {
+        if phase != DispatchPhase::Bubble
+            || s.input_pressed.get() != 0
+            || !s.input_hovered.replace(false)
+        {
+            return;
+        }
+        let (x, y) = root_point(&s, e.position);
+        crate::input::pointer(
+            &s,
+            PointerEvent {
+                kind: PointerKind::Leave,
                 x,
                 y,
                 button: 0,
@@ -201,18 +293,37 @@ pub(crate) fn install(
             ScrollDelta::Pixels(p) => (-f32::from(p.x), -f32::from(p.y), true),
             ScrollDelta::Lines(l) => (-l.x * LINE, -l.y * LINE, false),
         };
-        crate::input::wheel(
-            &s,
-            WheelEvent {
-                x,
-                y,
-                dx,
-                dy,
-                precise,
-                modifiers: crate::keys::modifiers(&e.modifiers),
-                time: s.clock(),
-            },
-        );
+        let event = WheelEvent {
+            x,
+            y,
+            dx,
+            dy,
+            precise,
+            modifiers: crate::keys::modifiers(&e.modifiers),
+            time: s.clock(),
+        };
+        if precise {
+            crate::input::touchpad(&s, event, gesture_phase(e.touch_phase));
+        } else {
+            crate::input::wheel(&s, event);
+        }
+        cx.stop_propagation();
+        crate::rt::flush(cx);
+    });
+
+    let s = surface.clone();
+    let h = hitbox.clone();
+    window.on_mouse_event(move |e: &PinchEvent, phase, window, cx| {
+        if phase != DispatchPhase::Bubble {
+            return;
+        }
+        // A pinch begins over the surface and is its own until it ends.
+        let ours = s.input.pinching();
+        if !ours && (e.phase != TouchPhase::Started || !h.is_hovered_at(e.position, window)) {
+            return;
+        }
+        let (x, y) = root_point(&s, e.position);
+        crate::input::touchpad_pinch(&s, x, y, e.delta, gesture_phase(e.phase));
         cx.stop_propagation();
         crate::rt::flush(cx);
     });
@@ -260,5 +371,4 @@ pub(crate) fn install(
         );
         crate::rt::flush(cx);
     });
-    let _ = px(0.0);
 }

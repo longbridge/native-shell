@@ -24,7 +24,7 @@
   default); the view takes keyboard focus only while it has a selection, for Ctrl+C (and Ctrl+Insert), Ctrl+A and
   Escape, and a press anywhere else or losing focus ends it; a finished drag also sets the primary selection.
   Touchscreen drags scroll instead; there is no context menu. GPUI (`nsh-platform-gpui` `text.rs`): the same selection
-  (Cmd instead of Ctrl on macOS), plus a right-click menu (Copy, Select All) the backend draws itself. Its engine
+  (Cmd instead of Ctrl on macOS), plus a right-click menu (Copy, Select All: `chrome::popup_actions`). Its engine
   shapes each paragraph once with GPUI's text system, in segments of one bidi level and font size, and does the rest
   itself: lines break at UAX #14 opportunities (`unicode-linebreak`), measuring at another width only re-breaks, and
   each line's clusters are ordered by their bidi levels (`unicode-bidi`); a blurred text shadow is the glyphs painted
