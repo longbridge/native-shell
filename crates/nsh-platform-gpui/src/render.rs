@@ -735,6 +735,7 @@ impl Element for SurfaceElement {
             window.paint_quad(gpui::fill(bounds, hsla(background)));
         }
         let drawn = {
+            crate::canvas::begin_pass(surface.key());
             let mut dcx = DrawCx::new(window, cx, bounds, dark);
             let origin = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
             draw_view(&mut dcx, &surface.root, Mat4::new(), origin);

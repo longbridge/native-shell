@@ -9,9 +9,22 @@
 //! views' scales and rotations), which stays sharp at any scale: the
 //! pixmap is made again when that transform's linear part changes, and
 //! moves along with translations (scrolling) without being made again. It
-//! is uploaded once as a GPUI image (again when the view's opacity
-//! changes, which is multiplied into it); [`draw`] only paints it. A canvas
-//! too large for one pixmap is rasterized around the part that shows.
+//! is uploaded once as GPUI images of [`TILE`]-pixel tiles (again when the
+//! view's opacity changes, which is multiplied into it); [`draw`] only
+//! paints them. A canvas too large for one pixmap is rasterized around the
+//! part that shows.
+//!
+//! Rasterizing never holds up a frame once a canvas has shown: a new
+//! drawing (or a native value change no area bounds) is rasterized and
+//! uploaded on a worker ([`spawn`]) while the last one keeps showing, and
+//! takes its place when done (a frame or two later; a live chart redrawn
+//! twenty times a second rasterized ~13 million pixels a second on the
+//! main thread, 15 ms of every frame of the Stocks demo at 1180 × 740
+//! points). An animation of native values rasterizes again only the area
+//! the operations reading them paint ([`DamageScan`], the union of before
+//! and after; [`patch`]), on the main thread, and uploads only the tiles it
+//! touches. Only the first rasterization at a transform (a canvas appearing,
+//! zooming) is made in place.
 //!
 //! The replay keeps canvas' model itself, as the Windows backend does: the
 //! current path is kept in pixmap coordinates as it is built (later
@@ -57,8 +70,8 @@ use nsh_core::{
     Color,
     canvas::{
         CanvasFont, CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite,
-        Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp, arc_sweep,
-        fit_radii,
+        Damage, DamageScan, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint,
+        PathOp, arc_sweep, fit_radii,
     },
 };
 use rustc_hash::FxHashMap;
@@ -78,6 +91,9 @@ const MAX_AREA: i64 = 8 << 20;
 /// How far past what shows a partly rasterized canvas goes, in device
 /// pixels (so scrolling it makes the pixmap again only now and then).
 const MARGIN: i32 = 256;
+/// The side of the tiles a pixmap is uploaded in, in device pixels: a
+/// partial redraw uploads only the tiles it touched.
+const TILE: i32 = 256;
 /// Entries of a gradient's color table.
 const GRADIENT_STEPS: usize = 1024;
 
@@ -90,16 +106,36 @@ pub(crate) struct CanvasState {
     args: Vec<Option<AnimationValue>>,
     /// The images the drawing names, by URI (premultiplied pixels): `None`
     /// while loading (or when they failed to load).
-    images: FxHashMap<Arc<str>, Option<Rc<sk::Pixmap>>>,
+    images: FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
     /// What was rasterized (made while drawing, which only sees the
     /// state).
     cache: RefCell<Option<Recorded>>,
+    /// What native value changes moved since it was rasterized (view
+    /// coordinates): only that is rasterized again.
+    damage: std::cell::Cell<Option<Damage>>,
+    /// Scratch space of the damage scans.
+    scan: DamageScan,
+    /// Counts the changes that need the whole drawing rasterized again
+    /// (a new drawing, an image loaded, a value no area bounds).
+    version: u64,
+    /// The version a worker rasterizes now.
+    inflight: std::cell::Cell<Option<u64>>,
 }
 
 impl CanvasState {
-    /// Rasterizes again on the next draw.
+    /// Rasterizes the whole drawing again: on a worker while what was
+    /// rasterized before shows, so the main thread never waits for it.
     fn stale(&mut self) {
-        *self.cache.get_mut() = None;
+        self.version += 1;
+        self.damage.set(None);
+    }
+
+    /// The value of native value slot `k`, as damage scans read it.
+    fn slot(args: &[Option<AnimationValue>], k: u16) -> f32 {
+        args.get(k as usize)
+            .copied()
+            .flatten()
+            .map_or(0.0, AnimationValue::number)
     }
 }
 
@@ -114,6 +150,10 @@ struct Recorded {
     frac: (f32, f32),
     /// Pixmaps and text, bottom to top.
     layers: Vec<Layer>,
+    /// The canvas' version it was made at ([`CanvasState::version`]).
+    version: u64,
+    /// The native values it was made with.
+    args: Vec<Option<AnimationValue>>,
 }
 
 /// What a [`Recorded`] was made for: the linear part of the view's
@@ -128,11 +168,41 @@ struct Key {
 
 /// A part of a rasterized drawing.
 enum Layer {
-    /// Pixels, and the opacity and image they were uploaded at (`None`
-    /// inside: nothing drawn).
-    Pixels(sk::Pixmap, Option<(f32, Option<Uploaded>)>),
+    /// Pixels, and the tiles they are uploaded in (made when first
+    /// drawn).
+    Pixels(sk::Pixmap, Vec<Tile>),
     /// Glyphs above the pixels below.
     Text(Vec<GlyphRun>),
+}
+
+/// A part of a pixmap uploaded as one image.
+struct Tile {
+    /// Its pixels in the pixmap.
+    rect: IRect,
+    /// The opacity and image it was uploaded at (`None` inside: nothing
+    /// drawn there); `None` until uploaded, or after its pixels changed.
+    uploaded: Option<(f32, Option<Uploaded>)>,
+}
+
+/// The tiles covering a pixmap `width` × `height` pixels.
+fn tiles(width: u32, height: u32) -> Vec<Tile> {
+    let (w, h) = (width as i32, height as i32);
+    let mut tiles = Vec::new();
+    for y0 in (0..h).step_by(TILE as usize) {
+        for x0 in (0..w).step_by(TILE as usize) {
+            let rect = IRect {
+                x0,
+                y0,
+                x1: (x0 + TILE).min(w),
+                y1: (y0 + TILE).min(h),
+            };
+            tiles.push(Tile {
+                rect,
+                uploaded: None,
+            });
+        }
+    }
+    tiles
 }
 
 /// An image in GPUI's sprite atlas, taken out of it once dropped.
@@ -199,7 +269,7 @@ pub(crate) fn set(surface: &Rc<Surface>, view: &NshView, drawing: Arc<Drawing>) 
                 let Some(slot) = c.images.get_mut(&key) else {
                     return;
                 };
-                *slot = Some(Rc::new(pixmap));
+                *slot = Some(Arc::new(pixmap));
                 c.stale();
             }
             view.changed();
@@ -222,8 +292,38 @@ pub(crate) fn set_arg(view: &NshView, k: u16, value: AnimationValue) {
         if c.args[k] == Some(value) {
             return;
         }
-        c.args[k] = Some(value);
-        c.stale();
+        // What the operations reading the slot paint, before and after:
+        // only that is rasterized again.
+        let slot = k as u16;
+        let damage = match c.drawing.clone() {
+            Some(drawing) => {
+                let changed = |s: u16| s == slot;
+                let before =
+                    c.scan
+                        .damage(&drawing.ops, |s| CanvasState::slot(&c.args, s), changed);
+                c.args[k] = Some(value);
+                match before {
+                    Damage::All => Damage::All,
+                    _ => before.union(c.scan.damage(
+                        &drawing.ops,
+                        |s| CanvasState::slot(&c.args, s),
+                        changed,
+                    )),
+                }
+            }
+            None => {
+                c.args[k] = Some(value);
+                Damage::All
+            }
+        };
+        match damage {
+            Damage::None => return,
+            Damage::All => c.stale(),
+            Damage::Rect(_) => {
+                let pending = c.damage.get().map_or(damage, |d| d.union(damage));
+                c.damage.set(Some(pending));
+            }
+        }
     }
     view.changed();
 }
@@ -299,9 +399,37 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
         return;
     };
     let mut cache = canvas.cache.borrow_mut();
-    let fresh = cache
+    let mut fresh = cache
         .as_ref()
         .is_some_and(|r| r.key == key && r.region.contains(&shown));
+    let damage = canvas.damage.take();
+    let outdated = cache.as_ref().is_some_and(|r| r.version != canvas.version);
+    if fresh && outdated {
+        // A new drawing: a worker rasterizes it while the last one shows
+        // (a frame or two); damage is worked out again when it is done.
+        if canvas.inflight.get() != Some(canvas.version) {
+            canvas.inflight.set(Some(canvas.version));
+            spawn(Job {
+                surface: SURFACE.get(),
+                id: state.id,
+                drawing: drawing.clone(),
+                args: canvas.args.clone(),
+                images: canvas.images.clone(),
+                text: cx.window.text_system().clone(),
+                key,
+                region,
+                frac,
+                version: canvas.version,
+                opacity: cx.opacity,
+            });
+        }
+    } else if fresh
+        && let Some(Damage::Rect(r)) = damage
+        && let Some(recorded) = cache.as_mut()
+    {
+        let text = cx.window.text_system().clone();
+        fresh = patch(recorded, drawing, &canvas.args, &canvas.images, &text, r);
+    }
     if !fresh {
         let text = cx.window.text_system().clone();
         let started = std::time::Instant::now();
@@ -321,7 +449,10 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
             region.height(),
             started.elapsed().as_secs_f64() * 1000.0
         );
-        *cache = Some(recorded);
+        *cache = Some(Recorded {
+            version: canvas.version,
+            ..recorded
+        });
     }
     let Some(recorded) = cache.as_mut() else {
         return;
@@ -333,31 +464,173 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
     let opacity = cx.opacity;
     for layer in &mut recorded.layers {
         match layer {
-            Layer::Pixels(pixmap, uploaded) => {
-                if uploaded.as_ref().is_none_or(|(o, _)| *o != opacity) {
-                    *uploaded = Some((opacity, upload(pixmap, opacity).map(Uploaded)));
+            Layer::Pixels(pixmap, tiled) => {
+                if tiled.is_empty() {
+                    *tiled = tiles(pixmap.width(), pixmap.height());
                 }
-                let Some((_, Some(image))) = uploaded else {
-                    continue;
-                };
-                let rect = bounds(
-                    left / s,
-                    top / s,
-                    pixmap.width() as f32 / s,
-                    pixmap.height() as f32 / s,
-                );
-                let image = image.0.clone();
-                cx.paint(|window, _| {
-                    let painted =
-                        window.paint_image(rect, rect, Default::default(), image, 0, false);
-                    if let Err(e) = painted {
-                        log::debug!("canvas: not painted: {e}");
+                for tile in tiled.iter_mut() {
+                    if tile.uploaded.as_ref().is_none_or(|(o, _)| *o != opacity) {
+                        let image = upload(pixmap, tile.rect, opacity).map(Uploaded);
+                        tile.uploaded = Some((opacity, image));
                     }
-                });
+                    let Some((_, Some(image))) = &tile.uploaded else {
+                        continue;
+                    };
+                    let r = tile.rect;
+                    let rect = bounds(
+                        (left + r.x0 as f32) / s,
+                        (top + r.y0 as f32) / s,
+                        r.width() as f32 / s,
+                        r.height() as f32 / s,
+                    );
+                    let image = image.0.clone();
+                    cx.paint(|window, _| {
+                        let painted =
+                            window.paint_image(rect, rect, Default::default(), image, 0, false);
+                        if let Err(e) = painted {
+                            log::debug!("canvas: not painted: {e}");
+                        }
+                    });
+                }
             }
             Layer::Text(runs) => paint_text(cx, runs, (left, top)),
         }
     }
+}
+
+thread_local! {
+    /// The surface being drawn ([`begin_pass`]): workers' results find
+    /// their canvas by it.
+    static SURFACE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// A drawing pass of the surface with `key` begins.
+pub(crate) fn begin_pass(key: u64) {
+    SURFACE.set(key);
+}
+
+/// Workers rasterizing canvases.
+const WORKERS: usize = 2;
+
+/// A canvas to rasterize on a worker.
+struct Job {
+    surface: u64,
+    id: nsh_core::NodeId,
+    drawing: Arc<Drawing>,
+    args: Vec<Option<AnimationValue>>,
+    images: FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
+    text: Arc<WindowTextSystem>,
+    key: Key,
+    region: IRect,
+    frac: (f32, f32),
+    version: u64,
+    /// Uploaded at this opacity (again on the main thread if it changed).
+    opacity: f32,
+}
+
+/// Queues `job` on the canvas workers (started on first use).
+fn spawn(job: Job) {
+    static POOL: std::sync::OnceLock<crossbeam_channel::Sender<Job>> = std::sync::OnceLock::new();
+    let tx = POOL.get_or_init(|| {
+        let (tx, rx) = crossbeam_channel::unbounded::<Job>();
+        for i in 0..WORKERS {
+            let rx = rx.clone();
+            let spawned = std::thread::Builder::new()
+                .name(format!("nsh-canvas-{i}"))
+                .spawn(move || {
+                    for job in rx {
+                        rasterize(job);
+                    }
+                });
+            if let Err(e) = spawned {
+                log::error!("cannot start a canvas thread: {e}");
+            }
+        }
+        tx
+    });
+    let _ = tx.send(job);
+}
+
+/// Rasterizes and uploads `job` (a worker), handing it to its canvas.
+fn rasterize(job: Job) {
+    let started = std::time::Instant::now();
+    let mut recorded = record(
+        &job.drawing,
+        &job.args,
+        &job.images,
+        &job.text,
+        job.key,
+        job.region,
+        job.frac,
+    );
+    recorded.version = job.version;
+    for layer in &mut recorded.layers {
+        if let Layer::Pixels(pixmap, tiled) = layer {
+            *tiled = tiles(pixmap.width(), pixmap.height());
+            for tile in tiled.iter_mut() {
+                let image = upload(pixmap, tile.rect, job.opacity).map(Uploaded);
+                tile.uploaded = Some((job.opacity, image));
+            }
+        }
+    }
+    log::debug!(
+        target: "nsh::perf",
+        "canvas: {}×{} px rasterized on a worker in {:.2} ms",
+        job.region.width(),
+        job.region.height(),
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    let (surface, id) = (job.surface, job.id);
+    crate::rt::invoke(move || deliver(surface, id, recorded));
+}
+
+/// A worker's rasterization of canvas `id` is done (main thread).
+fn deliver(surface: u64, id: nsh_core::NodeId, recorded: Recorded) {
+    let Some(view) = Surface::by_key(surface).and_then(|s| s.view(id)) else {
+        return;
+    };
+    {
+        let mut state = view.state_mut();
+        let Some(c) = state.canvas.as_mut() else {
+            return;
+        };
+        if c.inflight.get() == Some(recorded.version) {
+            c.inflight.set(None);
+        }
+        let newer = c
+            .cache
+            .get_mut()
+            .as_ref()
+            .is_none_or(|r| r.version < recorded.version);
+        if !newer {
+            return;
+        }
+        // Values that moved while it was made: their areas are made again.
+        if recorded.version == c.version
+            && let Some(drawing) = c.drawing.clone()
+        {
+            let len = c.args.len().max(recorded.args.len());
+            let get = |a: &[Option<AnimationValue>], k: u16| a.get(k as usize).copied().flatten();
+            let changed = |k: u16| get(&c.args, k) != get(&recorded.args, k);
+            if (0..len as u16).any(changed) {
+                let before = c.scan.damage(
+                    &drawing.ops,
+                    |k| CanvasState::slot(&recorded.args, k),
+                    changed,
+                );
+                let after = c
+                    .scan
+                    .damage(&drawing.ops, |k| CanvasState::slot(&c.args, k), changed);
+                match before.union(after) {
+                    Damage::All => c.version += 1,
+                    Damage::None => {}
+                    d => c.damage.set(Some(d)),
+                }
+            }
+        }
+        *c.cache.get_mut() = Some(recorded);
+    }
+    view.changed();
 }
 
 /// The rectangle to rasterize for `key` (device pixels from the pixel the
@@ -406,12 +679,16 @@ fn region(key: &Key, frac: (f32, f32), clip: [f32; 4]) -> Option<(IRect, IRect)>
     Some((around, shown))
 }
 
-/// `pixmap` as a GPUI image (straight BGRA) at `opacity`; `None` when it
-/// is transparent.
-fn upload(pixmap: &sk::Pixmap, opacity: f32) -> Option<Arc<RenderImage>> {
-    let mut buf = Vec::with_capacity(pixmap.data().len());
+/// The pixels `rect` of `pixmap` as a GPUI image (straight BGRA) at
+/// `opacity`; `None` when they are transparent.
+fn upload(pixmap: &sk::Pixmap, rect: IRect, opacity: f32) -> Option<Arc<RenderImage>> {
+    let width = pixmap.width() as usize;
+    let pixels = pixmap.pixels();
+    let mut buf = Vec::with_capacity(rect.width() as usize * rect.height() as usize * 4);
     let mut any = false;
-    for p in pixmap.pixels() {
+    let rows = (rect.y0 as usize..rect.y1 as usize)
+        .flat_map(|y| &pixels[y * width + rect.x0 as usize..y * width + rect.x1 as usize]);
+    for p in rows {
         let a = p.alpha();
         if a == 0 {
             buf.extend_from_slice(&[0; 4]);
@@ -425,7 +702,7 @@ fn upload(pixmap: &sk::Pixmap, opacity: f32) -> Option<Arc<RenderImage>> {
     if !any {
         return None;
     }
-    let image = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), buf)?;
+    let image = image::RgbaImage::from_raw(rect.width() as u32, rect.height() as u32, buf)?;
     Some(Arc::new(RenderImage::new(vec![image::Frame::new(image)])))
 }
 
@@ -522,7 +799,7 @@ impl IRect {
 fn record(
     drawing: &Drawing,
     args: &[Option<AnimationValue>],
-    images: &FxHashMap<Arc<str>, Option<Rc<sk::Pixmap>>>,
+    images: &FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
     text: &WindowTextSystem,
     key: Key,
     region: IRect,
@@ -564,7 +841,109 @@ fn record(
         region,
         frac,
         layers: replay.layers,
+        version: 0,
+        args: args.to_vec(),
     }
+}
+
+/// Rasterizes again what `damage` (view coordinates) covers of
+/// `recorded`, from the whole drawing clipped to it, which paints the same
+/// pixels there as a full replay. False when the replay over that area
+/// does not split into the same layers (an operation outside it decided
+/// where text goes): then the whole drawing is rasterized again.
+fn patch(
+    recorded: &mut Recorded,
+    drawing: &Drawing,
+    args: &[Option<AnimationValue>],
+    images: &FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
+    text: &WindowTextSystem,
+    damage: nsh_core::Rect,
+) -> bool {
+    let [a, b, c, d] = recorded.key.linear;
+    let frac = recorded.frac;
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    let (rx, ry, rw, rh) = (damage.x, damage.y, damage.width, damage.height);
+    for (x, y) in [(rx, ry), (rx + rw, ry), (rx, ry + rh), (rx + rw, ry + rh)] {
+        let (px, py) = (a * x + c * y + frac.0, b * x + d * y + frac.1);
+        x0 = x0.min(px);
+        y0 = y0.min(py);
+        x1 = x1.max(px);
+        y1 = y1.max(py);
+    }
+    // A pixel more around it: anti-aliasing of edges rounded to points.
+    let Some(area) = IRect::round_out(x0 - 1.0, y0 - 1.0, x1 + 1.0, y1 + 1.0)
+        .and_then(|r| r.intersect(&recorded.region))
+    else {
+        // Nothing of it is in the pixmap.
+        return true;
+    };
+    let part = record(drawing, args, images, text, recorded.key, area, frac);
+    let same = part.layers.len() == recorded.layers.len()
+        && part
+            .layers
+            .iter()
+            .zip(&recorded.layers)
+            .all(|(p, r)| match (p, r) {
+                (Layer::Pixels(..), Layer::Pixels(..)) => true,
+                (Layer::Text(p), Layer::Text(r)) => {
+                    p.len() == r.len()
+                        && p.iter()
+                            .zip(r)
+                            .all(|(p, r)| p.glyphs.len() == r.glyphs.len())
+                }
+                _ => false,
+            });
+    if !same {
+        return false;
+    }
+    // The part's pixmap coordinates to the recorded ones.
+    let (dx, dy) = (area.x0 - recorded.region.x0, area.y0 - recorded.region.y0);
+    let local = IRect {
+        x0: dx,
+        y0: dy,
+        x1: dx + area.width(),
+        y1: dy + area.height(),
+    };
+    for (p, r) in part.layers.into_iter().zip(&mut recorded.layers) {
+        match (p, r) {
+            (Layer::Pixels(from, _), Layer::Pixels(to, tiled)) => {
+                let width = to.width() as usize;
+                let (fw, tp) = (from.width() as usize, to.pixels_mut());
+                for (row, src) in from.pixels().chunks(fw).enumerate() {
+                    let start = (dy as usize + row) * width + dx as usize;
+                    tp[start..start + fw].copy_from_slice(src);
+                }
+                for tile in tiled.iter_mut() {
+                    if tile.rect.intersect(&local).is_some() {
+                        tile.uploaded = None;
+                    }
+                }
+            }
+            (Layer::Text(from), Layer::Text(to)) => {
+                // Text is not clipped to the area: all of it, moved.
+                *to = from
+                    .into_iter()
+                    .map(|mut run| {
+                        for g in &mut run.glyphs {
+                            g.x += dx as f32;
+                            g.y += dy as f32;
+                        }
+                        if let Some(c) = &mut run.clip {
+                            *c = [
+                                c[0] + dx as f32,
+                                c[1] + dy as f32,
+                                c[2] + dx as f32,
+                                c[3] + dy as f32,
+                            ];
+                        }
+                        run
+                    })
+                    .collect();
+            }
+            _ => unreachable!("the layers were compared"),
+        }
+    }
+    true
 }
 
 // --- Replay ----------------------------------------------------------------
@@ -634,7 +1013,7 @@ enum Source {
     Pixels(sk::Pixmap, i32, i32),
     /// An image: its pixels, the transform from them to the pixmap and the
     /// alpha.
-    Image(Rc<sk::Pixmap>, sk::Transform, f32),
+    Image(Arc<sk::Pixmap>, sk::Transform, f32),
 }
 
 /// A run of canvas text in one color, as GPUI glyphs.
@@ -659,7 +1038,7 @@ struct Glyph {
 
 struct Replay<'a> {
     args: &'a [Option<AnimationValue>],
-    images: &'a FxHashMap<Arc<str>, Option<Rc<sk::Pixmap>>>,
+    images: &'a FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
     text: &'a WindowTextSystem,
     size: (u32, u32),
     /// The view's coordinates to the pixmap's.
@@ -1166,7 +1545,7 @@ impl<'a> Replay<'a> {
         if let Some(pixmap) = self.pixmap.take()
             && self.drawn
         {
-            self.layers.push(Layer::Pixels(pixmap, None));
+            self.layers.push(Layer::Pixels(pixmap, Vec::new()));
         }
         self.drawn = false;
         if !self.pending.is_empty() {
@@ -2236,6 +2615,91 @@ mod tests {
         [c.red(), c.green(), c.blue(), c.alpha()]
     }
 
+    fn slot(k: u16) -> Num {
+        Num::Slot(k)
+    }
+
+    #[test]
+    fn tiles_cover_the_pixmap_once() {
+        let t = tiles(600, 300);
+        assert_eq!(t.len(), 6);
+        let area: i32 = t.iter().map(|t| t.rect.width() * t.rect.height()).sum();
+        assert_eq!(area, 600 * 300);
+        assert_eq!(
+            t[2].rect,
+            IRect {
+                x0: 512,
+                y0: 0,
+                x1: 600,
+                y1: 256
+            }
+        );
+    }
+
+    #[test]
+    fn a_patch_paints_what_a_full_replay_paints() {
+        // A background, a dot moved by native value 0 and text above, at
+        // two device pixels per point.
+        let ops = vec![
+            CanvasOp::FillStyle(Paint::Color(BLUE)),
+            CanvasOp::FillRect(rect(0.0, 0.0, 200.0, 100.0)),
+            CanvasOp::FillStyle(Paint::Color(RED)),
+            CanvasOp::FillRect([slot(0), c(40.0), c(10.0), c(10.0)]),
+        ];
+        let drawing = Drawing {
+            ops,
+            slots: Vec::new(),
+        };
+        let system = Arc::new(gpui::TextSystem::new(Arc::new(gpui::NoopTextSystem::new())));
+        let text = WindowTextSystem::new(system);
+        let key = Key {
+            linear: [2.0, 0.0, 0.0, 2.0],
+            scale: 2.0,
+            size: (200.0, 100.0),
+        };
+        let (region, _) = region(&key, (0.0, 0.0), [0.0, 0.0, 400.0, 200.0]).unwrap();
+        let args = |x: f32| vec![Some(AnimationValue::Number(x))];
+        let images = FxHashMap::default();
+        let mut patched = record(
+            &drawing,
+            &args(20.0),
+            &images,
+            &text,
+            key,
+            region,
+            (0.0, 0.0),
+        );
+        let changed = |s: u16| s == 0;
+        let mut scan = DamageScan::default();
+        let damage = scan
+            .damage(&drawing.ops, |_| 20.0, changed)
+            .union(scan.damage(&drawing.ops, |_| 120.0, changed));
+        let Damage::Rect(r) = damage else {
+            panic!("{damage:?}");
+        };
+        assert!(patch(
+            &mut patched,
+            &drawing,
+            &args(120.0),
+            &images,
+            &text,
+            r
+        ));
+        let full = record(
+            &drawing,
+            &args(120.0),
+            &images,
+            &text,
+            key,
+            region,
+            (0.0, 0.0),
+        );
+        assert_eq!(pixels(&patched).data(), pixels(&full).data());
+        // The dot left its old place.
+        assert_eq!(at(pixels(&patched), 50, 90), [0, 0, 255, 255]);
+        assert_eq!(at(pixels(&patched), 250, 90), [255, 0, 0, 255]);
+    }
+
     #[test]
     fn transforms_compose_like_canvas() {
         // translate then scale: points scale first.
@@ -2651,12 +3115,32 @@ mod tests {
     fn uploads_are_straight_bgra() {
         let mut p = sk::Pixmap::new(2, 1).unwrap();
         p.pixels_mut()[0] = sk::ColorU8::from_rgba(255, 128, 0, 128).premultiply();
-        let image = upload(&p, 0.5).unwrap();
+        let all = IRect {
+            x0: 0,
+            y0: 0,
+            x1: 2,
+            y1: 1,
+        };
+        let image = upload(&p, all, 0.5).unwrap();
         let bytes = image.as_bytes(0).unwrap();
         assert_eq!(&bytes[..3], &[0, 128, 255]);
         assert_eq!(bytes[3], 64);
         assert_eq!(&bytes[4..], &[0; 4]);
-        assert!(upload(&sk::Pixmap::new(2, 2).unwrap(), 1.0).is_none());
+        let empty = IRect {
+            x0: 0,
+            y0: 0,
+            x1: 2,
+            y1: 2,
+        };
+        assert!(upload(&sk::Pixmap::new(2, 2).unwrap(), empty, 1.0).is_none());
+        // A tile: its own pixels only.
+        let tile = IRect {
+            x0: 1,
+            y0: 0,
+            x1: 2,
+            y1: 1,
+        };
+        assert!(upload(&p, tile, 1.0).is_none());
         // GPUI's pixels come back premultiplied.
         let p = premultiplied(1, 1, &[0, 0, 255, 128]).unwrap();
         assert_eq!(at(&p, 0, 0)[0], 255);
