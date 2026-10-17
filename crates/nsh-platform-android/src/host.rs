@@ -420,6 +420,30 @@ extern "system" fn Java_com_longbridge_nsh_Native_allowsWebview(
     access.allows_webview(&String::from(url)).into()
 }
 
+/// The URL a media load redirected from `base` to `location` goes on to, or
+/// null if the running app may not load it.
+#[unsafe(no_mangle)]
+extern "system" fn Java_com_longbridge_nsh_Native_mediaRedirect<'local>(
+    mut env: JNIEnv<'local>,
+    _: JClass<'local>,
+    handle: jlong,
+    base: JString<'local>,
+    location: JString<'local>,
+) -> JString<'local> {
+    // SAFETY: Java passes its live handle.
+    let host = unsafe { host(handle) };
+    let (Ok(base), Ok(location)) = (env.get_string(&base), env.get_string(&location)) else {
+        return JString::from(JObject::null());
+    };
+    let access = host.access.lock().expect("access").clone();
+    match access.media_redirect(&String::from(base), &String::from(location)) {
+        Ok(url) => env
+            .new_string(url)
+            .unwrap_or_else(|_| JString::from(JObject::null())),
+        Err(_) => JString::from(JObject::null()),
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "system" fn Java_com_longbridge_nsh_Native_destroy(
     _: JNIEnv<'_>,

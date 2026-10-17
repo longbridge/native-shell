@@ -61,7 +61,7 @@ pub(crate) fn next(access: &Access, followed: &mut Followed, mut response: HttpH
     } else {
         response.url.clone()
     };
-    let url = resolve(&base, &location);
+    let url = nsh_core::access::resolve_reference(&base, &location);
     // Fetch: 303 (and 301 / 302 after a POST) become GET without a body.
     if response.status == 303 || (matches!(response.status, 301 | 302) && request.method == "POST")
     {
@@ -94,29 +94,6 @@ fn is_redirect(status: u16) -> bool {
     matches!(status, 301 | 302 | 303 | 307 | 308)
 }
 
-/// `location` against `base` (absolute, scheme-relative, absolute-path or
-/// relative references).
-fn resolve(base: &str, location: &str) -> String {
-    if location.contains("://") {
-        return location.to_owned();
-    }
-    let Some((scheme, rest)) = base.split_once("://") else {
-        return location.to_owned();
-    };
-    if let Some(net) = location.strip_prefix("//") {
-        return format!("{scheme}://{net}");
-    }
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let origin = format!("{scheme}://{}", &rest[..authority_end]);
-    if location.starts_with('/') {
-        return format!("{origin}{location}");
-    }
-    let path = &rest[authority_end..];
-    let path = path.split(['?', '#']).next().unwrap_or_default();
-    let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
-    format!("{origin}{dir}/{location}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,15 +101,21 @@ mod tests {
     #[test]
     fn resolves_redirect_locations() {
         assert_eq!(
-            resolve("https://a.com/x/y?q", "https://b.com/"),
+            nsh_core::access::resolve_reference("https://a.com/x/y?q", "https://b.com/"),
             "https://b.com/"
         );
-        assert_eq!(resolve("https://a.com/x/y", "//c.com/z"), "https://c.com/z");
         assert_eq!(
-            resolve("https://a.com:8443/x/y", "/z"),
+            nsh_core::access::resolve_reference("https://a.com/x/y", "//c.com/z"),
+            "https://c.com/z"
+        );
+        assert_eq!(
+            nsh_core::access::resolve_reference("https://a.com:8443/x/y", "/z"),
             "https://a.com:8443/z"
         );
-        assert_eq!(resolve("https://a.com/x/y?q", "z"), "https://a.com/x/z");
+        assert_eq!(
+            nsh_core::access::resolve_reference("https://a.com/x/y?q", "z"),
+            "https://a.com/x/z"
+        );
     }
 
     #[test]

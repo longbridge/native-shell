@@ -55,6 +55,16 @@ final class Images {
         byte[] read(String uri);
     }
 
+    /** Checks a redirect against the app's capabilities: the URL to go on to, or null. */
+    interface Redirects {
+        String next(String base, String location);
+    }
+
+    /** Set by the mounter; until then no redirect is followed. */
+    volatile Redirects redirects = (base, location) -> null;
+
+    private static final int MAX_REDIRECTS = 20;
+
     private static final ExecutorService POOL = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "nsh-images");
         t.setDaemon(true);
@@ -300,10 +310,25 @@ final class Images {
             return bytes;
         }
         if (uri.startsWith("http://") || uri.startsWith("https://")) {
-            HttpURLConnection c = (HttpURLConnection) new URL(uri).openConnection();
+            HttpURLConnection c = null;
+            String url = uri;
             try {
-                c.setConnectTimeout(30_000);
-                c.setReadTimeout(60_000);
+                // Redirects are followed here, one hop at a time: a hop the app is
+                // not granted is never requested.
+                for (int hops = 0; ; hops++) {
+                    c = (HttpURLConnection) new URL(url).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(30_000);
+                    c.setReadTimeout(60_000);
+                    int code = c.getResponseCode();
+                    if (code != 301 && code != 302 && code != 303 && code != 307 && code != 308) break;
+                    String location = c.getHeaderField("Location");
+                    c.disconnect();
+                    if (location == null || hops >= MAX_REDIRECTS) throw new java.io.IOException("redirect from " + url);
+                    String next = redirects.next(url, location);
+                    if (next == null) throw new java.io.IOException("redirect to " + location + " is not granted");
+                    url = next;
+                }
                 int status = c.getResponseCode();
                 if (status >= 400) throw new java.io.IOException("HTTP " + status);
                 long total = Math.max(0, c.getContentLengthLong());
@@ -322,7 +347,7 @@ final class Images {
                 }
                 return out.toByteArray();
             } finally {
-                c.disconnect();
+                if (c != null) c.disconnect();
             }
         }
         String path = uri.startsWith("file://") ? uri.substring(7) : uri;

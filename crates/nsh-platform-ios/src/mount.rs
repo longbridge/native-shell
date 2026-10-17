@@ -409,15 +409,19 @@ impl Mounter {
             pending_images: Vec::new(),
             animator: Animator::new(&target),
             target,
-            images: ImageLoader::new(asset_base.clone(), {
-                let shared = shared.clone();
-                std::sync::Arc::new(move |event| {
-                    let mtm = MainThreadMarker::new().expect("main queue");
-                    if let Some(m) = shared.get(mtm).borrow_mut().as_mut() {
-                        m.load_event(event);
-                    }
-                })
-            }),
+            images: ImageLoader::new(
+                asset_base.clone(),
+                {
+                    let shared = shared.clone();
+                    std::sync::Arc::new(move |event| {
+                        let mtm = MainThreadMarker::new().expect("main queue");
+                        if let Some(m) = shared.get(mtm).borrow_mut().as_mut() {
+                            m.load_event(event);
+                        }
+                    })
+                },
+                access.clone(),
+            ),
             control,
             access,
             shared,

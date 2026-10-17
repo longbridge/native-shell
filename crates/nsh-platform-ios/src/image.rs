@@ -15,8 +15,8 @@ use objc2_core_foundation::{
 };
 use objc2_foundation::{
     NSCache, NSData, NSDataReadingOptions, NSError, NSHTTPURLResponse, NSObject, NSObjectProtocol,
-    NSString, NSURL, NSURLResponse, NSURLSession, NSURLSessionDataDelegate, NSURLSessionDataTask,
-    NSURLSessionDelegate, NSURLSessionResponseDisposition, NSURLSessionTask,
+    NSString, NSURL, NSURLRequest, NSURLResponse, NSURLSession, NSURLSessionDataDelegate,
+    NSURLSessionDataTask, NSURLSessionDelegate, NSURLSessionResponseDisposition, NSURLSessionTask,
     NSURLSessionTaskDelegate,
 };
 use objc2_image_io::{
@@ -173,10 +173,16 @@ pub(crate) struct ImageLoader {
     downloads: FxHashMap<String, Download>,
     asset_base: Option<AssetBase>,
     notify: Notify,
+    /// What the app may load, checked at every redirect.
+    access: std::sync::Arc<nsh_engine::Access>,
 }
 
 impl ImageLoader {
-    pub(crate) fn new(asset_base: Option<AssetBase>, notify: Notify) -> Self {
+    pub(crate) fn new(
+        asset_base: Option<AssetBase>,
+        notify: Notify,
+        access: std::sync::Arc<nsh_engine::Access>,
+    ) -> Self {
         // SAFETY: fresh caches with NSString keys and the declared values;
         // plain setters.
         let (cache, data) = unsafe {
@@ -193,6 +199,7 @@ impl ImageLoader {
             downloads: FxHashMap::default(),
             asset_base,
             notify,
+            access,
         }
     }
 
@@ -282,7 +289,12 @@ impl ImageLoader {
         }
         let notify = self.notify.clone();
         let task = match self.resolve(uri) {
-            Some(Source::Url(url)) => Some(crate::image::download(&url, uri.to_owned(), notify)),
+            Some(Source::Url(url)) => Some(crate::image::download(
+                &url,
+                uri.to_owned(),
+                notify,
+                self.access.clone(),
+            )),
             Some(Source::File(path)) => {
                 let uri = uri.to_owned();
                 DispatchQueue::global_queue(GlobalQueueIdentifier::Priority(
@@ -529,6 +541,7 @@ const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(
 struct DownloadIvars {
     uri: String,
     notify: Notify,
+    access: std::sync::Arc<nsh_engine::Access>,
     data: std::sync::Mutex<DownloadState>,
 }
 
@@ -552,6 +565,33 @@ define_class!(
     unsafe impl NSURLSessionDelegate for ImageDownload {}
 
     unsafe impl NSURLSessionTaskDelegate for ImageDownload {
+        // Redirects are followed only to what the app may load: a refused
+        // hop is never requested (the 3xx response then ends the load).
+        #[unsafe(method(URLSession:task:willPerformHTTPRedirection:newRequest:completionHandler:))]
+        fn will_redirect(
+            &self,
+            _session: &NSURLSession,
+            _task: &NSURLSessionTask,
+            _response: &NSHTTPURLResponse,
+            request: &NSURLRequest,
+            completion: &block2::DynBlock<dyn Fn(*mut NSURLRequest)>,
+        ) {
+            let ivars = self.ivars();
+            let next = request
+                .URL()
+                .and_then(|u| u.absoluteString())
+                .map(|u| u.to_string());
+            // The app's own assets (the dev server's) are not network access.
+            let granted = ivars.uri.starts_with("asset:/")
+                || next.is_some_and(|next| ivars.access.media_redirect(&ivars.uri, &next).is_ok());
+            let next = if granted {
+                request as *const NSURLRequest as *mut NSURLRequest
+            } else {
+                std::ptr::null_mut()
+            };
+            completion.call((next,));
+        }
+
         #[unsafe(method(URLSession:task:didCompleteWithError:))]
         fn did_complete(
             &self,
@@ -564,6 +604,9 @@ define_class!(
             let result = match error {
                 Some(e) => Err(e.localizedDescription().to_string()),
                 None if state.status >= 400 => Err(format!("HTTP {}", state.status)),
+                None if (300..400).contains(&state.status) => {
+                    Err(format!("redirect refused (HTTP {})", state.status))
+                }
                 None => Ok(NSData::with_bytes(&state.bytes)),
             };
             on_main(
@@ -625,10 +668,16 @@ define_class!(
 );
 
 /// Downloads `url`, reporting progress and then [`LoadEvent::Bytes`].
-fn download(url: &NSURL, uri: String, notify: Notify) -> Retained<NSURLSessionDataTask> {
+fn download(
+    url: &NSURL,
+    uri: String,
+    notify: Notify,
+    access: std::sync::Arc<nsh_engine::Access>,
+) -> Retained<NSURLSessionDataTask> {
     let delegate = ImageDownload::alloc().set_ivars(DownloadIvars {
         uri,
         notify,
+        access,
         data: std::sync::Mutex::new(DownloadState::default()),
     });
     // SAFETY: NSObject's designated initializer.

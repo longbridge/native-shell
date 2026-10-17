@@ -114,6 +114,8 @@ pub(crate) struct Surface {
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
+    /// What the running app may reach (checked for image redirects).
+    pub(crate) access: RefCell<Arc<nsh_core::access::Access>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
 }
@@ -143,6 +145,7 @@ impl Surface {
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
+            access: RefCell::new(Arc::default()),
             native: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
@@ -160,6 +163,10 @@ impl Surface {
     /// Starts `config`'s app, replacing what ran.
     pub(crate) fn start(self: &Rc<Self>, mut config: EngineConfig) {
         self.stop();
+        *self.access.borrow_mut() = Arc::new(match &config.app {
+            nsh_engine::App::Js(bundle) => bundle.policy.access(),
+            nsh_engine::App::Rust(_) => nsh_engine::Policy::default().access(),
+        });
         let env = self.environment.get();
         config.viewport = Size::new(env.window.0, env.window.1);
         config.environment = env;

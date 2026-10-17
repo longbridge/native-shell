@@ -395,6 +395,24 @@ impl Access {
         self.allows_http("GET", uri)
     }
 
+    /// The next URL of a media load that was redirected from `base` to
+    /// `location`, if the app may load it: the redirect must stay on
+    /// `http(s)` and pass the same check as a first request, so loaders
+    /// follow redirects themselves, one hop at a time, and never contact
+    /// a target the app is not granted.
+    pub fn media_redirect(&self, base: &str, location: &str) -> Result<String, String> {
+        let url = resolve_reference(base, location);
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(format!("redirect to `{url}` is not an http(s) URL"));
+        }
+        if !self.is_unrestricted() && !self.allows_media(&url) {
+            return Err(format!(
+                "redirect to `{url}` is not granted by capabilities.network"
+            ));
+        }
+        Ok(url)
+    }
+
     /// Whether web views are granted at all (inline HTML needs only this).
     pub fn allows_webviews(&self) -> bool {
         self.each(|c| c.webview.is_some())
@@ -421,6 +439,29 @@ impl Access {
     pub fn allows_clipboard(&self) -> bool {
         self.each(|c| c.clipboard)
     }
+}
+
+/// `location` against `base` (absolute, scheme-relative, absolute-path or
+/// relative references), as a redirect's `Location` is read.
+pub fn resolve_reference(base: &str, location: &str) -> String {
+    if location.contains("://") {
+        return location.to_owned();
+    }
+    let Some((scheme, rest)) = base.split_once("://") else {
+        return location.to_owned();
+    };
+    if let Some(net) = location.strip_prefix("//") {
+        return format!("{scheme}://{net}");
+    }
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let origin = format!("{scheme}://{}", &rest[..authority_end]);
+    if location.starts_with('/') {
+        return format!("{origin}{location}");
+    }
+    let path = &rest[authority_end..];
+    let path = path.split(['?', '#']).next().unwrap_or_default();
+    let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+    format!("{origin}{dir}/{location}")
 }
 
 #[cfg(test)]
@@ -499,5 +540,38 @@ mod tests {
             r#"{ "network": { "hosts": ["a.com"], "http": [{ "host": "b.com", "methods": ["GET"] }] }, "webview": { "hosts": ["*"] } }"#,
         );
         assert_eq!(Capabilities::from_json(&c.to_json()).unwrap(), c);
+    }
+
+    #[test]
+    fn media_redirects_are_checked() {
+        let a = Access {
+            declared: Capabilities::from_json(
+                &serde_json::json!({ "network": { "hosts": ["a.com"] } }),
+            )
+            .unwrap(),
+            granted: None,
+        };
+        let from = "https://a.com/x/y.png";
+        assert_eq!(
+            a.media_redirect(from, "/z.png").unwrap(),
+            "https://a.com/z.png"
+        );
+        assert_eq!(
+            a.media_redirect(from, "z.png").unwrap(),
+            "https://a.com/x/z.png"
+        );
+        assert!(a.media_redirect(from, "https://b.com/z.png").is_err());
+        assert!(a.media_redirect(from, "//b.com/z.png").is_err());
+        assert!(a.media_redirect(from, "file:///etc/passwd").is_err());
+        assert!(
+            Access::default()
+                .media_redirect(from, "//b.com/z.png")
+                .is_ok()
+        );
+        assert!(
+            Access::default()
+                .media_redirect(from, "ftp://b.com/z.png")
+                .is_err()
+        );
     }
 }

@@ -41,6 +41,7 @@ use std::{
 use gtk4::{self as gtk, gdk, glib, graphene, gsk, prelude::*};
 use nsh_core::{
     Command, EventKind, EventPayload, ImageOptions, ImageSource, NodeId, PayloadValue, ResizeMode,
+    access::Access,
 };
 use rustc_hash::FxHashMap;
 
@@ -79,7 +80,7 @@ impl nsh_engine::Assets for AssetReader {
             return Err(format!("not an asset URI: {uri}"));
         }
         match resolve(uri, self.0.as_ref()) {
-            Some(location) => read(&location, &mut |_, _| {}),
+            Some(location) => read(&location, &Access::default(), &mut |_, _| {}),
             None => Err(format!("{uri}: no asset location configured")),
         }
     }
@@ -171,25 +172,62 @@ fn data_uri(uri: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-/// The HTTP agent all downloads share.
+/// Redirects followed at most (as `fetch`).
+const MAX_REDIRECTS: usize = 20;
+
+/// The HTTP agent all downloads share. It never follows redirects: each hop
+/// is checked against the app's capabilities before it is requested.
 fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
         ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(60)))
+            .http_status_as_error(false)
+            .max_redirects(0)
+            .max_redirects_will_error(false)
             .build()
             .into()
     })
 }
 
+/// GETs `url`, following redirects one hop at a time: a hop the app is not
+/// granted is never requested.
+fn get(url: &str, access: &Access) -> Result<ureq::http::Response<ureq::Body>, String> {
+    let mut url = url.to_owned();
+    for _ in 0..=MAX_REDIRECTS {
+        let response = agent()
+            .get(&url)
+            .call()
+            .map_err(|e| format!("{url}: {e}"))?;
+        let status = response.status().as_u16();
+        if !matches!(status, 301 | 302 | 303 | 307 | 308) {
+            if status >= 400 {
+                return Err(format!("{url}: HTTP {status}"));
+            }
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| format!("{url}: redirect without a Location"))?;
+        url = access.media_redirect(&url, location)?;
+    }
+    Err(format!("{url}: too many redirects"))
+}
+
 /// Reads the bytes at `location` (blocking), calling `progress(loaded,
 /// total)` (total 0: unknown) as a download goes.
-fn read(location: &Location, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u8>, String> {
+fn read(
+    location: &Location,
+    access: &Access,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<Vec<u8>, String> {
     match location {
         Location::File(path) => std::fs::read(path).map_err(|e| format!("{}: {e}", path.display())),
         Location::Data(uri) => data_uri(uri),
         Location::Url(url) => {
-            let mut response = agent().get(url).call().map_err(|e| format!("{url}: {e}"))?;
+            let mut response = get(url, access)?;
             let total = response.body().content_length().unwrap_or(0);
             let mut reader = response.body_mut().with_config().limit(MAX_BYTES).reader();
             let mut bytes = Vec::with_capacity(total.min(MAX_BYTES) as usize);
@@ -376,6 +414,8 @@ fn decode(bytes: Vec<u8>) -> Result<Picture, String> {
 struct Job {
     key: String,
     location: Location,
+    /// What the app may load, for the redirects.
+    access: Arc<Access>,
     /// Someone listens to `onProgress`.
     progress: bool,
 }
@@ -408,6 +448,7 @@ fn work(job: Job) {
     let Job {
         key,
         location,
+        access,
         progress,
     } = job;
     let mut last: Option<Instant> = None;
@@ -423,7 +464,7 @@ fn work(job: Job) {
             LOADER.with(|l| l.progress(&key, loaded, total));
         });
     };
-    let result = read(&location, &mut report).and_then(decode);
+    let result = read(&location, &access, &mut report).and_then(decode);
     glib::MainContext::default().invoke(move || finish(key, result));
 }
 
@@ -551,6 +592,7 @@ fn fetch(surface: &Surface, uri: &str, progress: Option<Progress>, done: Done) -
         spawn(Job {
             key,
             location,
+            access: surface.access.borrow().clone(),
             progress: listens,
         });
     }
