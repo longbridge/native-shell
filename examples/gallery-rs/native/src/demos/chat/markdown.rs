@@ -513,7 +513,7 @@ impl Component for MarkdownBlock {
                             .child(
                                 press_with(
                                     PressProps {
-                                        label: Some("Copy code".into()),
+                                        label: Some("Copy code".into()).into(),
                                         hit_slop: Some(4.0),
                                         ..PressProps::default()
                                     },

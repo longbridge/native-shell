@@ -205,7 +205,8 @@ impl Component for OrderBook {
                                 "Show five levels"
                             }
                             .into(),
-                        ),
+                        )
+                        .into(),
                         ..PressProps::default()
                     },
                     toggle,

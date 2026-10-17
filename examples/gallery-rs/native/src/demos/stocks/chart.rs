@@ -661,8 +661,12 @@ impl Component for Chart {
             .gap(px(10.0))
             .child(
                 Segmented::element(SegmentedProps {
-                    options: PERIODS.iter().map(|p| Segment::new(p.1)).collect(),
-                    selected: selected as u32,
+                    options: PERIODS
+                        .iter()
+                        .map(|p| Segment::new(p.1))
+                        .collect::<Vec<_>>()
+                        .into(),
+                    selected: (selected as u32).into(),
                     size: SegmentedSize::Small,
                 })
                 .on_event(cx.listener(

@@ -149,8 +149,8 @@ impl TextDemo {
                     .child(
                         press_with(
                             PressProps {
-                                scale: 0.9,
-                                label: Some("Like".into()),
+                                scale: 0.9.into(),
+                                label: Some("Like".into()).into(),
                                 hit_slop: Some(10.0),
                                 ..PressProps::default()
                             },

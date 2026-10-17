@@ -708,8 +708,8 @@ impl Component for HitSlop {
                         press_with(
                             PressProps {
                                 hit_slop: Some(30.0),
-                                scale: 0.8,
-                                label: Some("Tiny dot".into()),
+                                scale: 0.8.into(),
+                                label: Some("Tiny dot".into()).into(),
                                 ..PressProps::default()
                             },
                             cx.listener(|this: &mut Self, _, cx| {
@@ -800,7 +800,7 @@ impl Gestures {
                     .child(
                         press_with(
                             PressProps {
-                                scale: 0.98,
+                                scale: 0.98.into(),
                                 ..PressProps::default()
                             },
                             cx.listener(|this: &mut Self, _, cx| {

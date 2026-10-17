@@ -414,8 +414,8 @@ impl System {
     ) -> AnyElement {
         press_with(
             PressProps {
-                scale: 0.98,
-                label: Some(title.into()),
+                scale: 0.98.into(),
+                label: Some(title.into()).into(),
                 ..PressProps::default()
             },
             on_press,

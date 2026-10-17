@@ -209,11 +209,11 @@ impl Component for Stocks {
                 _ => segment,
             }
         });
-        let open = cx.listener(|this: &mut Self, index: &usize, cx| {
+        let open = cx.listener(|this: &mut Self, index: &usize, _| {
             let index = *index;
             let code = this.market.borrow().stocks[index].code;
-            nav::push(cx, format!("stock:{code}"), move |cx| {
-                header(screen().title(code), cx)
+            nav::push(format!("stock:{code}"), move || {
+                header(screen().title(code))
                     .header_right(MarketButton::element(()))
                     .child(Detail::element(DetailProps {
                         stock: index as u32,
@@ -253,8 +253,8 @@ impl Component for Stocks {
             .child(
                 view().px_4().pb(px(6.0)).child(
                     Segmented::element(SegmentedProps {
-                        options: options.collect(),
-                        selected: self.filter as u32,
+                        options: options.collect::<Vec<_>>().into(),
+                        selected: (self.filter as u32).into(),
                         size: SegmentedSize::Small,
                     })
                     .on_event(cx.listener(|this: &mut Self, e: &SegmentedEvent, cx| {

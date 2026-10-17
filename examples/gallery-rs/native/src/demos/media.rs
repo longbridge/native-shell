@@ -370,8 +370,8 @@ fn nav_button(
 ) -> impl IntoElement {
     press_with(
         PressProps {
-            disabled: !enabled,
-            label: Some(label.into()),
+            disabled: (!enabled).into(),
+            label: Some(label.into()).into(),
             hit_slop: Some(4.0),
             ..PressProps::default()
         },

@@ -237,7 +237,8 @@ impl Component for MarketButton {
                             "Resume the market"
                         }
                         .into(),
-                    ),
+                    )
+                    .into(),
                     ..PressProps::default()
                 },
                 toggle,

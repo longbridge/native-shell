@@ -277,8 +277,8 @@ fn link_row(
 ) -> impl IntoElement {
     press_with(
         PressProps {
-            scale: 0.98,
-            label: Some(title.into()),
+            scale: 0.98.into(),
+            label: Some(title.into()).into(),
             ..PressProps::default()
         },
         on_press,
@@ -879,10 +879,9 @@ impl Form {
                         "A message bar at the bottom",
                         "KeyboardAvoidingView",
                         false,
-                        cx.listener(|_: &mut Self, _, cx| {
-                            nav::push(cx, "message-bar", |cx| {
-                                header(screen().title("Message bar"), cx)
-                                    .child(MessageBar::element(()))
+                        cx.listener(|_: &mut Self, _, _| {
+                            nav::push("message-bar", || {
+                                header(screen().title("Message bar")).child(MessageBar::element(()))
                             });
                         }),
                     )),

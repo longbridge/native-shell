@@ -285,7 +285,7 @@ impl Component for Detail {
         }))
         .child(
             Ticket::element(TicketProps {
-                open: self.ticket.into(),
+                open: self.ticket,
                 code: stock.code.into(),
                 tick: stock.tick,
                 last: q.last,

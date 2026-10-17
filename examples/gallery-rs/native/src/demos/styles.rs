@@ -234,8 +234,8 @@ impl Component for FlipCard {
         view().flex_1().child(
             press_with(
                 PressProps {
-                    scale: 0.98,
-                    label: Some("Flip the card".into()),
+                    scale: 0.98.into(),
+                    label: Some("Flip the card".into()).into(),
                     ..PressProps::default()
                 },
                 flip,

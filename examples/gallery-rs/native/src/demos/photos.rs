@@ -63,8 +63,8 @@ fn compact(n: usize) -> String {
 /// One row: the picture, its title, author and views, its number.
 fn row(photo: &Photo) -> impl IntoElement + use<> {
     crate::ui::Press::element(PressProps {
-        scale: 0.985,
-        label: Some(photo.title.clone().into()),
+        scale: 0.985.into(),
+        label: Some(photo.title.clone().into()).into(),
         ..PressProps::default()
     })
     .child(

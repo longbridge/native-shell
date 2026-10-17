@@ -392,9 +392,10 @@ impl Component for Physics {
                     )
                     .child(
                         Segmented::element(SegmentedProps {
-                            options: ["Soft", "Bouncy", "Firm"].map(Segment::new).to_vec(),
-                            selected: FEELS.iter().position(|f| *f == self.feel).unwrap_or(0)
-                                as u32,
+                            options: ["Soft", "Bouncy", "Firm"].map(Segment::new).to_vec().into(),
+                            selected: (FEELS.iter().position(|f| *f == self.feel).unwrap_or(0)
+                                as u32)
+                                .into(),
                             size: SegmentedSize::Small,
                         })
                         .on_event(cx.listener(

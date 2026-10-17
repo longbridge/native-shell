@@ -5,6 +5,9 @@
 
 use nsh_core::ui::{Screen, StyleRefinement, prelude::*};
 
+/// A text a builder shows: a value, a signal or a closure.
+type Label = Reactive<SharedString>;
+
 use super::{
     animated::{PressProps, press_with},
     icons::{IconName, icon},
@@ -50,12 +53,12 @@ macro_rules! content {
 
 /// The gallery's header colors on a screen (TS `{...header}`): the page's
 /// background, the text color for the title, the accent for the back
-/// button. Read in the render, so the header follows the appearance.
-pub(crate) fn header<C: Component>(screen: Screen, cx: &RenderCx<'_, C>) -> Screen {
+/// button, following the appearance.
+pub(crate) fn header(screen: Screen) -> Screen {
     screen
-        .header_background_color(cx.color(colors::BACKGROUND))
-        .header_title_color(cx.color(colors::TEXT))
-        .header_tint_color(cx.color(colors::ACCENT))
+        .header_background_color(|| color(colors::BACKGROUND))
+        .header_title_color(|| color(colors::TEXT))
+        .header_tint_color(|| color(colors::ACCENT))
 }
 
 /// A rounded icon tile.
@@ -113,8 +116,8 @@ impl IntoElement for IconTile {
 /// bare with [`Card::flush`]).
 pub(crate) struct Card {
     icon: Option<IconName>,
-    title: Option<SharedString>,
-    subtitle: Option<SharedString>,
+    title: Option<Label>,
+    subtitle: Option<Label>,
     right: Option<AnyElement>,
     flush: bool,
     content: Vec<AnyElement>,
@@ -142,14 +145,14 @@ impl Card {
     }
 
     /// Its title (without one, no header row).
-    pub(crate) fn title(mut self, title: impl Into<SharedString>) -> Self {
-        self.title = Some(title.into());
+    pub(crate) fn title(mut self, title: impl IntoReactive<SharedString>) -> Self {
+        self.title = Some(title.into_reactive());
         self
     }
 
     /// The line under the title.
-    pub(crate) fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
-        self.subtitle = Some(subtitle.into());
+    pub(crate) fn subtitle(mut self, subtitle: impl IntoReactive<SharedString>) -> Self {
+        self.subtitle = Some(subtitle.into_reactive());
         self
     }
 
@@ -225,17 +228,17 @@ impl IntoElement for Card {
 
 /// A titled card of controls (the demos' sections).
 pub(crate) struct Section {
-    title: SharedString,
-    note: Option<SharedString>,
+    title: Label,
+    note: Option<Label>,
     content: Vec<AnyElement>,
     root: View,
 }
 
 impl Section {
     /// A section titled `title`.
-    pub(crate) fn new(title: impl Into<SharedString>) -> Self {
+    pub(crate) fn new(title: impl IntoReactive<SharedString>) -> Self {
         Self {
-            title: title.into(),
+            title: title.into_reactive(),
             note: None,
             content: Vec::new(),
             root: view(),
@@ -243,8 +246,8 @@ impl Section {
     }
 
     /// A quiet note right of the title.
-    pub(crate) fn note(mut self, note: impl Into<SharedString>) -> Self {
-        self.note = Some(note.into());
+    pub(crate) fn note(mut self, note: impl IntoReactive<SharedString>) -> Self {
+        self.note = Some(note.into_reactive());
         self
     }
 }
@@ -334,21 +337,21 @@ impl IntoElement for Inset {
 
 /// A caption row: a label on the left, a quieter note on the right.
 pub(crate) fn caption(
-    label: impl Into<SharedString>,
-    note: Option<impl Into<SharedString>>,
+    label: impl IntoReactive<SharedString>,
+    note: Option<impl IntoReactive<SharedString>>,
 ) -> View {
     view()
         .flex_row()
         .items_baseline()
         .gap_2()
         .child(
-            text(label.into())
+            text(label)
                 .flex_1()
                 .text_size(px(14.0))
                 .text_color(colors::MUTED),
         )
         .children(note.map(|note| {
-            text(note.into())
+            text(note)
                 .text_size(px(13.0))
                 .text_color(colors::FAINT)
                 .tabular_nums()
@@ -357,38 +360,38 @@ pub(crate) fn caption(
 
 /// A large figure with a tinted note after it ("38 / 1k  would pass").
 pub(crate) struct Figure {
-    value: SharedString,
-    unit: Option<SharedString>,
-    note: Option<SharedString>,
-    tone: Tone,
+    value: Label,
+    unit: Option<Label>,
+    note: Option<Label>,
+    tone: Reactive<Tone>,
 }
 
 impl Figure {
     /// The figure `value`.
-    pub(crate) fn new(value: impl Into<SharedString>) -> Self {
+    pub(crate) fn new(value: impl IntoReactive<SharedString>) -> Self {
         Self {
-            value: value.into(),
+            value: value.into_reactive(),
             unit: None,
             note: None,
-            tone: Tone::Accent,
+            tone: Reactive::Static(Tone::Accent),
         }
     }
 
     /// Its unit, quieter, after it.
-    pub(crate) fn unit(mut self, unit: impl Into<SharedString>) -> Self {
-        self.unit = Some(unit.into());
+    pub(crate) fn unit(mut self, unit: impl IntoReactive<SharedString>) -> Self {
+        self.unit = Some(unit.into_reactive());
         self
     }
 
     /// A note after it, in `tone`'s color (the accent by default).
-    pub(crate) fn note(mut self, note: impl Into<SharedString>) -> Self {
-        self.note = Some(note.into());
+    pub(crate) fn note(mut self, note: impl IntoReactive<SharedString>) -> Self {
+        self.note = Some(note.into_reactive());
         self
     }
 
     /// The note's tone.
-    pub(crate) fn tone(mut self, tone: Tone) -> Self {
-        self.tone = tone;
+    pub(crate) fn tone(mut self, tone: impl IntoReactive<Tone>) -> Self {
+        self.tone = tone.into_reactive();
         self
     }
 }
@@ -402,16 +405,17 @@ impl IntoElement for Figure {
             .tabular_nums()
             .letter_spacing(-0.5)
             .children(self.unit.map(|unit| {
-                text(format!(" {unit}"))
+                text(unit.map(|unit| SharedString::from(format!(" {unit}"))))
                     .text_size(px(17.0))
                     .font_weight(FontWeight::NORMAL)
                     .text_color(colors::MUTED)
             }))
             .children(self.note.map(|note| {
-                text(format!(" {note}"))
+                let tone = self.tone;
+                text(note.map(|note| SharedString::from(format!(" {note}"))))
                     .text_size(px(15.0))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(self.tone.color())
+                    .text_color(tone.map(Tone::color))
             }))
             .into_element()
     }
@@ -419,24 +423,24 @@ impl IntoElement for Figure {
 
 /// A small label in a tinted capsule.
 pub(crate) struct Badge {
-    label: SharedString,
-    tone: Tone,
+    label: Label,
+    tone: Reactive<Tone>,
     outline: bool,
 }
 
 impl Badge {
     /// A neutral badge `label`.
-    pub(crate) fn new(label: impl Into<SharedString>) -> Self {
+    pub(crate) fn new(label: impl IntoReactive<SharedString>) -> Self {
         Self {
-            label: label.into(),
-            tone: Tone::Neutral,
+            label: label.into_reactive(),
+            tone: Reactive::Static(Tone::Neutral),
             outline: false,
         }
     }
 
     /// Its tone.
-    pub(crate) fn tone(mut self, tone: Tone) -> Self {
-        self.tone = tone;
+    pub(crate) fn tone(mut self, tone: impl IntoReactive<Tone>) -> Self {
+        self.tone = tone.into_reactive();
         self
     }
 
@@ -450,11 +454,14 @@ impl Badge {
 impl IntoElement for Badge {
     fn into_element(self) -> AnyElement {
         let tone = self.tone;
-        let fg = if tone == Tone::Neutral {
-            colors::TEXT
-        } else {
-            tone.color()
-        };
+        let fg = tone.clone().map(|tone| {
+            if tone == Tone::Neutral {
+                colors::TEXT
+            } else {
+                tone.color()
+            }
+        });
+        let outline = self.outline;
         view()
             .px(px(10.0))
             .h(px(26.0))
@@ -462,12 +469,13 @@ impl IntoElement for Badge {
             .justify_center()
             .border_1()
             .map(|v| {
-                if self.outline {
-                    v.border_color(tone.color())
+                if outline {
+                    v.border_color(tone.map(Tone::color))
                 } else {
-                    v.bg(tone.tint())
+                    let rim = fg.clone().map(|fg| fg.opacity(0.1));
+                    v.bg(tone.map(Tone::tint))
                         .finish_shadow(Finish::Chip)
-                        .border_color(fg.opacity(0.1))
+                        .border_color(rim)
                 }
             })
             .child(
@@ -482,26 +490,29 @@ impl IntoElement for Badge {
 
 /// A label above a value, for grids of figures.
 pub(crate) struct Stat {
-    label: SharedString,
-    value: SharedString,
-    tone: Option<Tone>,
+    label: Label,
+    value: Label,
+    tone: Option<Reactive<Tone>>,
     width: Option<f32>,
 }
 
 impl Stat {
     /// `value`, labelled `label`.
-    pub(crate) fn new(label: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+    pub(crate) fn new(
+        label: impl IntoReactive<SharedString>,
+        value: impl IntoReactive<SharedString>,
+    ) -> Self {
         Self {
-            label: label.into(),
-            value: value.into(),
+            label: label.into_reactive(),
+            value: value.into_reactive(),
             tone: None,
             width: None,
         }
     }
 
     /// The value in `tone`'s color.
-    pub(crate) fn tone(mut self, tone: Tone) -> Self {
-        self.tone = Some(tone);
+    pub(crate) fn tone(mut self, tone: impl IntoReactive<Tone>) -> Self {
+        self.tone = Some(tone.into_reactive());
         self
     }
 
@@ -526,7 +537,10 @@ impl IntoElement for Stat {
             .child(
                 text(self.value)
                     .text_size(px(15.0))
-                    .text_color(self.tone.map_or(colors::TEXT, Tone::color))
+                    .text_color(match self.tone {
+                        Some(tone) => tone.map(Tone::color),
+                        None => Reactive::Static(colors::TEXT),
+                    })
                     .tabular_nums(),
             )
             .into_element()
@@ -536,8 +550,8 @@ impl IntoElement for Stat {
 /// A colored square and a label (and a value), for chart legends.
 pub(crate) fn legend(
     color: impl Into<AdaptiveColor>,
-    label: impl Into<SharedString>,
-    value: Option<impl Into<SharedString>>,
+    label: impl IntoReactive<SharedString>,
+    value: Option<impl IntoReactive<SharedString>>,
 ) -> View {
     view()
         .flex_row()
@@ -545,13 +559,17 @@ pub(crate) fn legend(
         .gap(px(6.0))
         .child(view().size(px(9.0)).rounded(px(2.5)).bg(color.into()))
         .child(
-            text(label.into())
+            text(label)
                 .text_size(px(13.0))
                 .text_color(colors::MUTED)
                 .children(value.map(|value| {
-                    text(format!(" {}", value.into()))
-                        .text_color(colors::TEXT)
-                        .tabular_nums()
+                    text(
+                        value
+                            .into_reactive()
+                            .map(|value| SharedString::from(format!(" {value}"))),
+                    )
+                    .text_color(colors::TEXT)
+                    .tabular_nums()
                 })),
         )
 }
@@ -614,21 +632,21 @@ pub(crate) struct Button {
     variant: ButtonVariant,
     color: Option<AdaptiveColor>,
     icon: Option<IconName>,
-    disabled: bool,
+    disabled: Prop<bool>,
     on_press: Listener<()>,
     root: View,
 }
 
 impl Button {
     /// A primary button `label` calling `on_press`.
-    pub(crate) fn new(label: impl Into<SharedString>, on_press: Listener<()>) -> Self {
+    pub(crate) fn new(label: impl Into<SharedString>, on_press: impl Into<Listener<()>>) -> Self {
         Self {
             label: label.into(),
             variant: ButtonVariant::Primary,
             color: None,
             icon: None,
-            disabled: false,
-            on_press,
+            disabled: false.into(),
+            on_press: on_press.into(),
             root: view(),
         }
     }
@@ -646,8 +664,8 @@ impl Button {
     }
 
     /// Takes no presses.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
+    pub(crate) fn disabled(mut self, disabled: impl Into<Prop<bool>>) -> Self {
+        self.disabled = disabled.into();
         self
     }
 }
@@ -675,7 +693,7 @@ impl IntoElement for Button {
         press_with(
             PressProps {
                 disabled: self.disabled,
-                label: Some(self.label.clone()),
+                label: Some(self.label.clone()).into(),
                 ..PressProps::default()
             },
             self.on_press,
@@ -724,7 +742,7 @@ impl RoundButton {
     pub(crate) fn new(
         icon: IconName,
         label: impl Into<SharedString>,
-        on_press: Listener<()>,
+        on_press: impl Into<Listener<()>>,
     ) -> Self {
         Self {
             icon,
@@ -732,7 +750,7 @@ impl RoundButton {
             secondary: false,
             size: 44.0,
             disabled: false,
-            on_press,
+            on_press: on_press.into(),
             root: view(),
         }
     }
@@ -750,9 +768,9 @@ impl IntoElement for RoundButton {
         let primary = !self.secondary;
         press_with(
             PressProps {
-                scale: 0.92,
-                disabled: self.disabled,
-                label: Some(self.label),
+                scale: 0.92.into(),
+                disabled: self.disabled.into(),
+                label: Some(self.label).into(),
                 ..PressProps::default()
             },
             self.on_press,

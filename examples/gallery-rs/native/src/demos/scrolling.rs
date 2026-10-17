@@ -76,8 +76,12 @@ fn choice(
     on_change: Listener<u32>,
 ) -> impl IntoElement + use<> {
     Segmented::element(SegmentedProps {
-        options: labels.iter().map(|l| Segment::new(*l)).collect(),
-        selected: selected as u32,
+        options: labels
+            .iter()
+            .map(|l| Segment::new(*l))
+            .collect::<Vec<_>>()
+            .into(),
+        selected: (selected as u32).into(),
         size: SegmentedSize::Small,
     })
     .on_event(on_change.map(|e: &SegmentedEvent| {
@@ -927,7 +931,7 @@ impl Component for Scrolling {
         };
         let tap_me = press_with(
             PressProps {
-                label: Some("Count a tap".into()),
+                label: Some("Count a tap".into()).into(),
                 ..PressProps::default()
             },
             cx.listener(|this: &mut Self, _, cx| {

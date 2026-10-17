@@ -45,9 +45,9 @@ pub(crate) fn action_button(
 ) -> AnyElement {
     press_with(
         PressProps {
-            scale: 0.86,
-            label: Some(label.into()),
-            selected: active,
+            scale: 0.86.into(),
+            label: Some(label.into()).into(),
+            selected: active.into(),
             ..PressProps::default()
         },
         on_press,
@@ -146,8 +146,8 @@ pub(crate) fn file_chip(file: &FileRef, on_remove: Option<Listener<()>>) -> View
         .children(on_remove.map(|remove| {
             press_with(
                 PressProps {
-                    scale: 0.85,
-                    label: Some("Remove file".into()),
+                    scale: 0.85.into(),
+                    label: Some("Remove file".into()).into(),
                     ..PressProps::default()
                 },
                 remove,
@@ -459,7 +459,7 @@ pub(crate) fn error_row(message: &str, on_retry: Listener<()>) -> View {
         .child(
             press_with(
                 PressProps {
-                    label: Some("Retry".into()),
+                    label: Some("Retry".into()).into(),
                     ..PressProps::default()
                 },
                 on_retry,

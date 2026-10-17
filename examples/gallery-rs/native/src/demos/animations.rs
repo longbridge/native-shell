@@ -129,8 +129,8 @@ fn chip(label: &'static str, active: bool, on_press: Listener<()>) -> impl IntoE
     press_with(
         PressProps {
             hit_slop: Some(4.0),
-            role: PressRole::Tab,
-            selected: active,
+            role: PressRole::Tab.into(),
+            selected: active.into(),
             ..PressProps::default()
         },
         on_press,
@@ -1330,8 +1330,9 @@ impl Component for Layout {
                     options: PRESETS
                         .iter()
                         .map(|(label, _)| Segment::new(*label))
-                        .collect(),
-                    selected: self.preset,
+                        .collect::<Vec<_>>()
+                        .into(),
+                    selected: (self.preset).into(),
                     size: SegmentedSize::Small,
                 })
                 .on_event(cx.listener(

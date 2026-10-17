@@ -73,7 +73,7 @@ fn title_block(badge: impl Into<SharedString>, title: &str) -> View {
         .child(
             view()
                 .flex_row()
-                .child(Badge::new(badge).tone(Tone::Accent)),
+                .child(Badge::new(badge.into()).tone(Tone::Accent)),
         )
         .child(
             text(title.to_owned())
@@ -480,8 +480,9 @@ impl Component for LayoutAnimations {
                     options: PRESETS
                         .iter()
                         .map(|(_, label)| Segment::new(*label))
-                        .collect(),
-                    selected: self.preset,
+                        .collect::<Vec<_>>()
+                        .into(),
+                    selected: (self.preset).into(),
                     size: SegmentedSize::Small,
                 })
                 .on_event(cx.listener(
@@ -946,8 +947,8 @@ fn link_row(
 ) -> impl IntoElement {
     press_with(
         PressProps {
-            scale: 0.98,
-            label: Some(title.into()),
+            scale: 0.98.into(),
+            label: Some(title.into()).into(),
             ..PressProps::default()
         },
         on_press,
@@ -1000,9 +1001,9 @@ impl Component for Components {
                 IconName::Form,
                 "KeyboardAvoidingView",
                 "padding / height / position",
-                cx.listener(|_: &mut Self, _, cx| {
-                    nav::push(cx, "keyboard-avoiding", |cx| {
-                        header(screen().title("KeyboardAvoidingView"), cx)
+                cx.listener(|_: &mut Self, _, _| {
+                    nav::push("keyboard-avoiding", || {
+                        header(screen().title("KeyboardAvoidingView"))
                             .child(AvoidingPage::element(()))
                     });
                 }),

@@ -46,7 +46,7 @@ fn action(
 ) -> impl IntoElement {
     press_with(
         PressProps {
-            label: Some(label.into()),
+            label: Some(label.into()).into(),
             hit_slop: Some(4.0),
             ..PressProps::default()
         },
@@ -738,9 +738,9 @@ impl More {
             press_with(
                 PressProps {
                     hit_slop: Some(4.0),
-                    role: PressRole::Tab,
-                    selected,
-                    label: Some(label.into()),
+                    role: PressRole::Tab.into(),
+                    selected: selected.into(),
+                    label: Some(label.into()).into(),
                     ..PressProps::default()
                 },
                 cx.listener(move |this: &mut Self, _, cx| {

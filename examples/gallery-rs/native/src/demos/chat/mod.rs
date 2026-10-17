@@ -1009,7 +1009,7 @@ impl Component for Chat {
                             press_with(
                                 PressProps {
                                     hit_slop: Some(4.0),
-                                    label: Some(label.into()),
+                                    label: Some(label.into()).into(),
                                     ..PressProps::default()
                                 },
                                 play(id),
@@ -1130,12 +1130,14 @@ impl Component for Chat {
                                         options: MODELS
                                             .iter()
                                             .map(|m| Segment::new(m.name()))
-                                            .collect(),
-                                        selected: MODELS
+                                            .collect::<Vec<_>>()
+                                            .into(),
+                                        selected: (MODELS
                                             .iter()
                                             .position(|m| *m == self.model)
                                             .unwrap_or(0)
-                                            as u32,
+                                            as u32)
+                                            .into(),
                                         size: SegmentedSize::Small,
                                     })
                                     .on_event(cx.listener(
@@ -1150,8 +1152,8 @@ impl Component for Chat {
                             .child(if streaming {
                                 press_with(
                                     PressProps {
-                                        scale: 0.9,
-                                        label: Some("Stop generating".into()),
+                                        scale: 0.9.into(),
+                                        label: Some("Stop generating".into()).into(),
                                         ..PressProps::default()
                                     },
                                     cx.listener(|this: &mut Self, _: &(), cx| this.stop(cx)),
@@ -1241,7 +1243,7 @@ impl Chat {
                         appear(i as u32 + 1).child(
                             press_with(
                                 PressProps {
-                                    label: Some(chip.into()),
+                                    label: Some(chip.into()).into(),
                                     ..PressProps::default()
                                 },
                                 cx.listener(move |this: &mut Self, _: &(), cx| this.play(id, cx)),
@@ -1472,9 +1474,9 @@ fn assistant_row(
             .child(
                 press_with(
                     PressProps {
-                        scale: 0.98,
-                        label: Some("Reasoning".into()),
-                        selected: r.open,
+                        scale: 0.98.into(),
+                        label: Some("Reasoning".into()).into(),
+                        selected: r.open.into(),
                         ..PressProps::default()
                     },
                     act(Action::Reasoning(id.clone())),

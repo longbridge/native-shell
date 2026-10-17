@@ -92,7 +92,7 @@ impl Ticket {
 fn step(plus: bool, label: &'static str, on_press: Listener<()>) -> impl IntoElement {
     press_with(
         PressProps {
-            label: Some(label.into()),
+            label: Some(label.into()).into(),
             ..PressProps::default()
         },
         on_press,
@@ -197,8 +197,8 @@ impl Component for Ticket {
                     .child(
                         press_with(
                             PressProps {
-                                label: Some(format!("{q} shares").into()),
-                                selected,
+                                label: Some(format!("{q} shares").into()).into(),
+                                selected: selected.into(),
                                 ..PressProps::default()
                             },
                             cx.listener(move |this: &mut Self, _: &(), cx| {
@@ -355,8 +355,8 @@ impl Component for Ticket {
             )
             .child(
                 Segmented::element(SegmentedProps {
-                    options: vec![Segment::new("Buy"), Segment::new("Sell")],
-                    selected: u32::from(!buy),
+                    options: vec![Segment::new("Buy"), Segment::new("Sell")].into(),
+                    selected: (u32::from(!buy)).into(),
                     ..SegmentedProps::default()
                 })
                 .on_event(cx.listener(|_: &mut Self, e: &SegmentedEvent, cx| {
