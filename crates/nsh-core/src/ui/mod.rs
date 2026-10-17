@@ -25,6 +25,7 @@
 //! expands, so both stay dense. How the core runs components:
 //! `docs/dev/components.md`.
 
+pub mod ambient;
 pub(crate) mod animated;
 mod asset;
 mod back;
@@ -54,7 +55,7 @@ pub use nsh_animation::{
     Curve, EaseMode, Easing, Extrapolate, Output as AnimationOutput, sample_easing,
 };
 pub use nsh_macros::{
-    Event, JsObject, PropEnum, Props, asset, assets, methods, module, native_module,
+    Event, JsObject, PropEnum, Props, asset, assets, component, methods, module, native_module,
 };
 
 pub use self::{
@@ -129,7 +130,10 @@ pub use crate::{
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
 pub mod prelude {
-    // Components that run once: signals, bindings, control flow.
+    // Components that run once: signals, bindings, control flow; what they
+    // read of the surface and ask of the platform.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use super::ambient::{background, blocking};
     pub use super::{
         AccessibilityRole,
         AccessibilityState,
@@ -278,8 +282,18 @@ pub mod prelude {
     };
     pub use super::{
         Each, If, IntoElements, IntoReactive, Memo, Owner, Prop, Reactive, ReadSignal, Scope,
-        Signal, SignalEquals, batch, cleanup, computed, dynamic, effect, provide_context, signal,
-        signal_with, untracked, use_context,
+        Signal, SignalEquals,
+        ambient::{
+            Spawned, add_status_bar, allow_rtl, animate_layout, announce_for_accessibility,
+            clipboard_has_string, clipboard_string, color, dark, dialog, dismiss_keyboard,
+            element_ref, font_scale, force_rtl, global, idiom, image_size, keyboard_height, locale,
+            measure_text, native_value, next_frame, on_back_press, os, os_version, pixel_ratio,
+            prefetch_image, reduce_motion, request_animation_frame, round_to_nearest_pixel, rtl,
+            safe_area, screen_reader, set_clipboard, set_color_scheme, set_interval, set_timeout,
+            spawn, theme, timer, timer_until, toast, update_status_bar, window,
+        },
+        batch, cleanup, component, computed, dynamic, effect, provide_context, signal, signal_with,
+        untracked, use_context,
     };
 }
 

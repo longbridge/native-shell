@@ -6541,6 +6541,41 @@ mod views {
         );
     }
 
+    /// Made with `#[component]`: reads the appearance and a timer.
+    #[component]
+    fn Clock(_props: (), cx: Scope<NoEvent>) -> impl IntoElement {
+        let ticks = signal(0);
+        set_timeout(std::time::Duration::ZERO, move || ticks.set(1));
+        let _ = cx.insets();
+        view().child(text(move || {
+            format!(
+                "{} {} {}",
+                if dark() { "dark" } else { "light" },
+                ticks.get(),
+                theme().radius
+            )
+        }))
+    }
+
+    #[test]
+    fn a_function_component_reads_the_environment_and_its_timers_run() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Clock>(|| ()));
+        let batch = c.commit().unwrap();
+        let shown = texts(&batch);
+        assert!(shown[0].starts_with("light 0 "), "{shown:?}");
+        c.set_environment(crate::ui::Environment {
+            dark: true,
+            ..Default::default()
+        });
+        let batch = c.commit().unwrap();
+        assert!(
+            texts(&batch)[0].starts_with("dark 0 "),
+            "{:?}",
+            texts(&batch)
+        );
+    }
+
     /// A style bound to a signal.
     #[derive(Default)]
     struct Lamp;

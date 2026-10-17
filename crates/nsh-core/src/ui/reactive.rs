@@ -42,6 +42,13 @@ pub(crate) struct RustData {
     runaway: bool,
     /// Events components that run once emitted, for the core.
     emits: Vec<super::once::Emitted>,
+    /// What components read of the core ([`super::ambient`]).
+    pub(crate) ambient: super::ambient::Ambient,
+}
+
+/// Runs `f` on the entered runtime's data.
+pub(crate) fn with_data<R>(f: impl FnOnce(&mut RustData) -> R) -> R {
+    f(&mut graph().data)
 }
 
 /// Queues `event` of the component on `host` for the core.

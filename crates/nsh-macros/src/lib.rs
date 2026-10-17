@@ -808,6 +808,109 @@ pub fn assets(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// `#[component]` on a function: a component that runs once
+/// (`Component::view`), named after the function.
+///
+/// ```ignore
+/// /// A number with − and + buttons.
+/// #[component]
+/// pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement {
+///     let value = signal(0.0);
+///     view().child(text(move || format!("{}", value.get())))
+/// }
+/// ```
+///
+/// makes `pub struct Stepper;` and its `Component` impl with `RUNS_ONCE`;
+/// the body is its view, run once. Without a `Scope` parameter it emits no
+/// events (`NoEvent`); without props it has none (`()`).
+#[proc_macro_attribute]
+pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(Span::call_site(), "`#[component]` takes no arguments")
+            .into_compile_error()
+            .into();
+    }
+    let item = parse_macro_input!(item as ItemFn);
+    component_fn(item)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn component_fn(item: ItemFn) -> syn::Result<TokenStream2> {
+    let ui = quote!(::nsh_core::ui);
+    let sig = &item.sig;
+    if !sig.generics.params.is_empty() || sig.asyncness.is_some() {
+        return Err(syn::Error::new(
+            sig.span(),
+            "a component is a plain function: no generics, not async",
+        ));
+    }
+    let name = &sig.ident;
+    let vis = &item.vis;
+    let attrs = &item.attrs;
+    let body = &item.block;
+    let output = &sig.output;
+    let mut props: Option<(Box<Pat>, Box<Type>)> = None;
+    let mut scope: Option<(Box<Pat>, Box<Type>, Type)> = None;
+    for input in &sig.inputs {
+        let FnArg::Typed(arg) = input else {
+            return Err(syn::Error::new(input.span(), "a component takes no `self`"));
+        };
+        match last_segment(&arg.ty) {
+            Some((id, Some(event))) if id == "Scope" => {
+                if scope.is_some() {
+                    return Err(syn::Error::new(arg.span(), "one `Scope` parameter"));
+                }
+                scope = Some((arg.pat.clone(), arg.ty.clone(), event.clone()));
+            }
+            _ => {
+                if props.is_some() {
+                    return Err(syn::Error::new(
+                        arg.span(),
+                        "a component takes its props and its `Scope`",
+                    ));
+                }
+                props = Some((arg.pat.clone(), arg.ty.clone()));
+            }
+        }
+    }
+    let (props_pat, props_ty) = match &props {
+        Some((pat, ty)) => (quote!(#pat), quote!(#ty)),
+        None => (quote!(_), quote!(())),
+    };
+    let (scope_pat, scope_ty, event) = match &scope {
+        Some((pat, ty, event)) => (quote!(#pat), quote!(#ty), quote!(#event)),
+        None => (
+            quote!(_),
+            quote!(#ui::Scope<#ui::NoEvent>),
+            quote!(#ui::NoEvent),
+        ),
+    };
+    let output = match output {
+        ReturnType::Default => {
+            return Err(syn::Error::new(
+                sig.span(),
+                "a component returns its view: `-> impl IntoElement`",
+            ));
+        }
+        ReturnType::Type(_, ty) => quote!(#ty),
+    };
+    Ok(quote! {
+        #(#attrs)*
+        #[derive(::core::default::Default)]
+        #vis struct #name;
+
+        impl #ui::Component for #name {
+            type Props = #props_ty;
+            type Event = #event;
+            const RUNS_ONCE: bool = true;
+
+            #[allow(unused_variables)]
+            fn view(#props_pat: #props_ty, #scope_pat: #scope_ty) -> #output #body
+        }
+    })
+}
+
 /// `#[native_module("gallery/native")]` on `fn native(registry: &mut
 /// Registry)` at the root of an app's crate (`nsh.json` `"rust"`): the UI
 /// set the app's TSX imports by that specifier. The function registers the

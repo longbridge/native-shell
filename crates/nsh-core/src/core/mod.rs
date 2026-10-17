@@ -8,7 +8,7 @@ mod tests;
 mod touch;
 mod views;
 
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 use nsh_animation::AnimationProp;
 use slab::Slab;
@@ -568,7 +568,7 @@ pub struct Core<M: TextEngine> {
     /// Node id -> key + 1 (0 = none). Ids are dense, so this is a flat vec.
     slots: Vec<u32>,
     layout: TaffyTree<LeafContext<M::Prepared>>,
-    text_engine: M,
+    text_engine: Rc<M>,
     measure_cache: MeasureCache,
     /// Text blocks whose final layout must be (re)made after layout.
     pending_text: Vec<Key>,
@@ -624,9 +624,23 @@ pub struct Core<M: TextEngine> {
     components: components::Components,
 }
 
-impl<M: TextEngine> Core<M> {
+impl<M: TextEngine + 'static> Core<M> {
     /// Creates a core whose root view (id [`ROOT_ID`]) fills `viewport`.
     pub fn new(text_engine: M, viewport: Size) -> Self {
+        let core = Self::with_engine(text_engine, viewport);
+        // Components that run once measure text with it.
+        let engine = core.text_engine.clone();
+        core.components
+            .runtime
+            .set_measure(Rc::new(move |font, text| {
+                crate::canvas::measure_line(&*engine, font, text)
+            }));
+        core
+    }
+}
+
+impl<M: TextEngine> Core<M> {
+    fn with_engine(text_engine: M, viewport: Size) -> Self {
         let mut layout = TaffyTree::with_capacity(256);
         let root_layout = layout.new_leaf(root_style(viewport)).expect("taffy root");
         let mut nodes = Slab::with_capacity(256);
@@ -641,7 +655,7 @@ impl<M: TextEngine> Core<M> {
             nodes,
             slots,
             layout,
-            text_engine,
+            text_engine: Rc::new(text_engine),
             measure_cache: MeasureCache::default(),
             pending_text: Vec::new(),
             attachment_blocks: Vec::new(),

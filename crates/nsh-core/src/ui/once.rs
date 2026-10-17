@@ -42,6 +42,13 @@ impl<E: Event> Scope<E> {
     pub fn emit(&self, event: E) {
         super::reactive::emit(self.host, Box::new(event));
     }
+
+    /// The edges system UI or a header covers where the component is: its
+    /// screen's (below the header) or modal's, else the safe area (TS:
+    /// `useSafeAreaInsets()`). Reading subscribes.
+    pub fn insets(&self) -> crate::EdgeInsets {
+        super::ambient::insets_of(self.host)
+    }
 }
 
 /// The instance of a component that runs once.

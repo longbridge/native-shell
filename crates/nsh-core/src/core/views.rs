@@ -244,6 +244,11 @@ impl<M: TextEngine> Core<M> {
     pub(super) fn drain_views(&mut self) -> bool {
         let mut any = false;
         loop {
+            // The insets components read, as their screens have them now.
+            for host in self.components.runtime.inset_hosts() {
+                let insets = self.insets_of(host);
+                self.components.runtime.set_insets(host, insets);
+            }
             let emits = self.components.runtime.take_emits();
             let patches = std::mem::take(&mut *self.components.patches.borrow_mut());
             if emits.is_empty() && patches.is_empty() {

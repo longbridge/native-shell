@@ -359,6 +359,12 @@ impl Components {
     pub(super) fn for_viewport(viewport: crate::Size) -> Self {
         let mut components = Self::default();
         components.environment.window = viewport;
+        // What components that run once read of the core.
+        components
+            .runtime
+            .set_services(components.executor.clone(), components.globals.clone());
+        components.runtime.set_environment(components.environment);
+        components.runtime.set_theme(components.theme.clone());
         components
     }
 
@@ -468,6 +474,9 @@ impl<M: TextEngine> Core<M> {
     pub fn set_theme(&mut self, theme: Theme) {
         let _entered = self.components.runtime.enter();
         self.components.theme = Arc::new(theme);
+        self.components
+            .runtime
+            .set_theme(self.components.theme.clone());
         let hosts: Vec<NodeId> = self.components.instances.keys().copied().collect();
         for host in hosts {
             self.components.mark(host);
@@ -516,6 +525,7 @@ impl<M: TextEngine> Core<M> {
         let old = self.components.environment;
         let changed = environment.changes(&old);
         self.components.environment = environment;
+        self.components.runtime.set_environment(environment);
         if changed == 0 {
             return;
         }
@@ -2479,6 +2489,7 @@ impl<M: TextEngine> Core<M> {
             self.finish_event(host, cx);
         }
         self.release_regions(host);
+        self.components.runtime.forget_host(host);
         // Its tasks and timers end with it.
         self.components.executor.cancel_host(host);
         let listeners = self.components.executor.back.borrow_mut().remove_host(host);
@@ -3008,7 +3019,7 @@ impl<M: TextEngine> Core<M> {
 
     /// The insets where `host` renders: its screen's or modal's, else the
     /// surface's safe area.
-    fn insets_of(&self, host: NodeId) -> EdgeInsets {
+    pub(super) fn insets_of(&self, host: NodeId) -> EdgeInsets {
         let safe = self.components.environment.safe_area;
         let mut key = self.key(host).ok();
         while let Some(k) = key {

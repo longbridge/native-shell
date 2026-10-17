@@ -726,6 +726,63 @@ pub(crate) fn act_after(
 }
 
 /// Starts `f(this, cx)` as a task of component `host`.
+/// Starts `future` on the engine thread, with no component (a task of a
+/// component that runs once: its owner ends it, [`TaskHandle::cancel`]).
+/// The task is detached: dropping it does not cancel it.
+pub(crate) fn spawn_future<R: 'static>(
+    executor: &Rc<Executor>,
+    future: impl Future<Output = R> + 'static,
+) -> Task<R> {
+    let weak = Rc::downgrade(executor);
+    let output = Rc::new(RefCell::new(Output {
+        value: None,
+        waker: None,
+    }));
+    let done = output.clone();
+    let id = executor.spawn(
+        0,
+        Box::pin(async move {
+            let value = future.await;
+            let mut output = done.borrow_mut();
+            output.value = Some(value);
+            if let Some(waker) = output.waker.take() {
+                waker.wake();
+            }
+        }),
+    );
+    Task {
+        executor: weak,
+        id,
+        output,
+        detached: true,
+    }
+}
+
+/// What cancels a task, apart from its handle.
+pub(crate) struct TaskHandle {
+    executor: Weak<Executor>,
+    id: u64,
+}
+
+impl TaskHandle {
+    /// Ends the task (nothing when it ended already).
+    pub(crate) fn cancel(&self) {
+        if let Some(executor) = self.executor.upgrade() {
+            executor.cancel(self.id);
+        }
+    }
+}
+
+impl<T> Task<T> {
+    /// What cancels it.
+    pub(crate) fn handle(&self) -> TaskHandle {
+        TaskHandle {
+            executor: self.executor.clone(),
+            id: self.id,
+        }
+    }
+}
+
 pub(crate) fn spawn<C, R, Fut>(
     executor: &Rc<Executor>,
     host: NodeId,
