@@ -219,8 +219,7 @@ fn tile() -> View {
 }
 
 /// Press feedback is native: opacity, an underlay, styles; `disabled`
-/// takes no presses. An underlay's color is a value: the tiles with one
-/// are made again when the appearance changes.
+/// takes no presses.
 #[component]
 fn PressFeedback() -> impl IntoElement {
     let last = signal("None yet");
@@ -240,50 +239,45 @@ fn PressFeedback() -> impl IntoElement {
                     None,
                 )),
         )
-        .child(dynamic(move || {
-            let underlay = color(colors::RAISED);
-            untracked(|| {
-                tile()
-                    .underlay(underlay, UNDERLAY_OPACITY)
-                    .on_press(pressed("Underlay tile"))
-                    .child(tile_content(
-                        "Lights up while pressed",
-                        "underlayColor",
-                        None,
-                    ))
-            })
-        }))
-        .child(dynamic(move || {
-            let underlay = color(tints::DANGER);
-            untracked(|| {
-                tile()
-                    .disabled(disabled)
-                    .underlay(underlay, UNDERLAY_OPACITY)
-                    .disabled_style(|s| s.opacity(0.4))
-                    .on_press(pressed("Enabled tile"))
-                    .child(tile_content(
-                        move || {
-                            if disabled.get() {
-                                "Takes no presses"
-                            } else {
-                                "Enabled"
-                            }
-                        },
-                        "disabled + disabled:opacity-40",
-                        Some(
-                            Badge::new(move || if disabled.get() { "Off" } else { "On" })
-                                .tone(move || {
-                                    if disabled.get() {
-                                        Tone::Neutral
-                                    } else {
-                                        Tone::Up
-                                    }
-                                })
-                                .into_element(),
-                        ),
-                    ))
-            })
-        }))
+        // The underlays' colors follow the appearance.
+        .child(
+            tile()
+                .underlay(|| color(colors::RAISED), UNDERLAY_OPACITY)
+                .on_press(pressed("Underlay tile"))
+                .child(tile_content(
+                    "Lights up while pressed",
+                    "underlayColor",
+                    None,
+                )),
+        )
+        .child(
+            tile()
+                .disabled(disabled)
+                .underlay(|| color(tints::DANGER), UNDERLAY_OPACITY)
+                .disabled_style(|s| s.opacity(0.4))
+                .on_press(pressed("Enabled tile"))
+                .child(tile_content(
+                    move || {
+                        if disabled.get() {
+                            "Takes no presses"
+                        } else {
+                            "Enabled"
+                        }
+                    },
+                    "disabled + disabled:opacity-40",
+                    Some(
+                        Badge::new(move || if disabled.get() { "Off" } else { "On" })
+                            .tone(move || {
+                                if disabled.get() {
+                                    Tone::Neutral
+                                } else {
+                                    Tone::Up
+                                }
+                            })
+                            .into_element(),
+                    ),
+                )),
+        )
         .child(
             view()
                 .flex_row()

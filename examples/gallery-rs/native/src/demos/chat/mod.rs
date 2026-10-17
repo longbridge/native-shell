@@ -840,44 +840,40 @@ pub(crate) fn Chat(cx: Scope<NoEvent>) -> impl IntoElement {
     )
     .otherwise(move || chat.empty());
 
-    // Jump to the latest message: shown while scrolled up. Made again when
-    // it starts or stops taking touches (pointer events are not bound).
-    let jump_button = dynamic(move || {
-        let pointer = if following.get() {
-            PointerEvents::None
-        } else {
-            PointerEvents::Auto
-        };
-        let jump = jump.clone();
-        untracked(move || {
-            view()
-                .pointer_events(pointer)
-                .absolute()
-                .right_4()
-                .bottom_3()
-                .bind_opacity(&jump)
-                .bind_scale(&jump.interpolate(&[0.0, 1.0], &[0.7, 1.0]))
-                .child(
-                    RoundButton::new(
-                        IconName::ArrowDown,
-                        "Jump to the latest message",
-                        move |_: &()| chat.scroll_to_end(true),
-                    )
-                    .secondary(),
-                )
-                .child(If::new(streaming, || {
-                    view()
-                        .absolute()
-                        .top(px(2.0))
-                        .right(px(2.0))
-                        .size(px(10.0))
-                        .rounded(px(5.0))
-                        .bg(colors::ACCENT)
-                        .border_2()
-                        .border_color(colors::BACKGROUND)
-                }))
+    // Jump to the latest message: shown, and taking touches, while scrolled
+    // up.
+    let jump_button = view()
+        .pointer_events(move || {
+            if following.get() {
+                PointerEvents::None
+            } else {
+                PointerEvents::Auto
+            }
         })
-    });
+        .absolute()
+        .right_4()
+        .bottom_3()
+        .bind_opacity(&jump)
+        .bind_scale(&jump.interpolate(&[0.0, 1.0], &[0.7, 1.0]))
+        .child(
+            RoundButton::new(
+                IconName::ArrowDown,
+                "Jump to the latest message",
+                move |_: &()| chat.scroll_to_end(true),
+            )
+            .secondary(),
+        )
+        .child(If::new(streaming, || {
+            view()
+                .absolute()
+                .top(px(2.0))
+                .right(px(2.0))
+                .size(px(10.0))
+                .rounded(px(5.0))
+                .bg(colors::ACCENT)
+                .border_2()
+                .border_color(colors::BACKGROUND)
+        }));
 
     // The connection banner.
     let offline = computed(move || banner_kind.get() == Banner::Offline);
@@ -952,8 +948,7 @@ pub(crate) fn Chat(cx: Scope<NoEvent>) -> impl IntoElement {
         );
 
     // The "+" menu: attachments and the scenarios, to replay them. The
-    // backdrop and the menu are made again when they start or stop taking
-    // touches.
+    // backdrop and the menu take touches while it is open.
     let pointer = move || {
         if menu.get() {
             PointerEvents::Auto
@@ -961,27 +956,14 @@ pub(crate) fn Chat(cx: Scope<NoEvent>) -> impl IntoElement {
             PointerEvents::None
         }
     };
-    let backdrop = {
-        let menu_value = menu_value.clone();
-        dynamic(move || {
-            view()
-                .pointer_events(pointer())
-                .on_press(move |_: &()| menu.set(false))
-                .absolute()
-                .inset_0()
-                .bg(rgb_a(0x000000, 0.45))
-                .bind_opacity(&menu_value)
-        })
-    };
-    let menu_view = {
-        let chips = chips.clone();
-        dynamic(move || {
-            let pointer = pointer();
-            let underlay = color(colors::TEXT.opacity(0.06));
-            let (menu_value, chips) = (menu_value.clone(), chips.clone());
-            untracked(move || chat.menu_view(pointer, underlay, &menu_value, &chips))
-        })
-    };
+    let backdrop = view()
+        .pointer_events(pointer)
+        .on_press(move |_: &()| menu.set(false))
+        .absolute()
+        .inset_0()
+        .bg(rgb_a(0x000000, 0.45))
+        .bind_opacity(&menu_value);
+    let menu_view = chat.menu_view(pointer, &menu_value, &chips);
 
     // Suggestions while the conversation is empty.
     let suggestions = If::new(
@@ -1030,23 +1012,20 @@ pub(crate) fn Chat(cx: Scope<NoEvent>) -> impl IntoElement {
     // The composer.
     let can_send = computed(move || !draft.with(|d| d.trim().is_empty()) || attachment.get());
     let send_button = move || {
-        dynamic(move || {
-            let can = can_send.get();
-            untracked(move || {
-                view()
-                    .opacity(if can { 1.0 } else { 0.35 })
-                    .pointer_events(if can {
-                        PointerEvents::Auto
-                    } else {
-                        PointerEvents::None
-                    })
-                    .child(RoundButton::new(
-                        IconName::ArrowUp,
-                        "Send",
-                        move |_: &()| chat.send(),
-                    ))
+        view()
+            .opacity(move || if can_send.get() { 1.0_f32 } else { 0.35 })
+            .pointer_events(move || {
+                if can_send.get() {
+                    PointerEvents::Auto
+                } else {
+                    PointerEvents::None
+                }
             })
-        })
+            .child(RoundButton::new(
+                IconName::ArrowUp,
+                "Send",
+                move |_: &()| chat.send(),
+            ))
     };
     let composer = view()
         .px_4()
@@ -1188,12 +1167,10 @@ pub(crate) fn Chat(cx: Scope<NoEvent>) -> impl IntoElement {
 }
 
 impl ChatState {
-    /// The "+" menu, taking touches with `pointer`; its rows' underlay is
-    /// `underlay`.
+    /// The "+" menu, taking touches with `pointer`.
     fn menu_view(
         self,
-        pointer: PointerEvents,
-        underlay: Color,
+        pointer: impl IntoReactive<PointerEvents>,
         shown: &NativeValue,
         chips: &[(&'static str, &'static str)],
     ) -> View {
@@ -1214,7 +1191,7 @@ impl ChatState {
                             self.play(id);
                         }
                     })
-                    .underlay(underlay, 0.85)
+                    .underlay(|| color(colors::TEXT.opacity(0.06)), 0.85)
                     .role(AccessibilityRole::Button)
                     .label(label)
                     .flex_row()

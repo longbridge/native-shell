@@ -32,7 +32,7 @@ use nsh_core::{
     LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
     canvas::{CanvasGradient, Composite, LineCap, LineJoin},
     nsh_animation::{Curve, EaseMode},
-    ui::{NativeNode, StyleRefinement, View, prelude::*},
+    ui::{NativeNode, View, prelude::*},
 };
 
 use self::{
@@ -701,9 +701,6 @@ fn StockRow(props: StockRowProps, cx: Scope<StockRowEvent>) -> impl IntoElement 
     });
     let change = computed(move || quote.get().percent());
     let market = live.market;
-    // Pressed, the row shows the surface under its content (an underlay
-    // as `active` styles: they take the appearance's colors natively).
-    let faded = |s: StyleRefinement| s.opacity(0.85);
     view()
         .h(px(64.0))
         .flex_row()
@@ -711,8 +708,8 @@ fn StockRow(props: StockRowProps, cx: Scope<StockRowEvent>) -> impl IntoElement 
         .gap_3()
         .px_4()
         .on_press(move |_: &()| cx.emit(StockRowEvent::Press))
-        .group()
-        .active(|s| s.bg(colors::SURFACE))
+        // Pressed, the row shows the surface under its content.
+        .underlay(|| color(colors::SURFACE), 0.85)
         .role(AccessibilityRole::Button)
         .label(name)
         // The hairline above all rows but the first (it stays: rows move).
@@ -729,14 +726,12 @@ fn StockRow(props: StockRowProps, cx: Scope<StockRowEvent>) -> impl IntoElement 
                     } else {
                         colors::LINE
                     }
-                })
-                .group_active(faded),
+                }),
         )
         .child(
             view()
                 .flex_1()
                 .gap(px(3.0))
-                .group_active(faded)
                 .child(
                     text(code)
                         .number_of_lines(1)
@@ -759,15 +754,13 @@ fn StockRow(props: StockRowProps, cx: Scope<StockRowEvent>) -> impl IntoElement 
             .pointer_events(PointerEvents::None)
             .w(px(SPARK_W + RING * 2.0))
             .h(px(SPARK_H + RING * 2.0))
-            .m(px(-RING))
-            .group_active(faded),
+            .m(px(-RING)),
         )
         .child(
             view()
                 .w(px(84.0))
                 .items_end()
                 .gap(px(3.0))
-                .group_active(faded)
                 .child(
                     text(move || price(quote.get().last, decimals))
                         .number_of_lines(1)

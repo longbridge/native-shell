@@ -490,38 +490,33 @@ fn PressEvents() -> impl IntoElement {
             })
             .collect::<Vec<_>>()
     });
-    // The underlay's color is the appearance's too.
-    let ripple = {
-        let fire = fire.clone();
-        dynamic(move || {
-            view()
-                .on_press(fire("ripple"))
-                .on_long_press(fire("fast long press"))
-                .long_press_delay(250.0)
-                .underlay(color(colors::BORDER), UNDERLAY_OPACITY)
-                .ripple(Ripple {
-                    color: Some(rgb_a(0xc8f26d, 0.25)),
-                    ..Ripple::default()
-                })
-                .flex_1()
-                .h(px(56.0))
-                .rounded(px(radius::CONTROL))
-                .border_curve(BorderCurve::Continuous)
-                .bg(colors::RAISED)
-                .finish(Finish::Raised)
-                .border_1()
-                .border_color(colors::BORDER)
-                .items_center()
-                .justify_center()
-                .gap(px(2.0))
-                .child(text("Ripple").text_size(px(14.0)).text_color(colors::TEXT))
-                .child(
-                    text("Long press after 250 ms")
-                        .text_size(px(12.0))
-                        .text_color(colors::FAINT),
-                )
+    // The underlay's color follows the appearance.
+    let ripple = view()
+        .on_press(fire("ripple"))
+        .on_long_press(fire("fast long press"))
+        .long_press_delay(250.0)
+        .underlay(|| color(colors::BORDER), UNDERLAY_OPACITY)
+        .ripple(Ripple {
+            color: Some(rgb_a(0xc8f26d, 0.25)),
+            ..Ripple::default()
         })
-    };
+        .flex_1()
+        .h(px(56.0))
+        .rounded(px(radius::CONTROL))
+        .border_curve(BorderCurve::Continuous)
+        .bg(colors::RAISED)
+        .finish(Finish::Raised)
+        .border_1()
+        .border_color(colors::BORDER)
+        .items_center()
+        .justify_center()
+        .gap(px(2.0))
+        .child(text("Ripple").text_size(px(14.0)).text_color(colors::TEXT))
+        .child(
+            text("Long press after 250 ms")
+                .text_size(px(12.0))
+                .text_color(colors::FAINT),
+        );
     Card::new()
         .icon(IconName::Components)
         .title("Press events")
@@ -780,12 +775,12 @@ fn accessibility() -> impl IntoElement {
                         .child(
                             Row::new(i == 0)
                                 // The tile's tint follows the press.
-                                .child(dynamic(move || {
-                                    IconTile::new(name).size(34.0).tint(if pressed.get() {
+                                .child(IconTile::new(name).size(34.0).tint(move || {
+                                    if pressed.get() {
                                         colors::ACCENT
                                     } else {
                                         colors::TEXT
-                                    })
+                                    }
                                 }))
                                 .child(
                                     view()
