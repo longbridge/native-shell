@@ -91,7 +91,7 @@ On Android, `android={{ ripple: { color: "#0000001f" } }}` adds the material rip
 | `onPress` | none | A tap ended inside the view. |
 | `onLongPress` | none | The finger stayed down for `delayLongPress` (500 ms). |
 | `onPressIn` / `onPressOut` | none | A finger went down / lifted or left. |
-| `onHoverIn` / `onHoverOut` | none | The mouse came over the view (or a view inside it) / left it or the window; macOS and Linux ([hover](./index.md#hover)). |
+| `onHoverIn` / `onHoverOut` | none | The mouse came over the view (or a view inside it) / left it or the window; macOS, Linux and GPUI ([hover](./index.md#hover)). |
 | `onLayout` | `{ x, y, width, height }` | The frame relative to the parent changed. |
 | `onPanStart` / `onPanEnd` | `PanEvent` | A drag bound with `pan` started / ended. |
 | `onPinchStart` / `onPinchEnd` | `{ scale, velocity }` | A pinch bound with `pinch` started / ended. |

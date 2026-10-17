@@ -80,7 +80,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 | `onPress` | 无 | 在视图内完成一次点击。 |
 | `onLongPress` | 无 | 手指按住达到 `delayLongPress`（500 ms）。 |
 | `onPressIn` / `onPressOut` | 无 | 手指按下 / 抬起或移出。 |
-| `onHoverIn` / `onHoverOut` | 无 | 鼠标移到视图（或其内部的视图）上 / 离开视图或窗口；macOS 和 Linux（见[悬停](./index.md#悬停)）。 |
+| `onHoverIn` / `onHoverOut` | 无 | 鼠标移到视图（或其内部的视图）上 / 离开视图或窗口；macOS、Linux 和 GPUI（见[悬停](./index.md#悬停)）。 |
 | `onLayout` | `{ x, y, width, height }` | 相对父视图的 frame 发生变化。 |
 | `onPanStart` / `onPanEnd` | `PanEvent` | 通过 `pan` 绑定的拖动开始 / 结束。 |
 | `onPinchStart` / `onPinchEnd` | `{ scale, velocity }` | 通过 `pinch` 绑定的捏合开始 / 结束。 |

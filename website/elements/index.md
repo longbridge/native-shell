@@ -92,7 +92,7 @@ start first.
 
 ### Hover
 
-On macOS and Linux, JS can hear the mouse come over a view and leave it (other platforms do not raise these events
+On macOS, Linux and the GPUI backend, JS can hear the mouse come over a view and leave it (other platforms do not raise these events
 yet; `hover:` classes style hovered views everywhere the platform tracks hover).
 
 | Prop | Type | Description |

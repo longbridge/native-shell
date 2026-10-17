@@ -470,6 +470,8 @@ impl Surface {
         }
         if applied {
             self.write_animations();
+            // Views may have come under (or gone from under) a still mouse.
+            crate::input::rehover(self);
         }
         self.ensure_ticking();
     }
