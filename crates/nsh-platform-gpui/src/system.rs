@@ -27,21 +27,25 @@
 //!   `LC_MESSAGES`, `LANG`, the first set), else `LANGUAGE`; on Windows the
 //!   user's regional format (`GetUserDefaultLocaleName`); on macOS the
 //!   current locale (`CFLocaleCopyCurrent`, the region format);
-//! - the font scale: Windows' text size (`TextScaleFactor`); 1 on Linux
-//!   and macOS (GPUI follows no desktop text scaling);
+//! - the font scale: Windows' text size (`TextScaleFactor`), the settings
+//!   portal's `org.gnome.desktop.interface text-scaling-factor` on Linux;
+//!   1 on macOS;
 //! - reduce motion: Windows' animation effects
 //!   (`SPI_GETCLIENTAREAANIMATION`), macOS' universal access
-//!   `reduceMotion`; off on Linux;
+//!   `reduceMotion`, the portal's `enable-animations` off on Linux;
 //! - right to left: the reading direction of the UI language on Windows,
 //!   of the locale's language elsewhere;
 //! - the screen reader: `SPI_GETSCREENREADER` on Windows, VoiceOver's
-//!   preference on macOS; off on Linux;
+//!   preference on macOS, AT-SPI's `ScreenReaderEnabled` on Linux;
 //! - the pixel ratio: the window's scale factor (the surface sets it);
 //! - the OS version: the kernel's on Linux, `RtlGetVersion`'s on Windows,
 //!   `kern.osproductversion` on macOS.
 //!
-//! The settings are read again whenever the window's appearance changes
-//! (GPUI reports no other setting changes). Safe area and keyboard height
+//! On Windows and macOS the settings are read again whenever the window's
+//! appearance changes (GPUI reports no other setting changes); on Linux
+//! background threads follow the portal's `SettingChanged` and AT-SPI's
+//! property changes over D-Bus, and dialogs take the portal's
+//! `org.freedesktop.appearance accent-color`. Safe area and keyboard height
 //! are zero: desktop windows have neither. The surface's scheme drives the
 //! root's background (white / neutral-950, the default theme's), as the
 //! root view has none of its own.
@@ -157,6 +161,22 @@ pub(crate) fn simulate_system_scheme(dark: bool) {
     }
 }
 
+/// The desktop's settings changed (Linux's services): every surface
+/// follows.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn settings_changed() {
+    let surfaces: Vec<Rc<Surface>> = WATCHED.with(|w| {
+        let mut w = w.borrow_mut();
+        w.retain(|w| w.surface.strong_count() > 0);
+        w.iter().filter_map(|w| w.surface.upgrade()).collect()
+    });
+    for surface in surfaces {
+        update(&surface);
+        // The accent may have changed without the environment.
+        surface.invalidate();
+    }
+}
+
 /// True when the window looks dark (or a script made the system look so).
 fn window_dark(window: &Window) -> bool {
     if let Some(dark) = SIMULATED.with(Cell::get) {
@@ -209,6 +229,7 @@ pub(crate) fn watch_environment(
         crate::rt::flush(cx);
     })
     .detach();
+    os::watch();
     update(surface);
 }
 
@@ -346,21 +367,213 @@ fn text_scale(percent: Option<u32>) -> f32 {
 
 #[cfg(target_os = "linux")]
 mod os {
+    use std::cell::Cell;
+
+    use nsh_core::Color;
+    use zbus::{
+        blocking::{Connection, Proxy},
+        zvariant::{OwnedValue, Value},
+    };
+
     use super::{Settings, parse_version, posix_locale, rtl_language};
 
+    const PORTAL: &str = "org.freedesktop.portal.Desktop";
+    const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+    const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
+    const APPEARANCE: &str = "org.freedesktop.appearance";
+    const INTERFACE: &str = "org.gnome.desktop.interface";
+
+    /// What the desktop's services report: the settings portal and AT-SPI.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    struct Desktop {
+        font_scale: f32,
+        reduce_motion: bool,
+        screen_reader: bool,
+        accent: Option<Color>,
+    }
+
+    thread_local! {
+        /// The desktop's settings as last reported (main thread).
+        static DESKTOP: Cell<Desktop> = const {
+            Cell::new(Desktop {
+                font_scale: 1.0,
+                reduce_motion: false,
+                screen_reader: false,
+                accent: None,
+            })
+        };
+        static WATCHING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// A setting a service reported.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum Change {
+        FontScale(f32),
+        ReduceMotion(bool),
+        ScreenReader(bool),
+        Accent(Option<Color>),
+    }
+
     /// The settings: the locale from the environment, the kernel's
-    /// version. GPUI reads no text scale, motion or screen reader setting
-    /// on Linux (they are the desktop's: GSettings, AT-SPI).
+    /// version, and what the desktop's services last reported.
     pub(super) fn settings() -> Settings {
         let locale = posix_locale(|v| std::env::var(v).ok());
+        let desktop = DESKTOP.with(Cell::get);
         Settings {
-            font_scale: 1.0,
-            reduce_motion: false,
+            font_scale: desktop.font_scale,
+            reduce_motion: desktop.reduce_motion,
             rtl: rtl_language(locale.as_str()),
-            screen_reader: false,
+            screen_reader: desktop.screen_reader,
             locale,
             os_version: os_version(),
         }
+    }
+
+    /// The desktop's accent color, if it has one.
+    pub(super) fn accent() -> Option<Color> {
+        DESKTOP.with(Cell::get).accent
+    }
+
+    /// Follows the desktop's settings (once per process): the settings
+    /// portal's text scale, animations and accent, AT-SPI's screen reader.
+    /// D-Bus is only talked to on background threads, which send what they
+    /// read to the main thread; until they answer, the defaults hold.
+    pub(super) fn watch() {
+        if WATCHING.with(|w| w.replace(true)) {
+            return;
+        }
+        let spawn = |name: &str, f: fn() -> zbus::Result<()>| {
+            let name = name.to_owned();
+            let _ = std::thread::Builder::new()
+                .name(name.clone())
+                .spawn(move || {
+                    if let Err(err) = f() {
+                        log::debug!("{name}: {err}");
+                    }
+                });
+        };
+        spawn("nsh-settings-portal", watch_portal);
+        spawn("nsh-screen-reader", watch_screen_reader);
+    }
+
+    /// Hands changes to the main thread, which applies them to every
+    /// surface.
+    fn send(changes: Vec<Change>) {
+        if changes.is_empty() {
+            return;
+        }
+        crate::rt::invoke(move || {
+            let mut d = DESKTOP.with(Cell::get);
+            for change in changes {
+                match change {
+                    Change::FontScale(v) => d.font_scale = v,
+                    Change::ReduceMotion(v) => d.reduce_motion = v,
+                    Change::ScreenReader(v) => d.screen_reader = v,
+                    Change::Accent(v) => d.accent = v,
+                }
+            }
+            log::debug!("desktop settings: {d:?}");
+            if DESKTOP.with(|c| c.replace(d)) != d {
+                super::settings_changed();
+            }
+        });
+    }
+
+    fn watch_portal() -> zbus::Result<()> {
+        let connection = Connection::session()?;
+        let proxy = Proxy::new(&connection, PORTAL, PORTAL_PATH, PORTAL_SETTINGS)?;
+        let read = |namespace: &str, key: &str| {
+            proxy
+                .call::<_, _, OwnedValue>("ReadOne", &(namespace, key))
+                // Portals before version 2 only have the deprecated `Read`.
+                .or_else(|_| proxy.call::<_, _, OwnedValue>("Read", &(namespace, key)))
+                .ok()
+                .and_then(|v| change(namespace, key, &v))
+        };
+        let initial = [
+            (INTERFACE, "text-scaling-factor"),
+            (INTERFACE, "enable-animations"),
+            (APPEARANCE, "accent-color"),
+        ];
+        send(initial.iter().filter_map(|(n, k)| read(n, k)).collect());
+        for message in proxy.receive_signal("SettingChanged")? {
+            let Ok((namespace, key, value)) =
+                message.body().deserialize::<(String, String, OwnedValue)>()
+            else {
+                continue;
+            };
+            send(change(&namespace, &key, &value).into_iter().collect());
+        }
+        Ok(())
+    }
+
+    fn watch_screen_reader() -> zbus::Result<()> {
+        let connection = Connection::session()?;
+        let proxy = Proxy::new(
+            &connection,
+            "org.a11y.Bus",
+            "/org/a11y/bus",
+            "org.a11y.Status",
+        )?;
+        if let Ok(on) = proxy.get_property::<bool>("ScreenReaderEnabled") {
+            send(vec![Change::ScreenReader(on)]);
+        }
+        for changed in proxy.receive_property_changed::<bool>("ScreenReaderEnabled") {
+            if let Ok(on) = changed.get() {
+                send(vec![Change::ScreenReader(on)]);
+            }
+        }
+        Ok(())
+    }
+
+    /// The change a portal setting makes, if it is one followed.
+    fn change(namespace: &str, key: &str, value: &Value<'_>) -> Option<Change> {
+        let value = unwrap(value);
+        match (namespace, key, value) {
+            (INTERFACE, "text-scaling-factor", Value::F64(v)) => {
+                Some(Change::FontScale(font_scale(*v)))
+            }
+            (INTERFACE, "enable-animations", Value::Bool(on)) => Some(Change::ReduceMotion(!on)),
+            (APPEARANCE, "accent-color", Value::Structure(s)) => {
+                let rgb: Vec<f64> = s
+                    .fields()
+                    .iter()
+                    .filter_map(|f| match unwrap(f) {
+                        Value::F64(v) => Some(*v),
+                        _ => None,
+                    })
+                    .collect();
+                Some(Change::Accent(accent_color(&rgb)))
+            }
+            _ => None,
+        }
+    }
+
+    /// The value inside variants (`Read` wraps it twice).
+    fn unwrap<'a>(value: &'a Value<'a>) -> &'a Value<'a> {
+        match value {
+            Value::Value(inner) => unwrap(inner),
+            other => other,
+        }
+    }
+
+    /// GNOME's text scaling factor as a font scale (sane values only).
+    pub(super) fn font_scale(factor: f64) -> f32 {
+        if factor.is_finite() && (0.5..=3.0).contains(&factor) {
+            factor as f32
+        } else {
+            1.0
+        }
+    }
+
+    /// The portal's accent (red, green and blue from 0 to 1; out of range
+    /// means unset).
+    pub(super) fn accent_color(rgb: &[f64]) -> Option<Color> {
+        let [r, g, b] = rgb else {
+            return None;
+        };
+        let channel = |v: f64| (0.0..=1.0).contains(&v).then(|| (v * 255.0).round() as u8);
+        Some(Color::rgba(channel(*r)?, channel(*g)?, channel(*b)?, 255))
     }
 
     fn os_version() -> (u16, u16) {
@@ -428,6 +641,14 @@ mod os {
     }
 
     /// The settings, as the Windows backend reads them.
+    /// Settings are read when needed: nothing to follow.
+    pub(super) fn watch() {}
+
+    /// The system's accent color: not followed (dialogs use their own).
+    pub(super) fn accent() -> Option<nsh_core::Color> {
+        None
+    }
+
     pub(super) fn settings() -> Settings {
         let locale = user_locale_name()
             .as_deref()
@@ -566,6 +787,14 @@ mod os {
 
     /// The settings, as the macOS backend reads them (VoiceOver and reduce
     /// motion from their preferences rather than `NSWorkspace`).
+    /// Settings are read when needed: nothing to follow.
+    pub(super) fn watch() {}
+
+    /// The system's accent color: not followed (dialogs use their own).
+    pub(super) fn accent() -> Option<nsh_core::Color> {
+        None
+    }
+
     pub(super) fn settings() -> Settings {
         let locale = current_locale();
         Settings {
@@ -683,7 +912,6 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
                 }
             });
         }
-        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             // The window goes after the batch is applied (closing it stops
             // the surface). An embedded surface closes the window it is in,
@@ -697,7 +925,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
         }
         Command::Announce(text) => crate::access::announce(surface, text),
         // The status bar is a phone's; layout animations arrive as mount
-        // items.
+        // items. `Back` and `Desktop` are routed by the mounter.
         Command::StatusBar(_) | Command::SetStatusBar(_) | Command::LayoutAnimation(_) => {}
         other => log::debug!("gpui: command {other:?} is not supported"),
     }
@@ -1075,6 +1303,14 @@ struct Palette {
 
 impl Palette {
     fn new(dark: bool) -> Palette {
+        let mut p = Palette::default_colors(dark);
+        if let Some(accent) = os::accent() {
+            (p.accent, p.accent_text) = accent_shades(accent, dark);
+        }
+        p
+    }
+
+    fn default_colors(dark: bool) -> Palette {
         if dark {
             Palette {
                 scrim: Color(0x0000_0080),
@@ -1115,6 +1351,25 @@ impl Palette {
             }
         }
     }
+}
+
+/// A button fill for the desktop's `accent` in the light or dark theme
+/// (lightened on dark backgrounds, as Windows' accent shades are) and the
+/// text on it.
+fn accent_shades(accent: Color, dark: bool) -> (Color, Color) {
+    let fill = if dark {
+        mix(accent, Color(0xffff_ffff), 0.35)
+    } else {
+        accent
+    };
+    let (r, g, b, _) = fill.to_f64();
+    let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    let text = if luminance > 0.55 {
+        Color(0x0000_00ff)
+    } else {
+        Color(0xffff_ffff)
+    };
+    (fill, text)
 }
 
 // ---------------------------------------------------------------------------
@@ -1937,6 +2192,32 @@ mod tests {
         assert!(!rtl_language("en-US"));
         assert!(!rtl_language("arn-CL"));
         assert!(!rtl_language(""));
+    }
+
+    #[test]
+    fn accents() {
+        assert_eq!(
+            accent_shades(Color(0x3584_e4ff), false),
+            (Color(0x3584_e4ff), Color(0xffff_ffff))
+        );
+        assert_eq!(
+            accent_shades(Color(0xf6d3_2dff), false).1,
+            Color(0x0000_00ff)
+        );
+        let (dark, _) = accent_shades(Color(0x3584_e4ff), true);
+        assert!(dark.0 >> 24 > 0x35);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn desktop_values() {
+        assert_eq!(os::font_scale(1.25), 1.25);
+        assert_eq!(os::font_scale(0.0), 1.0);
+        assert_eq!(os::font_scale(f64::NAN), 1.0);
+        assert_eq!(os::accent_color(&[0.0, 0.5, 1.0]), Some(Color(0x0080_ffff)));
+        // Out of range: no accent.
+        assert_eq!(os::accent_color(&[-1.0, -1.0, -1.0]), None);
+        assert_eq!(os::accent_color(&[0.5]), None);
     }
 
     #[test]
