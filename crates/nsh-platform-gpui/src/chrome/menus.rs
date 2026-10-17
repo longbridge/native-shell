@@ -28,7 +28,7 @@ use nsh_core::{
     desktop::{Key, MenuAction, MenuItem, MenuRole, Shortcut},
 };
 
-use super::{Action, PLATFORM, Platform, Theme, UI_FONT};
+use super::{Action, PLATFORM, Platform, Theme};
 use crate::{input::KeyEvent, keys, surface::Surface};
 
 /// The menus' text size.
@@ -814,7 +814,7 @@ fn text_width(window: &Window, text: &str) -> f32 {
     }
     let run = TextRun {
         len: text.len(),
-        font: gpui::font(UI_FONT),
+        font: gpui::font(crate::text::ui_family().to_string()),
         color: gpui::black(),
         background_color: None,
         underline: None,
@@ -1103,7 +1103,7 @@ pub(super) fn layer(
         .h(viewport.height)
         .occlude()
         .cursor(CursorStyle::Arrow)
-        .font_family(UI_FONT)
+        .font_family(crate::text::ui_family().to_string())
         .text_size(px(FONT_SIZE))
         .on_any_mouse_down(move |e, _, cx| {
             mouse_pressed(&s1, at(e.position));

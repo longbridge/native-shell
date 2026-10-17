@@ -588,30 +588,10 @@ fn error_overlay(error: &DevError, cx: &mut Context<AppView>) -> impl IntoElemen
 /// monospace families that is installed (GPUI resolves exact names only,
 /// no generic `monospace`), looked up once.
 fn monospace(cx: &GpuiApp) -> Option<SharedString> {
-    const FAMILIES: &[&str] = if cfg!(target_os = "macos") {
-        &["Menlo", "SF Mono", "Monaco"]
-    } else if cfg!(windows) {
-        &["Cascadia Mono", "Consolas", "Courier New"]
-    } else {
-        &[
-            "DejaVu Sans Mono",
-            "Noto Sans Mono",
-            "Liberation Mono",
-            "Ubuntu Mono",
-            "Adwaita Mono",
-            "Cantarell Mono",
-        ]
-    };
     thread_local!(static FAMILY: std::cell::OnceCell<Option<SharedString>> = const { std::cell::OnceCell::new() });
     FAMILY.with(|family| {
         family
-            .get_or_init(|| {
-                let installed = cx.text_system().all_font_names();
-                FAMILIES
-                    .iter()
-                    .find(|f| installed.iter().any(|i| i == *f))
-                    .map(|f| SharedString::from(*f))
-            })
+            .get_or_init(|| crate::text::monospace_family(cx.text_system()))
             .clone()
     })
 }
