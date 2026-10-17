@@ -719,10 +719,34 @@ fn clicking(mtm: MainThreadMarker) -> bool {
 
 /// Whether the event AppKit handles is a mouse wheel or trackpad scroll.
 fn scrolling(mtm: MainThreadMarker) -> bool {
-    use objc2_app_kit::{NSApplication, NSEventType};
-    NSApplication::sharedApplication(mtm)
-        .currentEvent()
-        .is_some_and(|e| e.r#type() == NSEventType::ScrollWheel)
+    scripted_type()
+        .or_else(|| {
+            objc2_app_kit::NSApplication::sharedApplication(mtm)
+                .currentEvent()
+                .map(|e| e.r#type())
+        })
+        .is_some_and(|t| t == NSEventType::ScrollWheel)
+}
+
+thread_local! {
+    /// The event `--script` hands its window (`crate::script`) while the
+    /// window handles it: `sendEvent:` does not make it
+    /// `NSApp.currentEvent`, which the root's `hitTest:` looks at.
+    static SCRIPTED: RefCell<Option<Retained<NSEvent>>> = const { RefCell::new(None) };
+}
+
+/// The type of the event `--script` hands its window now.
+fn scripted_type() -> Option<NSEventType> {
+    SCRIPTED.with_borrow(|e| e.as_ref().map(|e| e.r#type()))
+}
+
+/// Runs `f` (which hands `event` to a window) with `event` as the one
+/// AppKit handles, for the root's `hitTest:`.
+pub(crate) fn scripted<R>(event: &NSEvent, f: impl FnOnce() -> R) -> R {
+    let old = SCRIPTED.replace(Some(event.retain()));
+    let r = f();
+    SCRIPTED.set(old);
+    r
 }
 
 /// `view`'s superview.
@@ -1077,5 +1101,22 @@ impl NshView {
     pub(crate) fn as_object(&self) -> &AnyObject {
         let view: &NSView = self.ns();
         view.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scripted_wheels_are_the_event_handled() {
+        use objc2_core_graphics::{CGEvent, CGScrollEventUnit};
+        let cg =
+            CGEvent::new_scroll_wheel_event2(None, CGScrollEventUnit::Pixel, 1, -3, 0, 0).unwrap();
+        let wheel = NSEvent::eventWithCGEvent(&cg).unwrap();
+        assert_eq!(scripted_type(), None);
+        let inside = scripted(&wheel, scripted_type);
+        assert_eq!(inside, Some(NSEventType::ScrollWheel));
+        assert_eq!(scripted_type(), None);
     }
 }

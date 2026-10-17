@@ -167,7 +167,9 @@ lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.p
 `hover`, `type <text>`, `mark <text>` (an input method's marked text), `key <name>` (with modifiers: `cmd+a`,
 `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
 `quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
-`NSApp.currentEvent`).
+`NSApp.currentEvent`); wheels are handed to the window, and the root's `hitTest:` sees them as the current event (it
+keeps them from pages with `scrollEnabled={false}`). Presses make the app active first: WebKit takes left clicks only
+in the active app (in another, a click into a page only activates it).
 
 ```sh
 nsh build examples/gallery -o /tmp/gallery
