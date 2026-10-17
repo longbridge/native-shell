@@ -23,6 +23,8 @@ pub(crate) enum Target {
     Android,
     /// The Linux (GTK) development host, in a window on this machine.
     Linux,
+    /// The macOS (AppKit) development host, in a window on this machine.
+    Macos,
 }
 
 impl Target {
@@ -42,9 +44,19 @@ impl Target {
         match self {
             Target::Catalyst => crate::runtime::Platform::MacCatalyst,
             Target::Linux => crate::runtime::Platform::Linux,
+            Target::Macos => crate::runtime::Platform::MacOs,
             Target::Ios | Target::Android => crate::runtime::Platform::IphoneSimulator,
         }
     }
+}
+
+/// What the development host shows besides the app.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct HostFlags {
+    /// Log per-commit timings.
+    pub(crate) trace: bool,
+    /// The performance monitor (the macOS host's).
+    pub(crate) fps: bool,
 }
 
 /// Starts a dev session and runs the app in a development host, which
@@ -53,10 +65,14 @@ pub(crate) fn run(
     entry: &Path,
     port: u16,
     release: bool,
-    trace: bool,
+    flags: HostFlags,
     target: Target,
     device: Option<&str>,
 ) -> anyhow::Result<()> {
+    let HostFlags { trace, fps } = flags;
+    if fps && target != Target::Macos {
+        bail!("--fps needs --target macos (the other hosts have no performance monitor yet)");
+    }
     let work = entry
         .canonicalize()?
         .parent()
@@ -73,7 +89,7 @@ pub(crate) fn run(
             let _ = simctl(&["terminate", &udid, BUNDLE_ID]);
             Some(udid)
         }
-        Target::Catalyst | Target::Android | Target::Linux => None,
+        Target::Catalyst | Target::Android | Target::Linux | Target::Macos => None,
     };
     let session = DevSession::start(entry, port, release)?;
     session.print_urls();
@@ -81,6 +97,9 @@ pub(crate) fn run(
     let mut args = vec!["--dev-server".to_owned(), session.local_url()];
     if trace {
         args.push("--trace".to_owned());
+    }
+    if fps {
+        args.push("--fps".to_owned());
     }
     match target {
         Target::Catalyst => {
@@ -101,6 +120,20 @@ pub(crate) fn run(
             let mut command = Command::new(&host);
             command.args(&args);
             run_local(&session, &mut command, "the Linux host")
+        }
+        // In place too: the AppKit host makes itself a regular app (menu
+        // bar, Dock icon) without an app bundle around it.
+        Target::Macos => {
+            // The menu bar and the window show the app's name.
+            let entry = entry.canonicalize()?;
+            let config = crate::package::read_config(&entry).unwrap_or_default();
+            let (name, _) = crate::package::name_and_id(&entry, &config);
+            let mut command = Command::new(&host);
+            command
+                .args(&args)
+                .args(["--name", &name])
+                .args(["-ApplePersistenceIgnoreState", "YES"]);
+            run_local(&session, &mut command, "the macOS host")
         }
         Target::Ios => {
             let app = package_ios(&work, &host)?;
@@ -411,7 +444,7 @@ fn info_plist(target: Target) -> String {
              <key>LSMinimumSystemVersion</key><string>11.0</string>"
         }
         // A launch screen entry opts into the full screen (no letterboxing).
-        Target::Ios | Target::Android | Target::Linux => {
+        Target::Ios | Target::Android | Target::Linux | Target::Macos => {
             "<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>\n    \
              <key>MinimumOSVersion</key><string>15.0</string>\n    \
              <key>CFBundleSupportedPlatforms</key><array><string>iPhoneSimulator</string></array>\n    \

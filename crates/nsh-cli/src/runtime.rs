@@ -10,13 +10,15 @@
 //! runtime/ios/maccatalyst/nsh-ios-host       development host (Mac Catalyst)
 //! runtime/linux/nsh-linux-host               development host (Linux, GTK)
 //! runtime/linux/nsh-linux-app                release runner (Linux)
+//! runtime/macos/nsh-macos-host               development host (macOS, AppKit)
+//! runtime/macos/nsh-macos-app                release runner (macOS)
 //! runtime/android/release/             classes.dex + lib/<abi>/libnsh.so
 //! runtime/android/dev/                 the same with development support
 //! ```
 //!
 //! In a cargo checkout, the same files come from `target/<triple>/<profile>`
-//! (with the profile of this CLI; Linux's from `target/<profile>`, as they
-//! are built for this machine), and are built with cargo first, so a run
+//! (with the profile of this CLI; Linux's and macOS's from `target/<profile>`,
+//! as they are built for this machine), and are built with cargo first, so a run
 //! never uses a missing or stale host. `NSH_RUNTIME` overrides the root.
 //! An app with a Rust crate of its own gets hosts built for it instead
 //! (`rust_app.rs`).
@@ -41,6 +43,8 @@ pub(crate) enum Platform {
     MacCatalyst,
     /// Linux (GTK), on this machine.
     Linux,
+    /// macOS (AppKit), on this machine.
+    MacOs,
 }
 
 impl Platform {
@@ -50,6 +54,7 @@ impl Platform {
             Platform::IphoneSimulator => "ios/iphonesimulator",
             Platform::MacCatalyst => "ios/maccatalyst",
             Platform::Linux => "linux",
+            Platform::MacOs => "macos",
         }
     }
 
@@ -59,7 +64,7 @@ impl Platform {
             Platform::IphoneOs => Some("aarch64-apple-ios"),
             Platform::IphoneSimulator => Some("aarch64-apple-ios-sim"),
             Platform::MacCatalyst => Some("aarch64-apple-ios-macabi"),
-            Platform::Linux => None,
+            Platform::Linux | Platform::MacOs => None,
         }
     }
 
@@ -68,6 +73,8 @@ impl Platform {
         match (self, runner) {
             (Platform::Linux, false) => "nsh-linux-host",
             (Platform::Linux, true) => "nsh-linux-app",
+            (Platform::MacOs, false) => "nsh-macos-host",
+            (Platform::MacOs, true) => "nsh-macos-app",
             (_, false) => "nsh-ios-host",
             (_, true) => "nsh-ios-app",
         }
@@ -86,6 +93,7 @@ impl Platform {
             Platform::IphoneSimulator => "the iOS simulator",
             Platform::MacCatalyst => "Mac Catalyst",
             Platform::Linux => "Linux",
+            Platform::MacOs => "macOS",
         };
         format!("the {what} for {platform}")
     }

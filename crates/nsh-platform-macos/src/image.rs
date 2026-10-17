@@ -1,0 +1,1244 @@
+//! `<Image>`: loading (`asset:/`, files, HTTP, `data:`), decoding with
+//! ImageIO off the main thread, and showing the result in an image sublayer
+//! of the view ([`crate::decor`]).
+//!
+//! Bytes are fetched once per location (NSURLSession downloads report
+//! `onProgress` at most every 100ms; files and `data:` URIs are read on a
+//! global dispatch queue), then decoded on a global queue: downsampled to
+//! the view's size in pixels (ImageIO thumbnails), blurred (`blurRadius`,
+//! `blur()`) and passed through the color matrix of the view's other
+//! filters ([`crate::blur`]). Decoded images live in a main-thread cache
+//! keyed by location and look, bounded by bytes (least recently used go
+//! first); concurrent requests for one key share one load.
+//! `Image.getSize` / `prefetch` read only the header and keep the bytes for
+//! the views that show the image next.
+//!
+//! A view decodes once its frame is known: the core sends the image before
+//! the frame, so [`set`] waits for [`crate::decor::apply`] to see a size
+//! (or the next display frame, for views that stay empty).
+//!
+//! Animated GIF / PNG / WebP images play through a keyframe animation of the
+//! layer's `contents`. `defaultSource` shows until the image arrives (and
+//! stays on error); an image that had to load fades in over `fadeDuration`
+//! (default 0, as iOS).
+
+use std::{
+    cell::{Cell, RefCell},
+    path::PathBuf,
+    rc::Rc,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+
+use dispatch2::{DispatchQueue, DispatchQueueGlobalPriority, GlobalQueueIdentifier};
+use nsh_core::{
+    Command, EventKind, EventPayload, ImageOptions, ImageSource, NodeId, PayloadValue, ResizeMode,
+};
+use objc2::{
+    AnyThread, DefinedClass, define_class, msg_send,
+    rc::{Retained, Weak},
+    runtime::ProtocolObject,
+};
+use objc2_core_foundation::{
+    CFData, CFDictionary, CFNumber, CFRetained, CFString, CFType, CGFloat, kCFBooleanTrue,
+};
+use objc2_core_graphics::CGImage;
+use objc2_foundation::{
+    NSData, NSDataReadingOptions, NSError, NSHTTPURLResponse, NSObject, NSObjectProtocol, NSString,
+    NSURL, NSURLResponse, NSURLSession, NSURLSessionDataDelegate, NSURLSessionDataTask,
+    NSURLSessionDelegate, NSURLSessionResponseDisposition, NSURLSessionTask,
+    NSURLSessionTaskDelegate,
+};
+use objc2_image_io::{
+    CGImageSource, kCGImageSourceCreateThumbnailFromImageAlways,
+    kCGImageSourceCreateThumbnailWithTransform, kCGImageSourceShouldCacheImmediately,
+    kCGImageSourceThumbnailMaxPixelSize,
+};
+use rustc_hash::FxHashMap;
+
+use crate::{
+    surface::{Surface, quiet},
+    view::{NshView, ViewObj},
+};
+
+/// Decoded images kept in memory (bytes: 4 per pixel and frame).
+const CACHE_BYTES: usize = 128 << 20;
+
+/// Encoded bytes kept for `Image.prefetch` / `getSize`.
+const DATA_BYTES: usize = 32 << 20;
+
+/// Frames of an animated image decoded at most (longer ones play the first
+/// ones).
+const MAX_FRAMES: usize = 600;
+
+/// Progress reports at most this often (a download reports its end too).
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Where bundled (`asset:/…`) files are.
+#[derive(Debug, Clone)]
+pub enum AssetBase {
+    /// Served over HTTP (the dev server): `http://host:port/assets/`.
+    Http(String),
+    /// A directory on disk.
+    Directory(PathBuf),
+}
+
+/// Reads `asset:/…` files for the engine (fonts): synchronously, on the
+/// engine thread.
+pub(crate) struct AssetReader(pub(crate) Option<AssetBase>);
+
+impl nsh_engine::Assets for AssetReader {
+    fn read(&self, uri: &str) -> Result<Vec<u8>, String> {
+        if !uri.starts_with("asset:/") {
+            return Err(format!("not an asset URI: {uri}"));
+        }
+        match resolve(uri, self.0.as_ref()) {
+            Some(Location::File(path)) => {
+                std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
+            }
+            Some(Location::Url(url)) => {
+                let ns = ns_url(&url).ok_or_else(|| format!("bad asset URL {url}"))?;
+                NSData::dataWithContentsOfURL_options_error(&ns, NSDataReadingOptions::empty())
+                    .map(|d| d.to_vec())
+                    .map_err(|e| format!("{url}: {}", e.localizedDescription()))
+            }
+            Some(Location::Data(data)) => data_uri(&data),
+            None => Err(format!("{uri}: no asset location configured")),
+        }
+    }
+}
+
+/// Sets where `asset:/` URIs of `surface` resolve.
+pub(crate) fn set_asset_base(surface: &Rc<Surface>, base: Option<AssetBase>) {
+    *surface.asset_base.borrow_mut() = base;
+}
+
+/// Where an image's bytes come from.
+#[derive(Debug, Clone, PartialEq)]
+enum Location {
+    /// `http(s)://`.
+    Url(String),
+    /// A file on disk.
+    File(PathBuf),
+    /// A `data:` URI (decoded off the main thread).
+    Data(String),
+}
+
+impl Location {
+    /// The same location is the same image, whatever URI named it.
+    fn key(&self) -> String {
+        match self {
+            Location::Url(url) => url.clone(),
+            Location::File(path) => format!("file://{}", path.display()),
+            Location::Data(uri) => uri.clone(),
+        }
+    }
+}
+
+/// Resolves `uri` (`asset:/…` against `base`, `http(s)://`, `file://`, an
+/// absolute path, `data:`).
+fn resolve(uri: &str, base: Option<&AssetBase>) -> Option<Location> {
+    if let Some(path) = uri.strip_prefix("asset:/") {
+        let path = path.trim_start_matches('/');
+        return match base? {
+            AssetBase::Http(base) => {
+                let sep = if base.ends_with('/') { "" } else { "/" };
+                Some(Location::Url(format!("{base}{sep}{path}")))
+            }
+            AssetBase::Directory(dir) => Some(Location::File(dir.join(path))),
+        };
+    }
+    if uri.starts_with("http://") || uri.starts_with("https://") {
+        return Some(Location::Url(uri.to_owned()));
+    }
+    if uri.starts_with("data:") {
+        return Some(Location::Data(uri.to_owned()));
+    }
+    if let Some(rest) = uri.strip_prefix("file://") {
+        let path = String::from_utf8(percent_decode(rest)).ok()?;
+        return path.starts_with('/').then(|| Location::File(path.into()));
+    }
+    uri.starts_with('/').then(|| Location::File(uri.into()))
+}
+
+/// `%xx` escapes decoded (invalid ones kept as they are).
+fn percent_decode(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let hex = |b: u8| (b as char).to_digit(16);
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match (
+            bytes[i],
+            bytes.get(i + 1).and_then(|&b| hex(b)),
+            bytes.get(i + 2).and_then(|&b| hex(b)),
+        ) {
+            (b'%', Some(h), Some(l)) => {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+            }
+            (b, _, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Standard or URL-safe base64, ignoring whitespace and padding.
+fn base64(s: &str) -> Result<Vec<u8>, String> {
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' | b'-' => Some(62),
+        b'/' | b'_' => Some(63),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0);
+    for c in s.bytes() {
+        if c.is_ascii_whitespace() || c == b'=' {
+            continue;
+        }
+        let v = value(c).ok_or("invalid base64")?;
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Ok(out)
+}
+
+/// The bytes of a `data:` URI (base64 or percent-encoded).
+fn data_uri(uri: &str) -> Result<Vec<u8>, String> {
+    let rest = uri.strip_prefix("data:").ok_or("not a data URI")?;
+    let (meta, data) = rest.split_once(',').ok_or("malformed data URI")?;
+    if meta.ends_with(";base64") {
+        return base64(data);
+    }
+    Ok(percent_decode(data))
+}
+
+fn ns_url(s: &str) -> Option<Retained<NSURL>> {
+    NSURL::URLWithString(&NSString::from_str(s))
+}
+
+/// A decoded image: its frames (one unless animated) and the pixel size
+/// of its source (before downsampling: `onLoad` reports it).
+#[derive(Clone)]
+pub(crate) struct Decoded {
+    /// The frames, each once.
+    pub(crate) frames: Arc<[CFRetained<CGImage>]>,
+    /// When each frame starts, as a fraction of `duration`, and 1 at the
+    /// end (a discrete keyframe animation's times).
+    pub(crate) key_times: Arc<[f64]>,
+    /// One loop of the animation, in seconds.
+    pub(crate) duration: f64,
+    /// The source's width in pixels.
+    pub(crate) width: u32,
+    /// The source's height in pixels.
+    pub(crate) height: u32,
+}
+
+// SAFETY: CGImages are immutable and documented as thread-safe; they are
+// only created off the main thread and then moved.
+unsafe impl Send for Decoded {}
+
+impl Decoded {
+    /// The decoded width in pixels (of the first frame).
+    pub(crate) fn pixel_width(&self) -> usize {
+        CGImage::width(Some(&self.frames[0]))
+    }
+
+    fn cost(&self) -> usize {
+        self.frames
+            .iter()
+            .map(|f| CGImage::width(Some(f)) * CGImage::height(Some(f)) * 4)
+            .sum()
+    }
+}
+
+/// How a request decodes: the longer side in pixels (0: natural), the
+/// blur radius in pixels, a color matrix.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct Decoding {
+    max_pixels: u32,
+    blur: f64,
+    matrix: Option<[f32; 20]>,
+}
+
+impl Decoding {
+    /// The cache key of `location` decoded so: the same image at another
+    /// size or look is another image.
+    fn key(&self, location: &str) -> String {
+        let mut key = format!("{}@", self.max_pixels);
+        if self.blur > 0.0 {
+            key.push_str(&format!("b{}@", self.blur));
+        }
+        if let Some(m) = self.matrix {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::hash::DefaultHasher::new();
+            m.map(f32::to_bits).hash(&mut h);
+            key.push_str(&format!("m{:x}@", h.finish()));
+        }
+        key.push_str(location);
+        key
+    }
+}
+
+/// Called with a load's image or error (main thread).
+type Done = Box<dyn FnOnce(Result<Decoded, String>)>;
+
+/// Called with a download's bytes so far and its size (0: unknown).
+type Progress = Box<dyn Fn(u64, u64)>;
+
+/// Called with an image's size in pixels (`Image.getSize`).
+type InfoDone = Box<dyn FnOnce(Result<(u32, u32), String>)>;
+
+/// Someone waiting for a decode.
+struct Waiter {
+    done: Done,
+    progress: Option<Progress>,
+}
+
+/// A decode waiting for its bytes, or decoding.
+struct Inflight {
+    /// The location's key.
+    location: String,
+    decoding: Decoding,
+    waiters: Vec<Waiter>,
+}
+
+/// What a location's bytes are for.
+enum Want {
+    /// Decode for this cache key.
+    Decode(String),
+    /// Answer an `Image.getSize` / `Image.prefetch` request.
+    Info(InfoDone),
+}
+
+/// A cached decode.
+struct Entry {
+    image: Decoded,
+    bytes: usize,
+    used: u64,
+}
+
+/// The main thread's image cache and running loads.
+#[derive(Default)]
+struct Loader {
+    cache: FxHashMap<String, Entry>,
+    bytes: usize,
+    clock: u64,
+    /// Encoded bytes kept by `getSize` / `prefetch`, by location.
+    data: FxHashMap<String, (Arc<Vec<u8>>, u64)>,
+    data_bytes: usize,
+    inflight: FxHashMap<String, Inflight>,
+    /// Running reads and downloads, by location.
+    downloads: FxHashMap<String, Vec<Want>>,
+}
+
+thread_local! {
+    static LOADER: RefCell<Loader> = RefCell::default();
+}
+
+/// Runs `f` with the loader. Callbacks of waiters never run inside.
+fn with<R>(f: impl FnOnce(&mut Loader) -> R) -> R {
+    LOADER.with(|l| f(&mut l.borrow_mut()))
+}
+
+impl Loader {
+    fn tick(&mut self) -> u64 {
+        self.clock += 1;
+        self.clock
+    }
+
+    fn cached(&mut self, key: &str) -> Option<Decoded> {
+        let now = self.tick();
+        let entry = self.cache.get_mut(key)?;
+        entry.used = now;
+        Some(entry.image.clone())
+    }
+
+    fn insert(&mut self, key: String, image: Decoded) {
+        let bytes = image.cost();
+        if bytes > CACHE_BYTES / 2 {
+            return;
+        }
+        let used = self.tick();
+        if let Some(old) = self.cache.insert(key, Entry { image, bytes, used }) {
+            self.bytes -= old.bytes;
+        }
+        self.bytes += bytes;
+        // Rare, and the cache holds hundreds of entries at most: a scan for
+        // the oldest beats keeping an ordered index up to date on every hit.
+        while self.bytes > CACHE_BYTES {
+            let Some(oldest) = self
+                .cache
+                .iter()
+                .min_by_key(|(_, e)| e.used)
+                .map(|(k, _)| k.clone())
+            else {
+                break;
+            };
+            if let Some(e) = self.cache.remove(&oldest) {
+                self.bytes -= e.bytes;
+            }
+        }
+    }
+
+    fn keep_data(&mut self, location: &str, bytes: Arc<Vec<u8>>) {
+        if bytes.len() > DATA_BYTES / 2 {
+            return;
+        }
+        let used = self.tick();
+        self.data_bytes += bytes.len();
+        if let Some((old, _)) = self.data.insert(location.to_owned(), (bytes, used)) {
+            self.data_bytes -= old.len();
+        }
+        while self.data_bytes > DATA_BYTES {
+            let Some(oldest) = self
+                .data
+                .iter()
+                .min_by_key(|(_, (_, u))| *u)
+                .map(|(k, _)| k.clone())
+            else {
+                break;
+            };
+            if let Some((b, _)) = self.data.remove(&oldest) {
+                self.data_bytes -= b.len();
+            }
+        }
+    }
+
+    fn drop_data(&mut self, location: &str) {
+        if let Some((b, _)) = self.data.remove(location) {
+            self.data_bytes -= b.len();
+        }
+    }
+}
+
+/// Runs `f` on the main queue.
+fn on_main(f: impl FnOnce() + Send + 'static) {
+    DispatchQueue::main().exec_async(f);
+}
+
+/// Runs `f` on a global queue.
+fn in_background(f: impl FnOnce() + Send + 'static) {
+    DispatchQueue::global_queue(GlobalQueueIdentifier::Priority(
+        DispatchQueueGlobalPriority::Default,
+    ))
+    .exec_async(f);
+}
+
+/// Decodes `location` as `decoding` asks; `done` runs on the main thread
+/// (before this returns when the image is cached). Returns whether it ran.
+fn request(location: Location, decoding: Decoding, progress: Option<Progress>, done: Done) -> bool {
+    let lk = location.key();
+    let key = decoding.key(&lk);
+    if let Some(image) = with(|l| l.cached(&key)) {
+        done(Ok(image));
+        return true;
+    }
+    let waiter = Waiter { done, progress };
+    let start = with(|l| match l.inflight.get_mut(&key) {
+        Some(i) => {
+            i.waiters.push(waiter);
+            false
+        }
+        None => {
+            l.inflight.insert(
+                key.clone(),
+                Inflight {
+                    location: lk,
+                    decoding,
+                    waiters: vec![waiter],
+                },
+            );
+            true
+        }
+    });
+    if start {
+        fetch(location, Want::Decode(key));
+    }
+    false
+}
+
+/// Gets the bytes of `location` for `want`: kept ones, a running read, or
+/// a new one.
+fn fetch(location: Location, want: Want) {
+    let lk = location.key();
+    if let Some(bytes) = with(|l| l.data.get(&lk).map(|(b, _)| b.clone())) {
+        serve(&lk, bytes, want);
+        return;
+    }
+    let first = with(|l| {
+        let wants = l.downloads.entry(lk.clone()).or_default();
+        wants.push(want);
+        wants.len() == 1
+    });
+    if !first {
+        return;
+    }
+    match location {
+        Location::File(path) => in_background(move || {
+            let result = std::fs::read(&path)
+                .map(Arc::new)
+                .map_err(|e| format!("{}: {e}", path.display()));
+            on_main(move || bytes_ready(&lk, result));
+        }),
+        Location::Data(uri) => in_background(move || {
+            let result = data_uri(&uri).map(Arc::new);
+            on_main(move || bytes_ready(&lk, result));
+        }),
+        Location::Url(url) => match ns_url(&url) {
+            Some(ns) => download(&ns, lk),
+            None => on_main(move || bytes_ready(&lk, Err(format!("bad URL {url}")))),
+        },
+    }
+}
+
+/// The bytes of `location` arrived (or failed).
+fn bytes_ready(location: &str, result: Result<Arc<Vec<u8>>, String>) {
+    let wants = with(|l| l.downloads.remove(location)).unwrap_or_default();
+    match result {
+        Ok(bytes) => {
+            if wants.iter().any(|w| matches!(w, Want::Info(_))) {
+                // Kept for the views that show it next.
+                with(|l| l.keep_data(location, bytes.clone()));
+            }
+            for want in wants {
+                serve(location, bytes.clone(), want);
+            }
+        }
+        Err(message) => {
+            for want in wants {
+                match want {
+                    Want::Decode(key) => finish(key, Err(message.clone())),
+                    Want::Info(done) => done(Err(message.clone())),
+                }
+            }
+        }
+    }
+}
+
+/// Decodes or measures `bytes` for `want`.
+fn serve(location: &str, bytes: Arc<Vec<u8>>, want: Want) {
+    match want {
+        Want::Decode(key) => {
+            let Some(decoding) = with(|l| l.inflight.get(&key).map(|i| i.decoding)) else {
+                return;
+            };
+            let what = location.to_owned();
+            in_background(move || {
+                let result =
+                    decode(&bytes, decoding).ok_or_else(|| format!("cannot decode {what}"));
+                on_main(move || finish(key, result));
+            });
+        }
+        Want::Info(done) => {
+            let data = CFData::from_bytes(&bytes);
+            // SAFETY: valid data; only the header is read.
+            let size = unsafe { CGImageSource::with_data(&data, None) }.map(|s| source_size(&s));
+            done(match size {
+                Some((w, h)) if w > 0 && h > 0 => Ok((w, h)),
+                _ => Err(format!("cannot read the size of {location}")),
+            });
+        }
+    }
+}
+
+/// A decode finished: caches it and calls its waiters.
+fn finish(key: String, result: Result<Decoded, String>) {
+    let waiters = with(|l| {
+        let inflight = l.inflight.remove(&key)?;
+        if let Ok(image) = &result {
+            l.insert(key, image.clone());
+            // Shown now: the encoded bytes are not needed any more.
+            l.drop_data(&inflight.location);
+        }
+        Some(inflight.waiters)
+    })
+    .unwrap_or_default();
+    for w in waiters {
+        (w.done)(result.clone());
+    }
+}
+
+/// A download of `location` got `loaded` of `total` bytes (0: unknown).
+fn progress(location: &str, loaded: u64, total: u64) {
+    LOADER.with(|l| {
+        let l = l.borrow();
+        for i in l.inflight.values().filter(|i| i.location == location) {
+            for p in i.waiters.iter().filter_map(|w| w.progress.as_ref()) {
+                p(loaded, total);
+            }
+        }
+    });
+}
+
+struct DownloadIvars {
+    location: String,
+    data: Mutex<DownloadState>,
+}
+
+#[derive(Default)]
+struct DownloadState {
+    bytes: Vec<u8>,
+    total: u64,
+    status: isize,
+    reported: Option<Instant>,
+}
+
+define_class!(
+    /// A download's delegate: collects the bytes and reports progress.
+    #[unsafe(super(NSObject))]
+    #[name = "NshImageDownload"]
+    #[ivars = DownloadIvars]
+    struct ImageDownload;
+
+    unsafe impl NSObjectProtocol for ImageDownload {}
+
+    unsafe impl NSURLSessionDelegate for ImageDownload {}
+
+    unsafe impl NSURLSessionTaskDelegate for ImageDownload {
+        #[unsafe(method(URLSession:task:didCompleteWithError:))]
+        fn did_complete(
+            &self,
+            _session: &NSURLSession,
+            _task: &NSURLSessionTask,
+            error: Option<&NSError>,
+        ) {
+            let ivars = self.ivars();
+            let state = std::mem::take(&mut *ivars.data.lock().expect("download"));
+            let result = match error {
+                Some(e) => Err(e.localizedDescription().to_string()),
+                None if state.status >= 400 => Err(format!("HTTP {}", state.status)),
+                None => Ok(Arc::new(state.bytes)),
+            };
+            let location = ivars.location.clone();
+            let result = result.map_err(|e| format!("{location}: {e}"));
+            on_main(move || bytes_ready(&location, result));
+        }
+    }
+
+    unsafe impl NSURLSessionDataDelegate for ImageDownload {
+        #[unsafe(method(URLSession:dataTask:didReceiveResponse:completionHandler:))]
+        fn did_receive_response(
+            &self,
+            _session: &NSURLSession,
+            _task: &NSURLSessionDataTask,
+            response: &NSURLResponse,
+            completion: &block2::DynBlock<dyn Fn(NSURLSessionResponseDisposition)>,
+        ) {
+            let mut state = self.ivars().data.lock().expect("download");
+            state.total = response.expectedContentLength().max(0) as u64;
+            if let Some(http) = response.downcast_ref::<NSHTTPURLResponse>() {
+                state.status = http.statusCode();
+            }
+            drop(state);
+            completion.call((NSURLSessionResponseDisposition::Allow,));
+        }
+
+        #[unsafe(method(URLSession:dataTask:didReceiveData:))]
+        fn did_receive_data(
+            &self,
+            _session: &NSURLSession,
+            _task: &NSURLSessionDataTask,
+            data: &NSData,
+        ) {
+            let ivars = self.ivars();
+            let mut state = ivars.data.lock().expect("download");
+            state.bytes.extend_from_slice(&data.to_vec());
+            let now = Instant::now();
+            let due = state.reported.is_none_or(|t| now - t >= PROGRESS_INTERVAL);
+            let done = state.total > 0 && state.bytes.len() as u64 >= state.total;
+            if due || done {
+                state.reported = Some(now);
+                let (loaded, total) = (state.bytes.len() as u64, state.total);
+                drop(state);
+                let location = ivars.location.clone();
+                on_main(move || progress(&location, loaded, total));
+            }
+        }
+    }
+);
+
+/// Downloads `url`, reporting progress and then its bytes.
+fn download(url: &NSURL, location: String) {
+    let delegate = ImageDownload::alloc().set_ivars(DownloadIvars {
+        location,
+        data: Mutex::new(DownloadState::default()),
+    });
+    // SAFETY: NSObject's designated initializer.
+    let delegate: Retained<ImageDownload> = unsafe { msg_send![super(delegate), init] };
+    let task = NSURLSession::sharedSession().dataTaskWithURL(url);
+    // The task keeps its delegate until it completes.
+    task.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    task.resume();
+}
+
+/// Decodes (downsamples, blurs, filters) with ImageIO; any thread.
+fn decode(bytes: &[u8], d: Decoding) -> Option<Decoded> {
+    let data = CFData::from_bytes(bytes);
+    // SAFETY: valid data and option dictionaries of the documented types.
+    unsafe {
+        let source = CGImageSource::with_data(&data, None)?;
+        let yes: &CFType = kCFBooleanTrue?;
+        let max = CFNumber::new_cgfloat(d.max_pixels as CGFloat);
+        let mut keys: Vec<&CFString> = vec![
+            kCGImageSourceCreateThumbnailFromImageAlways,
+            kCGImageSourceCreateThumbnailWithTransform,
+            kCGImageSourceShouldCacheImmediately,
+        ];
+        let mut values: Vec<&CFType> = vec![yes, yes, yes];
+        if d.max_pixels > 0 {
+            keys.push(kCGImageSourceThumbnailMaxPixelSize);
+            values.push(&max);
+        }
+        let options = CFDictionary::from_slices(&keys, &values);
+        let options: &CFDictionary = options.as_opaque();
+        let frame = |i: usize| -> Option<CFRetained<CGImage>> {
+            let image = source.thumbnail_at_index(i, Some(options))?;
+            if d.blur > 0.0 || d.matrix.is_some() {
+                return Some(crate::blur::filtered(&image, d.blur, d.matrix).unwrap_or(image));
+            }
+            Some(image)
+        };
+        let (width, height) = source_size(&source);
+        let count = source.count().clamp(1, MAX_FRAMES);
+        let mut frames = Vec::with_capacity(count);
+        let mut delays = Vec::with_capacity(count);
+        for i in 0..count {
+            let Some(image) = frame(i) else { break };
+            frames.push(image);
+            delays.push(if count > 1 {
+                frame_delay(&source, i)
+            } else {
+                1
+            });
+        }
+        if frames.is_empty() {
+            return None;
+        }
+        let total: u32 = delays.iter().sum();
+        let mut key_times = Vec::with_capacity(frames.len() + 1);
+        let mut at = 0;
+        for delay in &delays {
+            key_times.push(at as f64 / total as f64);
+            at += delay;
+        }
+        key_times.push(1.0);
+        Some(Decoded {
+            frames: frames.into(),
+            key_times: key_times.into(),
+            duration: total as f64 / 100.0,
+            width,
+            height,
+        })
+    }
+}
+
+/// The pixel size of the first image, as displayed (EXIF orientations 5–8
+/// turn it a quarter).
+fn source_size(source: &CGImageSource) -> (u32, u32) {
+    use objc2_image_io::{
+        kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
+    };
+    // SAFETY: a CoreFoundation dictionary of CFString keys, read with the
+    // documented ImageIO keys and value types.
+    unsafe {
+        let Some(props) = source.properties_at_index(0, None) else {
+            return (0, 0);
+        };
+        let props: &CFDictionary<CFString, CFType> = props.cast_unchecked();
+        let number = |key: &CFString| {
+            props
+                .get(key)
+                .and_then(|v| v.downcast_ref::<CFNumber>().and_then(|n| n.as_i64()))
+                .unwrap_or(0)
+                .max(0) as u32
+        };
+        let (w, h) = (
+            number(kCGImagePropertyPixelWidth),
+            number(kCGImagePropertyPixelHeight),
+        );
+        match number(kCGImagePropertyOrientation) {
+            5..=8 => (h, w),
+            _ => (w, h),
+        }
+    }
+}
+
+/// The delay of frame `i` in centiseconds (GIF's unit), at least 2 (as
+/// browsers: shorter ones show for 10).
+fn frame_delay(source: &CGImageSource, i: usize) -> u32 {
+    use objc2_image_io::{
+        kCGImagePropertyAPNGDelayTime, kCGImagePropertyAPNGUnclampedDelayTime,
+        kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFDictionary,
+        kCGImagePropertyGIFUnclampedDelayTime, kCGImagePropertyPNGDictionary,
+        kCGImagePropertyWebPDelayTime, kCGImagePropertyWebPDictionary,
+        kCGImagePropertyWebPUnclampedDelayTime,
+    };
+    // SAFETY: CoreFoundation dictionaries of CFString keys, read with the
+    // documented ImageIO keys and value types.
+    let seconds = unsafe {
+        source.properties_at_index(i, None).and_then(|props| {
+            let props: &CFDictionary<CFString, CFType> = props.cast_unchecked();
+            [
+                (
+                    kCGImagePropertyGIFDictionary,
+                    kCGImagePropertyGIFUnclampedDelayTime,
+                    kCGImagePropertyGIFDelayTime,
+                ),
+                (
+                    kCGImagePropertyPNGDictionary,
+                    kCGImagePropertyAPNGUnclampedDelayTime,
+                    kCGImagePropertyAPNGDelayTime,
+                ),
+                (
+                    kCGImagePropertyWebPDictionary,
+                    kCGImagePropertyWebPUnclampedDelayTime,
+                    kCGImagePropertyWebPDelayTime,
+                ),
+            ]
+            .into_iter()
+            .find_map(|(dict, unclamped, clamped)| {
+                let format = props.get(dict)?;
+                let format: &CFDictionary<CFString, CFType> =
+                    format.downcast_ref::<CFDictionary>()?.cast_unchecked();
+                let number = |key| {
+                    format
+                        .get(key)
+                        .and_then(|v| v.downcast_ref::<CFNumber>().and_then(|n| n.as_cgfloat()))
+                        .filter(|s| *s > 0.0)
+                };
+                number(unclamped).or_else(|| number(clamped))
+            })
+        })
+    };
+    match seconds {
+        Some(s) if s >= 0.02 => (s * 100.0).round() as u32,
+        _ => 10,
+    }
+}
+
+/// Loads `uri` (`https://…`, `asset:/…`, a file path, `data:`) at its
+/// natural size, through the cache, and hands over its (first) frame;
+/// `done` runs on the main thread (before this returns when it is cached:
+/// callers must not hold a borrow `done` takes).
+pub(crate) fn load(
+    surface: &Rc<Surface>,
+    uri: &str,
+    done: impl FnOnce(Result<CFRetained<CGImage>, String>) + 'static,
+) {
+    match resolve(uri, surface.asset_base.borrow().as_ref()) {
+        Some(location) => {
+            let done = move |r: Result<Decoded, String>| done(r.map(|d| d.frames[0].clone()));
+            request(location, Decoding::default(), None, Box::new(done));
+        }
+        None => done(Err(format!("unsupported image source `{uri}`"))),
+    }
+}
+
+/// The image of `uri` at its natural size, if it is cached.
+#[allow(dead_code)]
+pub(crate) fn cached(surface: &Surface, uri: &str) -> Option<Decoded> {
+    let location = resolve(uri, surface.asset_base.borrow().as_ref())?.key();
+    with(|l| l.cached(&Decoding::default().key(&location)))
+}
+
+/// `Command::ImageInfo` (`Image.getSize`, `Image.prefetch`): the image's
+/// size in pixels, keeping its bytes for the views that show it next.
+pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
+    let Command::ImageInfo { id, uri } = command else {
+        return;
+    };
+    let request = *id;
+    let weak = Rc::downgrade(surface);
+    let done = move |result: Result<(u32, u32), String>| {
+        let Some(surface) = weak.upgrade() else {
+            return;
+        };
+        let mut fields = vec![("id", PayloadValue::Number(request as f64))];
+        match result {
+            Ok((w, h)) => {
+                fields.push(("width", PayloadValue::Number(w as f64)));
+                fields.push(("height", PayloadValue::Number(h as f64)));
+            }
+            Err(message) => fields.push(("error", PayloadValue::Str(message))),
+        }
+        surface.event(
+            nsh_core::ROOT_ID,
+            EventKind::ImageInfo,
+            EventPayload::Map(fields),
+        );
+    };
+    match resolve(uri, surface.asset_base.borrow().as_ref()) {
+        Some(location) => fetch(location, Want::Info(Box::new(done))),
+        None => done(Err(format!("unsupported image source `{uri}`"))),
+    }
+}
+
+/// What an image view shows.
+#[derive(Default)]
+pub(crate) struct ImageState {
+    source: Option<ImageSource>,
+    options: ImageOptions,
+    /// Bumped on every source change: older loads are stale.
+    generation: u64,
+    /// The source's image (not the placeholder) is shown.
+    shown: bool,
+    /// Waiting for a size to decode at.
+    pending: bool,
+    /// The surface's key ([`Surface::with_key`]).
+    surface: u64,
+}
+
+/// Sets up an image view.
+pub(crate) fn create(view: &NshView) {
+    view.state_mut().image = Some(ImageState::default());
+}
+
+/// An image view's source changed.
+pub(crate) fn set(
+    surface: &Rc<Surface>,
+    view: &NshView,
+    source: Option<&ImageSource>,
+    mode: ResizeMode,
+    options: &ImageOptions,
+) {
+    let restart = {
+        let mut guard = view.state_mut();
+        let s = &mut *guard;
+        s.decor.set_resize_mode(mode);
+        let image = s.image.get_or_insert_with(ImageState::default);
+        image.surface = surface.key();
+        let same_source = image.source.as_ref().map(|i| &i.uri) == source.map(|i| &i.uri);
+        let same_look = image.options.placeholder == options.placeholder
+            && image.options.blur_radius == options.blur_radius;
+        image.options = options.clone();
+        if same_source && same_look {
+            false
+        } else {
+            image.generation += 1;
+            image.shown = false;
+            image.source = source.cloned();
+            image.pending = image.source.is_some() || image.options.placeholder.is_some();
+            s.decor.set_image(None, 0.0);
+            true
+        }
+    };
+    view.changed();
+    if restart {
+        resume(view);
+        wait_for_frame(surface, view);
+    }
+}
+
+/// The view's filters changed: it decodes again.
+pub(crate) fn filters_changed(view: &NshView) {
+    {
+        let mut guard = view.state_mut();
+        let s = &mut *guard;
+        let Some(image) = s.image.as_mut() else {
+            return;
+        };
+        if image.source.is_none() {
+            return;
+        }
+        image.generation += 1;
+        image.shown = false;
+        image.pending = true;
+    }
+    resume(view);
+}
+
+/// Starts the view's pending loads once it has a size (called whenever its
+/// decoration is applied).
+pub(crate) fn resume(view: &NshView) {
+    let key = {
+        let s = view.state();
+        match &s.image {
+            Some(i) if i.pending && s.frame.width > 0.0 && s.frame.height > 0.0 => i.surface,
+            _ => return,
+        }
+    };
+    if let Some(surface) = Surface::with_key(key) {
+        start(&surface, view);
+    }
+}
+
+/// Loads at the natural size if the view still has no size by the next
+/// display frame.
+fn wait_for_frame(surface: &Rc<Surface>, view: &NshView) {
+    let pending = view.state().image.as_ref().is_some_and(|i| i.pending);
+    if !pending {
+        return;
+    }
+    let weak = Weak::from_retained(&Retained::from(&**view as &ViewObj));
+    surface.add_frame_callback(move |surface, _| {
+        if let Some(view) = weak.load().and_then(|v| NshView::from_ns(&v))
+            && view.state().image.as_ref().is_some_and(|i| i.pending)
+        {
+            start(surface, &view);
+        }
+        false
+    });
+}
+
+/// Requests the view's image (and placeholder) at its current size.
+fn start(surface: &Rc<Surface>, view: &NshView) {
+    let scale = view.ns().window().map_or(2.0, |w| w.backingScaleFactor());
+    let (generation, source, placeholder, decoding, events, id) = {
+        let mut guard = view.state_mut();
+        let s = &mut *guard;
+        let (w, h) = (s.frame.width, s.frame.height);
+        let filters = s
+            .style
+            .effects
+            .as_ref()
+            .map(|e| &e.filters[..])
+            .unwrap_or(&[]);
+        let blur = nsh_core::blur_radius(filters);
+        let matrix = nsh_core::compose_color_matrices(filters);
+        let (events, id) = (s.events, s.id);
+        let Some(image) = s.image.as_mut() else {
+            return;
+        };
+        image.pending = false;
+        let decoding = Decoding {
+            max_pixels: (w.max(h) as CGFloat * scale).ceil() as u32,
+            blur: ((image.options.blur_radius + blur) as CGFloat * scale).max(0.0),
+            matrix,
+        };
+        (
+            image.generation,
+            image.source.clone(),
+            image.options.placeholder.clone(),
+            decoding,
+            events,
+            id,
+        )
+    };
+    let weak = Weak::from_retained(&Retained::from(&**view as &ViewObj));
+    let base = surface.asset_base.borrow().clone();
+    if let Some(source) = source {
+        let progress = events.contains(EventKind::Progress).then(|| {
+            let surface = Rc::downgrade(surface);
+            let weak = weak.clone();
+            Box::new(move |loaded: u64, total: u64| {
+                let current = weak
+                    .load()
+                    .and_then(|v| NshView::from_ns(&v))
+                    .is_some_and(|v| {
+                        v.state()
+                            .image
+                            .as_ref()
+                            .is_some_and(|i| i.generation == generation)
+                    });
+                if let (true, Some(surface)) = (current, surface.upgrade()) {
+                    surface.event(
+                        id,
+                        EventKind::Progress,
+                        EventPayload::Map(vec![
+                            ("loaded", PayloadValue::Number(loaded as f64)),
+                            ("total", PayloadValue::Number(total as f64)),
+                        ]),
+                    );
+                }
+            }) as Progress
+        });
+        // Fades only what had to wait.
+        let waited = Rc::new(Cell::new(false));
+        let done = {
+            let surface = Rc::downgrade(surface);
+            let weak = weak.clone();
+            let waited = waited.clone();
+            move |result: Result<Decoded, String>| {
+                let view = weak.load().and_then(|v| NshView::from_ns(&v));
+                if let (Some(view), Some(surface)) = (view, surface.upgrade()) {
+                    loaded(&surface, &view, generation, result, waited.get());
+                }
+            }
+        };
+        let immediate = match resolve(&source.uri, base.as_ref()) {
+            Some(location) => request(location, decoding, progress, Box::new(done)),
+            None => {
+                done(Err(format!("unsupported image source `{}`", source.uri)));
+                true
+            }
+        };
+        waited.set(true);
+        if !immediate && events.contains(EventKind::LoadStart) {
+            surface.event(id, EventKind::LoadStart, EventPayload::None);
+        }
+    }
+    // The placeholder, until the image shows.
+    let shown = view.state().image.as_ref().is_some_and(|i| i.shown);
+    let Some(placeholder) = placeholder.filter(|_| !shown) else {
+        return;
+    };
+    let Some(location) = resolve(&placeholder.uri, base.as_ref()) else {
+        log::warn!("unsupported image placeholder `{}`", placeholder.uri);
+        return;
+    };
+    let plain = Decoding {
+        max_pixels: decoding.max_pixels,
+        ..Decoding::default()
+    };
+    request(
+        location,
+        plain,
+        None,
+        Box::new(move |result| {
+            let Some(view) = weak.load().and_then(|v| NshView::from_ns(&v)) else {
+                return;
+            };
+            match result {
+                Ok(decoded) => {
+                    {
+                        let mut guard = view.state_mut();
+                        let s = &mut *guard;
+                        let Some(image) = s
+                            .image
+                            .as_ref()
+                            .filter(|i| i.generation == generation && !i.shown)
+                        else {
+                            return;
+                        };
+                        let natural = natural(&decoded, image.options.placeholder.as_ref());
+                        s.decor.set_image(Some((&decoded, natural)), 0.0);
+                    }
+                    view.changed();
+                }
+                Err(message) => log::warn!("image placeholder failed: {message}"),
+            }
+        }),
+    );
+}
+
+/// The source of `view` loaded (or failed); `waited`: it was not cached,
+/// so it fades in (when the app asked for a fade).
+fn loaded(
+    surface: &Surface,
+    view: &NshView,
+    generation: u64,
+    result: Result<Decoded, String>,
+    waited: bool,
+) {
+    let (events, id) = {
+        let mut guard = view.state_mut();
+        let s = &mut *guard;
+        let (events, id) = (s.events, s.id);
+        let Some(image) = s.image.as_mut().filter(|i| i.generation == generation) else {
+            return;
+        };
+        match &result {
+            Ok(decoded) => {
+                image.shown = true;
+                let natural = natural(decoded, image.source.as_ref());
+                let fade = match image.options.fade_ms {
+                    Some(ms) if waited && ms > 0.0 => ms as f64 / 1000.0,
+                    _ => 0.0,
+                };
+                quiet(|| s.decor.set_image(Some((decoded, natural)), fade));
+            }
+            // The placeholder (if any) stays.
+            Err(message) => log::warn!("image failed: {message}"),
+        }
+        (events, id)
+    };
+    view.changed();
+    match &result {
+        Ok(decoded) if events.contains(EventKind::Load) => surface.event(
+            id,
+            EventKind::Load,
+            EventPayload::Image {
+                width: decoded.width as f32,
+                height: decoded.height as f32,
+            },
+        ),
+        Err(message) if events.contains(EventKind::Error) => surface.event(
+            id,
+            EventKind::Error,
+            EventPayload::Error {
+                message: message.clone(),
+            },
+        ),
+        _ => {}
+    }
+    if events.contains(EventKind::LoadEnd) {
+        surface.event(id, EventKind::LoadEnd, EventPayload::None);
+    }
+}
+
+/// `logo@2x.png` -> 2: the pixel density a file name declares (1 without).
+fn density(uri: &str) -> f32 {
+    let name = uri.rsplit('/').next().unwrap_or(uri);
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    stem.rsplit_once('@')
+        .and_then(|(_, s)| s.strip_suffix('x'))
+        .and_then(|n| n.parse::<f32>().ok())
+        .filter(|n| *n > 0.0)
+        .unwrap_or(1.0)
+}
+
+/// The natural size in points of `image` loaded from `source`: the size
+/// the source declares, or its pixels over the file name's density.
+fn natural(image: &Decoded, source: Option<&ImageSource>) -> (f32, f32) {
+    if let Some(size) = source
+        .and_then(|s| s.size)
+        .filter(|(w, h)| *w > 0.0 && *h > 0.0)
+    {
+        return size;
+    }
+    let d = source.map_or(1.0, |s| density(&s.uri));
+    (image.width as f32 / d, image.height as f32 / d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_uris() {
+        let dir = AssetBase::Directory("/app/assets".into());
+        let http = AssetBase::Http("http://10.0.0.2:8080/assets/".into());
+        assert_eq!(
+            resolve("asset:/img/a.png", Some(&dir)),
+            Some(Location::File("/app/assets/img/a.png".into()))
+        );
+        assert_eq!(
+            resolve("asset:/a.png", Some(&http)),
+            Some(Location::Url("http://10.0.0.2:8080/assets/a.png".into()))
+        );
+        assert_eq!(resolve("asset:/a.png", None), None);
+        assert_eq!(
+            resolve("file:///home/a%20b.png", None),
+            Some(Location::File("/home/a b.png".into()))
+        );
+        assert_eq!(resolve("relative.png", None), None);
+    }
+
+    #[test]
+    fn decodes_data_uris() {
+        assert_eq!(data_uri("data:image/png;base64,aGk=").unwrap(), b"hi");
+        assert_eq!(
+            data_uri("data:image/png;base64,aGVs bG8=").unwrap(),
+            b"hello"
+        );
+        assert_eq!(data_uri("data:text/plain,a%20b%zz").unwrap(), b"a b%zz");
+        assert!(data_uri("data:nocomma").is_err());
+    }
+
+    #[test]
+    fn reads_densities() {
+        assert_eq!(density("asset:/logo@2x.png"), 2.0);
+        assert_eq!(density("https://x.org/me@home/a.png"), 1.0);
+    }
+}

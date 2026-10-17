@@ -152,8 +152,9 @@ enum Command {
     /// by the flags below.
     Package(Box<PackageArgs>),
     /// Like `dev`, and also run the app in a development host: the Mac
-    /// Catalyst app (default on macOS), the Linux app (default on Linux), an
-    /// iOS simulator, or an Android device or emulator.
+    /// Catalyst app (default on macOS), the macOS (AppKit) app, the Linux
+    /// app (default on Linux), an iOS simulator, or an Android device or
+    /// emulator.
     Run {
         /// The entry module, or the app's directory (default: the current one),
         /// whose `App.tsx` is the entry.
@@ -168,6 +169,10 @@ enum Command {
         /// Log per-commit timings.
         #[arg(long)]
         trace: bool,
+        /// Show the performance monitor over the app: frame rate, frame and
+        /// commit costs, CPU, GPU, memory (`--target macos`).
+        #[arg(long)]
+        fps: bool,
         /// Where to run.
         #[arg(long, value_enum, default_value_t = run::Target::native())]
         target: run::Target,
@@ -309,7 +314,7 @@ struct PackageArgs {
     #[arg(long, env = "NSH_KEYSTORE_PASSWORD", hide_env_values = true)]
     keystore_password: Option<String>,
     /// Install and launch the app in the simulator or on the Android device
-    /// afterwards (Linux: launch it).
+    /// afterwards (Linux, macOS: launch it).
     #[arg(long)]
     run: bool,
 }
@@ -465,9 +470,17 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             port,
             release,
             trace,
+            fps,
             target,
             device,
-        } => run::run(&entry, port, release, trace, target, device.as_deref()),
+        } => run::run(
+            &entry,
+            port,
+            release,
+            run::HostFlags { trace, fps },
+            target,
+            device.as_deref(),
+        ),
         Command::Keygen { name } => sign::keygen(&name),
         Command::Certify {
             root,

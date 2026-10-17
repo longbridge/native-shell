@@ -200,6 +200,31 @@ Things that were found the hard way. Read the section of the area you change bef
 - **Tiling window managers ignore the host's `--size`** (the window's default size): scripted screenshots have the size
   the window got, and the script's `resize` too (it resizes on X11 and floating windows).
 
+## macOS, AppKit
+
+- A layer-backed `NSView`'s layer belongs to AppKit: moving or resizing the view sets its layer's anchor point,
+  position and transform again. `NshView::place` sets the frame first, then anchor (top left), position, transform and
+  opacity, every time; a transform set elsewhere is lost on the next move.
+- Layer contents drawn by `drawRect:` sit below every sublayer of the view: a fill sublayer (differing corners,
+  gradients) would hide a text or canvas view's drawing, so those views keep their background on the layer itself.
+- Clipping a layer (`masksToBounds`, a mask) clips its shadow too: a view that clips its children and casts a shadow
+  moves the children into a container that clips, and keeps the shadow on its own layer.
+- `NSView`'s display link does not fire while the window is occluded or minimized, or the screen is locked: a surface
+  that wants frames falls back to a main-queue timer after 100 ms without one (`surface.rs`), or transitions never end.
+- `window.sendEvent:` delivers an event without making it `NSApp.currentEvent`, and synthesized mouse moves only arrive
+  when the window accepts mouse moved events; a window-less `CGEvent`'s location is in screen coordinates. Scripted
+  input posts to the application's queue (`script.rs`).
+- `CALayer.backgroundFilters` (iOS's backdrop blur) do nothing in AppKit windows, `layerUsesCoreImageFilters` or
+  not, and Core Image is not even loaded (`CIFilter` is missing) unless something links it. Backdrop blur is an
+  `NSVisualEffectView` with within-window blending; it needs `wantsLayer` set when created, or it has no layer to order
+  and clip until AppKit makes one.
+- In `define_class!` methods, an early `return` of a `bool` or `Option<Retained<_>>` does not compile (the macro wraps
+  the return type): write the body as one expression.
+- In-process screenshots (`cacheDisplayInRect:`, `renderInContext:`) ignore `maskedCorners`, `shadowPath`, Core Image
+  filters and cut masks at the mask layer's bounds; they show no sheets, `AVPlayerLayer` or `WKWebView` content.
+- `screencapture -l` needs the Screen Recording permission and fails ("could not create image from window") without
+  it; while the screen is locked a full-screen capture is black.
+
 ## Testing on simulators and emulators
 
 - **iOS simulator: launch apps only after `simctl bootstatus -b`**; apps launched while the simulator boots are sent to the

@@ -1,12 +1,12 @@
 ---
 title: Introduction
-description: "What Native Shell is: a shell that lets native iOS and Android apps load UI modules after they ship, with standalone apps as a second use."
+description: "What Native Shell is: a shell for native iOS, Android, Linux and macOS apps to load UI modules after they ship, with Win32/Direct2D for Windows in development."
 order: 1
 ---
 
 # Introduction
 
-Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS or Android app that has already shipped loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; desktop clients come next, through a GPUI backend that is in development.
+Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS, Android, Linux or macOS app loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; Linux (GTK 4) and macOS (AppKit) are supported, while the Windows (Win32 / Direct2D) backend is in development.
 
 > [!IMPORTANT]
 > nsh is not a framework for writing your whole app in TypeScript. The app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships.
@@ -19,20 +19,20 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 - **A precise, generated contract.** Every element, prop, style key and module has TypeScript declarations generated from the Rust sources (`.nsh/types`), so generated code can be type-checked, and a model can be given the exact API instead of guessing. These docs are also served as plain text for models ([`llms.txt`](/llms.txt), [`llms-full.txt`](/llms-full.txt)).
 - **Checkable before it ships.** `nsh trace` runs a module headless, without a device, and reports errors and the views it produced; build errors come with a code frame. A generation loop can compile, run, read the result and retry. The compiler also runs in-process as a library (`nsh_bundler::compile_module`) and in the browser ([Playground](/playground)).
 - **Safe to run when it is not trusted.** Generated code is untrusted code. Each module runs in its own QuickJS VM with memory, call-time and node limits, reaches only the capabilities the host grants, and arrives as a signed package the app verifies first.
-- **Native without native code.** The output is real UIKit and Android views, with the system's text, input and accessibility, yet the model never writes Swift, Kotlin or Java, and the app never needs a new release.
+- **Native without native code.** The output is real UIKit, Android and GTK views, with the system's text, input and accessibility, yet the model never writes Swift, Kotlin, Java or Rust, and the app never needs a new release.
 
 <div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/ai-flow-light.svg" alt="From a prompt to native UI: a model writes a TSX module; your server builds, checks and signs it; across the trust boundary, the app verifies the package, runs it in a sandbox with the limits and capabilities it set, and shows UIKit or Android views.">
 <img class="diagram diagram-dark" src="/diagrams/ai-flow-dark.svg" alt="From a prompt to native UI: a model writes a TSX module; your server builds, checks and signs it; across the trust boundary, the app verifies the package, runs it in a sandbox with the limits and capabilities it set, and shows UIKit or Android views.">
 </div>
 
-**Second: extending native apps, and delivering UI dynamically.** The same mechanism serves any module, not only generated ones. The app embeds an `NshAppView` (iOS) or `NshView` (Android) wherever a module should appear, and nsh runs the module inside it:
+**Second: extending native apps, and delivering UI dynamically.** The same mechanism serves any module, not only generated ones. The app embeds an `NshAppView` (iOS), `NshView` (Android) or `AppView` (Linux) wherever a module should appear, and nsh runs the module inside it:
 
 - **Delivered after release.** A module is a signed package (`.nshpkg`) the app downloads at run time. The app checks its signature against the keys it trusts and against a revocation list before running it ([Signed packages](./signed-packages.md)). A change needs no new binary and no store release.
 - **The host stays in control.** Each module runs in its own sandboxed VM, with memory, time and node limits, and reaches only what the host grants: network hosts, web pages, the status bar ([Sandbox and capabilities](./sandbox-and-capabilities.md)). Several modules can run side by side; there are no global singletons.
-- **It looks like the rest of the app.** Modules render real UIKit and Android views, so text, input, accessibility and scrolling are the system's own. The host can register its own native views — a map, a player, a design-system component — for modules to use ([Native components](./native-components.md)).
+- **It looks like the rest of the app.** Modules render real UIKit, Android and GTK views, so text, input, accessibility and scrolling use native platform views. The host can register its own native views — a map, a player, a design-system component — for modules to use ([Native components](./native-components.md)).
 
-**Third: standalone apps.** The same modules can also be a whole app. `nsh package` turns them into an installable iOS or Android app with the prebuilt runtime, which is also the quickest way to try nsh: the [getting started](./getting-started.md) guide does exactly that. It is a supported use, but not the one nsh is designed around.
+**Third: standalone apps.** The same modules can also be a whole app. `nsh package` turns them into an installable iOS, Android or Linux app with the prebuilt runtime, which is also the quickest way to try nsh: the [getting started](./getting-started.md) guide does exactly that. It is a supported use, but not the one nsh is designed around.
 
 ## Why Native Shell, next to GPUI Shell
 
@@ -41,9 +41,9 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 - **System behavior would have to be rebuilt.** A self-drawn surface inside a native screen has none of the platform's text selection, nor the selection menu that comes with it (Copy, Share, Translate, Look Up, Select All), nor the system's input methods, accessibility and new visual materials each iOS release brings. Recreating them in a GPU renderer is a large, never-finished job, and the copies drift from the real thing.
 - **Mobile teams would have to adopt a new UI stack.** Running a self-drawn layer at scale in an existing mobile client means its iOS and Android teams take on an unfamiliar renderer, its compatibility issues across OS versions and devices, and its bugs.
 
-nsh therefore renders modules with UIKit and Android views, so a module behaves like the rest of the app because it is made of the same views: one module format and one runtime, on UIKit and Android views today, and on GPUI for desktop clients once its backend lands, so a module written once can run in all three clients.
+nsh therefore renders modules with the host platform's own views: UIKit and Android views on mobile, GTK 4 on Linux, AppKit on macOS, and Win32 / Direct2D on Windows. The Linux and macOS backends are supported; the Windows backend is in development. The same module format and runtime can run in all these hosts.
 
-The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps, and through the GPUI backend, desktop clients as well. Native macOS and Windows backends (AppKit, WinUI) are not a goal for now.
+The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps and desktop through native platform backends. Linux and macOS are supported today; the Win32 / Direct2D Windows backend is in development.
 
 ## A module
 
@@ -98,7 +98,7 @@ Because JavaScript only describes the UI and handles events, the work done in th
 
 ## What you get
 
-- **Embedding.** `NshAppView` (Swift) and `NshView` (Java/Kotlin) put a module anywhere in a native screen, as many as you like ([iOS](./embedding-ios.md), [Android](./embedding-android.md)).
+- **Embedding.** `NshAppView` (Swift), `NshView` (Java/Kotlin) and Linux's GTK `AppView` put a module in a native app, as many as you like ([iOS](./embedding-ios.md), [Android](./embedding-android.md), [Linux](./linux.md#embedding-in-a-gtk-app)).
 - **Signed, revocable delivery.** Ed25519-signed packages, release keys certified by an offline root key, revocation lists ([Signed packages](./signed-packages.md)).
 - **A sandbox the host configures.** VM limits and capabilities granted per view ([Sandbox and capabilities](./sandbox-and-capabilities.md)).
 - **The host's own views in modules.** Register native components from Swift, Java or Rust ([Native components](./native-components.md)).
@@ -114,13 +114,15 @@ Because JavaScript only describes the UI and handles events, the work done in th
 |---|---|---|
 | iOS | Supported (iOS 15.0+) | Devices and the simulator; embedded with `NativeShell.xcframework` |
 | Android | Supported (API 28, Android 9+) | `arm64-v8a` and `x86_64`; embedded with `nsh.aar` |
+| Linux | Supported | GTK 4 widgets; standalone apps and embedded with `AppView` ([Linux](./linux.md)) |
+| macOS | Supported (macOS 14+) | Native AppKit backend ([macOS](./macos.md)) |
+| Windows | In development | Native Win32 / Direct2D backend |
 | Mac Catalyst | Development only | The iPhone-sized window `nsh run` opens on a Mac |
 | Web (WebAssembly) | Demos only | Runs the examples on this site, drawn with the DOM rather than native views ([Web](./web.md)); not a target to ship to |
-| Desktop (GPUI) | In development | A [GPUI](https://gpui-kit.com) backend, so the same modules and runtime can build dedicated desktop clients |
 
 <div class="diagram-scroll">
-<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS (UIKit, supported), Android (Android views, supported), desktop (GPUI, in development) and the web (WebAssembly to the DOM, for this site's demos only).">
-<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS (UIKit, supported), Android (Android views, supported), desktop (GPUI, in development) and the web (WebAssembly to the DOM, for this site's demos only).">
+<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux and macOS with AppKit (supported), Windows with Win32 / Direct2D (in development), and the web (WebAssembly to the DOM, for this site's demos only).">
+<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux and macOS with AppKit (supported), Windows with Win32 / Direct2D (in development), and the web (WebAssembly to the DOM, for this site's demos only).">
 </div>
 
 ## How it compares
@@ -131,5 +133,5 @@ The usual ways to put UI into a mobile client after release are web views, serve
 
 - [Embedding in iOS apps](./embedding-ios.md) and [Embedding in Android apps](./embedding-android.md): host modules in your app.
 - [Signed packages](./signed-packages.md) and [Sandbox and capabilities](./sandbox-and-capabilities.md): deliver modules and decide what they may do.
-- [Installation](./installation.md) and [Getting started](./getting-started.md): get `nsh` and write a first module (run as a standalone app).
+- [Installation](./installation.md), [Linux](./linux.md), [macOS](./macos.md) and [Getting started](./getting-started.md): get `nsh` and write a first module (run as a standalone app).
 - [JSX and components](./jsx-and-components.md) and [Reactivity](./reactivity.md): the two ideas everything else builds on.

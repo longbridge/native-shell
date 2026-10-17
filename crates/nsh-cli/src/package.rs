@@ -1,7 +1,7 @@
 //! `nsh package`: builds an installable app from the prebuilt runtime, the
 //! app bundle and its assets. Needs no Rust; iOS packaging uses Xcode's
-//! command line tools (`codesign`, and `actool` for icons), Linux packaging
-//! `tar`.
+//! command line tools (`codesign`, and `actool` for icons), macOS packaging
+//! `codesign` and `sips`, Linux packaging `tar`.
 
 use std::{
     fs,
@@ -29,6 +29,8 @@ pub(crate) enum PackageTarget {
     /// Linux (GTK): a directory with the runner, the bundle and a `.desktop`
     /// file, and the same as a `.tar.gz`.
     Linux,
+    /// macOS (AppKit): an ad hoc signed `.app`.
+    Macos,
 }
 
 /// App metadata: `nsh.json` next to the entry, overridden by flags.
@@ -76,7 +78,7 @@ pub(crate) struct PackageOptions<'a> {
     /// Android release keystore, key alias and password.
     pub(crate) keystore: Option<(&'a Path, &'a str, &'a str)>,
     /// Install and launch in the simulator or on the device afterwards
-    /// (Linux: launch it).
+    /// (Linux, macOS: launch it).
     pub(crate) run: bool,
 }
 
@@ -136,6 +138,9 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
         PackageTarget::Linux => {
             return package_linux(&options, config, &name, &id, &executable, &built);
         }
+        PackageTarget::Macos => {
+            return package_macos(&options, config, &name, &id, &executable, &built);
+        }
     };
     let runner = runtime::file(platform, true)?;
 
@@ -162,9 +167,10 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
 
     let sdk = match options.target {
         PackageTarget::Ios => "iphoneos",
-        PackageTarget::IosSimulator | PackageTarget::Android | PackageTarget::Linux => {
-            "iphonesimulator"
-        }
+        PackageTarget::IosSimulator
+        | PackageTarget::Android
+        | PackageTarget::Linux
+        | PackageTarget::Macos => "iphonesimulator",
     };
     let mut info = info_plist(&name, &id, &executable, config, sdk);
     if let Some(icon) = &config.icon {
@@ -187,7 +193,9 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
                 step.done(format!("launched {id} in the simulator"));
             }
         }
-        PackageTarget::Android | PackageTarget::Linux => unreachable!("packaged above"),
+        PackageTarget::Android | PackageTarget::Linux | PackageTarget::Macos => {
+            unreachable!("packaged above")
+        }
         PackageTarget::Ios => {
             if options.run {
                 bail!("--run only applies to the simulator and Android");
@@ -371,6 +379,173 @@ fn package_linux(
     }
     Ok(())
 }
+
+/// `<out>/<name>.app`, a macOS app bundle: the release runner as
+/// `Contents/MacOS/<executable>`, the bundle and assets in
+/// `Contents/Resources/nsh/` (where the runner looks), `nsh/app.json` (the
+/// window's title and the app's appearance, which the window opens in),
+/// the icon as `AppIcon.icns`; signed ad hoc (Apple silicon runs no
+/// unsigned code; distribute it signed with a Developer ID instead).
+fn package_macos(
+    options: &PackageOptions<'_>,
+    config: &AppConfig,
+    name: &str,
+    id: &str,
+    executable: &str,
+    built: &crate::build::Built,
+) -> anyhow::Result<()> {
+    let runner = runtime::file(Platform::MacOs, true)?;
+    let app = options.out.join(format!("{name}.app"));
+    let step = ui::Step::start(format!("packaging {}", ui::path(&app)));
+    if app.exists() {
+        fs::remove_dir_all(&app)?;
+    }
+    let contents = app.join("Contents");
+    let macos = contents.join("MacOS");
+    let resources = contents.join("Resources");
+    let nsh = resources.join("nsh");
+    fs::create_dir_all(&macos)?;
+    fs::create_dir_all(&nsh)?;
+    fs::copy(&runner, macos.join(executable))
+        .with_context(|| format!("copy {}", runner.display()))?;
+    fs::write(nsh.join("bundle.qbc"), &built.bytecode)?;
+    if let Some(json) = built.capabilities_json() {
+        fs::write(nsh.join("capabilities.json"), json)?;
+    }
+    for asset in &built.assets {
+        let dest = nsh.join("assets").join(&asset.path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(&asset.source, &dest).with_context(|| format!("copy {}", asset.path))?;
+    }
+    let version = config.version.as_deref().unwrap_or("1.0.0");
+    let mut info = serde_json::json!({ "name": name, "id": id, "version": version });
+    if let Some(appearance) = &config.appearance {
+        info["appearance"] = appearance.as_str().into();
+    }
+    fs::write(nsh.join("app.json"), info.to_string())?;
+    let icon = match &config.icon {
+        Some(icon) => {
+            macos_icns(icon, &resources.join("AppIcon.icns"))?;
+            true
+        }
+        None => false,
+    };
+    plist::Value::Dictionary(macos_info_plist(name, id, executable, config, icon))
+        .to_file_xml(contents.join("Info.plist"))
+        .context("write Info.plist")?;
+    let output = Command::new("codesign")
+        .args(["--force", "--sign", "-", "--timestamp=none"])
+        .arg(&app)
+        .output()
+        .context("run codesign")?;
+    if !output.status.success() {
+        bail!(
+            "codesign failed for {}: {}",
+            app.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    step.done(format!("packaged {}", ui::path(&app)));
+    if options.run {
+        let status = Command::new("open")
+            .arg(&app)
+            .status()
+            .context("run open")?;
+        if !status.success() {
+            bail!("cannot open {}", app.display());
+        }
+        ui::done(format!("launched {name}"));
+    }
+    Ok(())
+}
+
+/// Converts `icon` (a PNG) to `icns`: an iconset of every size macOS
+/// uses, scaled by `sips`, packed by `iconutil`. `sips -s format icns`
+/// alone fails on 1024-pixel images, the size app icons are drawn at.
+fn macos_icns(icon: &Path, icns: &Path) -> anyhow::Result<()> {
+    let set = icns.with_extension("iconset");
+    fs::create_dir_all(&set)?;
+    let run = |cmd: &mut Command, what: &str| -> anyhow::Result<()> {
+        let output = cmd.output().with_context(|| format!("run {what}"))?;
+        if !output.status.success() {
+            bail!(
+                "converting {} to an icon failed ({what}): {}",
+                icon.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
+    };
+    let result = (|| {
+        for size in [16u32, 32, 128, 256, 512] {
+            for (scale, suffix) in [(1, ""), (2, "@2x")] {
+                let px = (size * scale).to_string();
+                run(
+                    Command::new("sips")
+                        .args(["-s", "format", "png", "-z", &px, &px])
+                        .arg(icon)
+                        .arg("--out")
+                        .arg(set.join(format!("icon_{size}x{size}{suffix}.png"))),
+                    "sips",
+                )?;
+            }
+        }
+        run(
+            Command::new("iconutil")
+                .args(["-c", "icns"])
+                .arg(&set)
+                .arg("-o")
+                .arg(icns),
+            "iconutil",
+        )
+    })();
+    let _ = fs::remove_dir_all(&set);
+    result
+}
+
+/// The `Info.plist` of a macOS app.
+fn macos_info_plist(
+    name: &str,
+    id: &str,
+    executable: &str,
+    config: &AppConfig,
+    icon: bool,
+) -> plist::Dictionary {
+    use plist::Value;
+    let mut d = plist::Dictionary::new();
+    let s = |v: &str| Value::String(v.to_owned());
+    d.insert("CFBundleDevelopmentRegion".into(), s("en"));
+    d.insert("CFBundleExecutable".into(), s(executable));
+    d.insert("CFBundleIdentifier".into(), s(id));
+    d.insert("CFBundleName".into(), s(name));
+    d.insert("CFBundleDisplayName".into(), s(name));
+    d.insert("CFBundlePackageType".into(), s("APPL"));
+    d.insert(
+        "CFBundleShortVersionString".into(),
+        s(config.version.as_deref().unwrap_or("1.0.0")),
+    );
+    d.insert(
+        "CFBundleVersion".into(),
+        s(&config.build.unwrap_or(1).to_string()),
+    );
+    d.insert(
+        "CFBundleSupportedPlatforms".into(),
+        Value::Array(vec![s("MacOSX")]),
+    );
+    d.insert("LSMinimumSystemVersion".into(), s(MACOS_MINIMUM));
+    d.insert("NSHighResolutionCapable".into(), true.into());
+    d.insert("NSPrincipalClass".into(), s("NSApplication"));
+    if icon {
+        d.insert("CFBundleIconFile".into(), s("AppIcon"));
+    }
+    d
+}
+
+/// The oldest macOS the AppKit runtime runs on (its display links are
+/// `NSView`'s, new in macOS 14).
+const MACOS_MINIMUM: &str = "14.0";
 
 /// The app's desktop entry. Desktops match windows to it by the file's
 /// name and `StartupWMClass`, which GTK sets from the application id.
@@ -603,6 +778,21 @@ fn make_ipa(app: &Path, ipa: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// App icons are drawn at 1024 pixels, which `sips` alone cannot
+    /// convert.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn converts_large_icons() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let dir = std::env::temp_dir().join(format!("nsh-icns-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let icns = dir.join("AppIcon.icns");
+        macos_icns(&root.join("examples/gallery/icon.png"), &icns).unwrap();
+        assert!(fs::metadata(&icns).unwrap().len() > 0);
+        assert!(!dir.join("AppIcon.iconset").exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn profiles_match_bundle_ids() {

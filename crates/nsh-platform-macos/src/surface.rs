@@ -1,0 +1,604 @@
+//! One surface: an engine thread and the views it mounts on the main
+//! thread.
+//!
+//! The engine thread hands each commit to [`Sink`], which queues it and
+//! wakes the main thread once (`DispatchQueue::main`); the main thread
+//! drains the queue and applies every batch in order ([`Surface::drain`]).
+//! Native animations and JS frame requests run on the root view's display
+//! link while there is something to do.
+
+use std::{
+    cell::{Cell, RefCell},
+    rc::{Rc, Weak},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
+
+use crossbeam_channel::{Receiver, Sender};
+use dispatch2::DispatchQueue;
+use nsh_core::{EventKind, EventPayload, MountBatch, MountItem, NodeId, ROOT_ID, Size};
+use nsh_engine::{Engine, EngineConfig, EngineControl, Environment, MountSink, perf::PerfMonitor};
+use objc2::{
+    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained, sel,
+};
+use objc2_foundation::{NSObject, NSObjectProtocol};
+use objc2_quartz_core::{CADisplayLink, CATransaction};
+use rustc_hash::FxHashMap;
+
+use crate::{animation::UiAnimation, mount::Mounter, text::CoreTextEngine, view::NshView};
+
+/// What the engine thread sends the main thread.
+enum Message {
+    /// A batch, and when the engine handed it over (while a performance
+    /// monitor measures).
+    Batch(MountBatch, Option<Instant>),
+    Error(String),
+    Frame,
+    HotUpdateFailed,
+}
+
+thread_local! {
+    /// The surfaces of this (main) thread, by key: the sink wakes one by
+    /// its key, as dispatched closures must be `Send`.
+    static SURFACES: RefCell<FxHashMap<u64, Weak<Surface>>> = RefCell::default();
+}
+
+static NEXT_KEY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// The surface with `key`, if it still exists.
+fn find(key: u64) -> Option<Rc<Surface>> {
+    SURFACES.with(|s| s.borrow().get(&key).and_then(Weak::upgrade))
+}
+
+/// Forwards batches from the engine thread to the main thread.
+struct Sink {
+    key: u64,
+    tx: Sender<Message>,
+    /// A wake-up is on its way: no need for another.
+    pending: Arc<AtomicBool>,
+    /// A performance monitor measures: batches carry when they were sent.
+    perf: Arc<AtomicBool>,
+}
+
+impl Sink {
+    fn send(&self, message: Message) {
+        let _ = self.tx.send(message);
+        if !self.pending.swap(true, Ordering::AcqRel) {
+            let key = self.key;
+            DispatchQueue::main().exec_async(move || {
+                if let Some(surface) = find(key) {
+                    surface.drain();
+                }
+            });
+        }
+    }
+}
+
+impl MountSink for Sink {
+    fn submit(&self, batch: MountBatch) {
+        let sent = self.perf.load(Ordering::Relaxed).then(Instant::now);
+        self.send(Message::Batch(batch, sent));
+    }
+
+    fn report_error(&self, message: &str) {
+        self.send(Message::Error(message.to_owned()));
+    }
+
+    fn request_frame(&self) {
+        self.send(Message::Frame);
+    }
+
+    fn hot_update_failed(&self) {
+        self.send(Message::HotUpdateFailed);
+    }
+}
+
+define_class!(
+    /// The display link's target: ticks the surface with its key.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = u64]
+    #[name = "NshTicker"]
+    struct Ticker;
+
+    unsafe impl NSObjectProtocol for Ticker {}
+
+    impl Ticker {
+        #[unsafe(method(tick:))]
+        fn tick(&self, link: &CADisplayLink) {
+            match find(*self.ivars()) {
+                Some(surface) => surface.ticked(link),
+                None => link.invalidate(),
+            }
+        }
+    }
+);
+
+/// Called when the app reports a fatal error (development hosts show it).
+pub(crate) type ErrorHandler = Box<dyn Fn(&str)>;
+
+/// One engine and its views.
+pub(crate) struct Surface {
+    key: u64,
+    pub(crate) mtm: MainThreadMarker,
+    /// The root view (node [`ROOT_ID`]): the surface's view.
+    pub(crate) root: NshView,
+    /// Views by node id, and what mounting needs between items.
+    pub(crate) mounter: RefCell<Mounter>,
+    /// The native animation graph.
+    pub(crate) anim: RefCell<UiAnimation>,
+    /// Stacks, screens and modals.
+    pub(crate) nav: RefCell<crate::navigation::Nav>,
+    /// Pointer input state ([`crate::input`]).
+    pub(crate) input: crate::input::Input,
+    /// The text selection ([`crate::text::Selected`]).
+    pub(crate) selection: crate::text::Selected,
+    engine: RefCell<Option<Engine>>,
+    control: RefCell<Option<EngineControl>>,
+    rx: RefCell<Option<Receiver<Message>>>,
+    pending: RefCell<Arc<AtomicBool>>,
+    /// The environment the engine was last told about.
+    pub(crate) environment: Cell<Environment>,
+    /// The app's appearance (`nsh.json`, `setColorScheme`): the color
+    /// scheme is the system's resolved with it ([`crate::system`]).
+    pub(crate) appearance: Cell<nsh_core::platform::Appearance>,
+    /// JS asked for a display frame.
+    js_frame: Cell<bool>,
+    /// Frame callbacks of the platform's own animations (scroll glides,
+    /// transitions): called on every frame while they return true.
+    frame_callbacks: RefCell<Vec<FrameCallback>>,
+    /// The display link, while it runs.
+    link: RefCell<Option<Retained<CADisplayLink>>>,
+    /// The performance monitor ([`Surface::set_perf_monitor`]), and whether
+    /// there is one (for the sink, on the engine thread).
+    perf: RefCell<Option<Arc<PerfMonitor>>>,
+    perf_on: Arc<AtomicBool>,
+    /// When the last frame ran (`CACurrentMediaTime`), and whether the
+    /// fallback timer is scheduled ([`Surface::watch_link`]).
+    last_tick: Cell<f64>,
+    fallback: Cell<bool>,
+    on_error: RefCell<Option<ErrorHandler>>,
+    on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
+    /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
+    pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
+    /// Videos, web views and registered native components.
+    pub(crate) native: crate::native::NativeState,
+}
+
+/// A per-frame callback ([`Surface::add_frame_callback`]): gets the frame
+/// time in seconds, returns whether it wants the next frame.
+pub(crate) type FrameCallback = Box<dyn FnMut(&Rc<Surface>, f64) -> bool>;
+
+impl Surface {
+    /// A surface with no app yet.
+    pub(crate) fn new(mtm: MainThreadMarker, environment: Environment) -> Rc<Surface> {
+        let key = NEXT_KEY.fetch_add(1, Ordering::Relaxed);
+        let root = NshView::new(mtm, ROOT_ID, nsh_core::ViewKind::View);
+        let surface = Rc::new(Surface {
+            key,
+            mtm,
+            root: root.clone(),
+            mounter: RefCell::new(Mounter::new(root.clone())),
+            anim: RefCell::new(UiAnimation::default()),
+            nav: RefCell::default(),
+            input: Default::default(),
+            selection: Default::default(),
+            engine: RefCell::new(None),
+            control: RefCell::new(None),
+            rx: RefCell::new(None),
+            pending: RefCell::new(Arc::new(AtomicBool::new(false))),
+            environment: Cell::new(environment),
+            appearance: Cell::default(),
+            js_frame: Cell::new(false),
+            frame_callbacks: RefCell::default(),
+            link: RefCell::new(None),
+            perf: RefCell::new(None),
+            perf_on: Arc::new(AtomicBool::new(false)),
+            last_tick: Cell::new(0.0),
+            fallback: Cell::new(false),
+            on_error: RefCell::new(None),
+            on_hot_update_failed: RefCell::new(None),
+            asset_base: RefCell::new(None),
+            native: Default::default(),
+        });
+        SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
+        // CoreText's first use loads fonts and caches (tens of
+        // milliseconds): done off the main thread before the first text.
+        static PREWARM: std::sync::Once = std::sync::Once::new();
+        PREWARM.call_once(|| {
+            std::thread::spawn(crate::text::prewarm);
+        });
+        root.set_surface(Rc::downgrade(&surface));
+        surface
+    }
+
+    /// The surface's key ([`Surface::with_key`]).
+    pub(crate) fn key(&self) -> u64 {
+        self.key
+    }
+
+    /// The surface with `key`, for callbacks that must be `Send`.
+    pub(crate) fn with_key(key: u64) -> Option<Rc<Surface>> {
+        find(key)
+    }
+
+    /// Starts `config`'s app, replacing what ran.
+    pub(crate) fn start(self: &Rc<Self>, mut config: EngineConfig) {
+        self.stop();
+        let env = self.environment.get();
+        config.viewport = Size::new(env.window.0, env.window.1);
+        config.environment = env;
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let pending = Arc::new(AtomicBool::new(false));
+        let sink = Sink {
+            key: self.key,
+            tx,
+            pending: pending.clone(),
+            perf: self.perf_on.clone(),
+        };
+        *self.rx.borrow_mut() = Some(rx);
+        *self.pending.borrow_mut() = pending;
+        match Engine::start(config, CoreTextEngine::default, sink) {
+            Ok(engine) => {
+                if let Some(monitor) = &*self.perf.borrow() {
+                    engine.control().set_perf_monitor(Some(monitor.clone()));
+                }
+                *self.control.borrow_mut() = Some(engine.control());
+                *self.engine.borrow_mut() = Some(engine);
+            }
+            Err(err) => log::error!("cannot start the engine: {err}"),
+        }
+    }
+
+    /// Stops the app and removes its views.
+    pub(crate) fn stop(&self) {
+        // Dropping the engine joins its thread.
+        self.control.borrow_mut().take();
+        self.engine.borrow_mut().take();
+        self.rx.borrow_mut().take();
+        self.mounter.borrow_mut().clear();
+        self.native.clear();
+        crate::system::clear(self);
+        *self.anim.borrow_mut() = UiAnimation::default();
+        self.nav.borrow_mut().reset();
+        crate::input::reset(self);
+        self.js_frame.set(false);
+        self.frame_callbacks.borrow_mut().clear();
+    }
+
+    /// Calls `f` with the engine's control, if an app runs.
+    pub(crate) fn control(&self, f: impl FnOnce(&EngineControl)) {
+        if let Some(control) = &*self.control.borrow() {
+            f(control);
+        }
+    }
+
+    /// Sends an event to JS.
+    pub(crate) fn event(&self, id: NodeId, kind: EventKind, payload: EventPayload) {
+        self.control(|c| c.dispatch_event(id, kind, payload));
+    }
+
+    /// Shows fatal app errors with `f` (development hosts).
+    #[cfg(feature = "dev")]
+    pub(crate) fn set_error_handler(&self, f: ErrorHandler) {
+        *self.on_error.borrow_mut() = Some(f);
+    }
+
+    /// Runs `f` when a hot update could not be applied in place.
+    #[cfg(feature = "dev")]
+    pub(crate) fn set_hot_update_failed(&self, f: impl Fn() + 'static) {
+        *self.on_hot_update_failed.borrow_mut() = Some(Box::new(f));
+    }
+
+    /// Updates the environment and tells the engine.
+    pub(crate) fn set_environment(&self, environment: Environment) {
+        if self.environment.replace(environment) != environment {
+            self.control(|c| c.set_environment(environment));
+            crate::system::environment_applied(self);
+        }
+    }
+
+    /// The root view got a new size (the window's content area).
+    pub(crate) fn resized(&self, width: f32, height: f32) {
+        {
+            let mut s = self.root.state_mut();
+            if s.frame.width == width && s.frame.height == height {
+                return;
+            }
+            s.frame.width = width;
+            s.frame.height = height;
+        }
+        let mut env = self.environment.get();
+        env.window = (width, height);
+        self.environment.set(env);
+        self.control(|c| {
+            c.resize(Size::new(width, height));
+            c.set_environment(env);
+        });
+        crate::navigation::surface_resized(self, width, height);
+        crate::system::surface_resized(self, width, height);
+    }
+
+    /// Measures this surface's frames and commits into `monitor` from now
+    /// on (`None`: stops). While one measures, the display link runs on
+    /// every refresh (it closes the frames).
+    pub(crate) fn set_perf_monitor(self: &Rc<Self>, monitor: Option<Arc<PerfMonitor>>) {
+        self.perf_on.store(monitor.is_some(), Ordering::Relaxed);
+        self.control(|c| c.set_perf_monitor(monitor.clone()));
+        *self.perf.borrow_mut() = monitor;
+        self.ensure_ticking();
+    }
+
+    /// Runs `f`, main-thread work on the surface, and adds its time to the
+    /// current frame of the performance monitor, if one measures; `dirty`:
+    /// it changes what the screen shows.
+    pub(crate) fn measure<R>(&self, dirty: bool, f: impl FnOnce() -> R) -> R {
+        let Some(monitor) = self.perf.borrow().clone() else {
+            return f();
+        };
+        let start = Instant::now();
+        let r = f();
+        monitor.record_work(start.elapsed(), dirty);
+        r
+    }
+
+    /// Applies what the engine sent.
+    fn drain(self: &Rc<Self>) {
+        let monitor = self.perf.borrow().clone();
+        let start = monitor.as_ref().map(|_| Instant::now());
+        self.pending.borrow().store(false, Ordering::Release);
+        let messages: Vec<Message> = match &*self.rx.borrow() {
+            Some(rx) => rx.try_iter().collect(),
+            None => return,
+        };
+        let mut applied = false;
+        quiet(|| {
+            for message in messages {
+                match message {
+                    Message::Batch(batch, sent) => {
+                        if let (Some(monitor), Some(sent)) = (&monitor, sent) {
+                            monitor.record_latency(sent.elapsed());
+                        }
+                        self.apply(&batch);
+                        applied = true;
+                    }
+                    Message::Error(message) => {
+                        log::error!("{message}");
+                        if let Some(f) = &*self.on_error.borrow() {
+                            f(&message);
+                        }
+                    }
+                    Message::Frame => self.js_frame.set(true),
+                    Message::HotUpdateFailed => {
+                        if let Some(f) = &*self.on_hot_update_failed.borrow() {
+                            f();
+                        }
+                    }
+                }
+            }
+            if applied {
+                self.write_animations();
+                self.revisit();
+            }
+        });
+        if let (Some(monitor), Some(start)) = (monitor, start) {
+            // Core Animation's commit (drawing what changed) included.
+            monitor.record_work(start.elapsed(), applied);
+        }
+        self.ensure_ticking();
+    }
+
+    fn apply(self: &Rc<Self>, batch: &MountBatch) {
+        crate::access::prepare(batch);
+        for item in &batch.items {
+            self.anim.borrow_mut().apply(item);
+            if !matches!(
+                item,
+                MountItem::Animation(_) | MountItem::AnimationBindings { .. }
+            ) {
+                self.mounter.borrow_mut().apply(self, item);
+            }
+        }
+        self.mounter.borrow_mut().end_batch(self);
+    }
+
+    /// Writes the animated values to the views and reports finished
+    /// animations.
+    pub(crate) fn write_animations(&self) {
+        let finished = {
+            let mut anim = self.anim.borrow_mut();
+            anim.write(&self.mounter.borrow());
+            std::mem::take(&mut anim.finished)
+        };
+        if !finished.is_empty() {
+            self.control(|c| c.animations_finished(finished));
+        }
+    }
+
+    /// Calls `f` on every display frame while it returns true.
+    pub(crate) fn add_frame_callback(
+        self: &Rc<Self>,
+        f: impl FnMut(&Rc<Surface>, f64) -> bool + 'static,
+    ) {
+        self.frame_callbacks.borrow_mut().push(Box::new(f));
+        self.ensure_ticking();
+    }
+
+    fn wants_frames(&self) -> bool {
+        self.js_frame.get()
+            || self.anim.borrow().animating()
+            || !self.frame_callbacks.borrow().is_empty()
+    }
+
+    /// Runs the display link while animations run or JS wants a frame (or
+    /// a performance monitor measures).
+    pub(crate) fn ensure_ticking(self: &Rc<Self>) {
+        if !self.wants_frames() {
+            if self.perf.borrow().is_none() {
+                return;
+            }
+        } else {
+            self.watch_link();
+        }
+        if let Some(link) = &*self.link.borrow() {
+            if link.isPaused() {
+                // The window may have moved to another screen meanwhile.
+                link.setPreferredFrameRateRange(self.frame_rate_range());
+                link.setPaused(false);
+            }
+            return;
+        }
+        let ticker = Ticker::alloc(self.mtm).set_ivars(self.key);
+        // SAFETY: NSObject's initializer.
+        let ticker: Retained<Ticker> = unsafe { msg_send![super(ticker), init] };
+        // SAFETY: `tick:` takes the display link, as the selector requires;
+        // the link retains its target.
+        let link = unsafe {
+            self.root
+                .ns()
+                .displayLinkWithTarget_selector(&ticker, sel!(tick:))
+        };
+        link.setPreferredFrameRateRange(self.frame_rate_range());
+        // SAFETY: the main run loop exists while the app runs.
+        unsafe {
+            link.addToRunLoop_forMode(
+                &objc2_foundation::NSRunLoop::mainRunLoop(),
+                objc2_foundation::NSRunLoopCommonModes,
+            )
+        };
+        *self.link.borrow_mut() = Some(link);
+    }
+
+    /// The frame rates the display link asks for: the screen's highest
+    /// (120 Hz on ProMotion), at least 80 there. Without it the link may
+    /// settle on 60 Hz.
+    fn frame_rate_range(&self) -> objc2_quartz_core::CAFrameRateRange {
+        let max = self
+            .root
+            .ns()
+            .window()
+            .and_then(|w| w.screen())
+            .or_else(|| objc2_app_kit::NSScreen::mainScreen(self.mtm))
+            .map_or(60, |s| s.maximumFramesPerSecond())
+            .max(1) as f32;
+        objc2_quartz_core::CAFrameRateRange {
+            minimum: max.min(80.0),
+            maximum: max,
+            preferred: max,
+        }
+    }
+
+    /// Keeps frames coming when the display link stops: it does not fire
+    /// while the window is occluded or minimized, or the screen is locked,
+    /// and animations must still end (a transition detaches its views when
+    /// it does, a modal reports its dismissal). While frames are wanted and
+    /// the link has not ticked for 100 ms, a 60 Hz main-queue timer ticks
+    /// instead.
+    fn watch_link(self: &Rc<Self>) {
+        if self.fallback.replace(true) {
+            return;
+        }
+        fn check(key: u64) {
+            let Some(surface) = find(key) else { return };
+            if !surface.wants_frames() {
+                surface.fallback.set(false);
+                return;
+            }
+            let now = objc2_quartz_core::CACurrentMediaTime();
+            let stalled = now - surface.last_tick.get() > 0.1;
+            if stalled {
+                surface.last_tick.set(now);
+                surface.frame(now, 1.0 / 60.0);
+            }
+            let delay = if stalled { 16 } else { 100 };
+            after(delay, move || check(key));
+        }
+        let key = self.key;
+        after(100, move || check(key));
+    }
+
+    fn ticked(self: &Rc<Self>, link: &CADisplayLink) {
+        let now = link.timestamp();
+        self.last_tick.set(objc2_quartz_core::CACurrentMediaTime());
+        self.frame(now, link.targetTimestamp() - link.timestamp());
+        if !self.wants_frames() && self.perf.borrow().is_none() {
+            link.setPaused(true);
+        }
+    }
+
+    /// One display frame at `now`, `period` seconds after the previous one
+    /// (the display link's, or the fallback timer's).
+    fn frame(self: &Rc<Self>, now: f64, period: f64) {
+        let Some(monitor) = self.perf.borrow().clone() else {
+            return quiet(|| self.tick(now));
+        };
+        let start = Instant::now();
+        let dirty = self.wants_frames();
+        quiet(|| self.tick(now));
+        monitor.record_work(start.elapsed(), dirty);
+        monitor.vsync(
+            Instant::now(),
+            std::time::Duration::from_secs_f64(period.max(0.0)),
+        );
+    }
+
+    fn tick(self: &Rc<Self>, now: f64) {
+        if self.anim.borrow().animating() {
+            self.anim.borrow_mut().tick(now);
+            self.write_animations();
+        }
+        let callbacks = std::mem::take(&mut *self.frame_callbacks.borrow_mut());
+        let mut kept: Vec<FrameCallback> = callbacks
+            .into_iter()
+            .filter_map(|mut f| f(self, now).then_some(f))
+            .collect();
+        {
+            let mut added = self.frame_callbacks.borrow_mut();
+            kept.append(&mut added);
+            *added = kept;
+        }
+        if self.js_frame.replace(false) {
+            self.control(|c| c.frame());
+        }
+        self.revisit();
+    }
+
+    /// Draws views whose drawing changed out of sight and that show now
+    /// ([`Mounter::draw_when_shown`]); after anything that moves views.
+    pub(crate) fn revisit(&self) {
+        if let Ok(mounter) = self.mounter.try_borrow() {
+            mounter.revisit();
+        }
+    }
+}
+
+impl Drop for Surface {
+    fn drop(&mut self) {
+        let key = self.key;
+        if let Some(link) = self.link.borrow_mut().take() {
+            link.invalidate();
+        }
+        let _ = SURFACES.try_with(|s| s.borrow_mut().remove(&key));
+    }
+}
+
+/// Runs `f` on the main queue after `ms` milliseconds.
+fn after(ms: u64, f: impl FnOnce() + Send + 'static) {
+    let when = dispatch2::DispatchTime::NOW.time((ms * 1_000_000) as i64);
+    if let Err(err) = DispatchQueue::main().after(when, f) {
+        log::error!("cannot schedule a frame: {err:?}");
+    }
+}
+
+/// Runs `f` with Core Animation's implicit animations off: layers change
+/// at once, as the core said (animations are explicit).
+pub(crate) fn quiet<R>(f: impl FnOnce() -> R) -> R {
+    CATransaction::begin();
+    CATransaction::setDisableActions(true);
+    let r = f();
+    CATransaction::commit();
+    r
+}

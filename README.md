@@ -43,11 +43,12 @@ Requirements: Xcode for the Mac and iOS targets; GTK 4 (4.14 or later) for Linux
 
 ### From a checkout
 
-`cargo run` runs the gallery in the Mac Catalyst window (on Linux, in the GTK host), with hot reload; it rebuilds and restarts it when the Rust
+`cargo run` runs the gallery on the machine's own backend (an AppKit window on macOS, a GTK window on Linux), with hot reload; it rebuilds and restarts it when the Rust
 code changes. Other apps and targets:
 
 ```sh
 cargo run -- examples/counter
+cargo run -- --target catalyst     # Mac Catalyst window
 cargo run -- --target ios          # iOS simulator
 cargo run -- --target android      # Android emulator or device
 ```

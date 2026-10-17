@@ -7,12 +7,13 @@ order: 29
 # Packaging
 
 `nsh package` turns an app into something you can install: a `.app` for the iOS simulator, a signed `.ipa` for iOS
-devices, a signed `.apk` for Android, or a directory and `.tar.gz` for Linux. It combines a release build of your app with the **prebuilt runtime** that
+devices, a signed `.apk` for Android, an ad hoc signed `.app` for macOS, or a directory and `.tar.gz` for Linux. It combines a release build of your app with the **prebuilt runtime** that
 ships with nsh, so it needs no Rust toolchain, no Xcode project and no Gradle.
 
 ```sh
 nsh package App.tsx --target ios-simulator --run     # build, install and launch in the simulator
 nsh package App.tsx --target android --run           # build, install and launch on a device or emulator
+nsh package App.tsx --target macos --run             # build and launch on this Mac
 nsh package App.tsx --target linux --run             # build and launch on this machine
 nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345)" --profile Dev.mobileprovision
 ```
@@ -60,7 +61,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 
 | Flag | Description |
 |---|---|
-| `--target <ios \| ios-simulator \| android \| linux>` | What to build for (required). |
+| `--target <ios \| ios-simulator \| android \| macos \| linux>` | What to build for (required). |
 | `-o, --out <dir>` | Output directory. Default `out`. |
 | `--name <name>` | Display name. |
 | `--id <id>` | Bundle identifier, such as `com.example.app`. |
@@ -72,7 +73,7 @@ nsh package App.tsx --target android --app-version 1.4.0 --build 42
 | `--keystore <file>` | Android: a release keystore (default: the debug key). |
 | `--key-alias <alias>` | Android: the key alias in the keystore. |
 | `--keystore-password <password>` | Android: the keystore password; also read from `NSH_KEYSTORE_PASSWORD`. |
-| `--run` | Install and launch afterwards: in the iOS simulator, or on the Android device or emulator `adb` sees; Linux apps are launched on this machine. Not for `--target ios`. |
+| `--run` | Install and launch afterwards: in the iOS simulator, or on the Android device or emulator `adb` sees; macOS and Linux apps are launched on this machine. Not for `--target ios`. |
 
 ## iOS simulator
 
@@ -140,6 +141,16 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 
 Prefer the environment variable over `--keystore-password` so the password does not end up in your shell history.
 
+## macOS
+
+```sh
+nsh package App.tsx --target macos --run
+```
+
+Writes `out/<Name>.app`: the executable in `Contents/MacOS/`, and `nsh/bundle.qbc`, `nsh/assets/…` and `nsh/app.json`
+(the window title and the app's appearance) in `Contents/Resources/`. The app is signed ad hoc and needs macOS 14 or
+later; to distribute it, sign it with a Developer ID and notarize it. See [macOS](./macos.md#packaging).
+
 ## Linux
 
 ```sh
@@ -158,6 +169,7 @@ Give one square PNG, ideally 1024×1024, in `nsh.json` (`"icon": "icon.png"`) or
 - **iOS:** compiled by Xcode's `actool` into the app's asset catalog (`Assets.car`), which derives every size iOS
   needs.
 - **Android:** resized to 192×192 and used as the launcher icon (`mipmap-xxxhdpi`).
+- **macOS:** converted by `sips` to `AppIcon.icns`.
 - **Linux:** copied as `<id>.png`, which the `.desktop` file names as its `Icon`.
 
 Without an icon, the system shows its default.
@@ -169,9 +181,16 @@ imports, next to the prebuilt runtime:
 
 | Target | Runtime | Your app |
 |---|---|---|
+<<<<<<< HEAD
 | iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.nsh`, `nsh/assets/…` |
 | Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.nsh`, `assets/nsh/assets/…` |
 | Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nsh`, `nsh/assets/…` |
+=======
+| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.qbc`, `nsh/assets/…` |
+| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.qbc`, `assets/nsh/assets/…` |
+| macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.qbc`, `nsh/assets/…` |
+| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.qbc`, `nsh/assets/…` |
+>>>>>>> origin/main
 
 A packaged app registers no [native components](./native-components.md); for those, embed nsh in your own app.
 
@@ -180,10 +199,10 @@ A packaged app registers no [native components](./native-components.md); for tho
 `nsh package` looks for the prebuilt runtime next to the CLI (`bin/../runtime` in the distribution). In a checkout of
 nsh it uses `target/<triple>/<profile>` and `target/android/<profile>`, with the CLI's own profile (a debug CLI uses
 debug runtimes): build them with `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim` (or `aarch64-apple-ios`
-for devices) and `cargo xtask android` (add `--release` for a release CLI); on Linux, `nsh-linux-app` is built for this machine in
-`target/<profile>` (`cargo build -p nsh-linux-app`). The environment variable `NSH_RUNTIME`
+for devices) and `cargo xtask android` (add `--release` for a release CLI); `nsh-macos-app` (on macOS) and `nsh-linux-app` (on Linux) are built for this
+machine in `target/<profile>` (`cargo build -p nsh-macos-app`, `cargo build -p nsh-linux-app`). The environment variable `NSH_RUNTIME`
 points the CLI at another directory laid out like the distribution's `runtime/` (`ios/iphoneos`,
-`ios/iphonesimulator`, `android/release`, `linux`, ...).
+`ios/iphonesimulator`, `android/release`, `macos`, `linux`, ...).
 
 ## See also
 
