@@ -385,7 +385,8 @@ impl Element for SurfaceElement {
     type PrepaintState = Hitbox;
 
     fn id(&self) -> Option<ElementId> {
-        None
+        // An id gives the element a node in GPUI's accessibility tree.
+        Some("nsh-surface".into())
     }
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
@@ -432,6 +433,7 @@ impl Element for SurfaceElement {
         }
         // Changes made by the tick are in this frame.
         surface.drawing();
+        crate::access::prepaint(surface, &self.focus, window, cx);
         window.set_focus_handle(&self.focus, cx);
         window.insert_hitbox(bounds, HitboxBehavior::BlockMouse)
     }
@@ -448,7 +450,13 @@ impl Element for SurfaceElement {
     ) {
         let surface = self.surface.clone();
         let dark = crate::system::dark(&surface);
-        let background = crate::system::window_background(&surface);
+        // Embedded with a theme, the surface is drawn on the host's
+        // background.
+        let background = match &*surface.host_theme.borrow() {
+            Some(theme) if dark => theme.background.dark,
+            Some(theme) => theme.background.light,
+            None => crate::system::window_background(&surface),
+        };
         if background.0 & 0xff != 0 {
             window.paint_quad(gpui::fill(bounds, hsla(background)));
         }
@@ -469,5 +477,18 @@ impl Element for SurfaceElement {
             window,
             cx,
         );
+        crate::access::paint(&surface, window, cx);
+    }
+
+    fn a11y_role(&self) -> Option<gpui::accesskit::Role> {
+        Some(crate::access::ROLE)
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        _hitbox: &mut Self::PrepaintState,
+        builder: &mut gpui::A11ySubtreeBuilder,
+    ) {
+        crate::access::synthetic(&self.surface, builder);
     }
 }

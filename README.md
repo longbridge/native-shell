@@ -15,10 +15,12 @@ nsh runs on phones and desktops, each with a native backend of its own:
 | macOS | AppKit, Core Animation, CoreText | `AppView` (Rust, `nsh-platform-macos`) | macOS 14+ |
 | Windows | Win32 windows drawn with Direct2D, DirectWrite | `AppView` (Rust, `nsh-platform-windows`) | Windows 10 1809+ |
 | Linux | GTK 4 widgets, Pango | `AppView` (Rust, `nsh-platform-linux`) | GTK 4.14+ |
+| GPUI (macOS, Windows, Linux; in development) | GPUI (GPUI Fast) | `AppView` (Rust, a GPUI view, `nsh-platform-gpui`) | macOS, Windows; Linux with Vulkan |
 
 Every platform runs apps with hot reload (`nsh run`) and packages them (`nsh package`). Mac Catalyst (an iPhone-sized
-window on a Mac) is a development target, and a WebAssembly build runs the website's live demos. A GPUI desktop
-backend is in development and not available yet. The host stays a native app; nsh is the layer inside it.
+window on a Mac) is a development target, and a WebAssembly build runs the website's live demos. The GPUI backend
+(`nsh run --target gpui`, `nsh package --target gpui`) draws apps with GPUI on all three desktops and embeds in GPUI
+and GPUI Kit apps; it is in development, short of the native backends' features. The host stays a native app; nsh is the layer inside it.
 
 Inside, only a module's code is JavaScript: signals, the renderer and every module it imports are Rust, layout is
 Taffy, and the toolchain is a single `nsh` binary (no Node.js, and no Rust toolchain for module authors).

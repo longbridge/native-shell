@@ -8,6 +8,7 @@
 //! dist/nsh/runtime/macos/{nsh-macos-host,nsh-macos-app}        development host, packaged app runner
 //! dist/nsh/runtime/linux/{nsh-linux-host,nsh-linux-app}        development host, packaged app runner
 //! dist/nsh/runtime/windows/{nsh-windows-host,nsh-windows-app}.exe  development host, packaged app runner
+//! dist/nsh/runtime/gpui/{nsh-gpui-host,nsh-gpui-app}[.exe]     development host, packaged app runner (GPUI)
 //! dist/nsh/runtime/android/{release,dev}/                      classes.dex, lib/<abi>/libnsh.so
 //! dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  embedding in iOS apps
 //! dist/nsh/embed/android/{nsh,nsh-dev}.aar                     embedding in Android apps
@@ -17,7 +18,8 @@
 //! the macOS (AppKit) runtime, built for this machine. The
 //! Linux runtime is built for this machine, on Linux only (where it runs,
 //! GTK 4 and Pango must be installed); the Windows runtime likewise, on
-//! Windows only (where the CLI is `bin/nsh.exe`).
+//! Windows only (where the CLI is `bin/nsh.exe`). The GPUI runtime is
+//! built for this machine on each of the three.
 
 use std::{env, fs, path::Path, process::Command};
 
@@ -78,6 +80,19 @@ pub(crate) fn dist() -> anyhow::Result<()> {
             copy(
                 &release.join("release").join(exe(package)),
                 &out.join("runtime/windows").join(exe(package)),
+            )?;
+        }
+    }
+
+    if cfg!(any(target_os = "linux", target_os = "macos", windows)) {
+        for (package, what) in [
+            ("nsh-gpui-host", "the development host for GPUI"),
+            ("nsh-gpui-app", "the release runner for GPUI"),
+        ] {
+            cargo(&["build", "--release", "-p", package], what)?;
+            copy(
+                &release.join("release").join(exe(package)),
+                &out.join("runtime/gpui").join(exe(package)),
             )?;
         }
     }
