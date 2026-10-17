@@ -149,6 +149,8 @@ Roles:
 
 A role's item has the platform's label and shortcut unless it sets its own (macOS adds the app's name to `about`, `hide` and `quit`).
 
+Menu shortcuts come first, as in native apps: a key an item takes never reaches the focused text field or nsh's own keys. So give the editing shortcuts (`Mod+C`, `Mod+V`, `Mod+X`, `Mod+A`, `Mod+Z`) only to the edit roles, which pass them to the text field, and avoid keys without a modifier (`Escape`, the arrows, letters), which would take them from text fields and from back navigation.
+
 ```tsx
 import { effect, signal } from "nsh";
 import { Platform } from "nsh/device";
