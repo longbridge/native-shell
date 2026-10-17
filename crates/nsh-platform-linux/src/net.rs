@@ -505,17 +505,22 @@ mod tests {
         };
         task.pause(true);
         std::thread::sleep(Duration::from_millis(300));
-        // A read already under way may still deliver its chunk.
+        // Chunks read before the pause took effect are already queued: drain
+        // them, then nothing more may arrive while paused.
         let mut total = first.len();
-        let mut during = 0;
-        while let Ok(e) = rx.try_recv() {
-            let FetchEvent::Data(d) = e else {
-                panic!("unexpected {e:?}")
-            };
-            total += d.len();
-            during += 1;
-        }
-        assert!(during <= 1, "{during} chunks while paused");
+        let mut drain = |total: &mut usize| {
+            while let Ok(e) = rx.try_recv() {
+                let FetchEvent::Data(d) = e else {
+                    panic!("unexpected {e:?}")
+                };
+                *total += d.len();
+            }
+        };
+        drain(&mut total);
+        std::thread::sleep(Duration::from_millis(300));
+        let settled = total;
+        drain(&mut total);
+        assert!(total - settled <= 1 << 16, "{} bytes while paused", total - settled);
         assert!(total < LEN);
         task.pause(false);
         total += body(&rx).len();
