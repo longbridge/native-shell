@@ -127,10 +127,12 @@ mod tests {
 
     #[test]
     fn the_current_modes_resolved_colors_win() {
-        let mut theme = Theme::default();
-        theme.mode = ThemeMode::Dark;
+        let mut theme = Theme {
+            mode: ThemeMode::Dark,
+            radius: gpui_kit::px(6.0),
+            ..Default::default()
+        };
         theme.colors.primary = gpui_kit::rgb(0x7c3aed).into();
-        theme.radius = gpui_kit::px(6.0);
         let nsh = nsh_theme(&theme);
         assert_eq!(nsh.primary.dark, Color(0x7c3aedff));
         // The other mode keeps nsh's (the configs set nothing here).

@@ -107,5 +107,7 @@ in a resizable split.
 - **From nsh to the host.** The app talks to the embedding app through the native components the latter registers
   (`AppView::register_component`): their events and commands, as on the other platforms. A component can render GPUI
   Kit widgets in its box (`NativeComponent::render`), which take their own input: the example's "Extended hours" is a
-  GPUI Kit `Switch` (`src/switch.rs`, `host.switch`) that emits `change` to JS. `AppView::on_error` hears
+  GPUI Kit `Switch` (`src/switch.rs`, `host.switch`) that reports its natural size (`ComponentContext::set_size`: its
+  track and label, so the app's style leaves the box's size open), emits `change` to JS, and toggles on clicks and on
+  Space while its own focus handle is focused (a click focuses it; nsh's fields do not see those keys). `AppView::on_error` hears
   the app's fatal errors (also logged).
