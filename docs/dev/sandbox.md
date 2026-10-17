@@ -3,7 +3,9 @@
 Each surface is one QuickJS VM. A bundle holds only the app's code (nsh's runtime is native), so nothing in JS is
 trusted: every limit and check is enforced in Rust, never in JS.
 
-- **Limits** (`nsh_js::Limits`, `EngineConfig::limits`, per VM): the QuickJS heap (256 MB by default) and stack, a
+- **Limits** (`nsh_js::Limits`, `EngineConfig::limits`, per VM): the QuickJS heap (`Limits::default`: 256 MB, for apps embedded in another app;
+  `Limits::standalone_desktop`: 1 GB, for the desktop hosts and runners and Catalyst; `Limits::standalone_mobile`: 512 MB, for
+  the iOS and Android hosts and runners) and stack, a
   time budget per call from Rust into JS (`sandbox.rs`: loading the bundle 10 s, any other call 2 s — one event with the
   rendering it causes, one list bind, one timer, one frame's callbacks, the microtask drain; nested calls share the
   outermost budget), and quotas for what the heap limit does not cover: changes at once (the op queue,
