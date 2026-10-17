@@ -15,11 +15,21 @@
 //! GPUI paints primitives (quads, paths, glyphs, images) in window
 //! coordinates (logical pixels, which are nsh's points), with no world
 //! transform and no group opacity. [`DrawCx`] keeps both itself: the
-//! current transform maps the view's coordinates to the window's
-//! (translations and scales are exact; rotations and skews draw at their
-//! bounds, paths and glyph runs aside), and opacity multiplies into every
-//! color, as GPUI's own element opacity does. Clips are rectangles in
-//! window coordinates (GPUI's content masks), intersected as they nest.
+//! current transform maps the view's coordinates to the window's, and
+//! opacity and color filters ([`DrawCx::push_color_matrix`]) apply to
+//! every color, as GPUI's own element opacity does. Axis-aligned
+//! rectangles (translations and scales) are GPUI's quads, exact; under a
+//! rotation, skew or perspective they are filled as paths whose points are
+//! mapped one by one ([`DrawCx::fill_contours`]), so they turn and project
+//! with the view; glyphs are placed at their mapped origins, upright.
+//!
+//! Clips are rectangles in window coordinates (GPUI's content masks),
+//! intersected as they nest. A clip that is rounded or not axis-aligned
+//! is also kept as a convex polygon that paths are cut to exactly, and the
+//! innermost rounded clip rounds the corners of the quads and images that
+//! reach into its corners ([`DrawCx::clip_rounded`]): backgrounds and
+//! images of a rounded card's children follow its corners, though other
+//! content (glyphs, borders) is clipped to its rectangle.
 
 use std::rc::Rc;
 
@@ -31,6 +41,7 @@ use gpui::{
 use nsh_core::{Color, Rect};
 
 use crate::{
+    decor::shape,
     geom::Mat4,
     surface::Surface,
     view::{Hosted, NshView},
@@ -53,11 +64,23 @@ pub(crate) fn bounds(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
     Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
 }
 
-/// Saved state of [`DrawCx::push_clip_rect`] / [`DrawCx::push_opacity`].
-#[derive(Clone, Copy)]
+/// The innermost rounded clip (window coordinates).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RoundedClip {
+    /// The clip's rectangle.
+    pub(crate) bounds: Bounds<Pixels>,
+    /// Its corner radii, clockwise from the top left.
+    pub(crate) radii: [f32; 4],
+}
+
+/// Saved state of the `push_*` methods of [`DrawCx`].
+#[derive(Clone)]
 struct Saved {
     clip: Bounds<Pixels>,
     opacity: f32,
+    matrix: Option<[f32; 20]>,
+    rounded: Option<RoundedClip>,
+    clip_polygon: Option<Rc<[shape::Pt]>>,
 }
 
 /// The state of one drawing pass.
@@ -79,6 +102,14 @@ pub(crate) struct DrawCx<'a> {
     pub(crate) opacity: f32,
     /// The clip in window coordinates.
     pub(crate) clip: Bounds<Pixels>,
+    /// The color filters everything is drawn with (a 4x5 matrix on
+    /// straight sRGB colors, as [`nsh_core::Filter::color_matrix`]).
+    pub(crate) matrix: Option<[f32; 20]>,
+    /// The innermost rounded clip, when it is axis-aligned.
+    pub(crate) rounded: Option<RoundedClip>,
+    /// The clip as a convex polygon (window coordinates) when it is
+    /// rounded or not axis-aligned: paths are cut to it.
+    clip_polygon: Option<Rc<[shape::Pt]>>,
     saved: Vec<Saved>,
     /// Hosted items drawn in this pass, with their window bounds.
     pub(crate) drawn: Vec<(Rc<dyn Hosted>, Bounds<Pixels>)>,
@@ -103,6 +134,9 @@ impl<'a> DrawCx<'a> {
             now,
             opacity: 1.0,
             clip,
+            matrix: None,
+            rounded: None,
+            clip_polygon: None,
             saved: Vec::new(),
             drawn: Vec::new(),
         }
@@ -113,24 +147,47 @@ impl<'a> DrawCx<'a> {
         self.transform = m;
     }
 
-    /// True when the transform keeps rectangles axis-aligned.
+    /// True when the transform keeps rectangles axis-aligned (and has no
+    /// perspective): they can be drawn as quads.
     pub(crate) fn axis_aligned(&self) -> bool {
         let [_, b, c, _, _, _] = self.transform.affine();
-        b.abs() < 1e-6 && c.abs() < 1e-6
+        self.transform.is_affine() && b.abs() < 1e-6 && c.abs() < 1e-6
     }
 
     /// The scale of the transform (the larger of its axes'): sizes that
     /// do not follow rectangles (radii, font sizes, line widths) scale by
     /// it.
     pub(crate) fn transform_scale(&self) -> f32 {
+        if !self.transform.is_affine() {
+            // Projected: how far a point's neighbors land at the origin.
+            let (o, x, y) = (
+                self.map_pt((0.0, 0.0)),
+                self.map_pt((1.0, 0.0)),
+                self.map_pt((0.0, 1.0)),
+            );
+            return (x.0 - o.0)
+                .hypot(x.1 - o.1)
+                .max((y.0 - o.0).hypot(y.1 - o.1));
+        }
         let [a, b, c, d, _, _] = self.transform.affine();
         (a * a + b * b).sqrt().max((c * c + d * d).sqrt())
     }
 
-    /// Where `(x, y)` of the current coordinates lands in the window.
+    /// Where `(x, y)` of the current coordinates lands in the window
+    /// (projected through a perspective; a point behind the viewer lands
+    /// where the transform without its perspective puts it).
     pub(crate) fn map(&self, x: f32, y: f32) -> Point<Pixels> {
+        let (x, y) = self.map_pt((x, y));
+        point(px(x), px(y))
+    }
+
+    /// [`DrawCx::map`] as a pair.
+    fn map_pt(&self, (x, y): shape::Pt) -> shape::Pt {
+        if let Some(p) = self.transform.map(x, y) {
+            return p;
+        }
         let [a, b, c, d, tx, ty] = self.transform.affine();
-        point(px(a * x + c * y + tx), px(b * x + d * y + ty))
+        (a * x + c * y + tx, b * x + d * y + ty)
     }
 
     /// The window bounds of the rectangle (current coordinates): exact
@@ -142,11 +199,27 @@ impl<'a> DrawCx<'a> {
         }
     }
 
-    /// `color` with the pass's opacity.
+    /// `color` with the pass's color filters and opacity.
     pub(crate) fn color(&self, color: Color) -> Hsla {
-        let mut c = hsla(color);
-        c.a *= self.opacity;
-        c
+        let (r, g, b, a) = color.to_f64();
+        let mut c = [r as f32, g as f32, b as f32, a as f32];
+        if let Some(m) = &self.matrix {
+            c = crate::decor::apply_color_matrix(m, c);
+        }
+        gpui::Rgba {
+            r: c[0],
+            g: c[1],
+            b: c[2],
+            a: c[3] * self.opacity,
+        }
+        .into()
+    }
+
+    /// True when the color filters leave no color (images can only be
+    /// drawn in color or gray).
+    #[allow(dead_code, reason = "for images, which are being ported")]
+    pub(crate) fn grayscale(&self) -> bool {
+        self.matrix.as_ref().is_some_and(crate::decor::desaturates)
     }
 
     /// Draws what follows at `opacity` (multiplied into the colors).
@@ -155,24 +228,98 @@ impl<'a> DrawCx<'a> {
         self.opacity *= opacity;
     }
 
-    /// Clips what follows to the rectangle (current coordinates; its
-    /// bounds when the transform rotates).
+    /// Draws what follows through the color matrix `m` (applied before
+    /// the filters already pushed: an ancestor's filters see the result).
+    pub(crate) fn push_color_matrix(&mut self, m: [f32; 20]) {
+        self.save();
+        self.matrix = Some(match &self.matrix {
+            Some(outer) => crate::decor::compose_color_matrices(&m, outer),
+            None => m,
+        });
+    }
+
+    /// Clips what follows to the rectangle (current coordinates; exactly
+    /// for paths, to its bounds for the rest when the transform rotates).
     pub(crate) fn push_clip_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.save();
         let r = self.rect(x, y, w, h);
         self.clip = self.clip.intersect(&r);
+        if !self.axis_aligned() {
+            let polygon = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)];
+            self.clip_to_polygon(&polygon);
+        }
     }
 
-    /// Clips what follows to the rounded rectangle `rect` (GPUI's masks
-    /// are rectangles: the corners are not clipped).
-    pub(crate) fn push_clip_rounded(&mut self, rect: Rect, _radii: [f32; 4]) {
-        self.push_clip_rect(rect.x, rect.y, rect.width, rect.height);
+    /// Clips what follows to the rounded rectangle `rect` (current
+    /// coordinates): paths exactly, quads and images by rounding their
+    /// corners, the rest to its rectangle.
+    pub(crate) fn push_clip_rounded(&mut self, rect: Rect, radii: [f32; 4]) {
+        self.save();
+        let (x, y, w, h) = (rect.x, rect.y, rect.width, rect.height);
+        let b = self.rect(x, y, w, h);
+        self.clip = self.clip.intersect(&b);
+        let round = radii.iter().any(|r| *r > 0.0);
+        if self.axis_aligned() {
+            if round {
+                let k = self.transform_scale();
+                self.rounded = Some(RoundedClip {
+                    bounds: b,
+                    radii: radii.map(|r| r * k),
+                });
+                let window = crate::geom::rect(
+                    f32::from(b.origin.x),
+                    f32::from(b.origin.y),
+                    f32::from(b.size.width),
+                    f32::from(b.size.height),
+                );
+                let polygon =
+                    shape::rounded(window, shape::circular(radii.map(|r| r * k)), self.scale);
+                self.intersect_clip_polygon(polygon);
+            }
+        } else {
+            let px = self.transform_scale() * self.scale;
+            let polygon = shape::rounded(rect, shape::circular(radii), px);
+            self.clip_to_polygon(&polygon);
+        }
+    }
+
+    /// Cuts the clip polygon to `polygon` (current coordinates, convex).
+    fn clip_to_polygon(&mut self, polygon: &[shape::Pt]) {
+        let mapped: Vec<shape::Pt> = polygon.iter().map(|&p| self.map_pt(p)).collect();
+        self.intersect_clip_polygon(mapped);
+    }
+
+    /// Cuts the clip polygon to `polygon` (window coordinates, convex).
+    fn intersect_clip_polygon(&mut self, polygon: Vec<shape::Pt>) {
+        let polygon = match &self.clip_polygon {
+            Some(outer) => shape::clip_convex(&polygon, outer),
+            None => polygon,
+        };
+        self.clip_polygon = Some(polygon.into());
+    }
+
+    /// `bounds` with corner `radii` (window coordinates) as the innermost
+    /// rounded clip shows them: where they reach past one of its rounded
+    /// corners, cut to its rectangle with that corner's radius. Quads and
+    /// images filled this way follow a rounded parent's corners.
+    pub(crate) fn clip_rounded(
+        &self,
+        bounds: Bounds<Pixels>,
+        radii: Corners<Pixels>,
+    ) -> (Bounds<Pixels>, Corners<Pixels>) {
+        match &self.rounded {
+            Some(clip) => rounded_in_clip(bounds, radii, clip),
+            None => (bounds, radii),
+        }
     }
 
     fn save(&mut self) {
         self.saved.push(Saved {
             clip: self.clip,
             opacity: self.opacity,
+            matrix: self.matrix,
+            rounded: self.rounded,
+            clip_polygon: self.clip_polygon.clone(),
         });
     }
 
@@ -182,6 +329,9 @@ impl<'a> DrawCx<'a> {
             Some(s) => {
                 self.clip = s.clip;
                 self.opacity = s.opacity;
+                self.matrix = s.matrix;
+                self.rounded = s.rounded;
+                self.clip_polygon = s.clip_polygon;
             }
             None => log::error!("render: pop without push"),
         }
@@ -214,42 +364,68 @@ impl<'a> DrawCx<'a> {
     }
 
     /// Fills `rect` (current coordinates) with corner radii (clockwise
-    /// from the top left) in `color`. Rotated rectangles are filled as
-    /// paths (without their corners).
+    /// from the top left) in `color`: a quad (its corners following the
+    /// rounded clip), or a path when the transform rotates.
     pub(crate) fn fill_rect(&mut self, rect: Rect, radii: [f32; 4], color: Color) {
         if color.0 & 0xff == 0 || self.culled() {
             return;
         }
-        let c = self.color(color);
         if self.axis_aligned() {
+            let c = self.color(color);
             let b = self.rect(rect.x, rect.y, rect.width, rect.height);
             let k = self.transform_scale();
-            let quad = gpui::fill(b, c).corner_radii(corners(radii, k));
-            self.paint(|window, _| window.paint_quad(quad));
+            let (cut, cut_radii) = self.clip_rounded(b, corners(radii, k));
+            if fits(cut, cut_radii) {
+                let quad = gpui::fill(cut, c).corner_radii(cut_radii);
+                self.paint(|window, _| window.paint_quad(quad));
+                return;
+            }
+            // GPUI's quads round each quarter with its own corner's radius
+            // only: a corner of the clip larger than half the cut side is
+            // filled as a path, cut to the clip exactly.
+            let px = k * self.scale;
+            let polygon = shape::rounded(rect, shape::circular(radii), px);
+            self.fill_contours(&[polygon], color);
         } else {
-            self.fill_polygon(
-                &[
-                    (rect.x, rect.y),
-                    (rect.x + rect.width, rect.y),
-                    (rect.x + rect.width, rect.y + rect.height),
-                    (rect.x, rect.y + rect.height),
-                ],
-                color,
-            );
+            let px = self.transform_scale() * self.scale;
+            let polygon = shape::rounded(rect, shape::circular(radii), px);
+            self.fill_contours(&[polygon], color);
         }
     }
 
-    /// Fills the polygon (current coordinates) with `color`.
-    pub(crate) fn fill_polygon(&mut self, points: &[(f32, f32)], color: Color) {
-        if points.len() < 3 || color.0 & 0xff == 0 || self.culled() {
+    /// Fills the contours (current coordinates) with `color`, even-odd (a
+    /// contour inside another cuts a hole), cut to the clip.
+    pub(crate) fn fill_contours(&mut self, contours: &[Vec<shape::Pt>], color: Color) {
+        if color.0 & 0xff == 0 || self.culled() {
             return;
         }
-        let mut path = gpui::Path::new(self.map(points[0].0, points[0].1));
-        for p in &points[1..] {
-            path.line_to(self.map(p.0, p.1));
-        }
         let c = self.color(color);
-        self.paint(|window, _| window.paint_path(path, c));
+        let mut builder = gpui::PathBuilder::fill()
+            .with_style(gpui::PathStyle::Fill(gpui::FillOptions::even_odd()));
+        let mut any = false;
+        for contour in contours {
+            if contour.len() < 3 {
+                continue;
+            }
+            let mut mapped: Vec<shape::Pt> = contour.iter().map(|&p| self.map_pt(p)).collect();
+            if let Some(clip) = &self.clip_polygon {
+                mapped = shape::clip_convex(&mapped, clip);
+                if mapped.len() < 3 {
+                    continue;
+                }
+            }
+            let points: Vec<Point<Pixels>> =
+                mapped.iter().map(|&(x, y)| point(px(x), px(y))).collect();
+            builder.add_polygon(&points, true);
+            any = true;
+        }
+        if !any {
+            return;
+        }
+        match builder.build() {
+            Ok(path) => self.paint(|window, _| window.paint_path(path, c)),
+            Err(err) => log::debug!("render: path not filled: {err}"),
+        }
     }
 
     /// Paints `quad` (window coordinates) inside the clip.
@@ -259,6 +435,81 @@ impl<'a> DrawCx<'a> {
         }
         self.paint(|window, _| window.paint_quad(quad));
     }
+}
+
+/// True if GPUI's quad draws `radii` on `bounds`: each fits its quarter
+/// (its signed distance takes each quarter's radius alone).
+pub(crate) fn fits(bounds: Bounds<Pixels>, radii: Corners<Pixels>) -> bool {
+    let half = f32::from(bounds.size.width.min(bounds.size.height)) / 2.0 + 0.5;
+    [
+        radii.top_left,
+        radii.top_right,
+        radii.bottom_right,
+        radii.bottom_left,
+    ]
+    .iter()
+    .all(|r| f32::from(*r) <= half)
+}
+
+/// `bounds` with corner `radii` inside the rounded `clip` (see
+/// [`DrawCx::clip_rounded`]).
+fn rounded_in_clip(
+    bounds: Bounds<Pixels>,
+    radii: Corners<Pixels>,
+    clip: &RoundedClip,
+) -> (Bounds<Pixels>, Corners<Pixels>) {
+    let c = &clip.bounds;
+    let (l, t, r, b) = (
+        f32::from(bounds.left()),
+        f32::from(bounds.top()),
+        f32::from(bounds.right()),
+        f32::from(bounds.bottom()),
+    );
+    let (cl, ct, cr, cb) = (
+        f32::from(c.left()),
+        f32::from(c.top()),
+        f32::from(c.right()),
+        f32::from(c.bottom()),
+    );
+    // Which of the clip's sides (top, right, bottom, left) the rectangle
+    // reaches, and which it crosses (the cut moves its edge there).
+    const EPS: f32 = 0.01;
+    let reach = [t <= ct + EPS, r >= cr - EPS, b >= cb - EPS, l <= cl + EPS];
+    let cross = [t < ct - EPS, r > cr + EPS, b > cb + EPS, l < cl - EPS];
+    // A corner reaching both sides of a rounded clip corner takes its
+    // radius; one whose edge the cut moves is cut straight.
+    let mut out = [
+        f32::from(radii.top_left),
+        f32::from(radii.top_right),
+        f32::from(radii.bottom_right),
+        f32::from(radii.bottom_left),
+    ];
+    let sides = [(0, 3), (0, 1), (2, 1), (2, 3)];
+    let mut rounded = [false; 4];
+    for (i, &(v, hz)) in sides.iter().enumerate() {
+        if clip.radii[i] > 0.0 && reach[v] && reach[hz] {
+            out[i] = out[i].max(clip.radii[i]);
+            rounded[i] = true;
+        }
+    }
+    if !rounded.contains(&true) {
+        return (bounds, radii);
+    }
+    for (i, &(v, hz)) in sides.iter().enumerate() {
+        if !rounded[i] && (cross[v] || cross[hz]) {
+            out[i] = 0.0;
+        }
+    }
+    let cut = bounds.intersect(c);
+    (
+        cut,
+        Corners {
+            top_left: px(out[0]),
+            top_right: px(out[1]),
+            bottom_right: px(out[2]),
+            bottom_left: px(out[3]),
+        },
+    )
 }
 
 /// Corner radii (clockwise from the top left) as GPUI's, scaled by `k`.
@@ -300,18 +551,27 @@ pub(crate) fn draw_view(cx: &mut DrawCx<'_>, view: &NshView, parent: Mat4, origi
     if crate::decor::backface_away(&state, &world) {
         return;
     }
+    let matrix = crate::decor::color_matrix(&state);
     drop(state);
     cx.set_transform(world);
     cx.push_opacity(opacity);
+    if let Some(m) = matrix {
+        cx.push_color_matrix(m);
+    }
     draw_content(cx, view, world);
+    if matrix.is_some() {
+        cx.pop();
+    }
     cx.pop();
 }
 
 /// Draws what `view` draws and its subtree at `world` (set on the
-/// context): shadows and background, the content clipped to the bounds,
+/// context): the content's shadow, shadows and background, the content
+/// clipped to the bounds,
 /// the children, the hosted items, the scroll indicator, the border and
 /// outline.
 pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
+    crate::decor::draw_content_shadow(cx, view, world);
     let state = view.state();
     crate::decor::draw_background(cx, &state);
     let clip = state.clips();
@@ -466,5 +726,50 @@ impl Element for SurfaceElement {
             window,
             cx,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn radii(c: Corners<Pixels>) -> [f32; 4] {
+        [
+            f32::from(c.top_left),
+            f32::from(c.top_right),
+            f32::from(c.bottom_right),
+            f32::from(c.bottom_left),
+        ]
+    }
+
+    #[test]
+    fn rounded_clips_round_what_reaches_their_corners() {
+        let clip = RoundedClip {
+            bounds: bounds(0.0, 0.0, 100.0, 60.0),
+            radii: [20.0; 4],
+        };
+        // A band across the top, wider than the clip: its top corners take
+        // the clip's, its bottom ones are cut straight.
+        let (b, r) = rounded_in_clip(
+            bounds(-10.0, -5.0, 120.0, 30.0),
+            corners([4.0; 4], 1.0),
+            &clip,
+        );
+        assert_eq!(b, bounds(0.0, 0.0, 100.0, 25.0));
+        assert_eq!(radii(r), [20.0, 20.0, 0.0, 0.0]);
+        // A band exactly as wide keeps its own bottom corners.
+        let (_, r) = rounded_in_clip(bounds(0.0, 0.0, 100.0, 30.0), corners([4.0; 4], 1.0), &clip);
+        assert_eq!(radii(r), [20.0, 20.0, 4.0, 4.0]);
+        // Inside, away from the corners: as it was.
+        let inside = bounds(30.0, 20.0, 10.0, 10.0);
+        let (b, r) = rounded_in_clip(inside, corners([2.0; 4], 1.0), &clip);
+        assert_eq!((b, radii(r)), (inside, [2.0; 4]));
+    }
+
+    #[test]
+    fn quads_fit_radii_up_to_half_their_side() {
+        let b = bounds(0.0, 0.0, 100.0, 40.0);
+        assert!(fits(b, corners([20.0; 4], 1.0)));
+        assert!(!fits(b, corners([30.0, 0.0, 0.0, 0.0], 1.0)));
     }
 }
