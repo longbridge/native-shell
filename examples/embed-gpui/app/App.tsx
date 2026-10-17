@@ -40,7 +40,7 @@ function App() {
           label="Extended hours"
           checked={extended()}
           onChange={(e) => extended.set(e.checked)}
-          style={{ height: 24, alignSelf: "stretch" }}
+          style={{ alignSelf: "flex-start" }}
         />
         <View style={{ flexDirection: "row", gap: 8 }}>
           <View style={{ flex: 1 }}>
