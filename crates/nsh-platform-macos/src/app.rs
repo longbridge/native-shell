@@ -89,7 +89,7 @@ impl Default for AppOptions {
             trace: false,
             asset_base: None,
             title: "nsh".to_owned(),
-            size: (390, 844),
+            size: (1200, 800),
             script: None,
             components: Default::default(),
             appearance: Appearance::System,

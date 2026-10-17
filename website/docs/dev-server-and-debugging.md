@@ -36,7 +36,7 @@ What each target does:
 
 - **`catalyst`** (macOS) runs the development host as a Mac app. Stopping `nsh run` (Ctrl-C, or `kill`) closes it, and
   closing the window ends `nsh run`.
-- **`macos`** (macOS) runs the AppKit development host, a desktop app in a 390×844 window, the same way; Cmd+R
+- **`macos`** (macOS) runs the AppKit development host, a desktop app in a 1200×800 window, the same way; Cmd+R
   reloads the latest build. Requires macOS 14 or later ([macOS](./macos.md)).
 - **`linux`** (Linux) runs the GTK development host in a 390×844 window, the same way: stopping `nsh run` closes
   it, closing the window ends `nsh run`. Requires GTK 4.14 or later ([Linux](./linux.md)).

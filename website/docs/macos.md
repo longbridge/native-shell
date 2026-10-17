@@ -29,7 +29,7 @@ bar.
 nsh run my-app --target macos
 ```
 
-The app opens in an AppKit window (390×844 by default), with hot reload, logs in the terminal and the error overlay as
+The app opens in an AppKit window (1200×800 by default), with hot reload, logs in the terminal and the error overlay as
 on the other targets; Cmd+R reloads the latest build. In a checkout, `nsh run` builds the development host
 (`nsh-macos-host`) first. Stopping `nsh run` closes the window, and closing the window ends `nsh run`. The host also
 runs a built bundle on its own:

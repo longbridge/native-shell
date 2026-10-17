@@ -32,9 +32,9 @@ nsh dev App.tsx                     # server only
 各个目标的行为：
 
 - **`catalyst`**（macOS）以 Mac 应用的形式运行开发宿主。停止 `nsh run`（Ctrl-C）会关闭它，关闭窗口也会结束 `nsh run`。
-- **`macos`**（macOS）在一个 390×844 的窗口中以桌面应用的形式运行 AppKit 开发宿主，行为相同；Cmd+R 重新加载最新构建。
+- **`macos`**（macOS）在一个 1200×800 的窗口中以桌面应用的形式运行 AppKit 开发宿主，行为相同；Cmd+R 重新加载最新构建。
   需要 macOS 14 及以上（[macOS](./macos.md)）。
-- **`linux`**（Linux）在一个 390×844 的窗口中运行 GTK 开发宿主，行为相同：Ctrl-C 会关闭它，关闭窗口也会结束 `nsh run`。
+- **`linux`**（Linux）在一个 1200×800 的窗口中运行 GTK 开发宿主，行为相同：Ctrl-C 会关闭它，关闭窗口也会结束 `nsh run`。
   需要 GTK 4.14 及以上（[Linux](./linux.md)）。
 - **`ios`** 将开发宿主安装到模拟器中，启动它并指向开发服务器，然后持续监听。模拟器与 Mac 共享网络，因此宿主通过
   `127.0.0.1` 即可访问服务器。停止 `nsh run`（Ctrl-C）会关闭宿主，否则它会接入下一次会话。需要 Xcode。

@@ -8,7 +8,8 @@
 //! - `--script "wait 800; shot a.png; tap 100 200; wait 300; shot b.png;
 //!   quit"` runs steps once the window shows: window screenshots and
 //!   simulated input, to check the backend without touching the screen.
-//! - `--size 390x844` sets the window size.
+//! - `--size 1200x800` sets the window size (1200×800 by default; 390x844
+//!   shows an app's phone layout).
 //!
 //! Without arguments it connects to the dev server on this machine.
 //!
@@ -53,7 +54,7 @@ pub fn main() -> std::process::ExitCode {
             "--script" => options.script = args.next(),
             "--size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x')) {
-                    options.size = (w.parse().unwrap_or(390), h.parse().unwrap_or(844));
+                    options.size = (w.parse().unwrap_or(1200), h.parse().unwrap_or(800));
                 }
             }
             // AppKit's own (`-ApplePersistenceIgnoreState YES`).
