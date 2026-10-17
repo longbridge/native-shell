@@ -147,7 +147,7 @@ Prefer the environment variable over `--keystore-password` so the password does 
 nsh package App.tsx --target macos --run
 ```
 
-Writes `out/<Name>.app`: the executable in `Contents/MacOS/`, and `nsh/bundle.qbc`, `nsh/assets/…` and `nsh/app.json`
+Writes `out/<Name>.app`: the executable in `Contents/MacOS/`, and `nsh/bundle.nsh`, `nsh/assets/…` and `nsh/app.json`
 (the window title and the app's appearance) in `Contents/Resources/`. The app is signed ad hoc and needs macOS 14 or
 later; to distribute it, sign it with a Developer ID and notarize it. See [macOS](./macos.md#packaging).
 

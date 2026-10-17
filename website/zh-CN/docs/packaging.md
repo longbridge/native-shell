@@ -138,7 +138,7 @@ NSH_KEYSTORE_PASSWORD=… nsh package App.tsx --target android \
 nsh package App.tsx --target macos --run
 ```
 
-写出 `out/<Name>.app`：可执行文件位于 `Contents/MacOS/`，`nsh/bundle.qbc`、`nsh/assets/…` 和 `nsh/app.json`（窗口标题和应用的外观）
+写出 `out/<Name>.app`：可执行文件位于 `Contents/MacOS/`，`nsh/bundle.nsh`、`nsh/assets/…` 和 `nsh/app.json`（窗口标题和应用的外观）
 位于 `Contents/Resources/`。应用使用 ad hoc 签名，要求 macOS 14 及以上；要分发它，请用 Developer ID 签名并进行公证。见
 [macOS](./macos.md#打包)。
 

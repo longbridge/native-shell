@@ -408,7 +408,7 @@ fn package_macos(
     fs::create_dir_all(&nsh)?;
     fs::copy(&runner, macos.join(executable))
         .with_context(|| format!("copy {}", runner.display()))?;
-    fs::write(nsh.join("bundle.qbc"), &built.bytecode)?;
+    fs::write(nsh.join("bundle.nsh"), &built.bytecode)?;
     if let Some(json) = built.capabilities_json() {
         fs::write(nsh.join("capabilities.json"), json)?;
     }

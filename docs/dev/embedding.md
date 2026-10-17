@@ -10,7 +10,7 @@
   which the runner reads next to itself), `<id>.desktop` (`StartupWMClass` is the id, which GTK makes the window's
   app id) and `<id>.png`, plus the same as `<name>.tar.gz`; GTK 4 and Pango must be installed where it runs. macOS: `<name>.app` with the
   release runner (`crates/nsh-macos-app`) as `Contents/MacOS/<executable>`, `Contents/Resources/nsh/` holding
-  `bundle.qbc`, `assets/` and `app.json` (the window title and appearance), the icon as `AppIcon.icns` (`sips`), signed
+  `bundle.nsh`, `assets/` and `app.json` (the window title and appearance), the icon as `AppIcon.icns` (`sips`), signed
   ad hoc (`codesign -s -`); `--run` opens it.
 - Embedding: iOS apps link `NativeShell.xcframework` and `import NativeShell` (Swift: `NshAppView`, a `UIView`;
   `NshTrust`, `NshPackage`, `NshLimits`, `NshError`); Android apps add `nsh.aar` and use `com.longbridge.nsh.NshView`.

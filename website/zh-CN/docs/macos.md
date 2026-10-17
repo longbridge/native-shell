@@ -32,7 +32,7 @@ nsh run my-app --target macos
 
 ```sh
 nsh build my-app --release -o build
-dist/nsh/runtime/macos/nsh-macos-host --bundle build/bundle.qbc --size 1200x800   # 源码仓库中：target/debug/nsh-macos-host
+dist/nsh/runtime/macos/nsh-macos-host --bundle build/bundle.nsh --size 1200x800   # 源码仓库中：target/debug/nsh-macos-host
 ```
 
 `--size` 是窗口的初始尺寸；窗口可以调整大小。
@@ -66,7 +66,7 @@ nsh package my-app --target macos [--run]
 out/<Name>.app/Contents/
   Info.plist
   MacOS/<Name>               可执行文件（nsh 的发布版运行器）
-  Resources/nsh/bundle.qbc   编译后的应用
+  Resources/nsh/bundle.nsh   编译后的应用
   Resources/nsh/assets/…     应用导入的资源
   Resources/nsh/app.json     窗口标题和应用的外观
   Resources/AppIcon.icns     图标（nsh.json 指定了图标时，用 sips 转换）
@@ -101,7 +101,7 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 ```
 
 `AppView::load` 会替换正在运行的内容；`stop` 结束应用。`asset_base` 指定 `asset:/` URI 从哪里解析（`AssetBase::Directory`
-或 `AssetBase::Http`）。字节码 bundle（`bundle.qbc`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：QuickJS 字节码是受信任的输入，
+或 `AssetBase::Http`）。字节码 bundle（`bundle.nsh`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：QuickJS 字节码是受信任的输入，
 只能从你自己应用的文件中加载。如果应用只是一个 nsh 应用，`run_app(source, options)` 会在窗口中打开一个 `AppView`，带有标准菜单
 （关于、隐藏、退出、编辑、最小化、缩放、进入全屏、关闭），并运行到窗口关闭为止。
 
