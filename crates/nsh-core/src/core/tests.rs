@@ -6712,4 +6712,98 @@ mod views {
         assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
         assert_eq!(texts(&c.commit().unwrap()), ["failed: too many"]);
     }
+
+    /// A large component with one value changing often: 300 rows of
+    /// static content and a counter.
+    #[component]
+    fn Ticker() -> impl IntoElement {
+        let tick = signal(0_u32);
+        view()
+            .on_press(move |_: &()| tick.update(|t| *t += 1))
+            .child(text(move || format!("tick {}", tick.get())))
+            .children((0..300).map(|i| {
+                view()
+                    .flex_row()
+                    .p_2()
+                    .gap_2()
+                    .child(view().size(px(20.0)).bg(rgb(0x3366ff)))
+                    .child(text(format!("row {i}")).text_sm())
+            }))
+    }
+
+    /// `cargo test --release -p nsh-core bench_view_tick -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_view_tick() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Ticker>(|| ()));
+        let host = root_host(&c.commit().unwrap());
+        let n = 2000;
+        let (mut event, mut commit) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+        let mut items = 0;
+        for _ in 0..n {
+            let start = std::time::Instant::now();
+            c.component_event(host, EventKind::Press, &EventPayload::None);
+            let mid = std::time::Instant::now();
+            items += c.commit().map_or(0, |b| b.items.len());
+            event += mid - start;
+            commit += mid.elapsed();
+        }
+        eprintln!(
+            "view tick: {:?} per event, {:?} per commit, {} mount items",
+            event / n,
+            commit / n,
+            items / n as usize
+        );
+    }
+
+    /// The same component rendering again on each tick (the model views
+    /// replace).
+    #[derive(Default)]
+    struct OldTicker {
+        tick: u32,
+    }
+
+    impl Component for OldTicker {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut crate::ui::RenderCx<'_, Self>) -> impl IntoElement {
+            view()
+                .on_press(cx.listener(|this: &mut Self, _, cx| {
+                    this.tick += 1;
+                    cx.notify();
+                }))
+                .child(text(format!("tick {}", self.tick)))
+                .children((0..300).map(|i| {
+                    view()
+                        .flex_row()
+                        .p_2()
+                        .gap_2()
+                        .child(view().size(px(20.0)).bg(rgb(0x3366ff)))
+                        .child(text(format!("row {i}")).text_sm())
+                }))
+        }
+    }
+
+    /// `cargo test --release -p nsh-core bench_render_tick -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_render_tick() {
+        let mut c = core();
+        c.mount_root(&Root::new::<OldTicker>(|| ()));
+        let host = root_host(&c.commit().unwrap());
+        let n = 2000;
+        let start = std::time::Instant::now();
+        let mut items = 0;
+        for _ in 0..n {
+            c.component_event(host, EventKind::Press, &EventPayload::None);
+            items += c.commit().map_or(0, |b| b.items.len());
+        }
+        eprintln!(
+            "render tick: {:?} per commit, {} mount items",
+            start.elapsed() / n,
+            items / n as usize
+        );
+    }
 }
