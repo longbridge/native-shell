@@ -2776,9 +2776,10 @@ mod tests {
 
     /// The platform's text system, without a window (one per process).
     fn system() -> Arc<TextSystem> {
-        init_thread();
         static SYSTEM: OnceLock<Arc<TextSystem>> = OnceLock::new();
-        SYSTEM
+        // The platform first: on Windows it puts its thread in an OLE
+        // apartment, which COM set up beforehand would refuse.
+        let system = SYSTEM
             .get_or_init(|| {
                 let platform = gpui_platform::current_platform(true);
                 let text = platform.text_system();
@@ -2786,7 +2787,9 @@ mod tests {
                 std::mem::forget(platform);
                 Arc::new(TextSystem::new(text))
             })
-            .clone()
+            .clone();
+        init_thread();
+        system
     }
 
     /// An engine over the platform's text system, or `None` where tests
@@ -2796,7 +2799,6 @@ mod tests {
         if cfg!(target_os = "macos") {
             return None;
         }
-        init_thread();
         Some(GpuiTextEngine::new(system(), ui_family()))
     }
 
