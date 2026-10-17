@@ -75,48 +75,269 @@ fn frame<S: Styled>(element: S) -> S {
         .border_color(colors::BORDER)
 }
 
+/// The web site's host, from its last URL (`…` before one).
+fn host(state: Option<&WebNavigation>) -> String {
+    let url = state.map_or("", |s| s.url.as_str());
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    let host = rest.split('/').next().unwrap_or("");
+    if host.is_empty() {
+        "…".to_owned()
+    } else {
+        host.to_owned()
+    }
+}
+
+/// A web site with its navigation state, back and forward.
+#[component]
+fn Site() -> impl IntoElement {
+    let site = element_ref();
+    // The web site's last navigation state.
+    let state = signal(None::<WebNavigation>);
+    let loading = computed(move || state.with(|s| s.as_ref().is_some_and(|s| s.loading)));
+    let (back, forward, reload) = (site.clone(), site.clone(), site.clone());
+    Card::new()
+        .icon(IconName::Search)
+        .title("A web site")
+        .subtitle(move || {
+            state.with(|s| {
+                s.as_ref()
+                    .map(|s| s.title.clone())
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or_else(|| "Navigation state, back and forward".to_owned())
+            })
+        })
+        .right(
+            Badge::new(move || if loading.get() { "Loading" } else { "Loaded" })
+                .tone(move || if loading.get() { Tone::Warn } else { Tone::Up }),
+        )
+        .child(
+            view()
+                .h(px(40.0))
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .px(px(14.0))
+                .rounded(px(20.0))
+                .bg(colors::INSET)
+                .finish(Finish::Track)
+                .border_1()
+                .border_color(colors::BORDER)
+                .child(view().size(px(7.0)).rounded(px(3.5)).bg(move || {
+                    if loading.get() {
+                        colors::WARN
+                    } else {
+                        colors::UP
+                    }
+                }))
+                .child(
+                    text(move || state.with(|s| host(s.as_ref())))
+                        .number_of_lines(1)
+                        .ellipsize_mode(nsh_core::EllipsizeMode::Middle)
+                        .flex_1()
+                        .text_size(px(15.0))
+                        .text_color(colors::MUTED),
+                ),
+        )
+        .child(frame(
+            web_view(SITE)
+                .element_ref(&site)
+                .h(px(340.0))
+                .bg(colors::INSET)
+                .on_navigation_state_change(move |s: &WebNavigation| state.set(Some(s.clone()))),
+        ))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(10.0))
+                .child(nav_button(
+                    true,
+                    "Back",
+                    move || state.with(|s| s.as_ref().is_some_and(|s| s.can_go_back)),
+                    move |_: &()| back.go_back(),
+                ))
+                .child(nav_button(
+                    false,
+                    "Forward",
+                    move || state.with(|s| s.as_ref().is_some_and(|s| s.can_go_forward)),
+                    move |_: &()| forward.go_forward(),
+                ))
+                .child(view().flex_1())
+                .child(
+                    Button::new("Reload", move |_: &()| reload.reload())
+                        .variant(ButtonVariant::Secondary),
+                ),
+        )
+}
+
+/// The video, with controls of the demo's own or the system's.
+#[component]
+fn Player() -> impl IntoElement {
+    let player = element_ref();
+    let seek = player.clone();
+    // The video shows the platform's controls.
+    let system_controls = signal(false);
+    // The video plays (it starts paused).
+    let playing = signal(false);
+    // The video's position and length, in seconds.
+    let time = signal(0.0_f32);
+    let duration = signal(0.0_f32);
+    let buffering = signal(false);
+    let status = computed(move || {
+        if buffering.get() {
+            ("Buffering", Tone::Warn)
+        } else if !playing.get() {
+            ("Paused", Tone::Neutral)
+        } else {
+            ("Playing", Tone::Accent)
+        }
+    });
+    let controls = move || {
+        view()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            // A round button's icon and label are values: made again when
+            // it plays or pauses.
+            .child(dynamic(move || {
+                let paused = !playing.get();
+                untracked(|| {
+                    RoundButton::new(
+                        if paused {
+                            IconName::Play
+                        } else {
+                            IconName::Pause
+                        },
+                        if paused { "Play" } else { "Pause" },
+                        move |_: &()| playing.update(|p| *p = !*p),
+                    )
+                })
+            }))
+            .child(
+                view()
+                    .flex_1()
+                    .gap_2()
+                    // The meter takes a value: made again as the video
+                    // plays.
+                    .child(dynamic(move || {
+                        let (time, duration) = (time.get(), duration.get());
+                        Meter::new(if duration > 0.0 { time / duration } else { 0.0 })
+                    }))
+                    .child(
+                        view()
+                            .flex_row()
+                            .child(
+                                text(move || clock(time.get()))
+                                    .flex_1()
+                                    .text_size(px(13.0))
+                                    .text_color(colors::MUTED)
+                                    .tabular_nums(),
+                            )
+                            .child(
+                                text(move || clock(duration.get()))
+                                    .text_size(px(13.0))
+                                    .text_color(colors::FAINT)
+                                    .tabular_nums(),
+                            ),
+                    ),
+            )
+            .child(
+                Button::new("Restart", {
+                    let seek = seek.clone();
+                    move |_: &()| seek.seek(0.0)
+                })
+                .variant(ButtonVariant::Secondary),
+            )
+    };
+    Card::new()
+        .icon(IconName::Play)
+        .title("Video")
+        .subtitle("AVPlayer / MediaPlayer")
+        .right(Badge::new(move || status.get().0).tone(move || status.get().1))
+        .child(frame(
+            video(FLOWER)
+                .element_ref(&player)
+                .paused(move || !playing.get())
+                .muted(true)
+                .repeat(true)
+                .controls(system_controls)
+                .h(px(200.0))
+                .bg(rgb(0x000000))
+                .on_load(move |e: &VideoInfo| duration.set(e.duration))
+                .on_buffer(move |b: &bool| buffering.set(*b))
+                .on_progress(move |e: &VideoProgress| {
+                    batch(|| {
+                        time.set(e.current_time);
+                        duration.set(e.duration);
+                    });
+                }),
+        ))
+        .child(If::new(move || !system_controls.get(), controls))
+        .child(
+            segmented(
+                [
+                    Segment::new("Own controls"),
+                    Segment::new("System controls"),
+                ],
+                Prop::bind(move || u32::from(system_controls.get())),
+            )
+            .on_event(move |e: &SegmentedEvent| {
+                let SegmentedEvent::Change(i) = *e;
+                system_controls.set(i == 1);
+            }),
+        )
+}
+
+/// A round chevron button, 44 pt (`flip`: pointing back), taking presses
+/// while `enabled` holds.
+fn nav_button(
+    flip: bool,
+    label: &'static str,
+    enabled: impl Fn() -> bool + 'static,
+    on_press: impl Into<Listener<()>>,
+) -> impl IntoElement {
+    press_with(
+        PressProps {
+            disabled: Prop::bind(move || !enabled()),
+            label: Some(label.into()).into(),
+            hit_slop: Some(4.0),
+            ..PressProps::default()
+        },
+        on_press,
+    )
+    .child(
+        view()
+            .size(px(44.0))
+            .rounded(px(22.0))
+            .bg(colors::RAISED)
+            .finish(Finish::Raised)
+            .border_1()
+            .border_color(colors::BORDER)
+            .items_center()
+            .justify_center()
+            .when(flip, |v| v.rotate(180.0))
+            .child(icon(IconName::Chevron, 18.0, colors::TEXT)),
+    )
+}
+
 /// The demo's page: an inline page, a web site and a video, with what they
-/// tell the app.
+/// tell the app. It renders again for the inline page alone, whose HTML
+/// follows the appearance (a web view's HTML is not a binding yet); the
+/// web site and the video run once.
 #[derive(Debug, Default)]
 pub(crate) struct Media {
     /// The inline page.
     web: Option<ElementRef>,
-    /// The web site.
-    site: Option<ElementRef>,
-    /// The video.
-    video: Option<ElementRef>,
     /// What the inline page posted last.
     message: String,
     /// What the app posted last (`hi #N`), 0 before.
     sent: u32,
-    /// The web site's last navigation state.
-    state: Option<WebNavigation>,
-    /// The video shows the platform's controls.
-    system_controls: bool,
-    /// The video plays (it starts paused).
-    playing: bool,
-    /// The video's position and length, in seconds.
-    time: f32,
-    duration: f32,
-    buffering: bool,
 }
 
 impl Media {
-    /// The web site's host, from its last URL.
-    fn host(&self) -> String {
-        let url = self.state.as_ref().map_or("", |s| s.url.as_str());
-        let rest = url
-            .strip_prefix("https://")
-            .or_else(|| url.strip_prefix("http://"))
-            .unwrap_or(url);
-        let host = rest.split('/').next().unwrap_or("");
-        if host.is_empty() {
-            "…".to_owned()
-        } else {
-            host.to_owned()
-        }
-    }
-
     fn messaging(&self, cx: &mut RenderCx<'_, Self>) -> impl IntoElement + use<> {
         let web = self.web.clone().expect("set up");
         let post = web.clone();
@@ -162,234 +383,6 @@ impl Media {
                 }),
             ))
     }
-
-    fn site(&self, cx: &mut RenderCx<'_, Self>) -> impl IntoElement + use<> {
-        let site = self.site.clone().expect("set up");
-        let state = self.state.as_ref();
-        let loading = state.is_some_and(|s| s.loading);
-        let can_go_back = state.is_some_and(|s| s.can_go_back);
-        let can_go_forward = state.is_some_and(|s| s.can_go_forward);
-        let subtitle = state
-            .map(|s| s.title.clone())
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| "Navigation state, back and forward".to_owned());
-        let (back, forward, reload) = (site.clone(), site.clone(), site.clone());
-        Card::new()
-            .icon(IconName::Search)
-            .title("A web site")
-            .subtitle(subtitle)
-            .right(
-                Badge::new(if loading { "Loading" } else { "Loaded" }).tone(if loading {
-                    Tone::Warn
-                } else {
-                    Tone::Up
-                }),
-            )
-            .child(
-                view()
-                    .h(px(40.0))
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .px(px(14.0))
-                    .rounded(px(20.0))
-                    .bg(colors::INSET)
-                    .finish(Finish::Track)
-                    .border_1()
-                    .border_color(colors::BORDER)
-                    .child(view().size(px(7.0)).rounded(px(3.5)).bg(if loading {
-                        colors::WARN
-                    } else {
-                        colors::UP
-                    }))
-                    .child(
-                        text(self.host())
-                            .number_of_lines(1)
-                            .ellipsize_mode(nsh_core::EllipsizeMode::Middle)
-                            .flex_1()
-                            .text_size(px(15.0))
-                            .text_color(colors::MUTED),
-                    ),
-            )
-            .child(frame(
-                web_view(SITE)
-                    .element_ref(&site)
-                    .h(px(340.0))
-                    .bg(colors::INSET)
-                    .on_navigation_state_change(cx.listener(
-                        |this: &mut Self, state: &WebNavigation, cx| {
-                            this.state = Some(state.clone());
-                            cx.notify();
-                        },
-                    )),
-            ))
-            .child(
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.0))
-                    .child(nav_button(
-                        true,
-                        "Back",
-                        can_go_back,
-                        cx.listener(move |_: &mut Self, _, _| back.go_back()),
-                    ))
-                    .child(nav_button(
-                        false,
-                        "Forward",
-                        can_go_forward,
-                        cx.listener(move |_: &mut Self, _, _| forward.go_forward()),
-                    ))
-                    .child(view().flex_1())
-                    .child(
-                        Button::new(
-                            "Reload",
-                            cx.listener(move |_: &mut Self, _, _| reload.reload()),
-                        )
-                        .variant(ButtonVariant::Secondary),
-                    ),
-            )
-    }
-
-    fn player(&self, cx: &mut RenderCx<'_, Self>) -> impl IntoElement + use<> {
-        let player = self.video.clone().expect("set up");
-        let seek = player.clone();
-        let paused = !self.playing;
-        let (status, tone) = if self.buffering {
-            ("Buffering", Tone::Warn)
-        } else if paused {
-            ("Paused", Tone::Neutral)
-        } else {
-            ("Playing", Tone::Accent)
-        };
-        Card::new()
-            .icon(IconName::Play)
-            .title("Video")
-            .subtitle("AVPlayer / MediaPlayer")
-            .right(Badge::new(status).tone(tone))
-            .child(frame(
-                video(FLOWER)
-                    .element_ref(&player)
-                    .paused(paused)
-                    .muted(true)
-                    .repeat(true)
-                    .controls(self.system_controls)
-                    .h(px(200.0))
-                    .bg(rgb(0x000000))
-                    .on_load(cx.listener(|this: &mut Self, e: &VideoInfo, cx| {
-                        this.duration = e.duration;
-                        cx.notify();
-                    }))
-                    .on_buffer(cx.listener(|this: &mut Self, buffering: &bool, cx| {
-                        this.buffering = *buffering;
-                        cx.notify();
-                    }))
-                    .on_progress(cx.listener(|this: &mut Self, e: &VideoProgress, cx| {
-                        this.time = e.current_time;
-                        this.duration = e.duration;
-                        cx.notify();
-                    })),
-            ))
-            .children((!self.system_controls).then(|| {
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap_3()
-                    .child(RoundButton::new(
-                        if paused {
-                            IconName::Play
-                        } else {
-                            IconName::Pause
-                        },
-                        if paused { "Play" } else { "Pause" },
-                        cx.listener(|this: &mut Self, _, cx| {
-                            this.playing = !this.playing;
-                            cx.notify();
-                        }),
-                    ))
-                    .child(
-                        view()
-                            .flex_1()
-                            .gap_2()
-                            .child(Meter::new(if self.duration > 0.0 {
-                                self.time / self.duration
-                            } else {
-                                0.0
-                            }))
-                            .child(
-                                view()
-                                    .flex_row()
-                                    .child(
-                                        text(clock(self.time))
-                                            .flex_1()
-                                            .text_size(px(13.0))
-                                            .text_color(colors::MUTED)
-                                            .tabular_nums(),
-                                    )
-                                    .child(
-                                        text(clock(self.duration))
-                                            .text_size(px(13.0))
-                                            .text_color(colors::FAINT)
-                                            .tabular_nums(),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        Button::new(
-                            "Restart",
-                            cx.listener(move |_: &mut Self, _, _| seek.seek(0.0)),
-                        )
-                        .variant(ButtonVariant::Secondary),
-                    )
-            }))
-            .child(
-                segmented(
-                    [
-                        Segment::new("Own controls"),
-                        Segment::new("System controls"),
-                    ],
-                    u32::from(self.system_controls),
-                )
-                .on_event(cx.listener(
-                    |this: &mut Self, e: &SegmentedEvent, cx| {
-                        let SegmentedEvent::Change(i) = *e;
-                        this.system_controls = i == 1;
-                        cx.notify();
-                    },
-                )),
-            )
-    }
-}
-
-/// A round chevron button, 44 pt (`flip`: pointing back).
-fn nav_button(
-    flip: bool,
-    label: &'static str,
-    enabled: bool,
-    on_press: Listener<()>,
-) -> impl IntoElement {
-    press_with(
-        PressProps {
-            disabled: (!enabled).into(),
-            label: Some(label.into()).into(),
-            hit_slop: Some(4.0),
-            ..PressProps::default()
-        },
-        on_press,
-    )
-    .child(
-        view()
-            .size(px(44.0))
-            .rounded(px(22.0))
-            .bg(colors::RAISED)
-            .finish(Finish::Raised)
-            .border_1()
-            .border_color(colors::BORDER)
-            .items_center()
-            .justify_center()
-            .when(flip, |v| v.rotate(180.0))
-            .child(icon(IconName::Chevron, 18.0, colors::TEXT)),
-    )
 }
 
 impl Component for Media {
@@ -398,15 +391,13 @@ impl Component for Media {
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
         self.web = Some(cx.element_ref());
-        self.site = Some(cx.element_ref());
-        self.video = Some(cx.element_ref());
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let cards = [
             self.messaging(cx).into_element(),
-            self.site(cx).into_element(),
-            self.player(cx).into_element(),
+            Site::element(()).into_element(),
+            Player::element(()).into_element(),
         ];
         view().flex_1().child(
             scroll().flex_1().bg(colors::BACKGROUND).child(
