@@ -120,13 +120,14 @@ pub struct AppView {
 
 impl AppView {
     /// A view with no app yet (in `cx.new(|cx| AppView::new(...))`).
-    pub fn new(options: AppOptions, _window: &mut Window, cx: &mut Context<Self>) -> AppView {
+    pub fn new(options: AppOptions, window: &mut Window, cx: &mut Context<Self>) -> AppView {
         crate::rt::init(cx);
         let surface = Surface::new(initial_environment());
         surface.appearance.set(options.appearance);
         surface.entity.set(Some(cx.entity_id()));
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
+        crate::system::watch_environment(&surface, window, cx);
         AppView {
             surface,
             focus: cx.focus_handle(),
@@ -254,6 +255,7 @@ pub fn open_app_window(
             AppSource::DevServer(url) => crate::dev::start(&view, url, cx),
         }
         let focus = view.read(cx).focus.clone();
+        crate::system::own_window(view.read(cx).surface());
         window.focus(&focus, cx);
         view
     })?;
