@@ -805,6 +805,7 @@ pub struct ListConfig {
     pub(crate) inverted: Option<bool>,
     pub(crate) shows_indicator: Option<bool>,
     pub(crate) content: Option<ListContentStyle>,
+    pub(crate) follow_end: Option<f32>,
 }
 
 impl ListConfig {
@@ -827,6 +828,9 @@ impl ListConfig {
         }
         if self.content != old.content {
             out.push(Prop::ListContent(self.content.unwrap_or_default()));
+        }
+        if self.follow_end != old.follow_end {
+            out.push(Prop::FollowEnd(self.follow_end));
         }
     }
 }

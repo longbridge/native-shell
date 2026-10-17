@@ -56,6 +56,18 @@ pub trait ListLayout: Sized {
         self
     }
 
+    /// Stays at the end of its content while it is within `threshold`
+    /// points of it, as the content grows or the viewport shrinks (a reply
+    /// streaming into the last row, the keyboard showing); scrolled further
+    /// up, what is visible stays where it is (TS:
+    /// `maintainVisibleContentPosition={{ autoscrollToBottomThreshold }}`).
+    /// For lists that are not [`Self::inverted`], which keep their distance
+    /// from the end anyway.
+    fn follow_end(mut self, threshold: f32) -> Self {
+        self.config().follow_end = Some(threshold.max(0.0));
+        self
+    }
+
     /// Whether the scroll indicator shows (default yes).
     fn shows_indicator(mut self, shows: bool) -> Self {
         self.config().shows_indicator = Some(shows);

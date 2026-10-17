@@ -4593,6 +4593,85 @@ mod components {
         );
     }
 
+    /// A chat: its own rows in a list that follows its end; a press makes
+    /// the last row taller (a reply streaming in).
+    #[derive(Default)]
+    struct Chat {
+        tall: bool,
+    }
+
+    impl Component for Chat {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let tall = self.tall;
+            view()
+                .flex_1()
+                .child(
+                    view()
+                        .h(px(20.0))
+                        .on_press(cx.listener(|this: &mut Self, _, cx| {
+                            this.tall = !this.tall;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    virtual_list(20, move |_, at| {
+                        view().h(px(if tall && at.is_last() { 120.0 } else { 40.0 }))
+                    })
+                    .estimated_item_size(40.0)
+                    .follow_end(10.0)
+                    .flex_1(),
+                )
+        }
+    }
+
+    #[test]
+    fn virtual_lists_follow_their_end() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Chat>(|| ()));
+        let batch = c.commit().unwrap();
+        let created = |kind: ViewKind| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Create { id, kind: k } if *k == kind => Some(*id),
+                _ => None,
+            })
+        };
+        let list = created(ViewKind::Scroll).expect("a list");
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button");
+        let scrolled = |batch: &MountBatch| -> f32 {
+            batch
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    MountItem::ScrollBy { id, dy, .. } if *id == list => Some(*dy),
+                    _ => None,
+                })
+                .sum()
+        };
+        // At its end (20 rows of 40 in 460 points), the last row grows by
+        // 80: the list scrolls with it.
+        c.set_scroll_offset(list, 0.0, 800.0 - 460.0, 0);
+        assert!(c.commit().is_none(), "every row is bound already");
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        assert_eq!(scrolled(&c.commit().unwrap()), 80.0);
+        // Scrolled up, what is visible stays as the last row shrinks and
+        // grows again.
+        c.set_scroll_offset(list, 0.0, 100.0, 1);
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        assert_eq!(scrolled(&c.commit().unwrap()), 0.0);
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        assert_eq!(scrolled(&c.commit().unwrap()), 0.0);
+    }
+
     /// Shows a fallback while a component below it failed; a press tries
     /// again.
     #[derive(Default)]
