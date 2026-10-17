@@ -210,8 +210,12 @@ shots of macOS and Windows.
   Windows; custom actions, `ShowContextMenu` and scroll actions are in the nodes but not called yet.
 - **Text inputs**: input accessory views are never shown (no software keyboard).
 - **No desktop equivalent**: the status bar; the safe area and the keyboard height are 0.
-- **Not yet tried** on macOS and Windows: the backend was built and checked on Linux (X11 / Xwayland); `shot`'s
+- **Not yet tried** on macOS and Windows: the backend was built and checked on Linux (X11 / Xwayland); CI builds
+  and tests it on macOS and Windows (the text tests need the main thread on macOS and are skipped there), but `shot`'s
   offscreen rendering, wry's macOS / Windows web views and the chrome's macOS / Windows title bars have not run there.
+  Windows CI machines list no fonts through DirectWrite, so font weights and registered fonts are untested on Windows
+  (the tests that check them skip where no fonts are listed); the text threads initialize COM, which DirectWrite
+  wants off the main thread.
 - **Packaged apps** are laid out as the native backend's of the machine they are made on (a directory and `.tar.gz`
   on Linux, an ad hoc signed `.app` on macOS, a directory and `.zip` on Windows; `embedding.md`), with
   `nsh-gpui-app` as the executable (features `js` and `webview`, plus `video` on Linux). The Linux runner links

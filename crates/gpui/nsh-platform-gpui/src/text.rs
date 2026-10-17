@@ -2831,6 +2831,14 @@ mod tests {
             .is_some_and(|f| f.family.to_lowercase().contains("emoji"))
     }
 
+    /// True when the text system lists fonts at all: Windows CI machines
+    /// list none (DirectWrite enumerates no fonts in their session), and
+    /// every font then resolves to GPUI's fallback, so weights and
+    /// registered fonts cannot be told apart there.
+    fn lists_fonts() -> bool {
+        !system().all_font_names().is_empty()
+    }
+
     /// True when a color emoji font is installed (CI machines may have
     /// none).
     fn has_emoji_font() -> bool {
@@ -3156,6 +3164,9 @@ mod tests {
         let Some(engine) = engine() else {
             return;
         };
+        if !lists_fonts() {
+            return;
+        }
         let w = |weight: u16| {
             let style = ResolvedTextStyle {
                 font_weight: weight,
@@ -3516,6 +3527,9 @@ mod tests {
         let Some(engine) = engine() else {
             return;
         };
+        if !lists_fonts() {
+            return;
+        }
         let data = include_bytes!("../../../../examples/gallery/fonts/Pacifico-Regular.ttf");
         let style = ResolvedTextStyle {
             font_family: Some(nsh_core::FontFamily::new("Pacifico")),
