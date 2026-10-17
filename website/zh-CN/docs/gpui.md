@@ -71,6 +71,8 @@ nsh package my-app --target gpui [--run]
 和原生后端一样，运行器只为构建它的机器构建：Mac 应用在 Mac 上打包，Windows 应用在 Windows 上打包，Linux 应用在 Linux 上打包。
 `--run` 会在打包后启动应用。
 
+Linux 包动态链接 WebKitGTK 4.1（Web 视图）和 GStreamer（视频），因此运行它的机器需要安装它们，以及 GTK 3 和 GStreamer 的 base、good 插件（Debian / Ubuntu：`libwebkit2gtk-4.1-0`、`libgstreamer1.0-0`、`libgstreamer-plugins-base1.0-0`、`gstreamer1.0-plugins-good`），此外还需要 Vulkan 驱动和 `libxkbcommon`。
+
 ## 嵌入 GPUI 应用
 
 `nsh-platform-gpui` crate（来自 nsh 仓库）为 Rust GPUI 应用提供 `AppView`：一个以 GPUI 视图（`Entity<AppView>`）形式存在的

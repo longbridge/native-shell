@@ -185,6 +185,8 @@ Writes what `--target macos`, `--target windows` or `--target linux` writes on t
 runner (`nsh-gpui-app`) as the executable instead of the native backend's. Package on the OS the app is for: the
 runner is built for the machine it is built on. See [GPUI](./gpui.md#packaging).
 
+A Linux GPUI package links WebKitGTK 4.1 (web views) and GStreamer (videos) dynamically, so the machines it runs on need them installed, with GTK 3 and GStreamer's base and good plug-ins (Debian / Ubuntu: `libwebkit2gtk-4.1-0`, `libgstreamer1.0-0`, `libgstreamer-plugins-base1.0-0`, `gstreamer1.0-plugins-good`), besides a Vulkan driver and `libxkbcommon`.
+
 ## Icons
 
 Give one square PNG, ideally 1024×1024, in `nsh.json` (`"icon": "icon.png"`) or with `--icon`:

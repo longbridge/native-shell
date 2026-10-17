@@ -584,6 +584,11 @@ thread_local! {
 pub(crate) struct Texture(Arc<RenderImage>);
 
 impl Texture {
+    /// Owns `image` (made elsewhere: canvases' pixmaps).
+    pub(crate) fn new(image: Arc<RenderImage>) -> Texture {
+        Texture(image)
+    }
+
     /// The GPUI image (to paint; not to keep).
     pub(crate) fn image(&self) -> &Arc<RenderImage> {
         &self.0
@@ -606,10 +611,24 @@ impl Drop for Texture {
 /// (paint phase: nothing painted in this frame was dropped, as nothing
 /// owns a dropped texture to paint it).
 pub(crate) fn release_textures(cx: &mut DrawCx<'_>) {
+    release_dropped(cx.window, cx.app);
+}
+
+/// [`release_textures`] from anywhere a frame of `window` is drawn (the
+/// surface's prepaint does it every frame, so textures dropped where no
+/// image draws leave the atlases too).
+pub(crate) fn release_dropped(window: &mut gpui::Window, app: &mut gpui::App) {
     let dropped = DROPPED.with(|d| std::mem::take(&mut *d.borrow_mut()));
     for image in dropped {
-        cx.app.drop_image(image, Some(cx.window));
+        app.drop_image(image, Some(window));
     }
+}
+
+/// Removes `image` from the atlases with the next frame: for GPUI images
+/// nsh painted that are not [`Texture`]s (video frames).
+#[cfg_attr(not(feature = "video"), allow(dead_code))]
+pub(crate) fn release_later(image: Arc<RenderImage>) {
+    let _ = DROPPED.try_with(|d| d.borrow_mut().push(image));
 }
 
 /// How a variant of a picture differs from its pixels.

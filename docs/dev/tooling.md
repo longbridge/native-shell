@@ -202,9 +202,11 @@ toolchain cannot know the set, so `nsh` builds the app its own (`crates/nsh-cli/
   host and the release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`),
   `linux-host` / `linux-app`, `macos-host` / `macos-app` and `windows-host` / `windows-app` (the same on Linux, macOS
   and Windows, `nsh_platform_linux` / `nsh_platform_macos` / `nsh_platform_windows::set_ui_sets`; `windows-app` is a
-  windowed program, with no console), `gpui-host` / `gpui-app` (`nsh_platform_gpui::set_ui_sets`, under
-  `cfg(any(target_os = "linux", target_os = "macos", windows))`; `gpui-app` is a windowed program on Windows too) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android runtime
-  looks up when an engine starts). They
+  windowed program, with no console) and `android` (the app's `libnsh.so`: `nsh::ui_sets!`, which the Android
+  runtime looks up when an engine starts). `gpui-host` / `gpui-app` (`nsh_platform_gpui::set_ui_sets`, under
+  `cfg(any(target_os = "linux", target_os = "macos", windows))`; `gpui-app` is a windowed program on Windows too) are
+  a workspace of their own in `.nsh/rust/gpui` (excluded from the main one), written only when a GPUI host or runner is
+  built (`RustApp::gpui_workspace`), so builds for the other targets never resolve GPUI's crates. They
   build against nsh's sources (the checkout the running `nsh` was built in, or `NSH_SOURCE`) with nsh's `Cargo.lock`
   and target directory, so only the app's code and what links it compile; the binaries are named after the app
   (`nsh-app-<package>-cli`).

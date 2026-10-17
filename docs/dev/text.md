@@ -30,7 +30,8 @@
   each line's clusters are ordered by their bidi levels (`unicode-bidi`); a blurred text shadow is the glyphs painted
   faintly around the blur radius (GPUI blurs no glyphs). GPUI loads variable fonts at their default weight only, so on
   Linux the UI font is the first of a list that GPUI can set in bold (GNOME's Adwaita Sans is variable: Noto Sans or
-  DejaVu Sans take its place).
+  DejaVu Sans take its place, with Adwaita Sans's ascent and descent, so lines are as tall as GTK's). Symbols that are
+  text by default (♥, ✓) take a text font when the fallback would draw them as color emoji, so the text's color applies.
 - **Inline attachments**: any other element inside a `<Text>` (also inside its spans) is an attachment: laid out as its own
   layout root at its content size (`update_attachments`), it becomes an object replacement character (U+FFFC,
   `AttributedText::attachments`) that the engine sizes to it on the baseline (CTRunDelegate; Android a `ReplacementSpan`), so

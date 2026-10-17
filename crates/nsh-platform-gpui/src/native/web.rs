@@ -248,8 +248,11 @@ mod imp {
         fn drop(&mut self) {
             let _ = self.webview.set_visible(false);
             #[cfg(target_os = "linux")]
-            if let Some(surface) = self.surface.take() {
-                surface.release(self.webview.clone());
+            {
+                if let Some(surface) = self.surface.take() {
+                    surface.release(self.webview.clone());
+                }
+                linux::gone();
             }
         }
     }
@@ -272,6 +275,8 @@ mod imp {
         geometry: Cell<Option<Geometry>>,
         /// The scale the page's zoom was matched to.
         scale: Cell<f32>,
+        /// The page's navigation state as last reported.
+        nav: RefCell<Navigation>,
     }
 
     impl WebItem {
@@ -287,6 +292,7 @@ mod imp {
                 background: Cell::new(nsh_core::Color::TRANSPARENT),
                 geometry: Cell::new(None),
                 scale: Cell::new(0.0),
+                nav: RefCell::default(),
             })
         }
 
@@ -447,6 +453,8 @@ mod imp {
             match made {
                 Ok((webview, _native)) => {
                     #[cfg(target_os = "linux")]
+                    linux::made();
+                    #[cfg(target_os = "linux")]
                     linux::report_failures(&webview, self.emitter.clone());
                     *self.built.borrow_mut() = Some(Built {
                         webview: Rc::new(webview),
@@ -517,14 +525,21 @@ mod imp {
                 });
             });
             let item = Rc::downgrade(self);
+            let builder = builder.with_document_title_changed_handler(move |title| {
+                if let Some(item) = item.upgrade() {
+                    item.nav.borrow_mut().title = title;
+                }
+            });
+            let item = Rc::downgrade(self);
             builder.with_on_page_load_handler(move |event, url| {
                 let Some(item) = item.upgrade() else { return };
                 match event {
                     wry::PageLoadEvent::Started => {
-                        let state = Navigation {
-                            url,
-                            loading: true,
-                            ..Navigation::default()
+                        let state = {
+                            let mut nav = item.nav.borrow_mut();
+                            nav.url = url;
+                            nav.loading = true;
+                            nav.clone()
                         };
                         item.emitter.emit(EventKind::LoadStart, || state.payload());
                         item.emitter
@@ -544,27 +559,54 @@ mod imp {
             };
             let (key, id) = (surface.key(), self.id);
             self.settle(&surface);
-            let asked = webview.map(|w| {
-                w.evaluate_script_with_callback(STATE, move |json| {
-                    crate::rt::invoke(move || {
-                        let Some(surface) = Surface::by_key(key) else {
-                            return;
-                        };
-                        let item = match surface.native.hosts.borrow().get(&id) {
-                            Some(Host::Web(item)) => item.clone(),
-                            _ => return,
-                        };
-                        if let Some(state) = Navigation::parse(&json, false) {
-                            item.loaded(&state);
-                        }
-                    });
-                })
-            });
-            if !matches!(asked, Some(Ok(()))) {
-                self.loaded(&Navigation {
-                    url,
-                    ..Navigation::default()
+            // Reported at once, with what is known: the page's answer
+            // below may never come (WebKit drops scripts of a page that is
+            // replaced or still busy).
+            let state = {
+                let mut nav = self.nav.borrow_mut();
+                nav.url = url;
+                nav.loading = false;
+                nav.clone()
+            };
+            self.emitter.emit(EventKind::Load, || state.payload());
+            self.emitter
+                .emit(EventKind::NavigationStateChange, || state.payload());
+            // Then its title and history, when they differ.
+            let Some(webview) = webview else { return };
+            let asked = webview.evaluate_script_with_callback(STATE, move |json| {
+                crate::rt::invoke(move || {
+                    let Some(surface) = Surface::by_key(key) else {
+                        return;
+                    };
+                    let item = match surface.native.hosts.borrow().get(&id) {
+                        Some(Host::Web(item)) => item.clone(),
+                        _ => return,
+                    };
+                    if let Some(state) = Navigation::parse(&json, false) {
+                        item.answered(state);
+                    }
                 });
+            });
+            if let Err(err) = asked {
+                log::debug!("web view: cannot read the page's state: {err}");
+            }
+        }
+
+        /// The page told its state after it loaded: reported when it
+        /// changed (and no other load started meanwhile).
+        fn answered(&self, state: Navigation) {
+            let changed = {
+                let mut nav = self.nav.borrow_mut();
+                if nav.loading || *nav == state {
+                    false
+                } else {
+                    *nav = state.clone();
+                    true
+                }
+            };
+            if changed {
+                self.emitter
+                    .emit(EventKind::NavigationStateChange, || state.payload());
             }
         }
 
@@ -576,12 +618,6 @@ mod imp {
                 built.shown.set(None);
             }
             surface.invalidate();
-        }
-
-        fn loaded(&self, state: &Navigation) {
-            self.emitter.emit(EventKind::Load, || state.payload());
-            self.emitter
-                .emit(EventKind::NavigationStateChange, || state.payload());
         }
 
         pub(crate) fn close(&self) {
@@ -687,8 +723,21 @@ mod imp {
         const GTK_POLL: Duration = Duration::from_millis(16);
 
         thread_local! {
-            /// GTK runs on this (main) thread, its loop pumped from GPUI's.
+            /// GTK's loop is pumped from GPUI's (GTK runs on this, the main,
+            /// thread).
             static GTK: Cell<bool> = const { Cell::new(false) };
+            /// The web views alive: the pump stops when the last goes.
+            static LIVE: Cell<usize> = const { Cell::new(0) };
+        }
+
+        /// A web view was made.
+        pub(super) fn made() {
+            LIVE.set(LIVE.get() + 1);
+        }
+
+        /// A web view went (and its windows with it, which takes GTK's loop).
+        pub(super) fn gone() {
+            LIVE.set(LIVE.get().saturating_sub(1));
         }
 
         /// Starts GTK on its X11 backend once, pumping its main loop from
@@ -707,6 +756,11 @@ mod imp {
                 loop {
                     while gtk::events_pending() {
                         gtk::main_iteration_do(false);
+                    }
+                    if LIVE.get() == 0 {
+                        // Started again by the next web view.
+                        GTK.set(false);
+                        break;
                     }
                     cx.background_executor().timer(GTK_POLL).await;
                 }

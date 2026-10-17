@@ -129,7 +129,7 @@ impl NativeComponent for HostSwitch {
         self.focus.clone()
     }
 
-    fn set_prop(&mut self, name: &str, value: Option<&Value>) {
+    fn set_prop(&mut self, name: &str, value: Option<&Value>, _window: &mut Window, _cx: &mut App) {
         match name {
             "label" => self.label = value.and_then(Value::as_str).unwrap_or("").to_owned(),
             "checked" => self

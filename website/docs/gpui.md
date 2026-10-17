@@ -82,6 +82,8 @@ The package is laid out as the native backend's of the machine it is made on, wi
 As with the native backends, the runner is built for the machine it is built on: package a Mac app on a Mac, a
 Windows app on Windows and a Linux app on Linux. `--run` launches the app after packaging it.
 
+A Linux package links WebKitGTK 4.1 (web views) and GStreamer (videos) dynamically, so the machines it runs on need them installed, with GTK 3 and GStreamer's base and good plug-ins (Debian / Ubuntu: `libwebkit2gtk-4.1-0`, `libgstreamer1.0-0`, `libgstreamer-plugins-base1.0-0`, `gstreamer1.0-plugins-good`), besides a Vulkan driver and `libxkbcommon`.
+
 ## Embedding in a GPUI app
 
 The `nsh-platform-gpui` crate (from the nsh repository) gives a Rust GPUI app `AppView`: one nsh engine as a GPUI
