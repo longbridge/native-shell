@@ -9,7 +9,9 @@
 //!
 //! The badge is laid out by nsh (sized to its text with
 //! `ComponentContext::set_size`), takes its own clicks (GPUI's), emits
-//! `tap` with the count and flashes on JS's `pulse` command.
+//! `tap` with the count and flashes on JS's `pulse` command. It takes the
+//! keyboard: Tab reaches it among the app's text fields, Space or Enter
+//! taps it.
 
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 fn main() {
@@ -18,9 +20,9 @@ fn main() {
     use nsh_platform_gpui::{
         App, AppOptions, AppView, Bundle, ComponentContext, NativeComponent,
         gpui::{
-            self, AnyElement, AppContext, Bounds, InteractiveElement, IntoElement, ParentElement,
-            StatefulInteractiveElement, Styled, Window, WindowBounds, WindowOptions, div, px, rgb,
-            size,
+            self, AnyElement, AppContext, Bounds, FocusHandle, InteractiveElement, IntoElement,
+            ParentElement, StatefulInteractiveElement, Styled, Window, WindowBounds, WindowOptions,
+            div, px, rgb, size,
         },
     };
     use serde_json::{Value, json};
@@ -37,10 +39,14 @@ fn main() {
         pulsed: Option<Instant>,
         /// The size reported to nsh.
         reported: (f32, f32),
+        /// Its focus handle (made with the first frame): Tab reaches the
+        /// badge, Space or Enter taps it.
+        focus: Option<FocusHandle>,
     }
 
     impl NativeComponent for Badge {
-        fn render(&mut self, window: &mut Window, _cx: &mut gpui::App) -> Option<AnyElement> {
+        fn render(&mut self, window: &mut Window, cx: &mut gpui::App) -> Option<AnyElement> {
+            let focus = self.focus.get_or_insert_with(|| cx.focus_handle()).clone();
             // Sized to the text: nsh lays the badge out with it.
             let run = gpui::TextRun {
                 len: self.text.len(),
@@ -72,6 +78,10 @@ fn main() {
                 color.l = (color.l + 0.3 * f).min(1.0);
             }
             let (cx, taps) = (self.cx.clone(), self.taps.clone());
+            let tap = move || {
+                taps.set(taps.get() + 1);
+                cx.emit("tap", json!({ "count": taps.get() }));
+            };
             Some(
                 div()
                     .id("badge")
@@ -84,13 +94,17 @@ fn main() {
                     .text_size(px(15.0))
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.9))
+                    .track_focus(&focus)
+                    .focus(|s| s.border_2().border_color(gpui::white()))
                     .child(self.text.clone())
-                    .on_click(move |_, _, _| {
-                        taps.set(taps.get() + 1);
-                        cx.emit("tap", json!({ "count": taps.get() }));
-                    })
+                    // Also Space and Enter while focused (GPUI's clicks).
+                    .on_click(move |_, _, _| tap())
                     .into_any_element(),
             )
+        }
+
+        fn focus_handle(&self) -> Option<FocusHandle> {
+            self.focus.clone()
         }
 
         fn set_prop(&mut self, name: &str, value: Option<&Value>) {
@@ -138,6 +152,7 @@ fn main() {
                             taps: Default::default(),
                             pulsed: None,
                             reported: (0.0, 0.0),
+                            focus: None,
                         })
                     }),
                 );
