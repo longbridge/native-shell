@@ -62,41 +62,11 @@ pub enum Key {
 }
 
 impl Key {
-    /// The key named `name` (`"n"`, `"enter"`, `"f5"`, `"plus"`), ignoring
-    /// case. A character is the US layout's unshifted one.
+    /// The key named `name`: a key name (`"enter"`, `"f5"`, `"plus"`) or
+    /// the character the key types on the US layout without Shift (`"n"`,
+    /// `"1"`, `","`), in lowercase ([`Shortcut::parse`]).
     pub fn parse(name: &str) -> Option<Key> {
-        let mut chars = name.chars();
-        if let (Some(c), None) = (chars.next(), chars.next()) {
-            return (!c.is_whitespace() && !c.is_control())
-                .then(|| Key::Char(c.to_ascii_lowercase()));
-        }
-        let lower = name.to_ascii_lowercase();
-        Some(match lower.as_str() {
-            "enter" | "return" => Key::Enter,
-            "escape" | "esc" => Key::Escape,
-            "tab" => Key::Tab,
-            "backspace" => Key::Backspace,
-            "delete" | "del" => Key::Delete,
-            "insert" => Key::Insert,
-            "space" => Key::Space,
-            "up" | "arrowup" => Key::Up,
-            "down" | "arrowdown" => Key::Down,
-            "left" | "arrowleft" => Key::Left,
-            "right" | "arrowright" => Key::Right,
-            "home" => Key::Home,
-            "end" => Key::End,
-            "pageup" => Key::PageUp,
-            "pagedown" => Key::PageDown,
-            "plus" => Key::Char('+'),
-            "minus" => Key::Char('-'),
-            _ => {
-                let n: u8 = lower.strip_prefix('f')?.parse().ok()?;
-                if !(1..=24).contains(&n) {
-                    return None;
-                }
-                Key::F(n)
-            }
-        })
+        parse_key(name, name).ok()
     }
 
     /// Its name in a shortcut's label (`N`, `Enter`, `F5`).
@@ -150,39 +120,28 @@ impl Shortcut {
         }
     }
 
-    /// Parses `"mod+shift+n"`: modifiers and one key joined by `+`, written
-    /// in lowercase (other cases are read too). `mod` is Command when
-    /// `mod_is_meta` (macOS), else Control; `cmd` / `super` / `win` is
-    /// Command (the Windows key, Super), then `ctrl`, `alt` / `option` and
-    /// `shift`. The key is a name ([`Key::parse`]) or the US layout's
-    /// unshifted character; `plus` is `+`. `None` when it is not one.
-    pub fn parse(text: &str, mod_is_meta: bool) -> Option<Shortcut> {
-        // `+` itself is a key: "mod+plus" (or "mod++").
-        let (mods, key) = match text.strip_suffix("++") {
-            Some(mods) => (mods, "+"),
-            None => match text.rsplit_once('+') {
-                Some((mods, key)) => (mods, key),
-                None => ("", text),
-            },
-        };
-        let mut shortcut = Shortcut::key(Key::parse(key.trim())?);
-        for m in mods.split('+').map(str::trim).filter(|m| !m.is_empty()) {
-            match m.to_ascii_lowercase().as_str() {
-                "mod" | "cmdorctrl" | "commandorcontrol" => {
-                    if mod_is_meta {
-                        shortcut.meta = true;
-                    } else {
-                        shortcut.ctrl = true;
-                    }
-                }
-                "cmd" | "command" | "meta" | "super" | "win" => shortcut.meta = true,
-                "ctrl" | "control" => shortcut.ctrl = true,
-                "alt" | "option" | "opt" => shortcut.alt = true,
-                "shift" => shortcut.shift = true,
-                _ => return None,
+    /// Parses `"mod+shift+n"`: lowercase modifiers and one key joined by
+    /// `+`. `mod` (`cmdorctrl`, `commandorcontrol`) is Command when
+    /// `mod_is_meta` (macOS), else Control; `cmd` (`command`, `meta`,
+    /// `super`, `win`) is Command, the Windows key or Super; then `ctrl`
+    /// (`control`), `alt` (`option`, `opt`) and `shift`. The key is a name
+    /// or the US layout's unshifted character ([`Key::parse`]); `plus` is
+    /// the `=` key. `nsh/keymap` (`crate::keymap`) reads the same
+    /// keystrokes, with the same messages for those that are not.
+    pub fn parse(text: &str, mod_is_meta: bool) -> Result<Shortcut, ShortcutError> {
+        let (mods, key) = split(text)?;
+        // Modifiers first, as `nsh/keymap` reads them (so are its errors).
+        let mut shortcut = Shortcut::key(Key::Space);
+        for name in mods {
+            let flag =
+                modifier(&mut shortcut, name, mod_is_meta).map_err(|why| error(text, why))?;
+            if *flag {
+                return Err(error(text, format_args!("{name:?} twice")));
             }
+            *flag = true;
         }
-        Some(shortcut)
+        shortcut.key = parse_key(text, key)?;
+        Ok(shortcut)
     }
 
     /// Its label on Windows and Linux (`Ctrl+Shift+N`).
@@ -201,6 +160,196 @@ impl Shortcut {
         out.push_str(&self.key.label());
         out
     }
+}
+
+/// Why a shortcut's text is not one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShortcutError(pub String);
+
+impl std::fmt::Display for ShortcutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ShortcutError {}
+
+fn error(text: &str, reason: impl std::fmt::Display) -> ShortcutError {
+    ShortcutError(format!("invalid keystroke {text:?}: {reason}"))
+}
+
+/// Characters typed with Shift on the US layout, and the key typing them.
+const SHIFTED: &[(char, char)] = &[
+    ('~', '`'),
+    ('!', '1'),
+    ('@', '2'),
+    ('#', '3'),
+    ('$', '4'),
+    ('%', '5'),
+    ('^', '6'),
+    ('&', '7'),
+    ('*', '8'),
+    ('(', '9'),
+    (')', '0'),
+    ('_', '-'),
+    ('+', '='),
+    ('{', '['),
+    ('}', ']'),
+    ('|', '\\'),
+    (':', ';'),
+    ('"', '\''),
+    ('<', ','),
+    ('>', '.'),
+    ('?', '/'),
+];
+
+/// Named keys, by their (lowercase) names.
+const NAMED: &[(&str, Key)] = &[
+    ("enter", Key::Enter),
+    ("return", Key::Enter),
+    ("escape", Key::Escape),
+    ("esc", Key::Escape),
+    ("tab", Key::Tab),
+    ("space", Key::Space),
+    ("backspace", Key::Backspace),
+    ("delete", Key::Delete),
+    ("del", Key::Delete),
+    ("insert", Key::Insert),
+    ("up", Key::Up),
+    ("arrowup", Key::Up),
+    ("down", Key::Down),
+    ("arrowdown", Key::Down),
+    ("left", Key::Left),
+    ("arrowleft", Key::Left),
+    ("right", Key::Right),
+    ("arrowright", Key::Right),
+    ("home", Key::Home),
+    ("end", Key::End),
+    ("pageup", Key::PageUp),
+    ("pagedown", Key::PageDown),
+    // The plus key is the one typing `=`, as on the US layout.
+    ("plus", Key::Char('=')),
+    ("minus", Key::Char('-')),
+];
+
+/// The modifiers and the key of `text` (`"mod+shift+n"`).
+fn split(text: &str) -> Result<(Vec<&str>, &str), ShortcutError> {
+    if text.is_empty() {
+        return Err(error(text, "empty"));
+    }
+    if text.contains(char::is_whitespace) {
+        return Err(error(
+            text,
+            "one keystroke per binding (key sequences such as \"mod+k mod+s\" are not supported)",
+        ));
+    }
+    if text == "+" || text.ends_with("++") {
+        let mods = text.strip_suffix("++").unwrap_or("");
+        let plus = if mods.is_empty() {
+            "plus".to_owned()
+        } else {
+            format!("{mods}+plus")
+        };
+        return Err(error(
+            text,
+            format_args!("write the plus key as \"plus\": {plus:?}"),
+        ));
+    }
+    let (mods, key) = match text.rsplit_once('+') {
+        Some((mods, key)) => (mods.split('+').collect(), key),
+        None => (Vec::new(), text),
+    };
+    if key.is_empty() {
+        return Err(error(text, "no key after the modifiers"));
+    }
+    Ok((mods, key))
+}
+
+/// The flag of modifier `name` in `shortcut`, or why it is none.
+fn modifier<'a>(
+    shortcut: &'a mut Shortcut,
+    name: &str,
+    mod_is_meta: bool,
+) -> Result<&'a mut bool, String> {
+    Ok(match name {
+        "ctrl" | "control" => &mut shortcut.ctrl,
+        "alt" | "option" | "opt" => &mut shortcut.alt,
+        "shift" => &mut shortcut.shift,
+        "cmd" | "command" | "meta" | "super" | "win" => &mut shortcut.meta,
+        "mod" | "cmdorctrl" | "commandorcontrol" if mod_is_meta => &mut shortcut.meta,
+        "mod" | "cmdorctrl" | "commandorcontrol" => &mut shortcut.ctrl,
+        "" => return Err("an empty modifier".into()),
+        other if other != other.to_ascii_lowercase() => {
+            return Err(format!(
+                "modifiers are lower case: {:?}",
+                other.to_ascii_lowercase()
+            ));
+        }
+        other => {
+            return Err(format!(
+                "unknown modifier {other:?} (ctrl, alt, shift, cmd or mod)"
+            ));
+        }
+    })
+}
+
+fn parse_key(text: &str, key: &str) -> Result<Key, ShortcutError> {
+    if let Some(&(_, named)) = NAMED.iter().find(|(name, _)| *name == key) {
+        return Ok(named);
+    }
+    if let Some(n) = key
+        .strip_prefix('f')
+        .filter(|n| !n.starts_with('0'))
+        .and_then(|n| n.parse::<u8>().ok())
+        && (1..=24).contains(&n)
+    {
+        return Ok(Key::F(n));
+    }
+    let mut chars = key.chars();
+    let (Some(c), None) = (chars.next(), chars.next()) else {
+        let lower = key.to_ascii_lowercase();
+        let named = NAMED.iter().any(|(name, _)| *name == lower)
+            || lower
+                .strip_prefix('f')
+                .is_some_and(|n| n.parse::<u8>().is_ok());
+        let hint = if named {
+            format!(" (key names are lower case: {lower:?})")
+        } else if let Some((first, _)) = key.split_once('-')
+            && modifier(&mut Shortcut::key(Key::Space), first, false).is_ok()
+        {
+            // `mod--` is `mod+-`.
+            let joined = match key.strip_suffix("--") {
+                Some(mods) => format!("{}+-", mods.replace('-', "+")),
+                None => key.replace('-', "+"),
+            };
+            format!(" (join modifiers and the key with \"+\": {joined:?})")
+        } else {
+            String::new()
+        };
+        return Err(error(text, format_args!("unknown key {key:?}{hint}")));
+    };
+    if c.is_ascii_uppercase() {
+        return Err(error(
+            text,
+            format_args!(
+                "letters are lower case, with shift+ for Shift (\"shift+{}\")",
+                c.to_ascii_lowercase()
+            ),
+        ));
+    }
+    if let Some(&(_, base)) = SHIFTED.iter().find(|(shifted, _)| *shifted == c) {
+        return Err(error(
+            text,
+            format_args!("{c:?} is typed with Shift: write \"shift+{base}\""),
+        ));
+    }
+    if !c.is_ascii_graphic() {
+        return Err(error(
+            text,
+            "keys are named by the US layout's characters (they match on any layout)",
+        ));
+    }
+    Ok(Key::Char(c))
 }
 
 /// A standard menu item: the platform carries it out (and labels it when
@@ -467,18 +616,25 @@ mod tests {
         );
         // Labels stay the platform's style.
         assert_eq!(s.label(), "Ctrl+Shift+N");
-        // Other cases are read too.
-        assert_eq!(Shortcut::parse("Mod+Shift+N", false), Some(s));
         let mac = Shortcut::parse("cmdorctrl+,", true).unwrap();
         assert!(mac.meta && !mac.ctrl);
         assert_eq!(mac.key, Key::Char(','));
         assert_eq!(
-            Shortcut::parse("ctrl+plus", false).unwrap().key,
-            Key::Char('+')
+            Shortcut::parse("meta+k", false),
+            Shortcut::parse("cmd+k", false)
+        );
+        // The plus key is the `=` key.
+        assert_eq!(
+            Shortcut::parse("ctrl+plus", false),
+            Shortcut::parse("ctrl+=", false)
         );
         assert_eq!(
-            Shortcut::parse("ctrl++", false).unwrap().key,
-            Key::Char('+')
+            Shortcut::parse("ctrl+minus", false),
+            Shortcut::parse("ctrl+-", false)
+        );
+        assert_eq!(
+            Shortcut::parse("arrowup", false),
+            Shortcut::parse("up", false)
         );
         assert_eq!(Shortcut::parse("alt+f4", false).unwrap().key, Key::F(4));
         assert_eq!(
@@ -487,8 +643,24 @@ mod tests {
         );
         let win = Shortcut::parse("win+option+pagedown", true).unwrap();
         assert!(win.meta && win.alt && win.key == Key::PageDown);
-        assert_eq!(Shortcut::parse("hyper+k", false), None);
-        assert_eq!(Shortcut::parse("ctrl+f25", false), None);
+    }
+
+    #[test]
+    fn shortcuts_explain_errors() {
+        // The same messages as `nsh/keymap`'s.
+        let err = |t| Shortcut::parse(t, false).unwrap_err().0;
+        assert_eq!(err(""), "invalid keystroke \"\": empty");
+        assert!(err("mod+k mod+s").contains("one keystroke per binding"));
+        assert!(err("mod+").contains("no key after the modifiers"));
+        assert!(err("hyper+k").contains("unknown modifier \"hyper\""));
+        assert!(err("Mod+Shift+N").contains("modifiers are lower case: \"mod\""));
+        assert!(err("ctrl+ctrl+k").contains("\"ctrl\" twice"));
+        assert!(err("mod-k").contains("join modifiers and the key with \"+\": \"mod+k\""));
+        assert!(err("mod+N").contains("\"shift+n\""));
+        assert!(err("Escape").contains("key names are lower case: \"escape\""));
+        assert!(err("mod+?").contains("write \"shift+/\""));
+        assert!(err("ctrl++").contains("write the plus key as \"plus\": \"ctrl+plus\""));
+        assert!(err("ctrl+f25").contains("unknown key"));
     }
 
     #[test]

@@ -780,7 +780,7 @@ mod tests {
             equivalent("f5"),
             ("\u{f708}".to_owned(), NSEventModifierFlags::empty())
         );
-        assert_eq!(equivalent("mod+plus").0, "+");
+        assert_eq!(equivalent("mod+plus").0, "=");
         assert_eq!(equivalent("cmd+pagedown").0, "\u{f72d}");
     }
 }

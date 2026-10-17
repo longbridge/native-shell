@@ -223,10 +223,7 @@ impl Decoder {
             return Err("a menu item needs a label or a role".into());
         }
         let shortcut = match string(ctx, v, c"shortcut") {
-            Some(text) => Some(
-                Shortcut::parse(&text, self.mac)
-                    .ok_or_else(|| format!("`{text}` is not a shortcut (\"mod+shift+n\")"))?,
-            ),
+            Some(text) => Some(Shortcut::parse(&text, self.mac).map_err(|e| e.to_string())?),
             None => role.and_then(|r| r.shortcut(self.mac)),
         };
         let on_select = get(ctx, v, c"onSelect");
@@ -516,13 +513,15 @@ export type MenuItem =
       /** A standard item. */
       role?: MenuRole;
       /** Its shortcut, in lowercase: modifiers and a key joined by `+`:
-       * `"mod+n"`, `"mod+shift+z"`, `"alt+f4"`, `"f11"`. `mod` is Command on
-       * macOS and Control elsewhere; `cmd` (`super`, `win`), `ctrl`, `alt`
-       * (`option`), `shift`. Keys: letters, digits, punctuation (the US
-       * layout's unshifted character), `enter`, `escape`, `tab`,
-       * `backspace`, `delete`, `space`, arrows (`up`), `home`, `end`,
-       * `pageup`, `pagedown`, `f1`–`f24`, `plus`. A role has its platform's
-       * by default. */
+       * `"mod+n"`, `"mod+shift+z"`, `"alt+f4"`, `"f11"`. `mod` (`cmdorctrl`)
+       * is Command on macOS and Control elsewhere; `cmd` (`command`,
+       * `meta`, `super`, `win`), `ctrl` (`control`), `alt` (`option`,
+       * `opt`), `shift`. Keys: the character a key types on the US layout
+       * without Shift (`n`, `1`, `,`, `/`; `"shift+/"` for `?`), `plus`
+       * (`=`), `minus` (`-`), `space`, `enter`, `escape`, `tab`,
+       * `backspace`, `delete`, `insert`, `up`, `down`, `left`, `right`,
+       * `home`, `end`, `pageup`, `pagedown`, `f1`–`f24`: the keystrokes of
+       * `nsh/keymap`. A role has its platform's by default. */
       shortcut?: string;
       /** It can be chosen (default true). */
       enabled?: boolean;

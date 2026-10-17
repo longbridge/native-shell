@@ -979,18 +979,8 @@ pub(crate) fn shortcut(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         let Some(items) = menu.as_deref() else {
             return false;
         };
-        // `Plus` is `=` with Shift, or the key itself without.
+        // `plus` is the `=` key, which `shortcut_key` reads.
         MenuItem::find_shortcut(items, &pressed)
-            .or_else(|| {
-                (key == Key::Char('=')).then(|| {
-                    let plus = Shortcut {
-                        key: Key::Char('+'),
-                        shift: false,
-                        ..pressed
-                    };
-                    MenuItem::find_shortcut(items, &plus)
-                })?
-            })
             .filter(|a| !unsupported(a.role))
             .map(|a| (a.id, a.role))
     };
