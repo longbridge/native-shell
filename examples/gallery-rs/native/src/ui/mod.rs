@@ -12,8 +12,6 @@
 //!   [`Stat`], [`Meter`], [`IconTile`], [`Button`], [`RoundButton`]; and
 //!   [`caption`], [`legend`], [`code`], [`header`].
 
-pub(crate) mod legacy;
-
 // The demos use these as they move to the shared design; until each
 // piece has a user, it is expected to be unused (the expectation then
 // fails, and goes).
