@@ -31,7 +31,7 @@ nsh-engine.workspace = true
 nsh-ui-mobile.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
-image = { workspace = true, features = ["gif", "webp", "jpeg"] }
+image = { workspace = true, features = ["gif", "webp", "jpeg", "bmp", "ico", "tiff"] }
 rustc-hash.workspace = true
 serde_json.workspace = true
 ttf-parser.workspace = true
