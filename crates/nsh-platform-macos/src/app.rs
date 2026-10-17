@@ -299,6 +299,14 @@ define_class!(
         #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, _notification: &NSNotification) {
             stop_running();
+            // AppKit ends the app after its last window closes only if the
+            // window was on screen: not a minimized one. The app ends with
+            // its window either way (once the close is done).
+            dispatch2::DispatchQueue::main().exec_async(|| {
+                if let Some(mtm) = MainThreadMarker::new() {
+                    NSApplication::sharedApplication(mtm).terminate(None);
+                }
+            });
         }
     }
 );
