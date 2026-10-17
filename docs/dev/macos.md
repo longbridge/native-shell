@@ -177,8 +177,8 @@ lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.p
 `drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `fling <x> <y> <dx> <dy> [ms]`
 (a 120 Hz trackpad flick with momentum), `notch` (a mouse wheel), `hover`, `type <text>`, `mark <text>` (an input
 method's marked text), `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
-`quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
-`NSApp.currentEvent`).
+`zoom` (AppKit's animated zoom), `fullscreen` (enter or leave), `quit`. Mouse events are posted to the application's
+queue, so they take the path real ones take (and become `NSApp.currentEvent`).
 
 ```sh
 nsh build examples/gallery -o /tmp/gallery
