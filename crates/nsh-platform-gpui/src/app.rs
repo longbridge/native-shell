@@ -167,6 +167,8 @@ pub struct AppView {
     surface: Rc<Surface>,
     focus: FocusHandle,
     options: RefCell<AppOptions>,
+    /// Tab into the view from the host's widgets ([`AppView::tab_entered`]).
+    _keystrokes: gpui::Subscription,
     #[cfg(feature = "dev")]
     pub(crate) dev: RefCell<Option<crate::dev::DevSession>>,
 }
@@ -186,10 +188,27 @@ impl AppView {
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
         crate::system::watch_environment(&surface, window, cx);
+        // The open menu's keys come before anything focused sees them.
+        let weak = Rc::downgrade(&surface);
+        surface.shortcuts.borrow_mut().push(Box::new(move |event| {
+            weak.upgrade()
+                .is_some_and(|s| crate::chrome::window_key(&s, event))
+        }));
+        // The chrome follows the window: full screen, maximized, active.
+        cx.observe_window_bounds(window, |_, _, cx| cx.notify())
+            .detach();
+        cx.observe_window_activation(window, |view: &mut AppView, window, cx| {
+            if !window.is_window_active() {
+                crate::keymap::window_deactivated(&view.surface);
+            }
+            cx.notify();
+        })
+        .detach();
         AppView {
             surface,
             focus: cx.focus_handle().tab_stop(true),
             options: RefCell::new(options),
+            _keystrokes: cx.observe_keystrokes(Self::tab_entered),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
         }
@@ -285,7 +304,8 @@ impl AppView {
     }
 
     /// Tab: the surface's next text field; past its last one, the window's
-    /// next tab stop (the embedding app's widgets).
+    /// next tab stop (the embedding app's widgets), or the first field again
+    /// when there is none.
     fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
         self.tab(false, window, cx);
     }
@@ -293,6 +313,27 @@ impl AppView {
     /// Shift + Tab, the other way.
     fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
         self.tab(true, window, cx);
+    }
+
+    /// After every keystroke: when Tab (handled by the host, GPUI Kit's
+    /// `Root`) moved the window's focus onto the view, the focus goes on to
+    /// its first text field (its last with Shift), not to the view itself.
+    fn tab_entered(
+        &mut self,
+        event: &gpui::KeystrokeEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let k = &event.keystroke;
+        let m = &k.modifiers;
+        if k.key != "tab" || m.control || m.alt || m.platform {
+            return;
+        }
+        if !self.focus.is_focused(window) || crate::text_input::focused(&self.surface).is_some() {
+            return;
+        }
+        crate::input::tab_to_edge(&self.surface, m.shift);
+        crate::rt::flush(cx);
     }
 
     fn tab(&self, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -306,11 +347,15 @@ impl AppView {
             },
         };
         if !crate::input::key(&self.surface, event) {
-            crate::text_input::blur_all(&self.surface);
             if shift {
                 window.focus_prev(cx);
             } else {
                 window.focus_next(cx);
+            }
+            // Still focused: the window has no other tab stop (a window of
+            // its own), so the fields wrap around.
+            if !self.focus.is_focused(window) || !crate::input::tab_to_edge(&self.surface, shift) {
+                crate::text_input::blur_all(&self.surface);
             }
         }
         crate::rt::flush(cx);
@@ -440,7 +485,7 @@ impl gpui::EntityInputHandler for AppView {
 }
 
 impl Render for AppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let surface = SurfaceElement {
             surface: self.surface.clone(),
             focus: self.focus.clone(),
@@ -449,6 +494,8 @@ impl Render for AppView {
         // A dev session draws its status line and error overlay above.
         #[cfg(feature = "dev")]
         let surface = crate::dev::wrap(self, surface.into_any_element(), cx);
+        // The window's chrome (title bar, menu bar) goes around the surface.
+        let content = crate::chrome::render(&self.surface, surface, window, cx);
         // The div registers the view's tab stop, which only GPUI's own
         // elements can.
         gpui::div()
@@ -457,7 +504,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_prev))
             .size_full()
-            .child(surface)
+            .child(content)
     }
 }
 
@@ -491,16 +538,18 @@ pub fn open_app_window(
     let bounds = gpui::Bounds::centered(None, size, cx);
     let window_options = gpui::WindowOptions {
         window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-        titlebar: Some(gpui::TitlebarOptions {
-            title: Some(options.title.clone().into()),
-            ..Default::default()
-        }),
+        titlebar: Some(crate::chrome::titlebar_options(&options.title)),
         app_id: Some(options.app_id.clone()),
+        // Linux: the window manager's decorations until the app hides the
+        // title bar (`crate::chrome`).
+        window_decorations: Some(gpui::WindowDecorations::Server),
         ..Default::default()
     };
     let script = options.script.clone();
     let handle = cx.open_window(window_options, move |window, cx| {
+        let title = options.title.clone();
         let view: Entity<AppView> = cx.new(|cx| AppView::new(options, window, cx));
+        crate::chrome::set_standalone(view.read(cx).surface(), &title);
         match source {
             AppSource::Rust(root) => view.read(cx).load(App::Rust(root)),
             AppSource::Bundle(bundle) => view.read(cx).load(App::Js(bundle)),
@@ -518,7 +567,8 @@ pub fn open_app_window(
     Ok(handle)
 }
 
-/// Runs `source` in a window until it is closed.
+/// Runs `source` in a window until it is closed. Fails when the window
+/// cannot open or [`AppOptions::script`] failed.
 pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode {
     let ok = Rc::new(std::cell::Cell::new(true));
     let result = ok.clone();
@@ -537,7 +587,7 @@ pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode
         }
         cx.activate(true);
     });
-    if result.get() {
+    if result.get() && !crate::script::failed() {
         std::process::ExitCode::SUCCESS
     } else {
         std::process::ExitCode::FAILURE

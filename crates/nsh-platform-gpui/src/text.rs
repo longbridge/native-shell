@@ -187,6 +187,31 @@ fn ui_font(system: &TextSystem, installed: &FxHashMap<String, String>) -> String
         .map_or_else(|| SYSTEM_UI.to_owned(), |f| f.clone())
 }
 
+thread_local! {
+    /// [`ui_font`] as of a [`FONT_GENERATION`], for [`ui_family_for`].
+    static UI_FAMILY: RefCell<Option<(u64, SharedString)>> = const { RefCell::new(None) };
+}
+
+/// The family text views set `fontFamily` unset in, for other drawing
+/// that names the UI font (canvas text): GPUI's own name for it is a
+/// variable font on GNOME, which GPUI draws at one weight only.
+pub(crate) fn ui_family_for(system: &TextSystem) -> SharedString {
+    let generation = FONT_GENERATION.load(Ordering::Acquire);
+    UI_FAMILY.with_borrow_mut(|f| match f {
+        Some((g, family)) if *g == generation => family.clone(),
+        _ => {
+            let installed: FxHashMap<String, String> = system
+                .all_font_names()
+                .into_iter()
+                .map(|n| (n.to_lowercase(), n))
+                .collect();
+            let family = SharedString::from(ui_font(system, &installed));
+            *f = Some((generation, family.clone()));
+            family
+        }
+    })
+}
+
 /// Bumped when any engine registers a font: engines resolve families
 /// again.
 static FONT_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -467,6 +492,45 @@ fn is_cjk(c: char) -> bool {
         0x2E80..=0x2FDF | 0x3040..=0x30FF | 0x3100..=0x31FF | 0x3400..=0x4DBF
         | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF
         | 0x20000..=0x3FFFF)
+}
+
+/// The mirror image of `c` in right-to-left text (`Bidi_Mirroring_Glyph`,
+/// the pairs in common use).
+fn mirrored(c: char) -> Option<char> {
+    const PAIRS: &[(char, char)] = &[
+        ('(', ')'),
+        ('[', ']'),
+        ('{', '}'),
+        ('<', '>'),
+        ('«', '»'),
+        ('‹', '›'),
+        ('⁅', '⁆'),
+        ('⁽', '⁾'),
+        ('₍', '₎'),
+        ('≤', '≥'),
+        ('≪', '≫'),
+        ('⟨', '⟩'),
+        ('⟦', '⟧'),
+        ('〈', '〉'),
+        ('《', '》'),
+        ('「', '」'),
+        ('『', '』'),
+        ('【', '】'),
+        ('〔', '〕'),
+        ('（', '）'),
+        ('［', '］'),
+        ('｛', '｝'),
+        ('＜', '＞'),
+    ];
+    PAIRS.iter().find_map(|&(a, b)| {
+        if c == a {
+            Some(b)
+        } else if c == b {
+            Some(a)
+        } else {
+            None
+        }
+    })
 }
 
 /// True for the characters that end a paragraph.
@@ -845,7 +909,19 @@ impl Builder<'_> {
     /// Shapes pieces of one level and size, adding their clusters.
     fn segment(&mut self, pieces: &[Piece], size: f32) {
         let (start, end) = (pieces[0].start, pieces[pieces.len() - 1].end);
-        let text = &self.t.text[start..end];
+        let mut text = Cow::Borrowed(&self.t.text[start..end]);
+        if pieces[0].level % 2 == 1
+            && !text.chars().any(is_rtl)
+            && text.chars().any(|c| mirrored(c).is_some())
+        {
+            // Rule L4: right to left, brackets and the like show their
+            // mirror image. Shapers mirror runs they take as right to left
+            // themselves; a run without right-to-left letters (a span of
+            // only brackets) they take as left to right. Mirrors have as
+            // many bytes: offsets hold.
+            text = Cow::Owned(text.chars().map(|c| mirrored(c).unwrap_or(c)).collect());
+        }
+        let text = &*text;
         let runs: Vec<TextRun> = pieces
             .iter()
             .map(|p| TextRun {
@@ -2020,6 +2096,37 @@ fn stroke(
     }
 }
 
+/// Paints the view's glyphs all in `color` (with the pass's filters and
+/// opacity), moved by each of `offsets` (view coordinates): the
+/// silhouette of the text, which shadows of the content are drawn with
+/// ([`crate::decor::draw_content_shadow`]).
+pub(crate) fn draw_silhouette(
+    cx: &mut DrawCx<'_>,
+    state: &ViewState,
+    offsets: &[(f32, f32)],
+    color: nsh_core::Color,
+) {
+    let Some(drawn) = &state.text else { return };
+    let Some(layout) = drawn.layout.downcast::<GpuiLayout>() else {
+        return;
+    };
+    if cx.culled() || color.is_transparent() {
+        return;
+    }
+    let k = cx.transform_scale();
+    let (ox, oy) = (drawn.content.x, drawn.content.y);
+    let tint = Some(cx.color(color));
+    let mut glyphs = Vec::with_capacity(layout.glyphs.len() * offsets.len());
+    // Emoji draw in their own colors: they cast no silhouette.
+    for g in layout.glyphs.iter().filter(|g| !g.emoji) {
+        for &(dx, dy) in offsets {
+            let o = cx.map(ox + g.x + dx, oy + g.y + dy);
+            glyphs.push((o, g.font, g.id, px(g.size * k), tint));
+        }
+    }
+    paint_glyphs(cx, glyphs);
+}
+
 /// The UTF-16 offset of the character at `(x, y)` (view coordinates), if
 /// any (presses on nested text links).
 pub(crate) fn char_at(state: &ViewState, x: f32, y: f32) -> Option<u32> {
@@ -2993,6 +3100,37 @@ mod tests {
             line.x >= -0.01 && line.x + line.width <= size.width + 0.01,
             "{line:?}"
         );
+    }
+
+    #[test]
+    fn mirrors_keep_their_length() {
+        for c in "()[]{}<>«»‹›≤≥「」（）《》".chars() {
+            let m = mirrored(c).unwrap();
+            assert_eq!(c.len_utf8(), m.len_utf8(), "{c}");
+            assert_eq!(mirrored(m), Some(c));
+        }
+        assert_eq!(mirrored('a'), None);
+        // A bracket in right-to-left text is drawn as its mirror, in a run
+        // with letters (the shaper's) and in a span of its own (ours).
+        let engine = engine();
+        let close = engine.prepare(&text(&[(")", plain(15.0))])).glyphs[0].id;
+        let bold = ResolvedTextStyle {
+            font_weight: 700,
+            ..plain(15.0)
+        };
+        for t in [
+            text(&[("שלום (עולם)", plain(15.0))]),
+            text(&[("שלום ", plain(15.0)), ("(", plain(15.0)), ("עולם)", bold)]),
+        ] {
+            let prepared = engine.prepare(&t);
+            let open = prepared.clusters.iter().find(|c| c.utf16 == 5).unwrap();
+            assert_eq!(open.level, 1);
+            assert_eq!(
+                prepared.glyphs[open.glyphs.0 as usize].id, close,
+                "{:?}",
+                t.text
+            );
+        }
     }
 
     #[test]
