@@ -48,7 +48,7 @@ use nsh_core::{
     platform::Insets,
 };
 use objc2::{
-    DefinedClass, MainThreadOnly, define_class, msg_send,
+    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
     rc::{Retained, Weak},
     runtime::{ProtocolObject, Sel},
     sel,
@@ -132,6 +132,8 @@ pub(crate) struct Chrome {
     height: Cell<Option<f32>>,
     /// The target of its menu items (made with the first menu).
     target: RefCell<Option<Retained<MenuTarget>>>,
+    /// The main menu it set (`setApplicationMenu`).
+    menu: RefCell<Option<Retained<NSMenu>>>,
     /// Watches the window controls' frames: AppKit lays the title bar out
     /// again whenever it likes (the window becoming key, its title, ...),
     /// which puts them back at the top.
@@ -145,6 +147,20 @@ pub(crate) struct Chrome {
     /// The title bar's own height, before an app's height replaced it:
     /// without one, the controls go back there.
     natural: Cell<Option<f32>>,
+}
+
+impl Drop for Chrome {
+    fn drop(&mut self) {
+        // An app view that goes (an embedding app closed it) takes its
+        // menu with it, and the one it replaced comes back.
+        let (Some(bar), Some(mtm)) = (self.menu.take(), MainThreadMarker::new()) else {
+            return;
+        };
+        let app = NSApplication::sharedApplication(mtm);
+        if app.mainMenu().is_some_and(|m| m == bar) {
+            restore_menu(&app);
+        }
+    }
 }
 
 /// The frame observers of a window's controls.
@@ -666,8 +682,8 @@ fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
         }
     });
     let Some(items) = items else {
-        let original = ORIGINAL_MENU.with(|o| o.borrow_mut().take()).flatten();
-        app.setMainMenu(original.as_deref());
+        surface.chrome.menu.borrow_mut().take();
+        restore_menu(&app);
         return;
     };
     let bar = NSMenu::new(mtm);
@@ -685,6 +701,18 @@ fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
         bar.addItem(&holder(surface, &label, enabled, &sub_items));
     }
     app.setMainMenu(Some(&bar));
+    *surface.chrome.menu.borrow_mut() = Some(bar);
+}
+
+/// Brings back the main menu the app replaced.
+fn restore_menu(app: &NSApplication) {
+    let original = ORIGINAL_MENU
+        .try_with(|o| o.borrow_mut().take())
+        .ok()
+        .flatten();
+    if let Some(original) = original {
+        app.setMainMenu(original.as_deref());
+    }
 }
 
 /// Shows a context menu at `at` (root coordinates) or at the mouse.
