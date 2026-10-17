@@ -126,12 +126,6 @@ impl Component for Press {
     }
 }
 
-/// A [`Press`] calling `on_press` (a listener of the component rendering
-/// it) when pressed.
-pub(crate) fn press(on_press: Listener<()>) -> ComponentElement<Press> {
-    press_with(PressProps::default(), on_press)
-}
-
 /// A [`Press`] with `props`, calling `on_press` when pressed (and, with
 /// `long_press`, held: [`Press::element`] with `.on_event(..)` tells them
 /// apart).

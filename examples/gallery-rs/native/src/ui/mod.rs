@@ -12,29 +12,19 @@
 //!   [`Stat`], [`Meter`], [`IconTile`], [`Button`], [`RoundButton`]; and
 //!   [`caption`], [`legend`], [`code`], [`header`].
 
-// The demos use these as they move to the shared design; until each
-// piece has a user, it is expected to be unused (the expectation then
-// fails, and goes).
-#[expect(dead_code, reason = "used by the demos as they are restyled")]
 mod animated;
-#[expect(dead_code, reason = "used by the demos as they are restyled")]
 mod controls;
 mod icons;
-#[expect(dead_code, reason = "used by the demos as they are restyled")]
 mod parts;
-#[expect(dead_code, reason = "used by the demos as they are restyled")]
 mod theme;
 
-#[expect(unused_imports, reason = "used by the demos as they are restyled")]
 pub(crate) use self::{
-    animated::{
-        Appear, AppearProps, Press, PressEvent, PressProps, PressRole, appear, press, press_with,
-    },
+    animated::{Appear, AppearProps, Press, PressProps, PressRole, appear, press_with},
     controls::{
-        Segment, Segmented, SegmentedEvent, SegmentedProps, SegmentedSize, Toggle, ToggleEvent,
-        ToggleProps, segmented, toggle,
+        Segment, Segmented, SegmentedEvent, SegmentedProps, SegmentedSize, ToggleEvent, segmented,
+        toggle,
     },
-    icons::{Icon, IconName, IconProps, Tint, icon},
+    icons::{IconName, Tint, icon},
     parts::{
         Badge, Button, ButtonVariant, Card, Figure, IconTile, Inset, Meter, RoundButton, Row,
         Section, Stat, caption, code, header, legend,

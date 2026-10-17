@@ -36,6 +36,7 @@ macro_rules! content {
             }
 
             /// Adds content (an `Option` adds one or none).
+            #[allow(dead_code, reason = "made for every builder; not every builder's demos pass a list")]
             pub(crate) fn children(
                 mut self,
                 children: impl IntoIterator<Item = impl IntoElement>,
@@ -573,12 +574,6 @@ impl Row {
             root: view(),
         }
     }
-
-    /// Pressable: it lights up under the finger.
-    pub(crate) fn on_press(mut self, listener: Listener<()>) -> Self {
-        self.on_press = Some(listener);
-        self
-    }
 }
 
 impl IntoElement for Row {
@@ -641,12 +636,6 @@ impl Button {
     /// Its look.
     pub(crate) fn variant(mut self, variant: ButtonVariant) -> Self {
         self.variant = variant;
-        self
-    }
-
-    /// Filled with `color` (white text) instead of a variant's look.
-    pub(crate) fn color(mut self, color: impl Into<AdaptiveColor>) -> Self {
-        self.color = Some(color.into());
         self
     }
 
@@ -751,18 +740,6 @@ impl RoundButton {
     /// Dark, on lit glass.
     pub(crate) fn secondary(mut self) -> Self {
         self.secondary = true;
-        self
-    }
-
-    /// Its width and height.
-    pub(crate) fn size(mut self, size: f32) -> Self {
-        self.size = size;
-        self
-    }
-
-    /// Takes no presses.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
         self
     }
 }
