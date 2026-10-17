@@ -1,6 +1,6 @@
 # Reactive Rust components (design proposal)
 
-Status: proposal, for review. Nothing here is implemented yet.
+Status: accepted; being implemented.
 
 Rust components move from today's model (a component's `render` runs again on every change, the core rebuilds its
 element tree and diffs it against the last one) to the model TSX already uses: **a component runs once, signals drive
@@ -388,19 +388,15 @@ One step per PR, each green on its own. The old API is gone at the end; there is
    code; `docs/dev/components.md`, the `nsh-ui-mobile` README and `AGENTS.md` rewritten; `component_bench` rerun, with
    a new benchmark of the case this is for (one value changing often in a large component) in both models.
 
-## Open questions
+## Decisions
 
-1. **Components as functions.** `#[component] fn Stepper(props: StepperProps, cx: Scope) -> impl IntoView` could
-   generate the unit struct and the `Component` impl, which is closer to TSX and shorter. The type would be named
-   after the function (`Stepper`), so the registry and the TypeScript are unchanged. Proposed: yes, as sugar over the
-   trait.
-2. **One graph for both sides.** Separate instances keep JS's value type a plain `JsValue` and keep the boundary at
-   props and events, as it is now. One shared graph would let a JS signal drive a Rust binding directly (a Rust
-   component reading an app's store with no prop in between), at the cost of a value type that is either a `JsValue`
-   or a Rust value. Proposed: separate now; the generic graph keeps the option.
-3. **Equality of plain signals.** Proposed: `signal(v)` requires `PartialEq` and skips equal writes (TSX's `===`);
-   `signal_with(v, Equals::Never)` for types without it. The alternative is Leptos's "every write notifies", which is
-   simpler but makes unchanged writes cost a round of bindings.
-4. **Components' roots.** Today a component's root must be a plain view merged into its host, so a component cannot
-   render its own screen (`docs/dev/components.md`). The new model does not need that rule for diffing; whether to
-   lift it is a separate decision, after this lands.
+1. **Components are functions.** `#[component] fn Stepper(props: StepperProps, cx: Scope<Stepper>) -> impl IntoView`
+   generates the unit struct (named after the function) and the `Component` impl, so the registry and the TypeScript
+   are unchanged. The trait stays underneath.
+2. **One graph per side.** JS and Rust each instantiate the generic graph; the boundary stays at props and events. The
+   generic graph keeps a shared one possible later.
+3. **Equal writes are skipped.** `signal(v)` requires `PartialEq` and skips writes of an equal value (TSX's `===`);
+   `signal_with(v, Equals::Never)` notifies on every write and needs no `PartialEq`.
+4. **A component's root can be anything.** The rule that a component's root is a plain view merged into its host
+   existed for diffing; it goes. A component can render a screen, a modal or a stack: its root element's node is the
+   host's content, and the host is a pass-through.
