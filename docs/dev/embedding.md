@@ -50,8 +50,10 @@
   (`NativeComponent::render(window, cx) -> Option<AnyElement>`, any GPUI / GPUI Kit element or `Entity` view): the
   surface element's prepaint lays it out at the box's window bounds and prepaints it (`prepaint_as_root`, clipped to the
   clipping ancestors), the tree paints it where it draws the box (nsh content drawn later covers it), and a `BlockMouse`
-  hitbox under it keeps nsh's input away; keys go to it while focus is inside it. `render` is also called while the box
-  is empty, so a component can size itself. Content masks are rectangles: rounded corners do not cut it.
+  hitbox under it keeps nsh's input away; keys go to it while focus is inside it, and one that returns its widget's
+  handle from `NativeComponent::focus_handle` is a Tab stop among the text fields (in tree order, in the newest modal's
+  scope). `render` is also called while the box is empty, so a component can size itself. Content masks are
+  rectangles: rounded corners do not cut a component (videos follow them).
   `crates/nsh-platform-gpui/examples/embed.rs` runs `examples/embedded` with its badge as a GPUI element.
 - **The iOS SDK** (`crates/xtask/src/ios.rs`): per platform slice (device, simulator, Catalyst) a static
   `NativeShell.framework` whose binary is `nsh-platform-ios` with feature `embed` (built by `cargo rustc --crate-type

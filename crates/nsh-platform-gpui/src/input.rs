@@ -1019,8 +1019,8 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     handled
 }
 
-/// Tab and Shift + Tab move the keyboard focus between the text fields, in
-/// tree order (GTK's focus chain does this on Linux), within the newest
+/// Tab and Shift + Tab move the keyboard focus between the text fields (and
+/// the native components that take the keyboard), in tree order (GTK's focus chain does this on Linux), within the newest
 /// modal: the views under it never get the focus. The field reached has
 /// its text selected, as in Windows' dialogs. Past the last field (the
 /// first with Shift) the key is not taken: the window's focus moves on to
@@ -1031,14 +1031,19 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     if event.vk != VK_TAB || m.ctrl || m.alt || m.meta {
         return false;
     }
-    let mut fields = Vec::new();
-    collect_fields(&crate::navigation::focus_scope(surface), &mut fields);
-    if fields.is_empty() {
+    let mut stops = Vec::new();
+    collect_stops(
+        surface,
+        &crate::navigation::focus_scope(surface),
+        &mut stops,
+    );
+    if stops.is_empty() {
         return false;
     }
-    let n = fields.len();
-    let current =
-        crate::text_input::focused(surface).and_then(|f| fields.iter().position(|v| *v == f));
+    let n = stops.len();
+    let focused = crate::text_input::focused(surface)
+        .or_else(|| crate::native::focused_component(surface).and_then(|id| surface.view(id)));
+    let current = focused.and_then(|f| stops.iter().position(|v| *v == f));
     let next = match (current, m.shift) {
         (Some(i), false) if i + 1 == n => return false,
         (Some(0), true) => return false,
@@ -1047,41 +1052,61 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         (None, false) => 0,
         (None, true) => n - 1,
     };
-    crate::text_input::tab_to(&fields[next]);
+    focus_stop(surface, &stops[next]);
     true
 }
 
-/// Focuses the first text field (the last with `shift`), reached with Tab
-/// from outside the fields: from the embedding app's widgets, or past the
-/// last field when the window has no other tab stop (the fields wrap
-/// around, as in the other backends' windows). True when there is one.
+/// Focuses the first Tab stop (the last with `shift`), reached with Tab
+/// from outside them: from the embedding app's widgets, or past the last
+/// stop when the window has no other tab stop (they wrap around, as in the
+/// other backends' windows). True when there is one.
 pub(crate) fn tab_to_edge(surface: &Rc<Surface>, shift: bool) -> bool {
-    let mut fields = Vec::new();
-    collect_fields(&crate::navigation::focus_scope(surface), &mut fields);
-    let next = if shift { fields.last() } else { fields.first() };
+    let mut stops = Vec::new();
+    collect_stops(
+        surface,
+        &crate::navigation::focus_scope(surface),
+        &mut stops,
+    );
+    let next = if shift { stops.last() } else { stops.first() };
     match next {
         Some(view) => {
-            crate::text_input::tab_to(view);
+            focus_stop(surface, view);
             true
         }
         None => false,
     }
 }
 
-/// The enabled text fields shown under `view`, in tree order.
-fn collect_fields(view: &NshView, out: &mut Vec<NshView>) {
+/// Moves the keyboard focus to `view`: a text field, or a native component
+/// (focused by [`crate::native::apply_focus`], which has the window).
+fn focus_stop(surface: &Rc<Surface>, view: &NshView) {
+    if view.kind() == ViewKind::Native {
+        crate::native::tab_to(surface, view.id());
+    } else {
+        crate::text_input::tab_to(view);
+    }
+}
+
+/// The Tab stops shown under `view`, in tree order: enabled text fields and
+/// the native components that take the keyboard.
+fn collect_stops(surface: &Surface, view: &NshView, out: &mut Vec<NshView>) {
     {
         let s = view.state();
         if s.style.hidden || s.concealed || s.props.pointer_events == PointerEvents::None {
             return;
         }
-        if s.kind == ViewKind::Input && !s.props.accessibility.state.disabled {
+        let stop = match s.kind {
+            ViewKind::Input => !s.props.accessibility.state.disabled,
+            ViewKind::Native => crate::native::focusable(surface, s.id),
+            _ => false,
+        };
+        if stop {
             out.push(view.clone());
         }
     }
     view.with_children(|children| {
         for child in children {
-            collect_fields(child, out);
+            collect_stops(surface, child, out);
         }
     });
 }

@@ -339,6 +339,7 @@ impl AppView {
             return;
         }
         crate::input::tab_to_edge(&self.surface, m.shift);
+        crate::native::apply_focus(&self.surface, &self.focus, window, cx);
         crate::rt::flush(cx);
     }
 
@@ -364,6 +365,9 @@ impl AppView {
                 crate::text_input::blur_all(&self.surface);
             }
         }
+        // A component Tab reached takes the window's focus; a field reached
+        // from a component gives it back to the view.
+        crate::native::apply_focus(&self.surface, &self.focus, window, cx);
         crate::rt::flush(cx);
     }
 }

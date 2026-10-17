@@ -19,7 +19,11 @@
 //!   drawn above it covers it. A hitbox that blocks the mouse goes under
 //!   the element: the component's own hitboxes take the pointer and the
 //!   wheel over its box, nsh's input does not. Keys go to the component
-//!   while focus is inside it ([`focused`]). Components emit events and
+//!   while focus is inside it ([`focused`]); a component with a focus
+//!   handle ([`NativeComponent::focus_handle`]) is a Tab stop among the text
+//!   fields, at its container's place ([`crate::input`], [`apply_focus`]).
+//!   GPUI's content masks are rectangles: a rounded clipping ancestor cuts
+//!   a component's element (and a web view) to its rectangle only. Components emit events and
 //!   report their own size through their [`ComponentContext`], from any
 //!   thread. Registries belong to one `AppView` (and the views made from
 //!   the same [`crate::AppOptions`]): no globals.
@@ -116,6 +120,13 @@ pub trait NativeComponent {
     /// surface of their own with it.
     fn placed(&mut self, bounds: Option<Bounds<Pixels>>) {
         let _ = bounds;
+    }
+
+    /// The focus handle Tab moves to (a clone of the widget's), if the
+    /// component takes the keyboard: it joins the surface's Tab order with
+    /// its text fields, at the container's place in the tree.
+    fn focus_handle(&self) -> Option<FocusHandle> {
+        None
     }
 
     /// Prop `name` changed (`None`: removed). Every prop the app set comes
@@ -237,8 +248,10 @@ pub(crate) struct NativeState {
     /// The controls, by node.
     hosts: RefCell<FxHashMap<NodeId, Host>>,
     /// The focus handles inside components that the last prepaint found
-    /// focused: keys go to them, not to nsh.
-    focused: RefCell<Vec<FocusHandle>>,
+    /// focused, with their nodes: keys go to them, not to nsh.
+    focused: RefCell<Vec<(NodeId, FocusHandle)>>,
+    /// The component Tab moved to, focused by [`apply_focus`].
+    tab_to: std::cell::Cell<Option<NodeId>>,
 }
 
 impl NativeState {
@@ -268,6 +281,7 @@ impl NativeState {
         let hosts = std::mem::take(&mut *self.hosts.borrow_mut());
         drop(hosts);
         self.focused.borrow_mut().clear();
+        self.tab_to.set(None);
     }
 }
 
@@ -458,7 +472,7 @@ pub(crate) fn prepaint(surface: &Rc<Surface>, window: &mut Window, cx: &mut App)
         match host {
             HostRef::Component(item) => {
                 if let Some(focus) = item.prepaint(geometry, window, cx) {
-                    focused.push(focus);
+                    focused.push((id, focus));
                 }
             }
             HostRef::Web(web) => web.prepaint(surface, &view, geometry, window, cx),
@@ -476,7 +490,59 @@ pub(crate) fn focused(surface: &Surface, window: &Window) -> bool {
         .focused
         .borrow()
         .iter()
-        .any(|f| f.is_focused(window))
+        .any(|(_, f)| f.is_focused(window))
+}
+
+/// True when the component in node `id` takes the keyboard (a Tab stop).
+pub(crate) fn focusable(surface: &Surface, id: NodeId) -> bool {
+    component_item(surface, id).is_some_and(|item| {
+        item.component
+            .try_borrow()
+            .is_ok_and(|c| c.as_ref().is_some_and(|c| c.focus_handle().is_some()))
+    })
+}
+
+/// The node of the component focus was inside at the last frame.
+pub(crate) fn focused_component(surface: &Surface) -> Option<NodeId> {
+    surface.native.focused.borrow().first().map(|(id, _)| *id)
+}
+
+/// Tab moved to the component in node `id`: [`apply_focus`] focuses it.
+pub(crate) fn tab_to(surface: &Surface, id: NodeId) {
+    surface.native.tab_to.set(Some(id));
+}
+
+/// After nsh handled Tab (with the window, which focusing needs): focuses
+/// the component Tab moved to, if any; otherwise, when Tab moved from a
+/// component to one of nsh's text fields, gives the window's focus back to
+/// the surface (`own`).
+pub(crate) fn apply_focus(
+    surface: &Rc<Surface>,
+    own: &FocusHandle,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let handle = surface
+        .native
+        .tab_to
+        .take()
+        .and_then(|id| component_item(surface, id))
+        .and_then(|item| {
+            let c = item.component.try_borrow().ok()?;
+            c.as_ref()?.focus_handle()
+        });
+    match handle {
+        Some(handle) => {
+            crate::text_input::blur_all(surface);
+            window.focus(&handle, cx);
+            surface.invalidate();
+        }
+        None if focused(surface, window) && crate::text_input::focused(surface).is_some() => {
+            window.focus(own, cx);
+            surface.invalidate();
+        }
+        None => {}
+    }
 }
 
 /// Where a native control goes in the window: its view's box (window
