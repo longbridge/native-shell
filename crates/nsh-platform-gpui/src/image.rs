@@ -1,6 +1,6 @@
 //! Images. (Being ported: see `nsh-platform-windows/src/image.rs`.)
 
-use std::{path::PathBuf, rc::Rc};
+use std::{path::PathBuf, rc::Rc, sync::Arc};
 
 use nsh_core::{Command, ImageOptions, ImageSource, NodeId, ResizeMode};
 
@@ -61,6 +61,47 @@ pub(crate) fn set(
     _mode: ResizeMode,
     _options: &ImageOptions,
 ) {
+}
+
+/// A decoded image (stub until images are ported: what canvases draw).
+pub(crate) struct Texture(Arc<gpui::RenderImage>);
+
+impl Texture {
+    /// The GPUI image (BGRA).
+    pub(crate) fn image(&self) -> &Arc<gpui::RenderImage> {
+        &self.0
+    }
+}
+
+/// Loads `uri` (stub until images are ported: `asset:/` files in an asset
+/// directory and file paths, read on the spot) and hands it to `done`
+/// with its size in pixels.
+pub(crate) fn load(
+    surface: &Rc<Surface>,
+    uri: &str,
+    done: impl FnOnce(Result<(Rc<Texture>, (u32, u32)), String>) + 'static,
+) {
+    let path = match (uri.strip_prefix("asset:/"), &*surface.asset_base.borrow()) {
+        (Some(p), Some(AssetBase::Directory(dir))) => dir.join(p.trim_start_matches('/')),
+        (None, _) => PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri)),
+        _ => {
+            return done(Err(format!(
+                "{uri}: not loaded (images are not ported yet)"
+            )));
+        }
+    };
+    let decoded = std::fs::read(&path)
+        .map_err(|e| format!("{uri}: {e}"))
+        .and_then(|bytes| image::load_from_memory(&bytes).map_err(|e| format!("{uri}: {e}")));
+    done(decoded.map(|image| {
+        let mut rgba = image.into_rgba8();
+        let size = rgba.dimensions();
+        for p in rgba.pixels_mut() {
+            p.0.swap(0, 2);
+        }
+        let image = gpui::RenderImage::new(vec![image::Frame::new(rgba)]);
+        (Rc::new(Texture(Arc::new(image))), size)
+    }))
 }
 
 /// Image commands (`ImageInfo`).

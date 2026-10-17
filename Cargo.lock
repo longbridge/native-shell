@@ -4548,6 +4548,7 @@ dependencies = [
  "nsh-ui-mobile",
  "rustc-hash 2.1.3",
  "serde_json",
+ "tiny-skia",
  "ttf-parser",
  "ureq",
 ]
