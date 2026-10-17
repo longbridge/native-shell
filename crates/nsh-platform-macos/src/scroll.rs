@@ -341,6 +341,16 @@ pub(crate) fn can_scroll(view: &NshView, dx: f32, dy: f32) -> bool {
     (d > 0.0 && pos < max - 0.5) || (d < 0.0 && pos > min + 0.5)
 }
 
+/// Whether a trackpad gesture by `(dx, dy)` may stretch `view` past its
+/// edge: it is enabled, bounces and scrolls along the gesture's axis.
+/// Input gives it gestures no scroll view can follow ([`can_scroll`]).
+pub(crate) fn can_bounce(view: &NshView, dx: f32, dy: f32) -> bool {
+    let state = view.state();
+    state.scroll.as_ref().is_some_and(|s| {
+        s.behavior.enabled && s.behavior.bounces && s.horizontal == (dx.abs() > dy.abs())
+    })
+}
+
 /// Sends `kind` with the offset if JS listens to it.
 fn emit(surface: &Surface, view: &NshView, kind: EventKind) {
     let (id, x, y) = {

@@ -1714,6 +1714,18 @@ fn scroll_target(surface: &Surface, x: f32, y: f32, dx: f32, dy: f32) -> Option<
     })
 }
 
+/// The scroll view a trackpad gesture by `(dx, dy)` at `(x, y)` moves:
+/// the one [`scroll_target`] picks, else, at the edges, the innermost one
+/// along the gesture that bounces, which stretches as on macOS.
+fn gesture_target(surface: &Surface, x: f32, y: f32, dx: f32, dy: f32) -> Option<NshView> {
+    scroll_target(surface, x, y, dx, dy).or_else(|| {
+        let hit = pick(&surface.root, x, y)?;
+        chain(&hit.view)
+            .into_iter()
+            .find(|v| crate::scroll::can_bounce(v, dx, dy))
+    })
+}
+
 /// A `scrollWheel:` event at `(x, y)`.
 fn scroll_event(surface: &Rc<Surface>, event: &NSEvent, x: f32, y: f32, time: f64) {
     let precise = event.hasPreciseScrollingDeltas();
@@ -1850,7 +1862,7 @@ fn gesture_event(
             _ => None,
         };
         if let Some(held) = held {
-            let target = scroll_target(surface, x, y, dx, dy);
+            let target = gesture_target(surface, x, y, dx, dy);
             if target.as_ref() == Some(&held) {
                 if let Some(w) = input.wheel.borrow_mut().as_mut() {
                     w.held = false;
@@ -1866,7 +1878,7 @@ fn gesture_event(
             .as_ref()
             .is_some_and(|w| w.view.is_none());
         if needs_view {
-            let Some(view) = scroll_target(surface, x, y, dx, dy) else {
+            let Some(view) = gesture_target(surface, x, y, dx, dy) else {
                 return;
             };
             crate::scroll::wheel_begin(surface, &view);
