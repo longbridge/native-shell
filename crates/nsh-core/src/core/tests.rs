@@ -3393,15 +3393,10 @@ mod components {
     };
 
     /// Counts taps; shows `label` and the count; holds its JSX children.
-    #[derive(Default)]
-    struct Tally {
-        taps: u32,
-    }
-
     #[derive(Clone, PartialEq, Props)]
     struct TallyProps {
         #[prop(default = "Taps".into())]
-        label: SharedString,
+        label: crate::ui::Prop<SharedString>,
         children: Children,
     }
 
@@ -3410,21 +3405,21 @@ mod components {
         Tap { count: u32 },
     }
 
-    impl Component for Tally {
-        type Props = TallyProps;
-        type Event = TallyEvent;
-
-        fn render(&self, props: &TallyProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view()
-                .p_2()
-                .on_press(cx.listener(|this: &mut Self, _, cx| {
-                    this.taps += 1;
-                    cx.emit(TallyEvent::Tap { count: this.taps });
-                    cx.notify();
-                }))
-                .child(text(format!("{} {}", props.label, self.taps)))
-                .child(view().gap_1().child(props.children))
-        }
+    #[component]
+    fn Tally(props: TallyProps, cx: Scope<TallyEvent>) -> impl IntoElement {
+        let taps = signal(0);
+        view()
+            .p_2()
+            .on_press(move |_: &()| {
+                taps.update(|t| *t += 1);
+                cx.emit(TallyEvent::Tap {
+                    count: taps.get_untracked(),
+                });
+            })
+            .child(text(move || {
+                format!("{} {}", props.label.get(), taps.get())
+            }))
+            .child(view().gap_1().child(props.children))
     }
 
     fn texts(batch: &MountBatch) -> Vec<String> {
@@ -3530,8 +3525,8 @@ mod components {
                 .any(|i| matches!(i, MountItem::Create { id: 2, .. }))
         );
 
-        // A press on the host goes to the component, which emits and renders
-        // again.
+        // A press on the host goes to the component, which emits and
+        // updates its text.
         assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
         let mut events = Vec::new();
         c.take_events(&mut events);
@@ -3549,8 +3544,8 @@ mod components {
         let batch = c.commit().unwrap();
         assert_eq!(texts(&batch), ["Hits 1"]);
 
-        // A prop change renders again; only what changed is sent. Clearing
-        // a prop restores its default.
+        // A prop change reaches what reads it; only what changed is sent.
+        // Clearing a prop restores its default.
         apply(
             &mut c,
             vec![Op::SetProp {
@@ -3566,7 +3561,7 @@ mod components {
                 .iter()
                 .any(|i| matches!(i, MountItem::Create { .. }))
         );
-        // A value of the wrong type is refused (and logged), nothing renders.
+        // A value of the wrong type is refused (and logged), nothing changes.
         apply(&mut c, vec![prop("label", json!(3))]);
         assert!(c.commit().is_none());
 
@@ -3599,27 +3594,21 @@ mod components {
     }
 
     /// A header slot above its children.
-    #[derive(Default)]
-    struct Card;
-
-    #[derive(Clone, PartialEq, Props)]
+    #[derive(Clone, Copy, PartialEq, Props)]
     struct CardProps {
-        header: Option<Slot>,
+        header: crate::ui::Prop<Option<Slot>>,
         children: Children,
     }
 
-    impl Component for Card {
-        type Props = CardProps;
-        type Event = NoEvent;
-
-        fn render(&self, props: &CardProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let filled = props.header.is_some();
-            view().slot(props.header, |h| h.h(px(44.0))).child(
-                view()
-                    .map(|v| if filled { v.mt_2() } else { v.mt_0() })
-                    .child(props.children),
-            )
-        }
+    #[component]
+    fn Card(props: CardProps) -> impl IntoElement {
+        let filled = move || props.header.with(Option::is_some);
+        view().child(props.header.place(|h| h.h(px(44.0)))).child(
+            view()
+                .mt_0()
+                .style_when(filled, |v| v.mt_2())
+                .child(props.children),
+        )
     }
 
     #[test]
@@ -3704,7 +3693,7 @@ mod components {
             .unwrap();
         assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(52.0));
 
-        // Emptying the slot renders again: no header, `mt_0`.
+        // Emptying the slot: no header, `mt_0`.
         apply(
             &mut c,
             vec![Op::Remove {
@@ -3723,11 +3712,6 @@ mod components {
     }
 
     /// Renders a Tally and counts its taps.
-    #[derive(Default)]
-    struct Outer {
-        inner_taps: u32,
-    }
-
     #[derive(Clone, PartialEq, Props)]
     struct OuterProps {}
 
@@ -3736,28 +3720,22 @@ mod components {
         InnerTap(u32),
     }
 
-    impl Component for Outer {
-        type Props = OuterProps;
-        type Event = OuterEvent;
-
-        fn render(&self, _props: &OuterProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view()
-                .child(text(format!("outer {}", self.inner_taps)))
-                .child(
-                    Tally::element(TallyProps {
-                        label: "In".into(),
-                        ..TallyProps::initial()
-                    })
-                    .on_event(cx.listener(
-                        |this: &mut Self, event: &TallyEvent, cx| {
-                            let TallyEvent::Tap { .. } = event;
-                            this.inner_taps += 1;
-                            cx.emit(OuterEvent::InnerTap(this.inner_taps));
-                            cx.notify();
-                        },
-                    )),
-                )
-        }
+    #[component]
+    fn Outer(_props: OuterProps, cx: Scope<OuterEvent>) -> impl IntoElement {
+        let inner_taps = signal(0);
+        view()
+            .child(text(move || format!("outer {}", inner_taps.get())))
+            .child(
+                Tally::element(TallyProps {
+                    label: "In".into(),
+                    ..TallyProps::initial()
+                })
+                .on_event(move |event: &TallyEvent| {
+                    let TallyEvent::Tap { .. } = event;
+                    inner_taps.update(|t| *t += 1);
+                    cx.emit(OuterEvent::InnerTap(inner_taps.get_untracked()));
+                }),
+            )
     }
 
     #[test]
@@ -3877,23 +3855,15 @@ mod components {
     }
 
     /// A theme-colored swatch that darkens while pressed.
-    #[derive(Default)]
-    struct Swatch;
-
     #[derive(Clone, PartialEq, Props)]
     struct SwatchProps {}
 
-    impl Component for Swatch {
-        type Props = SwatchProps;
-        type Event = NoEvent;
-
-        fn render(&self, _props: &SwatchProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let theme = cx.theme();
-            view()
-                .size_10()
-                .bg(theme.primary)
-                .active(|s| s.bg(rgb(0xff0000)))
-        }
+    #[component]
+    fn Swatch(_props: SwatchProps) -> impl IntoElement {
+        view()
+            .size_10()
+            .bg(theme().primary)
+            .active(|s| s.bg(rgb(0xff0000)))
     }
 
     #[test]
@@ -3935,7 +3905,7 @@ mod components {
             i,
             MountItem::TrackStates { id: 2, states } if states & crate::tailwind::state::PRESSED != 0
         )));
-        // Dark appearance: restyled without a render.
+        // Dark appearance: restyled natively.
         c.set_class_environment(crate::tailwind::ClassEnvironment {
             dark: true,
             ..Default::default()
@@ -3948,27 +3918,20 @@ mod components {
     }
 
     /// Wraps each JS child in a padded row.
-    #[derive(Default)]
-    struct Rows;
-
     #[derive(Clone, PartialEq, Props)]
     struct RowsProps {
         children: Children,
     }
 
-    impl Component for Rows {
-        type Props = RowsProps;
-        type Event = NoEvent;
-
-        fn render(&self, props: &RowsProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view().children_each(props.children, |child, at| {
-                view()
-                    .p_1()
-                    .when(!at.is_first(), |v| v.mt_2())
-                    .when(at.is_last(), |v| v.pb_2())
-                    .child(child)
-            })
-        }
+    #[component]
+    fn Rows(props: RowsProps) -> impl IntoElement {
+        view().children_each(props.children, |child, at| {
+            view()
+                .p_1()
+                .style_when(move || !at.is_first(), |v| v.mt_2())
+                .style_when(move || at.is_last(), |v| v.pb_2())
+                .child(child)
+        })
     }
 
     #[test]
@@ -4073,16 +4036,10 @@ mod components {
 
     /// Ticks every 20ms from `start` until 3, then reports it; shows
     /// whether the window is wide.
-    #[derive(Default)]
-    struct Clock {
-        ticks: u32,
-        timer: Option<crate::ui::Task<()>>,
-    }
-
-    #[derive(Clone, PartialEq, Props)]
+    #[derive(Clone, Copy, PartialEq, Props)]
     struct ClockProps {
         #[prop(default)]
-        start: u32,
+        start: crate::ui::Prop<u32>,
     }
 
     #[derive(Event)]
@@ -4090,83 +4047,54 @@ mod components {
         Done,
     }
 
-    impl Component for Clock {
-        type Props = ClockProps;
-        type Event = ClockEvent;
-
-        fn setup(&mut self, props: &ClockProps, cx: &mut crate::ui::Context<'_, Self>) {
-            self.ticks = props.start;
-            self.timer = Some(cx.set_interval(
-                std::time::Duration::from_millis(20),
-                |this: &mut Self, cx| {
-                    this.ticks += 1;
-                    cx.notify();
-                    if this.ticks == 3 {
-                        cx.emit(ClockEvent::Done);
-                        // Dropping the task stops it (`clearInterval`).
-                        this.timer = None;
+    #[component]
+    fn Clock(props: ClockProps, cx: Scope<ClockEvent>) -> impl IntoElement {
+        let ticks = signal(props.start.get_untracked());
+        // A new start starts again from it.
+        effect(move || ticks.set(props.start.get()));
+        let timer = stored(None::<Spawned<()>>);
+        timer.replace(Some(set_interval(
+            std::time::Duration::from_millis(20),
+            move || {
+                ticks.update(|t| *t += 1);
+                if ticks.get_untracked() == 3 {
+                    cx.emit(ClockEvent::Done);
+                    // Cancelling the task stops it (`clearInterval`).
+                    if let Some(timer) = timer.replace(None) {
+                        timer.cancel();
                     }
-                },
-            ));
-        }
-
-        fn props_changed(
-            &mut self,
-            old: &ClockProps,
-            new: &ClockProps,
-            _cx: &mut crate::ui::Context<'_, Self>,
-        ) {
-            if old.start != new.start {
-                self.ticks = new.start;
-            }
-        }
-
-        fn render(&self, _props: &ClockProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let width = if cx.window().width > 500.0 {
+                }
+            },
+        )));
+        view().child(text(move || {
+            let width = if window().width > 500.0 {
                 "wide"
             } else {
                 "narrow"
             };
-            view().child(text(format!("{} {width}", self.ticks)))
-        }
+            format!("{} {width}", ticks.get())
+        }))
     }
 
     /// Fetches a value on the runtime's threads, then shows it.
-    #[derive(Default)]
-    struct Loader {
-        value: Option<u64>,
-        task: Option<crate::ui::Task<()>>,
-    }
-
     #[derive(Clone, PartialEq, Props)]
     struct LoaderProps {}
 
-    impl Component for Loader {
-        type Props = LoaderProps;
-        type Event = NoEvent;
-
-        fn setup(&mut self, _props: &LoaderProps, cx: &mut crate::ui::Context<'_, Self>) {
-            self.task = Some(cx.spawn(|this, cx| async move {
-                // tokio's ecosystem: a `Send` future on the runtime, a timer.
-                let value = cx
-                    .background(async { (1..=10u64).product::<u64>() })
-                    .await
-                    .unwrap();
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-                this.update(move |this: &mut Self, cx| {
-                    this.value = Some(value);
-                    cx.notify();
-                })
-                .await;
-            }));
-        }
-
-        fn render(&self, _props: &LoaderProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view().child(text(match self.value {
-                Some(v) => format!("loaded {v}"),
-                None => "loading".to_owned(),
-            }))
-        }
+    #[component]
+    fn Loader(_props: LoaderProps) -> impl IntoElement {
+        let value = signal(None::<u64>);
+        spawn(async move {
+            // tokio's ecosystem: a `Send` future on the runtime, a timer.
+            let loaded = background(async { (1..=10u64).product::<u64>() })
+                .await
+                .unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            value.set(Some(loaded));
+        });
+        view().child(text(move || match value.get() {
+            Some(v) => format!("loaded {v}"),
+            None => "loading".to_owned(),
+        }))
     }
 
     /// Runs the tasks and commits until `done` holds of what was shown.
@@ -4231,7 +4159,7 @@ mod components {
         c.run_component_tasks();
         assert!(c.commit().is_none(), "stopped");
 
-        // A prop change reaches `props_changed` before the render.
+        // A prop change reaches what reads it.
         apply(
             &mut c,
             vec![Op::SetProp {
@@ -4241,8 +4169,8 @@ mod components {
         );
         assert_eq!(texts(&c.commit().unwrap()), ["10 narrow"]);
 
-        // What the render read of the environment renders it again; the
-        // rest does not.
+        // What a binding read of the environment updates it; the rest does
+        // not.
         let env = crate::ui::Environment {
             window: Size::new(390.0, 844.0),
             ..Default::default()

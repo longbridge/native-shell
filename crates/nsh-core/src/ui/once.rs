@@ -185,6 +185,12 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
         super::reactive::call_api(self.host, name, args)
     }
 
+    fn adopt(&mut self, parent: Owner) {
+        if self.owner.is_none() && !self.parent.is_live() {
+            self.parent = parent;
+        }
+    }
+
     fn failure_owner(&self) -> Option<Owner> {
         Some(self.owner.unwrap_or(self.parent))
     }

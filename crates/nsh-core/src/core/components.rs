@@ -1297,6 +1297,32 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// The owner of the nearest component above `host` in the tree (its
+    /// view's, or a list cell's row), else none.
+    fn owner_above(&self, host: NodeId) -> crate::ui::Owner {
+        let mut key = self.key(host).ok();
+        while let Some(k) = key {
+            let parent = self.nodes[k as usize].parent;
+            if parent == NO_KEY {
+                break;
+            }
+            key = Some(parent);
+            let id = self.nodes[parent as usize].id;
+            let owner = self
+                .components
+                .instances
+                .get(&id)
+                .and_then(|inst| match &inst.inner {
+                    Inner::Component(inner) => inner.runs_once().filter(|o| o.is_live()),
+                    _ => inst.cell_owner,
+                });
+            if let Some(owner) = owner {
+                return owner;
+            }
+        }
+        crate::ui::Owner::detached()
+    }
+
     /// The host of the component that runs once whose owner is `owner`, or
     /// whose view made it (a binding's own owner is under the component's).
     fn host_of_owner(&self, owner: crate::ui::Owner) -> Option<NodeId> {
@@ -1362,7 +1388,10 @@ impl<M: TextEngine> Core<M> {
                 // props) lives until the renders of this commit are done.
                 let rendered = match failed {
                     Some(_) => Ok((ElNode::empty_view(), RenderReads::default())),
-                    None if inner.runs_once().is_some() => caught(|| inner.render(&scope)),
+                    None if inner.runs_once().is_some() => {
+                        inner.adopt(self.owner_above(host));
+                        caught(|| inner.render(&scope))
+                    }
                     None => {
                         let (owner, rendered) =
                             crate::ui::create_root(|| caught(|| inner.render(&scope)));
@@ -3097,6 +3126,22 @@ impl<M: TextEngine> Core<M> {
     /// own parts' events never reach JS, which does not know them).
     pub fn component_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
         let _entered = self.components.runtime.enter();
+        let handled = self.dispatch_event(id, kind, payload);
+        // What views' listeners emitted reaches its listeners (JS hears it
+        // in this turn, as it would a component's that renders again).
+        loop {
+            let emits = self.components.runtime.take_emits();
+            if emits.is_empty() {
+                break;
+            }
+            for (host, event) in emits {
+                self.route_emit(host, event);
+            }
+        }
+        handled
+    }
+
+    fn dispatch_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
         // Touches come on the root with the listening nodes around each
         // finger: the components hear theirs, JS its own.
         if kind == EventKind::Touch && id == ROOT_ID {

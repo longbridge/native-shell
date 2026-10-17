@@ -497,6 +497,12 @@ pub(crate) trait AnyInstance {
     fn failure_owner(&self) -> Option<super::Owner> {
         None
     }
+    /// A component that runs once made by JS (made where no owner is): its
+    /// view will be made under `parent`, the owner of the nearest component
+    /// above it in the tree, so it sees that one's context.
+    fn adopt(&mut self, parent: super::Owner) {
+        let _ = parent;
+    }
     /// It is the component of `host`, made where `parent` owns.
     fn place(&mut self, host: crate::NodeId, parent: super::Owner) {
         let _ = (host, parent);
