@@ -1062,6 +1062,7 @@ mod tests {
             title: "Build failed".to_owned(),
             message,
             prose: false,
+            copied: Cell::new(false),
             layout: RefCell::new(None),
         };
         let l = overlay.lay_out((320.0, 200.0));
