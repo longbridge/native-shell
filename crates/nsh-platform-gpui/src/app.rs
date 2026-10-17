@@ -169,6 +169,8 @@ pub struct AppView {
     options: RefCell<AppOptions>,
     /// Tab into the view from the host's widgets ([`AppView::tab_entered`]).
     _keystrokes: gpui::Subscription,
+    /// The view itself handled the Tab being dispatched ([`AppView::tab`]).
+    tabbed: std::cell::Cell<bool>,
     #[cfg(feature = "dev")]
     pub(crate) dev: RefCell<Option<crate::dev::DevSession>>,
 }
@@ -208,6 +210,7 @@ impl AppView {
             surface,
             focus: cx.focus_handle().tab_stop(true),
             options: RefCell::new(options),
+            tabbed: std::cell::Cell::new(false),
             _keystrokes: cx.observe_keystrokes(Self::tab_entered),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
@@ -332,10 +335,14 @@ impl AppView {
     ) {
         let k = &event.keystroke;
         let m = &k.modifiers;
-        if k.key != "tab" || m.control || m.alt || m.platform {
+        if k.key != "tab" || m.control || m.alt || m.platform || self.tabbed.take() {
             return;
         }
-        if !self.focus.is_focused(window) || crate::text_input::focused(&self.surface).is_some() {
+        // The host's Tab lands on the view, or (by GPUI's tab order, which
+        // does not follow the surface's tree) on one of its components.
+        let on_view =
+            self.focus.is_focused(window) && crate::text_input::focused(&self.surface).is_none();
+        if !on_view && !crate::native::focused(&self.surface, window) {
             return;
         }
         crate::input::tab_to_edge(&self.surface, m.shift);
@@ -353,15 +360,12 @@ impl AppView {
                 ..Default::default()
             },
         };
+        self.tabbed.set(true);
         if !crate::input::key(&self.surface, event) {
-            if shift {
-                window.focus_prev(cx);
-            } else {
-                window.focus_next(cx);
-            }
-            // Still focused: the window has no other tab stop (a window of
-            // its own), so the fields wrap around.
-            if !self.focus.is_focused(window) || !crate::input::tab_to_edge(&self.surface, shift) {
+            // Past the last stop (the first with Shift): on to the window's
+            // next tab stop outside the view, or around again when there is
+            // none (a window of its own).
+            if self.leave(shift, window, cx) || !crate::input::tab_to_edge(&self.surface, shift) {
                 crate::text_input::blur_all(&self.surface);
             }
         }
@@ -369,6 +373,37 @@ impl AppView {
         // from a component gives it back to the view.
         crate::native::apply_focus(&self.surface, &self.focus, window, cx);
         crate::rt::flush(cx);
+    }
+}
+
+impl AppView {
+    /// Moves the window's focus to the next tab stop (the previous with
+    /// `shift`) outside the view, counted from the view's own: GPUI's tab
+    /// order also holds the components' handles, inserted wherever the
+    /// surface prepaints them, and they are skipped. False when there is
+    /// none: the focus is left on the view.
+    fn leave(&self, shift: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        window.focus(&self.focus, cx);
+        // Each component's handle at most once, the view's, then out.
+        let tries = crate::native::component_count(&self.surface) + 2;
+        for _ in 0..tries {
+            if shift {
+                window.focus_prev(cx);
+            } else {
+                window.focus_next(cx);
+            }
+            let inside =
+                self.focus.is_focused(window) || crate::native::focused(&self.surface, window);
+            if !inside {
+                return true;
+            }
+            if self.focus.is_focused(window) {
+                // Back at the view: no stop outside it.
+                break;
+            }
+        }
+        window.focus(&self.focus, cx);
+        false
     }
 }
 
