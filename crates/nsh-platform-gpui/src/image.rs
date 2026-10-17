@@ -24,12 +24,14 @@
 //! smaller than its size (as mipmaps: no aliasing, smaller textures),
 //! blurred (`blurRadius` and `filter: blur()`, a stack blur in pixels at
 //! the variant's size, scaled down further for large radii), passed
-//! through the color matrix of the view's other filters, tinted
+//! through the color filters it is drawn with (the view's and its
+//! ancestors', [`DrawCx::matrix`]), tinted
 //! (`tintColor` paints its color through the image's alpha) and multiplied
 //! by the view's opacity (quantized to [`ALPHA_STEPS`] levels: fades and
 //! translucent screens). While a variant is being made, the closest one
 //! that is ready is drawn. A texture leaves GPUI's atlases when its last
-//! owner drops it ([`Texture`]).
+//! owner drops it ([`Texture`]). GPUI rounds the sprite: the corners of
+//! the innermost rounded clip it reaches ([`DrawCx::clip_rounded`]).
 //!
 //! A file named `…@2x.png` (or a source with a declared size) has its
 //! natural size scaled accordingly, as on iOS.
@@ -58,7 +60,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gpui::{Bounds, Pixels, RenderImage, px};
+use gpui::{Corners, RenderImage};
 use nsh_core::{
     Color, Command, EventKind, EventPayload, ImageOptions, ImageSource, NodeId, PayloadValue,
     ResizeMode, access::Access,
@@ -1713,29 +1715,8 @@ fn level(pixels: (u32, u32), drawn: (f32, f32), blur: f32) -> (u8, u8) {
     (mip, radius.round().clamp(1.0, 254.0) as u8)
 }
 
-/// The radii of a box's corners (clockwise from the top left) that round
-/// `visible`, the part of an image inside it: the corners it reaches
-/// (a letterboxed image has square corners in the box's rounded ones).
-fn reached_corners(radii: [f32; 4], boxed: Bounds<Pixels>, visible: Bounds<Pixels>) -> [f32; 4] {
-    let near = |a: Pixels, b: Pixels| (a - b).abs() < px(0.5);
-    let (left, top) = (
-        near(visible.left(), boxed.left()),
-        near(visible.top(), boxed.top()),
-    );
-    let (right, bottom) = (
-        near(visible.right(), boxed.right()),
-        near(visible.bottom(), boxed.bottom()),
-    );
-    [
-        if left && top { radii[0] } else { 0.0 },
-        if right && top { radii[1] } else { 0.0 },
-        if right && bottom { radii[2] } else { 0.0 },
-        if left && bottom { radii[3] } else { 0.0 },
-    ]
-}
-
-/// Draws one picture with the view's mode, radii, tint, filters, blur and
-/// `alpha` (with the pass's opacity).
+/// Draws one picture with the view's mode, the clip's corners, tint,
+/// filters, blur and `alpha` (with the pass's opacity).
 fn draw_one(
     cx: &mut DrawCx<'_>,
     state: &ViewState,
@@ -1769,7 +1750,9 @@ fn draw_one(
     let look = Look {
         mip,
         blur: blur as u16,
-        matrix: nsh_core::compose_color_matrices(filters),
+        // The view's and its ancestors' color filters, which GPUI cannot
+        // apply to a sprite.
+        matrix: cx.matrix,
         tint: state.style.tint_color,
         alpha: alpha.min(ALPHA_STEPS as f32) as u8,
     };
@@ -1778,13 +1761,14 @@ fn draw_one(
     };
     let boxed = cx.rect(0.0, 0.0, w, h);
     let placed = cx.rect(x, y, fw, fh);
-    let visible = boxed.intersect(&placed);
-    let radii = state.radii().map(|r| r * k);
-    let corners = crate::render::corners(reached_corners(radii, boxed, visible), 1.0);
+    // GPUI rounds the sprite itself: the corners of the innermost rounded
+    // clip (the view's own, or a rounded parent's) that the part shown
+    // reaches.
+    let (shown, corners) = cx.clip_rounded(boxed.intersect(&placed), Corners::default());
     let frame = frame.min(texture.frames().saturating_sub(1));
     let data = texture.image().clone();
     cx.paint(|window, _| {
-        if let Err(e) = window.paint_image(boxed, placed, corners, data, frame, false) {
+        if let Err(e) = window.paint_image(shown, placed, corners, data, frame, false) {
             log::warn!("image: cannot paint: {e}");
         }
     });
@@ -2054,20 +2038,6 @@ mod tests {
         assert_eq!(level((400, 200), (400.0, 200.0), 40.0), (2, 10));
         // Never below a pixel.
         assert_eq!(level((2, 2), (0.1, 0.1), 0.0).0, 1);
-    }
-
-    #[test]
-    fn rounds_reached_corners() {
-        let boxed = crate::render::bounds(0.0, 0.0, 100.0, 100.0);
-        let r = [10.0, 20.0, 30.0, 40.0];
-        // Cover: every corner.
-        assert_eq!(reached_corners(r, boxed, boxed), r);
-        // Letterboxed (contain, wide image): no corner reached.
-        let letter = crate::render::bounds(0.0, 25.0, 100.0, 50.0);
-        assert_eq!(reached_corners(r, boxed, letter), [0.0; 4]);
-        // Touching the top edge only.
-        let top = crate::render::bounds(0.0, 0.0, 100.0, 50.0);
-        assert_eq!(reached_corners(r, boxed, top), [10.0, 20.0, 0.0, 0.0]);
     }
 
     #[test]
