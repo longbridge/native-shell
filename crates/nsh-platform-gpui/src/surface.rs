@@ -372,7 +372,18 @@ impl Surface {
     /// Asks for the surface to be drawn again (once, however often asked
     /// before it is): [`flush_all`] notifies its view.
     pub(crate) fn invalidate(&self) {
-        self.invalid.set(true);
+        if !self.invalid.replace(true) {
+            // Entry points flush when they end; a change made anywhere else
+            // (a GPUI callback, an observer) is flushed by the main-thread
+            // queue, which flushes after its jobs: GPUI's retained frames
+            // never show a stale tree.
+            crate::rt::invoke(|| {});
+        }
+    }
+
+    /// It changed since it was last drawn.
+    pub(crate) fn invalidated(&self) -> bool {
+        self.invalid.get()
     }
 
     /// The surface is being drawn: what changed so far is in this frame.
