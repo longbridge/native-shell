@@ -483,8 +483,10 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
         }
         Command::ReadClipboard { id, has_only } => read_clipboard(surface, *id, *has_only),
         Command::ExitApp => {
+            // Closing destroys the window, whose handler stops the surface:
+            // not while the surface is applying this batch.
             if let Some(window) = surface.root.root().and_downcast::<gtk::Window>() {
-                window.close();
+                glib::idle_add_local_once(move || window.close());
             }
         }
         // The status bar is a phone's; layout animations arrive as mount
