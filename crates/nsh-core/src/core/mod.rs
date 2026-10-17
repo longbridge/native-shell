@@ -1997,6 +1997,13 @@ impl<M: TextEngine> Core<M> {
                 }
                 return Ok(());
             }
+            Prop::Keymap(keymap) => {
+                // The surface's shortcuts (the root's): `nsh/keymap`.
+                if key == self.root {
+                    self.mount.push(MountItem::Keymap(keymap));
+                }
+                return Ok(());
+            }
             Prop::LongPressDelay(value) => {
                 let props = node.props.get_or_insert_default();
                 if props.long_press_delay != value {

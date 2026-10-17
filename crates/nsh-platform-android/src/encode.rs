@@ -280,6 +280,8 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                 e.int(LAYOUT_DIRECTION);
                 e.bool(rtl);
             }
+            // Keyboard shortcuts are not matched on Android yet.
+            MountItem::Keymap(_) => {}
             MountItem::Appearance { appearance } => {
                 e.int(APPEARANCE);
                 e.int(appearance as i32);

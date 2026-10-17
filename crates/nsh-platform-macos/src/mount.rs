@@ -284,6 +284,8 @@ impl Mounter {
             MountItem::Appearance { appearance } => {
                 crate::system::set_appearance(surface, *appearance);
             }
+            // Not matched yet.
+            MountItem::Keymap(_) => {}
             MountItem::AccessibilityLabel { id, label } => {
                 if let Some(view) = self.get(*id) {
                     crate::access::label(view, label);

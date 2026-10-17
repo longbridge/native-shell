@@ -20,6 +20,7 @@ mod errors;
 mod fetch;
 mod hot;
 mod js_touch;
+mod keymap;
 mod list;
 mod list_bench;
 mod native;

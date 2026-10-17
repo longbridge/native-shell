@@ -170,6 +170,7 @@ events! {
     BackRequest = "onBackRequest": "The user tried to leave a screen with `preventBack` (back button, header back button).",
     NativeEvent = "onNativeEvent": "A registered native component emitted an event (payload: [`EventPayload::Native`]).",
     Clipboard = "onClipboard": "A clipboard read finished (root only; payload: `id`, `has`: whether it holds text, `text`: the text, unless only `has` was asked).",
+    KeyCommand = "onKeyCommand": "A key matched a binding of `nsh/keymap` (root only; payload: the binding's id, [`crate::keymap::KeyBinding::id`]).",
 }
 
 /// What an input holds, for the system's autofill and suggestions
@@ -1296,6 +1297,9 @@ pub enum Prop {
     /// `setColorScheme`).
     #[prop(js = "appearance", internal)]
     Appearance(crate::platform::Appearance),
+    /// The surface's keyboard shortcuts (on the root, from `nsh/keymap`):
+    /// the whole table, mounted as [`crate::MountItem::Keymap`].
+    Keymap(std::sync::Arc<crate::keymap::Keymap>),
     /// Padding added to the style's own (safe areas, the keyboard), in
     /// points on the physical edges; set by components
     /// (`Element::inset_padding`), never by JS.

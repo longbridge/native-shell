@@ -18,6 +18,7 @@ mod fenwick;
 mod geometry;
 mod grid;
 pub mod js;
+pub mod keymap;
 mod mount;
 mod ops;
 pub mod platform;

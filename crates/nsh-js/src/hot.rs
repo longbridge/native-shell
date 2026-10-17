@@ -66,6 +66,9 @@ struct Inner {
     /// "module:name" -> the signature of a kept value's initializer, and
     /// the value.
     kept: HashMap<String, (String, V)>,
+    /// Module id -> functions undoing what its top-level code did
+    /// (`undo_on_rerun`), called before it runs again.
+    undo: HashMap<String, Vec<V>>,
     /// Module id -> what its `mount` calls mounted.
     renders: HashMap<String, Vec<Render>>,
     /// Module id -> the renders of its previous run, while it runs again:
@@ -177,6 +180,20 @@ pub(crate) fn rendered(ctx: Ctx, app: Raw, dispose: Raw) {
                 dispose: V::dup(ctx, dispose),
             });
         }
+    });
+}
+
+/// `f` undoes what the module running now did at its top level (a
+/// keyboard shortcut it bound): it runs before the module runs again.
+/// Nothing happens outside a development bundle's module.
+pub(crate) fn undo_on_rerun(ctx: Ctx, f: V) {
+    // Freed with no borrow held when no module runs.
+    let _unused = with(ctx, |h| match h.current.clone() {
+        Some(id) => {
+            h.undo.entry(id).or_default().push(f);
+            None
+        }
+        None => Some(f),
     });
 }
 
@@ -364,6 +381,12 @@ fn run(ctx: Ctx, id: &str) -> R<()> {
     }) else {
         return Err(type_error(ctx, &format!("nsh hot: no module {id}")));
     };
+    let undo = with(ctx, |h| h.undo.remove(id).unwrap_or_default());
+    for f in undo {
+        if js::call(ctx, f.raw(), UNDEFINED, &[]).is_err() {
+            js::report_exception(ctx);
+        }
+    }
     let exports = if fixed {
         kept.clone_ref()
     } else {

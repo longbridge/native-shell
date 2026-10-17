@@ -923,6 +923,7 @@ pub(crate) fn encode(out: &mut Out, item: &MountItem) {
         MountItem::Component { id, name } => out.item("comp").num(*id).str(name).end(),
         // Browsers hit-test what overflows a box themselves.
         MountItem::ComponentProps { .. }
+        | MountItem::Keymap(_)
         | MountItem::Overflow { .. }
         | MountItem::AnimationBindings { .. }
         | MountItem::Animation(_) => {}
