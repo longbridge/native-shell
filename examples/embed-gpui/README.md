@@ -12,7 +12,8 @@ cargo build -p nsh-cli
 cd examples/embed-gpui && CARGO_TARGET_DIR=../../target cargo run
 ```
 
-`cargo run -- <bundle.nshc or its directory>` runs another bundle. The example is its own Cargo workspace, so GPUI Kit
+`cargo run -- <bundle.nshc or its directory>` runs another bundle; `--alone` runs one surface in a window of its own
+(no host widgets: Tab wraps around its fields and the switch). The example is its own Cargo workspace, so GPUI Kit
 stays out of nsh's workspace builds; `CARGO_TARGET_DIR` shares what nsh's workspace built. It depends on `gpui-kit`
 with feature `gpui-fast`, so GPUI Kit and nsh draw with the same GPUI (`cargo tree -i gpui-fast` shows one version).
 See "GPUI and GPUI Kit apps" in `docs/dev/embedding.md`.

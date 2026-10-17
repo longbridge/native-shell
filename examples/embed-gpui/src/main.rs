@@ -17,7 +17,8 @@
 //! cd examples/embed-gpui && CARGO_TARGET_DIR=../../target cargo run
 //! ```
 //!
-//! `cargo run -- <bundle.nshc or its directory>` runs another bundle.
+//! `cargo run -- <bundle.nshc or its directory>` runs another bundle;
+//! `--alone` runs one surface in a window of its own (no host widgets).
 
 mod switch;
 mod theme;
@@ -88,37 +89,7 @@ impl Shell {
 
     /// A new view running the bundle, in the host's theme.
     fn open_app(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<AppView>> {
-        // SAFETY: the bundle is this app's own build output (`nsh build`),
-        // the same trust as the app's resources.
-        let bundle = match unsafe { Bundle::read_trusted(&self.bundle) } {
-            Ok(bundle) => bundle,
-            Err(err) => {
-                log::error!("cannot read {}: {err}", self.bundle.display());
-                return None;
-            }
-        };
-        let options = AppOptions {
-            // `nsh build` copies imported assets next to the bundle.
-            asset_base: self
-                .bundle
-                .parent()
-                .map(|dir| AssetBase::Directory(dir.join("assets"))),
-            ..AppOptions::default()
-        };
-        let view = cx.new(|cx| AppView::new(options, window, cx));
-        // The app's switch is GPUI Kit's, drawn by this app.
-        view.read(cx)
-            .register_component(switch::NAME, std::rc::Rc::new(switch::HostSwitch::make));
-        let theme = cx.theme();
-        let (nsh_theme, appearance) = (theme::nsh_theme(theme), theme::appearance(theme.mode));
-        view.update(cx, |view, cx| {
-            // Before the app starts: its first frame is in the host's theme.
-            view.set_theme(Some(nsh_theme), cx);
-            view.set_appearance(appearance, cx);
-            view.on_error(|message| log::error!("embedded app: {message}"));
-            view.load(NshApp::Js(bundle));
-        });
-        Some(view)
+        open_app(&self.bundle, window, cx)
     }
 
     fn apply_theme(&mut self, cx: &mut Context<Self>) {
@@ -308,10 +279,47 @@ impl Render for Shell {
     }
 }
 
+/// A new view running `path`'s bundle, in the host's theme.
+fn open_app(path: &Path, window: &mut Window, cx: &mut App) -> Option<Entity<AppView>> {
+    // SAFETY: the bundle is this app's own build output (`nsh build`), the
+    // same trust as the app's resources.
+    let bundle = match unsafe { Bundle::read_trusted(path) } {
+        Ok(bundle) => bundle,
+        Err(err) => {
+            log::error!("cannot read {}: {err}", path.display());
+            return None;
+        }
+    };
+    let options = AppOptions {
+        // `nsh build` copies imported assets next to the bundle.
+        asset_base: path
+            .parent()
+            .map(|dir| AssetBase::Directory(dir.join("assets"))),
+        ..AppOptions::default()
+    };
+    let view = cx.new(|cx| AppView::new(options, window, cx));
+    // The app's switch is GPUI Kit's, drawn by this app.
+    view.read(cx)
+        .register_component(switch::NAME, std::rc::Rc::new(switch::HostSwitch::make));
+    let theme = cx.theme();
+    let (nsh_theme, appearance) = (theme::nsh_theme(theme), theme::appearance(theme.mode));
+    view.update(cx, |view, cx| {
+        // Before the app starts: its first frame is in the host's theme.
+        view.set_theme(Some(nsh_theme), cx);
+        view.set_appearance(appearance, cx);
+        view.on_error(|message| log::error!("embedded app: {message}"));
+        view.load(NshApp::Js(bundle));
+    });
+    Some(view)
+}
+
 /// The bundle to run: the argument (a `.nshc` or its directory), else the
 /// example's own build.
 fn bundle_path() -> PathBuf {
-    let arg = std::env::args_os().nth(1).map(PathBuf::from);
+    let arg = std::env::args_os()
+        .skip(1)
+        .find(|a| a != "--alone")
+        .map(PathBuf::from);
     let path = arg.unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("build/app"));
     if path.is_dir() {
         path.join("bundle.nshc")
@@ -346,10 +354,21 @@ fn main() {
             }),
             ..Default::default()
         };
-        gpui_kit::open_window(options, cx, |window, cx| {
-            cx.new(|cx| Shell::new(bundle, window, cx))
-        })
-        .expect("a window opens");
+        if std::env::args().any(|a| a == "--alone") {
+            // One surface filling a window with no host widgets: Tab wraps
+            // around its stops, as in a standalone app.
+            cx.open_window(options, |window, cx| {
+                let view = open_app(&bundle, window, cx).expect("the bundle loads");
+                window.focus(&view.focus_handle(cx), cx);
+                view
+            })
+            .expect("a window opens");
+        } else {
+            gpui_kit::open_window(options, cx, |window, cx| {
+                cx.new(|cx| Shell::new(bundle, window, cx))
+            })
+            .expect("a window opens");
+        }
         cx.activate(true);
     });
 }
