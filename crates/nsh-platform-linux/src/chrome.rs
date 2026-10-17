@@ -263,7 +263,7 @@ fn header(window: &gtk::Window) -> Option<gtk::Widget> {
 
 /// Hides the window's header. A shown header is only hidden: giving the
 /// window a title bar of its own once realized makes GTK unrealize and map
-/// it again (with a warning). A window without one is decorated by the
+/// it again (`set_titlebar`). A window without one is decorated by the
 /// window manager: then an empty, hidden title bar switches it to
 /// client-side decorations without a header, which does map it again.
 fn hide_header(surface: &Surface, window: &gtk::Window) {
@@ -279,8 +279,24 @@ fn hide_header(surface: &Surface, window: &gtk::Window) {
             empty.set_visible(false);
             // Realizes the window again, which applies the chrome again.
             *c.empty.borrow_mut() = Some(empty.clone());
-            window.set_titlebar(Some(&empty));
+            set_titlebar(window, Some(&empty));
         }
+    }
+}
+
+/// Gives `window` a title bar of its own (or takes it away) once realized:
+/// what `gtk_window_set_titlebar` does then (unrealize, set, map again if
+/// it was mapped), without the warning it prints on every launch and
+/// toggle.
+fn set_titlebar(window: &gtk::Window, titlebar: Option<&gtk::Widget>) {
+    let widget = window.upcast_ref::<gtk::Widget>();
+    let mapped = widget.is_mapped();
+    if widget.is_realized() {
+        widget.unrealize();
+    }
+    window.set_titlebar(titlebar);
+    if mapped {
+        widget.map();
     }
 }
 
@@ -295,7 +311,7 @@ fn show_header(surface: &Surface, window: &gtk::Window) {
     if let Some(empty) = empty
         && window.titlebar().as_ref() == Some(&empty)
     {
-        window.set_titlebar(gtk::Widget::NONE);
+        set_titlebar(window, None);
     }
 }
 
