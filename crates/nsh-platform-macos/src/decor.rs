@@ -463,8 +463,18 @@ impl Decor {
         }
         // A text view with odd corners is masked even when it does not clip.
         let masks = shared.is_none() && (clips || kind == Kind::Text);
+        // Text and canvas views clip their drawing to their bounds (as
+        // UIKit's `drawRect:` does): AppKit otherwise backs what such a
+        // view could draw outside them, up to what its ancestors show, and
+        // draws it again whenever that changes: every text in a scroll
+        // view on every scroll step. Not with a shadow or anything drawn
+        // outside, which the mask would cut.
+        let contained = kind == Kind::Text
+            && !shape.shadow
+            && !crate::visual::draws_outside(style)
+            && crate::visual::drop_shadow(style).is_none();
         if let Some(cl) = clip_layer {
-            cl.setMasksToBounds(clips && shared.is_some());
+            cl.setMasksToBounds((clips && shared.is_some()) || (contained && container.is_none()));
             if masks {
                 let m = shape_mask(&mut self.mask, local, radii);
                 // SAFETY: a mask layer owned by this decoration.

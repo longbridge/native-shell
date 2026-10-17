@@ -39,6 +39,17 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
   contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
   backing store. Implicit animations are off for every change nsh makes (`surface::quiet`).
+- **Drawing views clip to their bounds** (`decor.rs`, as UIKit's `drawRect:` does), unless a shadow or outline is drawn
+  outside them. Since macOS 14 views do not clip by default, and AppKit then backs what a `drawRect:` view could draw
+  outside its bounds up to what its ancestors show, and draws it again whenever that changes
+  (`NS_viewVisibleRectDidChange`): every text of a scroll view on every scroll step (~150 redraws per wheel event in
+  the gallery's Lists demo). `NSView.clipsToBounds` is the layer's `masksToBounds`, so decoration owns it.
+- **AppKit draws `drawRect:` content twice**: it records the drawing into a display list, then replays it into the
+  layer's backing store (half-float on wide-color screens, on several threads). Drawing into a bitmap of our own in
+  `updateLayer` instead was measured slower (one thread), and `contentsFormat` / `drawsAsynchronously` changed nothing:
+  the lever is drawing less. Rendering canvases into bitmaps on a background queue was measured too (Stocks:
+  main-thread frame 2.7 → 0.3 ms) and left out: the process' CPU went from ~53% to ~140% (Core Graphics on the CPU
+  instead of AppKit's display-list replay), and the canvas showed a frame late.
 - **One hop per commit.** The engine runs on its own thread; its sink queues each commit and wakes the main queue once
   (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
   Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared
