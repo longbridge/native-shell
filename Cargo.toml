@@ -52,6 +52,9 @@ log = "0.4"
 libc = "0.2"
 imagesize = "0.15"
 ttf-parser = "0.25"
+# Font files found by family for the GPUI backend's canvas text outlines
+# (already in GPUI's tree through usvg and cosmic-text).
+fontdb = "0.23"
 # Line breaking (UAX #14) and bidi of the GPUI backend's text engine.
 unicode-linebreak = "0.1.5"
 unicode-bidi = "0.3.18"

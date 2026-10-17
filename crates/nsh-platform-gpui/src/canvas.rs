@@ -1,5 +1,5 @@
 //! Canvas views: a recorded [`Drawing`] rasterized with tiny-skia at the
-//! window's resolution, text painted as GPUI glyphs.
+//! window's resolution, text included.
 //!
 //! GPUI paints paths with one solid color or a two-stop gradient, clips
 //! only to rectangles and has no blur, no composite operations and no
@@ -22,8 +22,9 @@
 //! drawn (so they are transformed, dashes included) and every painting
 //! operation fills a path in pixmap coordinates. Clips are anti-aliased
 //! masks kept with `save` / `restore`'s state. Gradients are evaluated per
-//! pixel in user space, with stops interpolated premultiplied as canvas
-//! specifies: linear, two-circle radial and conic gradients are all exact.
+//! pixel in user space, with stops interpolated premultiplied (as on
+//! Windows: a stop fading to `transparent` does not turn grey): linear,
+//! two-circle radial and conic gradients are all exact.
 //! Shadows are the shape's alpha blurred by three box blurs (close to
 //! canvas' Gaussian of standard deviation blur / 2), offset in the view's
 //! coordinates. Composite operations other than `source-over` draw the
@@ -31,17 +32,23 @@
 //! so they act where the shape is transparent too.
 //!
 //! Text is shaped by GPUI's text system in the fonts the engine measures
-//! with (so drawn widths match `measureText`) and painted as GPUI glyphs
-//! above the pixmap: GPUI's text system gives no outlines to rasterize. A
-//! painting operation that overlaps text drawn before it starts a new
-//! pixmap above that text, so the order of what overlaps is kept. Where
-//! glyphs cannot follow canvas, text is approximated: it is clipped to its
-//! clip's bounds, glyphs stay upright under rotations and skews, text
-//! squeezed to `maxWidth` is made smaller instead of narrower, gradients
-//! paint it in their middle color, `strokeText` fills, shadows are not
-//! blurred, composite operations do not apply and `clearRect` does not
-//! erase it. Images are loaded through [`load_image`] when a drawing names
-//! them and kept per canvas.
+//! with (so drawn widths match `measureText`), and its glyphs become paths
+//! like any other shape: GPUI gives no outlines, so the font's file is
+//! found by family, weight and style with fontdb (the system's fonts and
+//! those the app registers, [`font_registered`]) and checked against
+//! GPUI's metrics before its outlines (ttf-parser) are used with GPUI's
+//! glyph ids (the system's fonts are found by a worker, which takes
+//! hundreds of milliseconds: canvases that drew text before are drawn
+//! again then). Glyphs without a matching file or an outline (emoji, a
+//! font GPUI fell back to, any before the fonts are found) are painted as
+//! GPUI glyphs above the pixmap instead:
+//! a painting operation overlapping them starts a new pixmap above, so the
+//! order of what overlaps is kept, but they are clipped to their clip's
+//! bounds, stay upright under rotations, are made smaller rather than
+//! narrower by `maxWidth`, take a gradient's middle color, fill for
+//! `strokeText`, cast unblurred shadows and ignore composite operations
+//! and `clearRect`. Images are loaded through [`load_image`] when a
+//! drawing names them and kept per canvas.
 
 use std::{
     cell::RefCell,
@@ -50,10 +57,7 @@ use std::{
     sync::Arc,
 };
 
-use gpui::{
-    Font, FontFeatures, FontStyle, FontWeight, Hsla, RenderImage, SharedString, TextRun,
-    WindowTextSystem, px,
-};
+use gpui::{Font, FontStyle, Hsla, RenderImage, TextRun, WindowTextSystem, px};
 use nsh_animation::AnimationValue;
 use nsh_core::{
     Color,
@@ -165,6 +169,17 @@ pub(crate) fn set(surface: &Rc<Surface>, view: &NshView, drawing: Arc<Drawing>) 
         }
         c.drawing = Some(drawing);
         c.stale();
+    }
+    let text =
+        |op: &CanvasOp| matches!(op, CanvasOp::FillText { .. } | CanvasOp::StrokeText { .. });
+    if view
+        .state()
+        .canvas
+        .as_ref()
+        .and_then(|c| c.drawing.as_ref())
+        .is_some_and(|d| d.ops.iter().any(text))
+    {
+        wait_for_fonts(surface, view);
     }
     let id = view.id();
     for uri in load {
@@ -292,12 +307,13 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
         .is_some_and(|r| r.key == key && r.region.contains(&shown));
     if !fresh {
         let text = cx.window.text_system().clone();
+        let system = cx.app.text_system().clone();
         let started = std::time::Instant::now();
         let recorded = record(
             drawing,
             &canvas.args,
             &canvas.images,
-            &text,
+            (&text, &system),
             key,
             region,
             frac,
@@ -511,7 +527,7 @@ fn record(
     drawing: &Drawing,
     args: &[Option<AnimationValue>],
     images: &FxHashMap<Arc<str>, Option<Rc<sk::Pixmap>>>,
-    text: &WindowTextSystem,
+    (text, system): (&WindowTextSystem, &Arc<gpui::TextSystem>),
     key: Key,
     region: IRect,
     frac: (f32, f32),
@@ -531,6 +547,7 @@ fn record(
         args,
         images,
         text,
+        system,
         size,
         base,
         scale: key.scale as f64,
@@ -649,6 +666,8 @@ struct Replay<'a> {
     args: &'a [Option<AnimationValue>],
     images: &'a FxHashMap<Arc<str>, Option<Rc<sk::Pixmap>>>,
     text: &'a WindowTextSystem,
+    /// The app's text system (fonts are resolved in it).
+    system: &'a Arc<gpui::TextSystem>,
     size: (u32, u32),
     /// The view's coordinates to the pixmap's.
     base: Affine,
@@ -1264,7 +1283,7 @@ impl<'a> Replay<'a> {
         if text.is_empty() || self.state.singular {
             return;
         }
-        let font = canvas_font(&self.state.font);
+        let font = canvas_font(self.system, &self.state.font);
         let size = self.state.font.size.max(0.1);
         let system: &gpui::TextSystem = self.text;
         let id = system.resolve_font(&font);
@@ -1309,6 +1328,46 @@ impl<'a> Replay<'a> {
         let Some(bounds) = quad_bounds(&place, 0.0, -ascent, width, ascent + descent) else {
             return;
         };
+        // Glyphs whose outlines the font file gives are a path painted like
+        // any other; the rest (emoji, fonts whose file is not found) are
+        // GPUI glyphs above the pixmap.
+        let mut outlines = sk::PathBuilder::new();
+        let mut glyphs = Vec::new();
+        for run in &line.runs {
+            let file = font_file(system, run.font_id);
+            for g in &run.glyphs {
+                let gx = f32::from(g.position.x) as f64;
+                let outlined = match &file {
+                    Some(file) if !g.is_emoji => {
+                        let k = size as f64 / file.units_per_em as f64;
+                        let to =
+                            place.then(&Affine::translate(gx, 0.0).then(&Affine::scale(k, -k)));
+                        file.push_glyph(g.id.0 as u16, &to, &mut outlines)
+                    }
+                    _ => false,
+                };
+                if !outlined {
+                    let (x, y) = place.map((gx, 0.0));
+                    glyphs.push(Glyph {
+                        x: x as f32,
+                        y: y as f32,
+                        font: run.font_id,
+                        id: g.id,
+                        emoji: g.is_emoji,
+                    });
+                }
+            }
+        }
+        if let Some(path) = outlines.finish() {
+            let mode = match mode {
+                Mode::Fill(_) => Mode::Fill(FillRule::NonZero),
+                Mode::Stroke => Mode::Stroke,
+            };
+            self.paint_path(path, mode);
+        }
+        if glyphs.is_empty() {
+            return;
+        }
         let color = match self.paint(mode) {
             Paint::Gradient(g) => middle_color(g),
             paint => self.color(paint).unwrap_or(Color::TRANSPARENT),
@@ -1316,25 +1375,6 @@ impl<'a> Replay<'a> {
         let (r, g, b, a) = color.to_f64();
         let alpha = a * self.state.alpha;
         if alpha <= 0.0 {
-            return;
-        }
-        let glyphs: Vec<Glyph> = line
-            .runs
-            .iter()
-            .flat_map(|run| {
-                run.glyphs.iter().map(move |g| {
-                    let (gx, gy) = place.map((f32::from(g.position.x) as f64, 0.0));
-                    Glyph {
-                        x: gx as f32,
-                        y: gy as f32,
-                        font: run.font_id,
-                        id: g.id,
-                        emoji: g.is_emoji,
-                    }
-                })
-            })
-            .collect();
-        if glyphs.is_empty() {
             return;
         }
         // Glyphs are as large as the text is under the transform, in
@@ -1433,6 +1473,271 @@ impl<'a> Replay<'a> {
 /// coordinates, inside a mask, with a blend mode.
 type Draw<'a> = &'a dyn Fn(&mut sk::Pixmap, sk::Transform, Option<&sk::Mask>, sk::BlendMode);
 
+// --- Glyph outlines -----------------------------------------------------------
+
+/// Font files registered by the app (`asset:/` fonts), for
+/// [`font_file`] to find besides the system's.
+static REGISTERED_FONTS: std::sync::Mutex<Vec<Arc<[u8]>>> = std::sync::Mutex::new(Vec::new());
+
+/// A font file was registered with GPUI's text system (any thread).
+pub(crate) fn font_registered(data: &[u8]) {
+    let mut fonts = REGISTERED_FONTS.lock().unwrap_or_else(|e| e.into_inner());
+    fonts.push(Arc::from(data));
+}
+
+/// The font files canvas text is outlined from (main thread).
+#[derive(Default)]
+struct Fonts {
+    /// The system's fonts and the registered ones, once found (finding
+    /// the system's takes long: a worker does it, [`load_fonts`]).
+    db: Option<fontdb::Database>,
+    /// A worker is finding the system's fonts.
+    loading: bool,
+    /// Canvases with text drawn before the fonts were found: drawn again
+    /// once they are.
+    waiting: Vec<(std::rc::Weak<Surface>, nsh_core::NodeId)>,
+    /// How many of [`REGISTERED_FONTS`] `db` has.
+    registered: usize,
+    /// The file of each GPUI font, `None` when none matches it.
+    by_id: FxHashMap<gpui::FontId, Option<Rc<FontFile>>>,
+}
+
+thread_local! {
+    static FONTS: RefCell<Fonts> = RefCell::new(Fonts::default());
+}
+
+/// A font file's glyph outlines.
+struct FontFile {
+    data: Arc<[u8]>,
+    index: u32,
+    units_per_em: u16,
+    /// Outlines by glyph, in font units (y up), once read.
+    glyphs: RefCell<FxHashMap<u16, Option<sk::Path>>>,
+}
+
+impl FontFile {
+    /// Adds the outline of `glyph` through `to` (from font units) to
+    /// `path`; false if the font has no outline for it (bitmap and color
+    /// glyphs). An empty glyph (a space) counts as outlined.
+    fn push_glyph(&self, glyph: u16, to: &Affine, path: &mut sk::PathBuilder) -> bool {
+        let mut glyphs = self.glyphs.borrow_mut();
+        let outline = glyphs.entry(glyph).or_insert_with(|| {
+            let face = ttf_parser::Face::parse(&self.data, self.index).ok()?;
+            let id = ttf_parser::GlyphId(glyph);
+            let mut sink = Outline(sk::PathBuilder::new());
+            match face.outline_glyph(id, &mut sink) {
+                Some(_) => sink.0.finish(),
+                // No outline: empty, or drawn some other way.
+                None if face.glyph_raster_image(id, u16::MAX).is_some()
+                    || face.glyph_svg_image(id).is_some()
+                    || face.is_color_glyph(id) =>
+                {
+                    None
+                }
+                None => Some(sk::PathBuilder::from_rect(sk::Rect::from_xywh(
+                    0.0, 0.0, 0.0, 0.0,
+                )?)),
+            }
+        });
+        let Some(outline) = outline else {
+            return false;
+        };
+        if outline.bounds().width() == 0.0 && outline.bounds().height() == 0.0 {
+            return true;
+        }
+        if let Some(placed) = outline.clone().transform(to.skia()) {
+            path.push_path(&placed);
+        }
+        true
+    }
+}
+
+/// tiny-skia's path builder as ttf-parser's outline sink.
+struct Outline(sk::PathBuilder);
+
+impl ttf_parser::OutlineBuilder for Outline {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.0.move_to(x, y);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.0.line_to(x, y);
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.0.quad_to(x1, y1, x, y);
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.0.cubic_to(x1, y1, x2, y2, x, y);
+    }
+
+    fn close(&mut self) {
+        self.0.close();
+    }
+}
+
+/// The file of GPUI's font `id`: found by its family, weight and style
+/// among the system's and the app's fonts, and checked against GPUI's
+/// metrics (so its glyph ids are GPUI's); `None` when none matches (a
+/// font GPUI fell back to, a variable font at another weight, a system
+/// font fontdb cannot read).
+fn font_file(system: &gpui::TextSystem, id: gpui::FontId) -> Option<Rc<FontFile>> {
+    FONTS.with_borrow_mut(|fonts| {
+        let Some(db) = fonts.db.as_mut() else {
+            load_fonts(fonts);
+            return None;
+        };
+        let registered = REGISTERED_FONTS.lock().unwrap_or_else(|e| e.into_inner());
+        if registered.len() > fonts.registered {
+            for data in &registered[fonts.registered..] {
+                db.load_font_data(data.to_vec());
+            }
+            fonts.registered = registered.len();
+            // Fonts not found before may be among them.
+            fonts.by_id.retain(|_, file| file.is_some());
+        }
+        drop(registered);
+        if let Some(file) = fonts.by_id.get(&id) {
+            return file.clone();
+        }
+        let file = find_font_file(db, system, id).map(Rc::new);
+        fonts.by_id.insert(id, file.clone());
+        file
+    })
+}
+
+/// Starts finding the system's fonts on a worker (hundreds of
+/// milliseconds), unless it is done or under way.
+fn load_fonts(fonts: &mut Fonts) {
+    if fonts.db.is_some() || fonts.loading {
+        return;
+    }
+    fonts.loading = true;
+    let spawned = std::thread::Builder::new()
+        .name("nsh-canvas-fonts".into())
+        .spawn(|| {
+            let started = std::time::Instant::now();
+            let mut db = fontdb::Database::new();
+            db.load_system_fonts();
+            log::debug!(
+                target: "nsh::perf",
+                "canvas: {} system font faces found in {:.1} ms",
+                db.len(),
+                started.elapsed().as_secs_f64() * 1000.0
+            );
+            crate::rt::invoke(move || fonts_loaded(db));
+        });
+    if let Err(e) = spawned {
+        log::warn!("canvas: cannot find the system's fonts: {e}");
+        fonts.db = Some(fontdb::Database::new());
+    }
+}
+
+/// The system's fonts were found: canvases that drew text without them
+/// draw again.
+fn fonts_loaded(db: fontdb::Database) {
+    let waiting = FONTS.with_borrow_mut(|fonts| {
+        fonts.db = Some(db);
+        fonts.loading = false;
+        std::mem::take(&mut fonts.waiting)
+    });
+    for (surface, id) in waiting {
+        let Some(view) = surface.upgrade().and_then(|s| s.view(id)) else {
+            continue;
+        };
+        if let Some(c) = view.state_mut().canvas.as_mut() {
+            c.stale();
+        }
+        view.changed();
+    }
+}
+
+/// `view` draws text: until the system's fonts are found, it is drawn
+/// again when they are.
+fn wait_for_fonts(surface: &Rc<Surface>, view: &NshView) {
+    FONTS.with_borrow_mut(|fonts| {
+        if fonts.db.is_none() {
+            fonts.waiting.push((Rc::downgrade(surface), view.id()));
+            load_fonts(fonts);
+        }
+    });
+}
+
+/// [`font_file`]'s search.
+fn find_font_file(
+    db: &fontdb::Database,
+    system: &gpui::TextSystem,
+    id: gpui::FontId,
+) -> Option<FontFile> {
+    let font = system.get_font_for_id(id)?;
+    let name = font.family.to_string();
+    let mut families = vec![fontdb::Family::Name(&name)];
+    // GPUI's own name for the UI font: what it resolves to on Linux, else
+    // the platform's sans-serif.
+    if name.starts_with('.') || name == "system-ui" {
+        families = vec![fontdb::Family::Name("IBM Plex Sans")];
+    }
+    families.push(fontdb::Family::SansSerif);
+    let style = match font.style {
+        FontStyle::Normal => fontdb::Style::Normal,
+        FontStyle::Italic => fontdb::Style::Italic,
+        FontStyle::Oblique => fontdb::Style::Oblique,
+    };
+    for family in families {
+        let query = fontdb::Query {
+            families: &[family],
+            weight: fontdb::Weight(font.weight.0.round() as u16),
+            stretch: fontdb::Stretch::Normal,
+            style,
+        };
+        let Some(face) = db.query(&query) else {
+            continue;
+        };
+        let Some(file) = db.with_face_data(face, |data, index| {
+            let face = ttf_parser::Face::parse(data, index).ok()?;
+            same_font(system, id, &face).then(|| FontFile {
+                data: Arc::from(data),
+                index,
+                units_per_em: face.units_per_em(),
+                glyphs: RefCell::default(),
+            })
+        }) else {
+            continue;
+        };
+        if file.is_some() {
+            return file;
+        }
+    }
+    None
+}
+
+/// True when `face` measures as GPUI's font `id` does: the same units per
+/// em and the same advances of a few letters and figures.
+fn same_font(system: &gpui::TextSystem, id: gpui::FontId, face: &ttf_parser::Face<'_>) -> bool {
+    let upem = face.units_per_em();
+    if upem == 0 || system.units_per_em(id) != upem as u32 {
+        return false;
+    }
+    let mut compared = 0;
+    for ch in ['0', '4', 'a', 'e', 'm', 'H', 'W'] {
+        let Some(glyph) = face.glyph_index(ch) else {
+            continue;
+        };
+        let Some(advance) = face.glyph_hor_advance(glyph) else {
+            continue;
+        };
+        let Ok(gpui) = system.advance(id, px(upem as f32), ch) else {
+            return false;
+        };
+        if (f32::from(gpui.width) - advance as f32).abs() > (upem as f32 / 200.0).max(1.0) {
+            return false;
+        }
+        compared += 1;
+    }
+    compared >= 3
+}
+
 /// Fills `path` (pixmap coordinates, moved by `to`) on `pixmap` with
 /// `source`.
 fn fill(
@@ -1489,28 +1794,24 @@ fn fill_rule(rule: FillRule) -> sk::FillRule {
 
 /// The GPUI font of a canvas font, as the text engine resolves it (so
 /// widths match `measureText`), with its OpenType features.
-fn canvas_font(font: &CanvasFont) -> Font {
-    let style = font.text_style();
-    let family = match &style.font_family {
-        Some(f) => SharedString::from(f.name().to_string()),
-        None => SharedString::from(crate::text::ui_family().to_string()),
-    };
-    let features: Vec<(String, u32)> = font.variant.tags().map(|t| (t.to_string(), 1)).collect();
-    Font {
-        family,
-        features: if features.is_empty() {
-            FontFeatures::default()
-        } else {
-            FontFeatures(Arc::new(features))
-        },
-        fallbacks: None,
-        weight: FontWeight(style.font_weight as f32),
-        style: if style.italic {
-            FontStyle::Italic
-        } else {
-            FontStyle::Normal
-        },
+fn canvas_font(system: &Arc<gpui::TextSystem>, font: &CanvasFont) -> Font {
+    thread_local! {
+        /// A text engine over the app's text system, for its font choice.
+        static ENGINE: RefCell<Option<(usize, crate::text::GpuiTextEngine)>> =
+            const { RefCell::new(None) };
     }
+    let key = Arc::as_ptr(system) as usize;
+    ENGINE.with_borrow_mut(|engine| {
+        let engine = match engine {
+            Some((k, engine)) if *k == key => engine,
+            _ => {
+                let made =
+                    crate::text::GpuiTextEngine::new(system.clone(), crate::text::ui_family());
+                &mut engine.insert((key, made)).1
+            }
+        };
+        engine.font(&font.text_style())
+    })
 }
 
 /// The bounds of the rectangle `(x, y, w, h)` under `m`.
@@ -2211,7 +2512,7 @@ mod tests {
     /// point (no text system: text draws no glyphs).
     fn raster(ops: Vec<CanvasOp>, scale: f32, w: f32, h: f32) -> Recorded {
         let system = Arc::new(gpui::TextSystem::new(Arc::new(gpui::NoopTextSystem::new())));
-        let text = WindowTextSystem::new(system);
+        let text = WindowTextSystem::new(system.clone());
         let key = Key {
             linear: [scale, 0.0, 0.0, scale],
             scale,
@@ -2226,7 +2527,7 @@ mod tests {
             &drawing,
             &[],
             &FxHashMap::default(),
-            &text,
+            (&text, &system),
             key,
             region,
             (0.0, 0.0),
@@ -2662,13 +2963,14 @@ mod tests {
     #[test]
     fn shapes_over_text_go_above_it() {
         let system = Arc::new(gpui::TextSystem::new(Arc::new(gpui::NoopTextSystem::new())));
-        let text = WindowTextSystem::new(system);
+        let text = WindowTextSystem::new(system.clone());
         let images = FxHashMap::default();
         let base = Affine::scale(1.0, 1.0);
         let mut replay = Replay {
             args: &[],
             images: &images,
             text: &text,
+            system: &system,
             size: (40, 40),
             base,
             scale: 1.0,
@@ -2702,6 +3004,35 @@ mod tests {
             .map(|l| matches!(l, Layer::Text(_)))
             .collect();
         assert_eq!(kinds, [false, true, false]);
+    }
+
+    #[test]
+    fn glyph_outlines_come_from_the_font_file() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/gallery/fonts/Pacifico-Regular.ttf"
+        );
+        let data: Arc<[u8]> = std::fs::read(path).unwrap().into();
+        let face = ttf_parser::Face::parse(&data, 0).unwrap();
+        let file = FontFile {
+            units_per_em: face.units_per_em(),
+            data: data.clone(),
+            index: 0,
+            glyphs: RefCell::default(),
+        };
+        let a = face.glyph_index('a').unwrap().0;
+        let space = face.glyph_index(' ').unwrap().0;
+        // 20 points high, flipped to y down, at (10, 30).
+        let k = 20.0 / file.units_per_em as f64;
+        let to = Affine::translate(10.0, 30.0).then(&Affine::scale(k, -k));
+        let mut path = sk::PathBuilder::new();
+        assert!(file.push_glyph(a, &to, &mut path));
+        // A space is outlined as nothing.
+        assert!(file.push_glyph(space, &to, &mut path));
+        let b = path.finish().unwrap().bounds();
+        assert!(b.left() >= 9.0 && b.right() < 30.0, "{b:?}");
+        assert!(b.bottom() <= 31.0 && b.top() > 10.0, "{b:?}");
+        assert_eq!(file.glyphs.borrow().len(), 2);
     }
 
     #[test]
