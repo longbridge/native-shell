@@ -181,16 +181,10 @@ imports, next to the prebuilt runtime:
 
 | Target | Runtime | Your app |
 |---|---|---|
-<<<<<<< HEAD
 | iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.nsh`, `nsh/assets/…` |
 | Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.nsh`, `assets/nsh/assets/…` |
+| macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nsh`, `nsh/assets/…` |
 | Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nsh`, `nsh/assets/…` |
-=======
-| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.qbc`, `nsh/assets/…` |
-| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.qbc`, `assets/nsh/assets/…` |
-| macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.qbc`, `nsh/assets/…` |
-| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.qbc`, `nsh/assets/…` |
->>>>>>> origin/main
 
 A packaged app registers no [native components](./native-components.md); for those, embed nsh in your own app.
 

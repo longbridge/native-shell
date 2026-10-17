@@ -169,16 +169,10 @@ GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 
 
 | 目标 | 运行时 | 你的应用 |
 |---|---|---|
-<<<<<<< HEAD
 | iOS | `nsh-ios-app` 可执行文件 | `<Name>.app/nsh/bundle.nsh`、`nsh/assets/…` |
 | Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.nsh`、`assets/nsh/assets/…` |
+| macOS | `nsh-macos-app` 可执行文件，重命名为 `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nsh`、`nsh/assets/…` |
 | Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.nsh`、`nsh/assets/…` |
-=======
-| iOS | `nsh-ios-app` 可执行文件 | `<Name>.app/nsh/bundle.qbc`、`nsh/assets/…` |
-| Android | `classes.dex`、`lib/<abi>/libnsh.so`（不压缩存储，16 KB 对齐） | `assets/nsh/bundle.qbc`、`assets/nsh/assets/…` |
-| macOS | `nsh-macos-app` 可执行文件，重命名为 `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.qbc`、`nsh/assets/…` |
-| Linux | `nsh-linux-app` 可执行文件，重命名为 `<Name>` | `<Name>/nsh/bundle.qbc`、`nsh/assets/…` |
->>>>>>> origin/main
 
 打包出的应用不注册任何[原生组件](./native-components.md)；如需使用原生组件，请把 nsh 嵌入你自己的应用。
 
