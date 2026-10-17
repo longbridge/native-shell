@@ -260,5 +260,8 @@ pub(crate) fn install(
         );
         crate::rt::flush(cx);
     });
+    // The keymap's held key (see `crate::keymap::forget_held`).
+    let s = surface.clone();
+    window.on_modifiers_changed(move |_, _, _| crate::keymap::forget_held(&s));
     let _ = px(0.0);
 }

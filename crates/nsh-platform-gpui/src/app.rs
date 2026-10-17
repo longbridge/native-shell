@@ -197,7 +197,7 @@ impl AppView {
             .detach();
         cx.observe_window_activation(window, |view: &mut AppView, window, cx| {
             if !window.is_window_active() {
-                crate::keymap::window_deactivated(&view.surface);
+                crate::keymap::forget_held(&view.surface);
             }
             cx.notify();
         })

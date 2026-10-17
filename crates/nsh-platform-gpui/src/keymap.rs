@@ -19,8 +19,8 @@
 //! downs of the same key with no release between (GPUI drops the
 //! releases X11 makes up). So a key down of the key that went down last
 //! and has not been released counts as a repeat too: a binding without
-//! `repeat` fires once until the key is released (or the window is
-//! deactivated, which may keep the release from it).
+//! `repeat` fires once until the key is released, the modifiers change or
+//! the window is deactivated ([`forget_held`]).
 
 use std::{
     cell::{Cell, RefCell},
@@ -114,8 +114,12 @@ pub(crate) fn released(surface: &Surface, event: &KeyEvent) {
     }
 }
 
-/// The window was deactivated: the key held may be released elsewhere.
-pub(crate) fn window_deactivated(surface: &Surface) {
+/// The window was deactivated (the key held may be released elsewhere),
+/// or the modifiers changed: GPUI's X11 backend loses a key's release
+/// when another release follows in the same batch of events (releasing
+/// K and then Ctrl of Ctrl+K), so the next Ctrl+K must not count as a
+/// repeat.
+pub(crate) fn forget_held(surface: &Surface) {
     surface.keymap.held.set(None);
 }
 
