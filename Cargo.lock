@@ -4652,6 +4652,8 @@ dependencies = [
  "serde_json",
  "tiny-skia",
  "ttf-parser",
+ "unicode-bidi",
+ "unicode-linebreak",
  "ureq",
  "x11rb",
  "zbus",
