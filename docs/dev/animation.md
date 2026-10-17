@@ -18,9 +18,11 @@
   bound at the exact time it got there with `-bounce` of its speed (frame-rate independent, several per frame if need be).
   Values have an offset (`setOffset` / `flattenOffset` / `extractOffset`, React Native's): they evaluate to value +
   offset; drivers, `set` and gestures move the value. JS reads a node back with `getValue()` (and `stop()`'s promise):
-  `AnimationOp::Read` answers with a `Finished` carrying `value`, through the same path as animation ends.
+  `AnimationOp::Read` answers with a `Finished` carrying `value`, through the same path as animation ends (Rust
+  components: `NativeValue::value()`, its request id odd, answered in `Core::animations_finished`).
   `Easing.sample`, `Animated.sampleSpring` / `sampleDecay` return the curves from `nsh_animation::sample_easing` /
-  `sample_driver` (the drivers' own code, stepped like frames), so drawn curves are what runs.
+  `sample_driver` (the drivers' own code, stepped like frames, at most `MAX_SAMPLES`), so drawn curves are what runs;
+  Rust components call `ui::sample_easing` / `sample_spring` / `sample_decay` / `sample_decay_within`.
   Bindable: `opacity`, `backgroundColor`, `borderColor` (all sides), a text's `color` (the whole text: iOS and Android draw
   it into a layer and paint over it in the color, `SourceIn` / `SRC_IN`), `shadowColor` / `shadowOpacity` /
   `shadowRadius`, and the translate / scale / rotate parts of `transform`. iOS shapes the decoration with the bound

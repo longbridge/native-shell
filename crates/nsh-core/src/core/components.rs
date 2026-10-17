@@ -226,6 +226,14 @@ impl Expanded {
     }
 }
 
+/// What a component's task waits for from the animation graph.
+enum Awaited {
+    /// An animation's end: whether it finished.
+    End(AnswerSlot<bool>),
+    /// A value read ([`crate::ui::NativeValue::value`]).
+    Value(AnswerSlot<f32>),
+}
+
 /// The core's component state.
 pub(super) struct Components {
     registry: Registry,
@@ -262,8 +270,9 @@ pub(super) struct Components {
     /// id: their answers.
     clipboard_reads: FxHashMap<u32, ClipboardRead>,
     next_clipboard_read: u32,
-    /// The ends of the animations components started, by id.
-    animations: FxHashMap<nsh_animation::AnimationId, AnswerSlot<bool>>,
+    /// The ends of the animations components started and the values they
+    /// read, by id.
+    animations: FxHashMap<nsh_animation::AnimationId, Awaited>,
     /// Elements to measure once this commit is laid out
     /// ([`crate::ui::ElementRef::measure`]).
     pub(super) measures: Vec<(NodeId, AnswerSlot<Option<crate::Measurement>>)>,
@@ -2451,8 +2460,20 @@ impl<M: TextEngine> Core<M> {
                 let _ = self.apply_op(Op::Animation(op));
             }
             Action::Animate { op, animation, end } => {
-                self.components.animations.insert(animation, end);
+                self.components
+                    .animations
+                    .insert(animation, Awaited::End(end));
                 let _ = self.apply_op(Op::Animation(op));
+            }
+            Action::ReadValue { node, value } => {
+                let request = self.components.executor.next_animation_id();
+                self.components
+                    .animations
+                    .insert(request, Awaited::Value(value));
+                let _ = self.apply_op(Op::Animation(nsh_animation::AnimationOp::Read {
+                    node,
+                    request,
+                }));
             }
             Action::ReportViewable(list) => self.report_viewable(list),
             Action::Frame(answer) => self.wait_frame(answer),
@@ -2485,8 +2506,12 @@ impl<M: TextEngine> Core<M> {
     /// [`crate::ui::AnimationEnd`]s; JS's stay in `finished`.
     pub fn animations_finished(&mut self, finished: &mut Vec<nsh_animation::Finished>) {
         finished.retain(|f| match self.components.animations.remove(&f.animation) {
-            Some(end) => {
+            Some(Awaited::End(end)) => {
                 end.borrow_mut().deliver(f.finished);
+                false
+            }
+            Some(Awaited::Value(value)) => {
+                value.borrow_mut().deliver(f.value.unwrap_or_default());
                 false
             }
             // JS's are even.

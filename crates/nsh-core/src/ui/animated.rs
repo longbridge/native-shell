@@ -379,6 +379,60 @@ impl Spring {
     }
 }
 
+/// The values `driver` moves a value through from `from`, one per frame at
+/// `fps` (1 to 1000), until it ends: the exact curve the graph runs.
+fn sample(driver: Driver, from: f32, fps: f32) -> Vec<f32> {
+    let step = 1.0 / f64::from(fps.clamp(1.0, 1000.0));
+    nsh_animation::sample_driver(driver, from, step, nsh_animation::MAX_SAMPLES)
+}
+
+/// The values a spring moves a value through from `from` to `to`, one per
+/// frame at `fps` (60 on most screens) until it rests (TS:
+/// `Animated.sampleSpring`): its curve, to draw it. At most
+/// [`nsh_animation::MAX_SAMPLES`].
+pub fn sample_spring(from: f32, to: f32, spring: Spring, fps: f32) -> Vec<f32> {
+    sample(spring.driver(to), from, fps)
+}
+
+/// The values a decay ([`NativeValue::decay`]) moves a value through from
+/// `from` at `velocity` (per second), one per frame at `fps` until it
+/// stops (TS: `Animated.sampleDecay`). At most
+/// [`nsh_animation::MAX_SAMPLES`].
+pub fn sample_decay(from: f32, velocity: f32, deceleration: f32, fps: f32) -> Vec<f32> {
+    sample(
+        Driver::Decay {
+            velocity: Some(velocity),
+            deceleration,
+            clamp: None,
+            bounce: 0.0,
+        },
+        from,
+        fps,
+    )
+}
+
+/// Like [`sample_decay`], within `min..=max` ([`NativeValue::decay_within`]:
+/// it stops at a bound, or bounces back keeping `bounce` of its speed).
+pub fn sample_decay_within(
+    from: f32,
+    velocity: f32,
+    deceleration: f32,
+    (min, max): (f32, f32),
+    bounce: f32,
+    fps: f32,
+) -> Vec<f32> {
+    sample(
+        Driver::Decay {
+            velocity: Some(velocity),
+            deceleration,
+            clamp: Some((min, max)),
+            bounce,
+        },
+        from,
+        fps,
+    )
+}
+
 /// The end of an animation: `true` when it reached its end, `false` when
 /// it was stopped or replaced. The animation runs either way: await this
 /// in a task to follow it up, or drop it.
@@ -416,9 +470,24 @@ impl NativeValue {
         });
     }
 
-    /// Stops its animation where it is.
+    /// Stops its animation where it is ([`Self::value`] then reads where
+    /// that is; TS: `stop()`'s promise).
     pub fn stop(&self) {
         self.0.0.act(AnimationOp::Stop { node: self.0.id() });
+    }
+
+    /// Its value now, read on the UI thread where it moves (TS:
+    /// `getValue()`): after the changes queued before it (a [`Self::stop`],
+    /// a [`Self::set`]). Await it in a task.
+    pub fn value(&self) -> Answer<f32> {
+        let (answer, slot) = Answer::new();
+        if let Some(executor) = self.0.executor() {
+            executor.act(Action::ReadValue {
+                node: self.0.id(),
+                value: slot,
+            });
+        }
+        answer
     }
 
     fn executor(&self) -> Weak<Executor> {
@@ -1053,5 +1122,35 @@ mod tests {
         );
         assert_eq!(t.diff_clamp(0.0, 44.0), t.node().diff_clamp(0.0, 44.0));
         assert_eq!(t.mul(-1.0), t.node().mul(-1.0));
+    }
+
+    #[test]
+    fn curves_sample_as_the_graph_runs_them() {
+        // A spring from 0 to 1, one value a frame at 60 Hz, at rest at its
+        // end; at 120 Hz about twice the frames.
+        let spring = sample_spring(0.0, 1.0, Spring::default(), 60.0);
+        assert_eq!(spring[0], 0.0);
+        assert!((spring.last().unwrap() - 1.0).abs() < 1e-3, "{spring:?}");
+        let fast = sample_spring(0.0, 1.0, Spring::default(), 120.0);
+        assert!(fast.len() > spring.len() * 3 / 2, "{}", fast.len());
+        // A spring that never rests stops at the cap.
+        let undamped = Spring {
+            damping: 0.0,
+            ..Spring::default()
+        };
+        assert_eq!(
+            sample_spring(0.0, 1.0, undamped, 60.0).len(),
+            nsh_animation::MAX_SAMPLES
+        );
+        // A fling glides on and slows down; within bounds it stops at one.
+        let decay = sample_decay(0.0, 1000.0, 0.998, 60.0);
+        assert!(decay.windows(2).all(|w| w[1] >= w[0]), "{decay:?}");
+        assert!(*decay.last().unwrap() > 400.0, "{decay:?}");
+        let within = sample_decay_within(0.0, 1000.0, 0.998, (0.0, 100.0), 0.0, 60.0);
+        assert!(within.iter().all(|&x| (0.0..=100.0).contains(&x)));
+        assert_eq!(*within.last().unwrap(), 100.0);
+        // An easing's curve: both ends.
+        let curve = super::super::sample_easing(Easing::EaseInOut, 5);
+        assert_eq!((curve[0], curve[4], curve.len()), (0.0, 1.0, 5));
     }
 }

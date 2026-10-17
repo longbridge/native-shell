@@ -46,7 +46,9 @@ mod theme;
 mod value;
 pub(crate) mod virtual_list;
 
-pub use nsh_animation::{Curve, EaseMode, Easing, Extrapolate, Output as AnimationOutput};
+pub use nsh_animation::{
+    Curve, EaseMode, Easing, Extrapolate, Output as AnimationOutput, sample_easing,
+};
 pub use nsh_macros::{
     Event, JsObject, PropEnum, Props, asset, assets, methods, module, native_module,
 };
@@ -54,7 +56,7 @@ pub use nsh_macros::{
 pub use self::{
     animated::{
         Animated, Animation, AnimationEnd, AnimationOperand, Interpolation, NativeNode,
-        NativeValue, Spring, Timing,
+        NativeValue, Spring, Timing, sample_decay, sample_decay_within, sample_spring,
     },
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
     back::BackSubscription,

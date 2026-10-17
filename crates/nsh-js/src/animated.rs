@@ -1008,9 +1008,6 @@ fn object(ctx: *mut JsContext, fields: Vec<(&CStr, JsValue)>) -> JsValue {
     }
 }
 
-/// Most samples a curve gives (a minute at 60 Hz).
-const MAX_SAMPLES: usize = 3600;
-
 /// `numbers` as a JS array.
 fn number_array(ctx: *mut JsContext, numbers: &[f32]) -> JsValue {
     let mut values: Vec<JsValue> = numbers
@@ -1049,7 +1046,12 @@ fn sample(ctx: *mut JsContext, kind: &str, config: JsValue, fps: JsValue) -> JsV
             let step = 1.0 / rate.clamp(1.0, 1000.0);
             number_array(
                 ctx,
-                &nsh_animation::sample_driver(driver, from as f32, step, MAX_SAMPLES),
+                &nsh_animation::sample_driver(
+                    driver,
+                    from as f32,
+                    step,
+                    nsh_animation::MAX_SAMPLES,
+                ),
             )
         }
         Err(_) => qjs::JS_EXCEPTION,
@@ -1088,7 +1090,7 @@ unsafe extern "C" fn easing_sample(
     let cx = unsafe { Ctx::from_raw(ptr::NonNull::new_unchecked(ctx)) };
     let e = unsafe { Value::from_raw(cx, qjs::JS_DupValue(ctx, arg(argc, argv, 0))) };
     let count = if count.is_finite() {
-        (count.max(0.0) as usize).min(MAX_SAMPLES)
+        (count.max(0.0) as usize).min(nsh_animation::MAX_SAMPLES)
     } else {
         0
     };

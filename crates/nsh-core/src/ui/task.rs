@@ -89,6 +89,11 @@ pub(crate) enum Action {
         animation: nsh_animation::AnimationId,
         end: AnswerSlot<bool>,
     },
+    /// Reads a node's value where it moves; the value resolves the slot.
+    ReadValue {
+        node: nsh_animation::NodeId,
+        value: AnswerSlot<f32>,
+    },
     /// A component's own list reports the rows viewable now (they stayed
     /// so for its minimum view time).
     ReportViewable(NodeId),

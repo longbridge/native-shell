@@ -997,6 +997,21 @@ pub trait Element: IntoElement + Sized {
         self.bind(nsh_animation::AnimationProp::Color, value)
     }
 
+    /// Binds the shadow's color to a node of colors (TS: `shadowColor`).
+    fn bind_shadow_color(self, value: &impl super::Animated) -> Self {
+        self.bind(nsh_animation::AnimationProp::ShadowColor, value)
+    }
+
+    /// Binds the shadow's opacity, 0..1 (TS: `shadowOpacity`).
+    fn bind_shadow_opacity(self, value: &impl super::Animated) -> Self {
+        self.bind(nsh_animation::AnimationProp::ShadowOpacity, value)
+    }
+
+    /// Binds the shadow's blur radius, in points (TS: `shadowRadius`).
+    fn bind_shadow_radius(self, value: &impl super::Animated) -> Self {
+        self.bind(nsh_animation::AnimationProp::ShadowRadius, value)
+    }
+
     /// Binds `prop` (anything but a transform step or a canvas argument)
     /// to a native value.
     fn bind(mut self, prop: nsh_animation::AnimationProp, value: &impl super::Animated) -> Self {

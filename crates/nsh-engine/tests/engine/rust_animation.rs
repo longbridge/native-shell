@@ -2,14 +2,14 @@
 //! platform's part played by an animation graph here: a composite goes out
 //! as one operation and runs step after step in the graph (no engine round
 //! trips between steps); its end, its stop and its reset come back to the
-//! component's task.
+//! component's task, and so does a value read where it moves.
 
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use nsh_core::{
     ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, NodeId, Size,
-    nsh_animation::{AnimationOp, Finished, Graph},
+    nsh_animation::{AnimationOp, AnimationProp, Finished, Graph},
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
@@ -88,6 +88,7 @@ impl Component for Jumper {
         view()
             .flex_1()
             .bind_translate_x(self.x.as_ref().expect("set up"))
+            .bind_shadow_radius(self.x.as_ref().expect("set up"))
             .child(text(self.state.clone()))
             .child(
                 text("Jump").on_press(cx.listener(|this: &mut Self, _, cx| this.run("jump", cx))),
@@ -102,6 +103,24 @@ impl Component for Jumper {
             .child(
                 text("Reset")
                     .on_press(cx.listener(|this: &mut Self, _, _| this.each(Animation::reset))),
+            )
+            .child(
+                text("Where").on_press(cx.listener(|this: &mut Self, _, cx| {
+                    // Stopped, then read: where it stopped (TS: `stop()`'s
+                    // promise).
+                    let x = this.x.as_ref().expect("set up");
+                    x.stop();
+                    let at = x.value();
+                    cx.spawn(|this, _| async move {
+                        let at = at.await;
+                        this.update(move |this, cx| {
+                            this.state = format!("at {at:.2}");
+                            cx.notify();
+                        })
+                        .await;
+                    })
+                    .detach();
+                })),
             )
     }
 }
@@ -119,6 +138,8 @@ struct Platform {
     ops: Vec<AnimationOp>,
     /// The value moved (bound to the root view's translation).
     x: Option<u32>,
+    /// The properties bound on the root view.
+    bound: Vec<AnimationProp>,
 }
 
 impl Platform {
@@ -146,6 +167,7 @@ impl Platform {
             now: 0.0,
             ops: Vec::new(),
             x: None,
+            bound: Vec::new(),
         };
         platform.pump();
         platform
@@ -167,6 +189,7 @@ impl Platform {
                     }
                     MountItem::AnimationBindings { bindings, .. } => {
                         self.x = bindings.first().map(|b| b.1);
+                        self.bound = bindings.iter().map(|b| b.0).collect();
                     }
                     MountItem::Animation(op) => {
                         self.ops.push(op.clone());
@@ -227,6 +250,10 @@ fn rust_composites_run_natively_and_report_their_ends() {
     let mut p = Platform::start();
     assert!(p.shows("idle"), "{:?}", p.texts);
     assert!(p.x.is_some(), "the value is bound");
+    assert_eq!(
+        p.bound,
+        [AnimationProp::Transform(0), AnimationProp::ShadowRadius]
+    );
 
     p.ops.clear();
     p.press("Jump");
@@ -271,4 +298,12 @@ fn rust_composites_run_natively_and_report_their_ends() {
     assert!(p.shows("pulse: stopped"), "{:?}", p.texts);
     p.advance(0.2);
     assert_eq!(p.x(), at, "it stays");
+
+    // A read: the graph answers with the value where it is.
+    p.press("Pulse");
+    p.advance(0.13);
+    p.press("Where");
+    let at = p.x();
+    assert!(at > 0.0, "{at}");
+    assert!(p.shows(&format!("at {at:.2}")), "{:?}", p.texts);
 }

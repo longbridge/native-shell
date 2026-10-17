@@ -185,6 +185,10 @@ fn decay(from: f32, velocity: f32, deceleration: f32, t: f32) -> (f32, f32, bool
     (value, speed * 1000.0, speed.abs() < DECAY_REST_SPEED)
 }
 
+/// Most samples a sampled curve should have (a minute at 60 Hz): the cap
+/// of [`sample_driver`]'s callers (a spring without damping never ends).
+pub const MAX_SAMPLES: usize = 3600;
+
 /// `easing` at `count` evenly spaced points of `0..=1` (both ends
 /// included): the curve a timing animation follows, to draw it.
 pub fn sample_easing(easing: Easing, count: usize) -> Vec<f32> {
