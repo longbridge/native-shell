@@ -126,7 +126,8 @@ pub(crate) const MONOSPACE: &[&str] = &[
 ];
 
 /// The first installed of [`MONOSPACE`] (GPUI resolves exact family
-/// names only, no generic `monospace`).
+/// names only, no generic `monospace`). Only the dev overlay needs it.
+#[cfg(feature = "dev")]
 pub(crate) fn monospace_family(system: &TextSystem) -> Option<SharedString> {
     let installed = system.all_font_names();
     MONOSPACE
