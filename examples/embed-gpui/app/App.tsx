@@ -1,18 +1,28 @@
 // The nsh app examples/embed-gpui runs, several times at once, inside a GPUI
 // Kit window. It sets no theme of its own: the components of nsh/ui/mobile
 // take the host's (`AppView::set_theme`), in its light or dark mode
-// (`AppView::set_appearance`), and change with it.
+// (`AppView::set_appearance`), and change with it. "Extended hours" is the
+// host's own GPUI Kit switch, a native component it registers.
 
 import { mount, signal, Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
+import { nativeComponent } from "nsh/native";
 import { Button, Card, Group, Stepper, TextField } from "nsh/ui/mobile";
 
+/** The host app's switch: a GPUI Kit widget it registers (`host.switch`). */
+const HostSwitch = nativeComponent<{ label: string; checked: boolean }, { change: { checked: boolean } }>("host.switch", {
+  props: ["label", "checked"],
+  events: ["change"],
+});
+
 const symbol = signal("AAPL");
+const extended = signal(false);
 const quantity = signal(10);
 const orders = signal<string[]>([]);
 
 function place(side: "Buy" | "Sell") {
-  orders.update((o) => [`${side} ${quantity()} ${symbol() || "?"}`, ...o].slice(0, 4));
+  const session = extended() ? " (extended hours)" : "";
+  orders.update((o) => [`${side} ${quantity()} ${symbol() || "?"}${session}`, ...o].slice(0, 4));
 }
 
 function App() {
@@ -26,6 +36,12 @@ function App() {
           <Text>Quantity</Text>
           <Stepper value={quantity()} min={1} max={1000} onChange={(v) => quantity.set(v)} />
         </View>
+        <HostSwitch
+          label="Extended hours"
+          checked={extended()}
+          onChange={(e) => extended.set(e.checked)}
+          style={{ height: 24, alignSelf: "stretch" }}
+        />
         <View style={{ flexDirection: "row", gap: 8 }}>
           <View style={{ flex: 1 }}>
             <Button title="Buy" onPress={() => place("Buy")} />
