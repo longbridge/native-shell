@@ -142,7 +142,6 @@ struct Settings {
 }
 
 /// Makes the system look dark (or light) from now on (`--script`).
-#[allow(dead_code, reason = "for the `--script` steps `dark` / `light`")]
 pub(crate) fn simulate_system_scheme(dark: bool) {
     SIMULATED.with(|s| s.set(Some(dark)));
     let surfaces: Vec<Rc<Surface>> = WATCHED.with(|w| {
