@@ -562,6 +562,44 @@ pub struct KeyframeAnimation {
     pub iterations: Option<u32>,
 }
 
+impl KeyframeAnimation {
+    /// `keyframes` as TS's `animationName` alone runs them: a second per
+    /// iteration at a constant pace, forever.
+    pub const fn new(keyframes: Keyframes) -> Self {
+        Self {
+            keyframes,
+            duration: 1000.0,
+            delay: 0.0,
+            easing: [0.0, 0.0, 1.0, 1.0],
+            iterations: None,
+        }
+    }
+
+    /// `ms` milliseconds per iteration.
+    pub const fn duration(mut self, ms: f32) -> Self {
+        self.duration = ms;
+        self
+    }
+
+    /// Starts after `ms` milliseconds.
+    pub const fn delay(mut self, ms: f32) -> Self {
+        self.delay = ms;
+        self
+    }
+
+    /// Along the cubic Bézier curve `x1, y1, x2, y2`.
+    pub const fn easing(mut self, curve: [f32; 4]) -> Self {
+        self.easing = curve;
+        self
+    }
+
+    /// `count` iterations, then it stops.
+    pub const fn iterations(mut self, count: u32) -> Self {
+        self.iterations = Some(count);
+        self
+    }
+}
+
 /// The list-valued effects of a view, shared between equal styles.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Effects {

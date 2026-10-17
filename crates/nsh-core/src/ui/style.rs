@@ -18,7 +18,7 @@ use std::{
 use super::SharedString;
 use crate::{
     BlendMode, BoxShadow, FontVariant, TransformOrigin, TransitionProps,
-    effects::{Filter, GradientKind, GradientSize, Keyframes},
+    effects::{Filter, GradientKind, GradientSize, KeyframeAnimation, Keyframes},
     style::{Color, OriginLen, PatchValue, StyleDecl, StyleKey},
     tailwind::{self, ClassList, Decl, Part, Rule, rank, state},
     transform::TransformKind,
@@ -424,6 +424,9 @@ pub(crate) enum Declaration {
     EasePreset(&'static str),
     /// A keyframe animation (`None`: none).
     Animate(Option<u8>),
+    /// A keyframe animation with its own timing: the keyframes' index,
+    /// duration, delay, easing and iterations (`None`: forever).
+    Animation(u8, Bits, Bits, [Bits; 4], Option<u32>),
     /// `repeat(n, minmax(0, 1fr))` tracks.
     Tracks(StyleKey, u16),
     /// `span n / span n`.
@@ -613,6 +616,16 @@ impl Declaration {
                 }
             }
             Declaration::Animate(k) => part(out, Part::Animate(k.map(|i| KEYFRAMES[i as usize]))),
+            Declaration::Animation(k, duration, delay, easing, iterations) => part(
+                out,
+                Part::Animation(KeyframeAnimation {
+                    keyframes: KEYFRAMES[*k as usize],
+                    duration: duration.0,
+                    delay: delay.0,
+                    easing: easing.map(|b| b.0),
+                    iterations: *iterations,
+                }),
+            ),
             Declaration::Tracks(key, n) => out.push(Decl::Set(
                 *key,
                 PatchValue::Str(format!("repeat({n}, minmax(0, 1fr))").into()),
@@ -2138,6 +2151,25 @@ pub trait Styled: Sized {
         self
     }
 
+    /// A keyframe animation with its own timing (TS: `animationName`
+    /// with `animationDuration`, `animationDelay`,
+    /// `animationTimingFunction`, `animationIterationCount`):
+    /// `.animation(KeyframeAnimation::new(Keyframes::Spin).duration(800.0))`.
+    fn animation(mut self, animation: KeyframeAnimation) -> Self {
+        let index = KEYFRAMES
+            .iter()
+            .position(|k| *k == animation.keyframes)
+            .expect("every keyframes") as u8;
+        self.style().push(Declaration::Animation(
+            index,
+            Bits(animation.duration),
+            Bits(animation.delay),
+            animation.easing.map(Bits),
+            animation.iterations,
+        ));
+        self
+    }
+
     /// No keyframe animation.
     fn animate_none(mut self) -> Self {
         self.style().push(Declaration::Animate(None));
@@ -3032,6 +3064,51 @@ mod tests {
         ] {
             same(typed, classes);
         }
+    }
+
+    #[test]
+    fn keyframe_animations_take_their_own_timing() {
+        // As TS's `animationName` and its timing keys over no animation.
+        let timed = |name: &'static str, ms: f32, easing: &'static str| {
+            move |style: &mut Style| {
+                use crate::StyleValue;
+                style
+                    .set_key(StyleKey::AnimationName, StyleValue::Str(name))
+                    .unwrap();
+                style
+                    .set_key(StyleKey::AnimationDuration, StyleValue::Number(ms))
+                    .unwrap();
+                style
+                    .set_key(StyleKey::AnimationTimingFunction, StyleValue::Str(easing))
+                    .unwrap();
+            }
+        };
+        same_with(
+            s().animation(KeyframeAnimation::new(Keyframes::Spin).duration(800.0)),
+            "animate-none",
+            &timed("spin", 800.0, "linear"),
+        );
+        same_with(
+            s().animation(
+                KeyframeAnimation::new(Keyframes::Pulse)
+                    .duration(900.0)
+                    .easing([0.42, 0.0, 0.58, 1.0]),
+            ),
+            "animate-none",
+            &timed("pulse", 900.0, "ease-in-out"),
+        );
+        // The later declaration wins, either way round.
+        same(
+            s().animation(KeyframeAnimation::new(Keyframes::Spin).duration(800.0))
+                .animate_ping(),
+            "animate-ping",
+        );
+        same_with(
+            s().animate_ping()
+                .animation(KeyframeAnimation::new(Keyframes::Spin).duration(800.0)),
+            "animate-none",
+            &timed("spin", 800.0, "linear"),
+        );
     }
 
     #[test]
