@@ -1,24 +1,64 @@
-import { effect, type GestureResponderEvent, type JSX, signal, Text, View } from "nsh";
+import { effect, type GestureResponderEvent, type JSX, signal, Text, View, type YNode } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Icon, type IconName } from "./icons";
 import { color, mono, radius } from "./theme";
 
 /**
  * Responder props that follow one finger over a view: `move` gets its
- * position in the view from touch down (`first`) until it lifts (`end`).
- * The view keeps the touch, so the scroll view around does not take it.
+ * position in the view from touch down (`first`) until it lifts (`end`),
+ * whichever child the finger is over. The view keeps the touch, so the
+ * scroll view around does not take it; `accept`, if given, decides whether
+ * a finger going down at (`x`, `y`) starts the gesture (positions in the
+ * view the finger went down on: use it on views without children).
  */
-export function track(move: (x: number, y: number, first: boolean) => void, end?: () => void) {
+export function track(
+  move: (x: number, y: number, first: boolean) => void,
+  end?: () => void,
+  accept?: (x: number, y: number) => boolean,
+) {
+  let node: YNode | undefined;
+  // Touches give page positions; the view's own comes from measuring it
+  // when a gesture starts (the page cannot scroll while the view holds the
+  // touch). Moves before the answer only update `at`.
+  let origin: { x: number; y: number } | null = null;
+  let measured: Promise<void> = Promise.resolve();
+  let at = { x: 0, y: 0 };
+  let first = true;
+  let gesture = 0;
+  const send = () => {
+    if (origin === null) return;
+    move(at.x - origin.x, at.y - origin.y, first);
+    first = false;
+  };
+  const lift = () => {
+    const id = gesture;
+    void measured.then(() => {
+      if (id === gesture) end?.();
+    });
+  };
+  const wants = (e: GestureResponderEvent) => accept?.(e.locationX, e.locationY) ?? true;
   return {
-    onStartShouldSetResponder: () => true,
-    onMoveShouldSetResponder: () => true,
+    ref: (n: YNode) => (node = n),
+    onStartShouldSetResponder: wants,
+    onMoveShouldSetResponder: wants,
     onResponderGrant: (e: GestureResponderEvent) => {
-      move(e.locationX, e.locationY, true);
+      const id = ++gesture;
+      origin = null;
+      first = true;
+      at = { x: e.pageX, y: e.pageY };
+      measured = (node?.measure() ?? Promise.resolve(null)).then((m) => {
+        if (id !== gesture || m === null) return;
+        origin = { x: m.pageX, y: m.pageY };
+        send();
+      });
       return true;
     },
-    onResponderMove: (e: GestureResponderEvent) => move(e.locationX, e.locationY, false),
-    onResponderRelease: () => end?.(),
-    onResponderTerminate: () => end?.(),
+    onResponderMove: (e: GestureResponderEvent) => {
+      at = { x: e.pageX, y: e.pageY };
+      send();
+    },
+    onResponderRelease: lift,
+    onResponderTerminate: lift,
     onResponderTerminationRequest: () => false,
   };
 }
@@ -236,7 +276,9 @@ export function Switch(props: { value: boolean; onChange: (v: boolean) => void; 
           width: 22,
           height: 22,
           borderRadius: 11,
-          backgroundColor: on.interpolate({ inputRange: [0, 1], outputRange: [color.muted, color.ink] }),
+          borderWidth: 3,
+          borderColor: on.interpolate({ inputRange: [0, 1], outputRange: [color.muted, color.ink] }),
+          backgroundColor: color.ink,
           transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, 18] }) }],
         }}
       />
@@ -372,8 +414,6 @@ export function Slider(props: {
     props.onChange(Math.round(props.min + k * (props.max - props.min)));
   };
   const low = () => props.value < props.floor;
-  // Children ignore touches: positions (locationX) are then relative to
-  // the slider, not to the knob the finger went down on.
   return (
     <View
       onLayout={(e) => width.set(e.width)}
@@ -388,7 +428,6 @@ export function Slider(props: {
       style={{ height: 52 }}
     >
       <View
-        pointerEvents="none"
         style={{
           position: "absolute",
           left: knob / 2,
@@ -400,7 +439,6 @@ export function Slider(props: {
         }}
       />
       <View
-        pointerEvents="none"
         style={{
           position: "absolute",
           left: knob / 2,
@@ -411,9 +449,8 @@ export function Slider(props: {
           backgroundColor: low() ? color.caution : color.accent,
         }}
       />
-      <View pointerEvents="none" style={{ position: "absolute", top: 3, left: at(props.floor) - 1, width: 2, height: 16, borderRadius: 1, backgroundColor: color.caution }} />
+      <View style={{ position: "absolute", top: 3, left: at(props.floor) - 1, width: 2, height: 16, borderRadius: 1, backgroundColor: color.caution }} />
       <View
-        pointerEvents="none"
         style={{
           position: "absolute",
           top: 0,
@@ -426,12 +463,11 @@ export function Slider(props: {
           backgroundColor: color.ink,
         }}
       />
-      <Text pointerEvents="none" style={{ position: "absolute", top: 32, left: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
+      <Text style={{ position: "absolute", top: 32, left: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
         {props.min}
         {props.unit}
       </Text>
       <Text
-        pointerEvents="none"
         style={{
           position: "absolute",
           top: 32,
@@ -446,7 +482,7 @@ export function Slider(props: {
         hover {props.floor}
         {props.unit}
       </Text>
-      <Text pointerEvents="none" style={{ position: "absolute", top: 32, right: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
+      <Text style={{ position: "absolute", top: 32, right: 0, fontFamily: mono, fontSize: 12, color: color.faint }}>
         {props.max}
         {props.unit}
       </Text>

@@ -1,5 +1,5 @@
-import { signal, Text, View } from "nsh";
-import { Canvas } from "nsh/canvas";
+import { Text, View } from "nsh";
+import { Canvas, type CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 import { cgHeight, load, vehicle, wetMass } from "../store";
 import { color, mono } from "../theme";
 import { Caption, Gauge, Inset, Line, Panel, track } from "../ui";
@@ -12,31 +12,43 @@ const M = 40;
 const yAt = (meters: number) => FEET - meters * M;
 const [TANK_BOTTOM, TANK_TOP] = vehicle.tank;
 
+/** The hull's walls. */
+const BODY = { left: 44, right: 84 };
+/** The propellant tank, between its bulkheads. */
+const TANK = new Path2D();
+TANK.rect(BODY.left, yAt(TANK_TOP), BODY.right - BODY.left, yAt(TANK_BOTTOM) - yAt(TANK_TOP));
+
 /** Thrust of the engine at full throttle (N). */
 const THRUST = 11_000;
 
 /**
- * The lander in section: drag up and down inside the tank to set the
+ * The lander in section: drag up and down from inside the tank to set the
  * propellant level; the CG marker and every figure next to it follow.
+ * Touches elsewhere scroll the page.
  */
 function Section() {
-  const height = signal(0);
+  // The last drawing answers whether a finger went down in the tank.
+  let drawn: CanvasRenderingContext2D | undefined;
   return (
     <Canvas
       style={{ width: 132, height: 264 }}
-      onLayout={(e) => height.set(e.height)}
-      {...track((_x, y) => {
-        const h = height();
-        if (h <= 0) return;
-        const meters = (FEET - (y * DH) / h) / M;
-        load.set(Math.round(Math.min(1, Math.max(0, (meters - TANK_BOTTOM) / (TANK_TOP - TANK_BOTTOM))) * 100) / 100);
-      })}
+      {...track(
+        (_x, y) => {
+          const h = drawn?.canvas.height ?? 0;
+          if (h <= 0) return;
+          const meters = (FEET - (y * DH) / h) / M;
+          load.set(Math.round(Math.min(1, Math.max(0, (meters - TANK_BOTTOM) / (TANK_TOP - TANK_BOTTOM))) * 100) / 100);
+        },
+        undefined,
+        (x, y) => drawn?.isPointInPath(TANK, x, y) ?? false,
+      )}
       accessibilityRole="adjustable"
       accessibilityLabel="Propellant load"
       accessibilityValue={{ text: `${Math.round(load() * 100)} percent` }}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(e) => load.set(Math.min(1, Math.max(0, Math.round((load() + (e.actionName === "increment" ? 0.05 : -0.05)) * 100) / 100)))}
       draw={(ctx, { width, height }) => {
+        drawn = ctx;
         ctx.scale(width / DW, height / DH);
         // A ruler, one tick per meter.
         ctx.strokeStyle = color.lineStrong;
@@ -52,19 +64,18 @@ function Section() {
           ctx.stroke();
           ctx.fillText(`${m}`, 10, yAt(m));
         }
-        const body = { left: 44, right: 84 };
         // Propellant, filling the tank from the bottom.
         const level = TANK_BOTTOM + (TANK_TOP - TANK_BOTTOM) * load();
         const fill = ctx.createLinearGradient(0, yAt(level), 0, yAt(TANK_BOTTOM));
         fill.addColorStop(0, "rgba(61,214,198,0.55)");
         fill.addColorStop(1, "rgba(61,214,198,0.15)");
         ctx.fillStyle = fill;
-        ctx.fillRect(body.left + 2, yAt(level), body.right - body.left - 4, yAt(TANK_BOTTOM) - yAt(level));
+        ctx.fillRect(BODY.left + 2, yAt(level), BODY.right - BODY.left - 4, yAt(TANK_BOTTOM) - yAt(level));
         ctx.strokeStyle = color.accent;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(body.left + 2, yAt(level));
-        ctx.lineTo(body.right - 2, yAt(level));
+        ctx.moveTo(BODY.left + 2, yAt(level));
+        ctx.lineTo(BODY.right - 2, yAt(level));
         ctx.stroke();
 
         // Hull, nose, tank bulkheads, engine bell and legs.
@@ -72,19 +83,19 @@ function Section() {
         ctx.lineWidth = 1.6;
         ctx.lineJoin = "round";
         ctx.beginPath();
-        ctx.moveTo(body.left, yAt(1.1));
-        ctx.lineTo(body.left, yAt(4.3));
-        ctx.quadraticCurveTo(body.left + 4, yAt(5.1), 64, yAt(vehicle.height));
-        ctx.quadraticCurveTo(body.right - 4, yAt(5.1), body.right, yAt(4.3));
-        ctx.lineTo(body.right, yAt(1.1));
+        ctx.moveTo(BODY.left, yAt(1.1));
+        ctx.lineTo(BODY.left, yAt(4.3));
+        ctx.quadraticCurveTo(BODY.left + 4, yAt(5.1), 64, yAt(vehicle.height));
+        ctx.quadraticCurveTo(BODY.right - 4, yAt(5.1), BODY.right, yAt(4.3));
+        ctx.lineTo(BODY.right, yAt(1.1));
         ctx.closePath();
         ctx.stroke();
         ctx.setLineDash([3, 3]);
         ctx.strokeStyle = color.faint;
         for (const m of [TANK_BOTTOM, TANK_TOP]) {
           ctx.beginPath();
-          ctx.moveTo(body.left, yAt(m));
-          ctx.lineTo(body.right, yAt(m));
+          ctx.moveTo(BODY.left, yAt(m));
+          ctx.lineTo(BODY.right, yAt(m));
           ctx.stroke();
         }
         ctx.setLineDash([]);
@@ -95,7 +106,7 @@ function Section() {
         ctx.lineTo(78, yAt(0.45));
         ctx.lineTo(72, yAt(1.1));
         ctx.stroke();
-        for (const [top, foot] of [[body.left, 22], [body.right, 106]] as const) {
+        for (const [top, foot] of [[BODY.left, 22], [BODY.right, 106]] as const) {
           ctx.beginPath();
           ctx.moveTo(top, yAt(1.6));
           ctx.lineTo(foot, FEET);
@@ -115,7 +126,7 @@ function Section() {
         ctx.lineWidth = 1.2;
         ctx.setLineDash([2, 3]);
         ctx.beginPath();
-        ctx.moveTo(body.left, y);
+        ctx.moveTo(BODY.left, y);
         ctx.lineTo(102, y);
         ctx.stroke();
         ctx.setLineDash([]);
@@ -185,7 +196,7 @@ export function Mass() {
         <Text style={{ fontSize: 13, color: color.muted }}>
           Thrust to weight{" "}
           <Text style={{ fontFamily: mono, color: tw() < 1.3 ? color.caution : color.text }}>{tw().toFixed(2)}</Text> at full
-          throttle
+          throttle (<Text style={{ fontFamily: mono, color: color.text }}>{THRUST.toLocaleString("en-US")} N</Text>)
         </Text>
       </Inset>
     </Panel>

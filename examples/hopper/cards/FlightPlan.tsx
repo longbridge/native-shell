@@ -38,30 +38,13 @@ function Coordinate(props: { axis: Axis; label: string; signed?: boolean }) {
             const v = plan.target()[props.axis];
             if (v === "" || v === "-") plan.target.set({ ...plan.target(), [props.axis]: "0" });
           }}
-          keyboardType="number-pad"
+          keyboardType={props.signed ? "numbers-and-punctuation" : "number-pad"}
           returnKeyType="done"
           selectionColor={color.accent}
           accessibilityLabel={`${props.label}, meters`}
           style={{ flex: 1, fontFamily: mono, fontSize: 15, color: color.text, paddingVertical: 6 }}
         />
-        <If
-          when={props.signed}
-          else={<Text style={{ fontFamily: mono, fontSize: 13, color: color.faint }}>m</Text>}
-        >
-          {/* The number pad has no minus key: this flips the sign. */}
-          <Text
-            onPress={() => {
-              const v = plan.target()[props.axis];
-              plan.target.set({ ...plan.target(), [props.axis]: v.startsWith("-") ? v.slice(1) : `-${v}` });
-            }}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Flip the sign of ${props.label}`}
-            style={{ fontFamily: mono, fontSize: 15, color: color.accent }}
-          >
-            ±
-          </Text>
-        </If>
+        <Text style={{ fontFamily: mono, fontSize: 13, color: color.faint }}>m</Text>
       </View>
     </View>
   );

@@ -1,5 +1,5 @@
 import { signal, Text, View } from "nsh";
-import { Canvas } from "nsh/canvas";
+import { Canvas, type CanvasRenderingContext2D, Path2D } from "nsh/canvas";
 import { nitrogenTank, quads } from "../store";
 import { color, mono } from "../theme";
 import { Gauge, Inset, Line, Panel, Pill, track } from "../ui";
@@ -17,22 +17,22 @@ const at = (angle: number, r: number) => {
 /** The lander from above: hull, legs and the four RCS quads with their
  * nozzles. A degraded quad is rose; tap a quad to select it. */
 function Plan(props: { selected: string | null; onPick: (id: string | null) => void }) {
-  const size = signal(0);
+  // The last drawing answers which quad a tap is on; each quad's outline
+  // (its block and the fan of its nozzles) is kept with it.
+  let drawn: CanvasRenderingContext2D | undefined;
+  let outlines: { id: string; paths: Path2D[] }[] = [];
   return (
     <Canvas
       style={{ width: SIZE, height: SIZE, alignSelf: "center" }}
-      onLayout={(e) => size.set(e.width)}
-      {...track((px, py, first) => {
-        if (!first || size() <= 0) return;
-        const k = SIZE / size();
-        const hit = quads.find((q) => {
-          const [x, y] = at(q.angle, ARM);
-          return Math.hypot(px * k - x, py * k - y) < 26;
-        });
-        props.onPick(hit?.id ?? null);
+      {...track((x, y, first) => {
+        if (!first || drawn === undefined) return;
+        const ctx = drawn;
+        props.onPick(outlines.find((o) => o.paths.some((p) => ctx.isPointInPath(p, x, y)))?.id ?? null);
       })}
       accessibilityLabel="Top view: four RCS quads around the hull, Q3 degraded"
       draw={(ctx, { width }) => {
+        drawn = ctx;
+        outlines = [];
         ctx.scale(width / SIZE, width / SIZE);
         // Range rings.
         ctx.strokeStyle = color.grid;
@@ -89,20 +89,29 @@ function Plan(props: { selected: string | null; onPick: (id: string | null) => v
           ctx.strokeStyle = tint;
           ctx.lineWidth = on ? 2.5 : 1.5;
           ctx.setLineDash(weak ? [3, 3] : []);
-          for (const spread of [-40, 0, 40]) {
+          const ends = [-40, 0, 40].map((spread) => {
             const [ex, ey] = at(q.angle + spread * 0.35, ARM + (on ? 30 : 20));
+            return [ex + (x - C) * 0.08, ey + (y - C) * 0.08] as const;
+          });
+          for (const [ex, ey] of ends) {
             ctx.beginPath();
             ctx.moveTo(x, y);
-            ctx.lineTo(ex + (x - C) * 0.08, ey + (y - C) * 0.08);
+            ctx.lineTo(ex, ey);
             ctx.stroke();
           }
+          const box = new Path2D();
+          box.roundRect(x - 13, y - 13, 26, 26, 6);
+          const fan = new Path2D();
+          fan.moveTo(x, y);
+          fan.lineTo(ends[0][0], ends[0][1]);
+          fan.lineTo(ends[2][0], ends[2][1]);
+          fan.closePath();
+          outlines.push({ id: q.id, paths: [box, fan] });
           ctx.setLineDash([]);
           ctx.fillStyle = on ? color.accentDim : color.card;
           ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.roundRect(x - 13, y - 13, 26, 26, 6);
-          ctx.fill();
-          ctx.stroke();
+          ctx.fill(box);
+          ctx.stroke(box);
           ctx.fillStyle = tint;
           ctx.font = `10px ${mono}`;
           ctx.fillText(q.id, x, y);

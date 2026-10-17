@@ -221,14 +221,13 @@ function Choices(props: { value: EasingName; onPick: (e: EasingName) => void }) 
       style={{
         position: "absolute",
         right: 0,
-        top: 52,
+        top: 48,
         width: 210,
         paddingVertical: 6,
         borderRadius: radius.control,
         borderWidth: 1,
         borderColor: color.lineStrong,
         backgroundColor: color.raised,
-        zIndex: 10,
         shadowColor: "#000",
         shadowOpacity: 0.5,
         shadowRadius: 16,
@@ -285,43 +284,37 @@ export function ThrottleProfile() {
       icon="throttle"
       title="Throttle profile"
       status={`${phases().length} phases · ${phases()[phases().length - 1].at} s burn`}
-     
     >
       <Timeline />
-      {/* The menu lives in a box around both the picker and the curve:
-          UIKit only hit-tests a view inside its parent's bounds. */}
-      <View style={{ gap: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ fontSize: 17, fontWeight: "600", color: color.text }}>{phase().name}</Text>
-            <Text style={{ fontSize: 13, color: color.muted }}>
-              from {previous().name} · <Text style={{ fontFamily: mono }}>T+{phase().at.toFixed(1)} s</Text>
-            </Text>
-          </View>
-          <View
-            onPress={() => open.set(!open())}
-            accessibilityRole="button"
-            accessibilityLabel={`Easing: ${easingLabel(phase().easing)}`}
-            accessibilityState={{ expanded: open() }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              height: 40,
-              paddingLeft: 14,
-              paddingRight: 10,
-              borderRadius: radius.pill,
-              borderWidth: 1,
-              borderColor: open() ? color.accent : color.lineStrong,
-            }}
-          >
-            <Text style={{ fontSize: 14, color: color.text }}>{easingLabel(phase().easing)}</Text>
-            <Icon name="caret" size={16} tint={color.muted} flip={open()} />
-          </View>
+      {/* Over the curve, so the menu hanging below draws and takes taps there. */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, zIndex: 1 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 17, fontWeight: "600", color: color.text }}>{phase().name}</Text>
+          <Text style={{ fontSize: 13, color: color.muted }}>
+            from {previous().name} · <Text style={{ fontFamily: mono }}>T+{phase().at.toFixed(1)} s</Text>
+          </Text>
         </View>
-        <Curve phase={phase()} onBezier={(b) => setBezier(phase().id, b)} time={time} value={value} />
+        <View
+          onPress={() => open.set(!open())}
+          accessibilityRole="button"
+          accessibilityLabel={`Easing: ${easingLabel(phase().easing)}`}
+          accessibilityState={{ expanded: open() }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            height: 40,
+            paddingLeft: 14,
+            paddingRight: 10,
+            borderRadius: radius.pill,
+            borderWidth: 1,
+            borderColor: open() ? color.accent : color.lineStrong,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: color.text }}>{easingLabel(phase().easing)}</Text>
+          <Icon name="caret" size={16} tint={color.muted} flip={open()} />
+        </View>
         <If when={open()}>
-          <View onPress={() => open.set(false)} style={{ position: "absolute", left: 0, right: 0, top: 48, bottom: 0 }} />
           <Choices
             value={phase().easing}
             onPick={(e) => {
@@ -329,6 +322,13 @@ export function ThrottleProfile() {
               open.set(false);
             }}
           />
+        </If>
+      </View>
+      <View>
+        <Curve phase={phase()} onBezier={(b) => setBezier(phase().id, b)} time={time} value={value} />
+        {/* A tap beside the open menu closes it instead of moving a handle. */}
+        <If when={open()}>
+          <View onPress={() => open.set(false)} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }} />
         </If>
       </View>
       <View style={{ flexDirection: "row", gap: 10 }}>
