@@ -19,6 +19,7 @@ mod counter;
 mod errors;
 mod fetch;
 mod hot;
+mod hover;
 mod js_touch;
 mod keymap;
 mod list;
