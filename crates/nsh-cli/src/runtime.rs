@@ -120,6 +120,19 @@ impl Platform {
     }
 }
 
+/// This `nsh`, through symlinks: an installer links `~/.local/bin/nsh` (or
+/// `/opt/homebrew/bin/nsh`) to the distribution's `bin/nsh`, whose runtimes
+/// are next to the real file. macOS reports the path as it was run, Linux
+/// the resolved one; on Windows nothing links it, and canonical paths there
+/// are `\\?\` ones that other tools reject.
+pub(crate) fn cli_exe() -> std::io::Result<PathBuf> {
+    let exe = env::current_exe()?;
+    if cfg!(windows) {
+        return Ok(exe);
+    }
+    Ok(exe.canonicalize().unwrap_or(exe))
+}
+
 /// The Android runtime directory (`classes.dex`, `lib/<abi>/libnsh.so`),
 /// with development support or not.
 pub(crate) fn android(dev: bool) -> anyhow::Result<PathBuf> {
@@ -136,7 +149,7 @@ fn prebuilt_android(dev: bool) -> anyhow::Result<PathBuf> {
     if let Some(root) = env::var_os("NSH_RUNTIME") {
         return android_existing(PathBuf::from(root).join("android").join(variant), dev);
     }
-    let exe = env::current_exe()?;
+    let exe = cli_exe()?;
     let bin = exe.parent().context("cli has no parent directory")?;
     let dist = bin.join("../runtime/android").join(variant);
     if dist.join("classes.dex").exists() {
@@ -202,7 +215,7 @@ pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> 
             name,
         );
     }
-    let exe = env::current_exe()?;
+    let exe = cli_exe()?;
     let bin = exe.parent().context("cli has no parent directory")?;
     // Distribution: bin/nsh + runtime/.
     let dist = bin.join("../runtime").join(platform.dir()).join(&file_name);

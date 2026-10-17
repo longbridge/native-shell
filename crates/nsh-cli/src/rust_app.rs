@@ -177,7 +177,7 @@ fn source() -> anyhow::Result<PathBuf> {
         return Ok(PathBuf::from(dir));
     }
     // target/<profile>/nsh (or target/<triple>/<profile>/...).
-    let exe = env::current_exe()?;
+    let exe = crate::runtime::cli_exe()?;
     for dir in exe.ancestors().skip(1) {
         if dir.join("crates/nsh-cli/Cargo.toml").exists() {
             return Ok(dir.to_path_buf());

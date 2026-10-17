@@ -21,6 +21,49 @@ nsh 的所有操作都通过一个命令 `nsh` 完成：打包和编译应用、
 
 macOS 上 `nsh run` 的默认目标 Mac Catalyst 和 iOS 一样需要 Xcode。详见[平台工具](#平台工具)。
 
+## 安装发布版本
+
+每个 [GitHub release](https://github.com/longbridge/native-shell/releases) 都附带 macOS（Apple silicon）、Linux x86_64 和 Windows x86_64 的预构建发行包（见下文）。无论用哪种方式安装，`PATH` 上得到的都是同一个 `nsh` 命令。
+
+**macOS 和 Linux**，使用安装脚本：
+
+```sh
+curl -fsSL https://native-shell.com/install.sh | sh
+```
+
+它把发行包安装到 `~/.nsh`，并把 `~/.local/bin/nsh` 链接过去；再次运行即可更新。`NSH_VERSION=v0.1.0` 指定版本，`NSH_INSTALL_DIR` 指定其他目录。
+
+**Windows**，在 PowerShell 中：
+
+```powershell
+irm https://native-shell.com/install.ps1 | iex
+```
+
+它安装到 `%LOCALAPPDATA%\nsh`，并把其中的 `bin` 加入用户 `PATH`（之后打开新的终端）。`$env:NSH_VERSION` 和 `$env:NSH_INSTALL_DIR` 的用法同上。
+
+**Homebrew**（macOS 和 Linux）：
+
+```sh
+brew install longbridge/tap/nsh
+```
+
+**Scoop**（Windows）：
+
+```powershell
+scoop install https://github.com/longbridge/native-shell/releases/latest/download/nsh.json
+```
+
+**mise**（三个平台）：
+
+```sh
+mise use -g github:longbridge/native-shell
+```
+
+压缩包（`nsh-macos-arm64.tar.gz`、`nsh-linux-x86_64.tar.gz`、`nsh-windows-x86_64.zip`，各带一个 `.sha256`）的文件名不含版本号，所以 `https://github.com/longbridge/native-shell/releases/latest/download/<压缩包>` 总是下载最新版本。嵌入用的 SDK 也单独发布，供不需要 CLI 的原生应用使用：`nsh-embed-ios.zip` 和 `nsh-embed-android.zip`。
+
+> [!NOTE]
+> 二进制文件暂未签名。macOS 会隔离浏览器下载的文件；安装脚本、Homebrew 和 mise 用 `curl` 下载，不受影响，否则请运行 `xattr -dr com.apple.quarantine <目录>`。Linux 运行时需要 glibc 2.39 和 GTK 4.14 或更新版本（Ubuntu 24.04 及以后）。目前没有 Intel Mac 和 arm64 Linux / Windows 的构建，请从源码构建。
+
 ## 预构建发行包
 
 发行包是一个目录 `dist/nsh`，包含 CLI 以及它打包应用时使用的预构建原生运行时：
@@ -38,7 +81,7 @@ dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  # embedding in iOS 
 dist/nsh/embed/android/{nsh,nsh-dev}.aar                     # embedding in Android apps
 ```
 
-把 `dist/nsh/bin` 加入 `PATH`（或直接调用 `dist/nsh/bin/nsh`），并保持目录完整：`nsh` 会在自身旁边的 `bin/../runtime` 中查找运行时。
+把 `dist/nsh/bin` 加入 `PATH`（或直接调用 `dist/nsh/bin/nsh`），并保持目录完整：`nsh` 会在自身旁边的 `bin/../runtime` 中查找运行时（通过指向它的符号链接运行时也一样，安装脚本就是这样做的）。
 
 ```sh
 export PATH="$PWD/dist/nsh/bin:$PATH"
