@@ -1781,7 +1781,7 @@ fn scroll_event(surface: &Rc<Surface>, event: &NSEvent, x: f32, y: f32, time: f6
     let phase = event.phase();
     let momentum = event.momentumPhase();
     if !momentum.is_empty() {
-        return momentum_event(surface, momentum, dx, dy);
+        return momentum_event(surface, momentum, dx, dy, time);
     }
     if phase.is_empty() {
         if !precise {
@@ -1830,7 +1830,7 @@ fn wheel_step(surface: &Rc<Surface>, x: f32, y: f32, dx: f32, dy: f32, time: f64
     *input.latch.borrow_mut() = Some((view.clone(), horizontal, time));
     // Without a begin, the scroll module takes it as a mouse wheel: it
     // settles (and snaps) by itself once the steps stop.
-    crate::scroll::wheel(surface, &view, dx, dy);
+    crate::scroll::wheel(surface, &view, dx, dy, time);
 }
 
 fn new_wheel(view: Option<NshView>, time: f64) -> Wheel {
@@ -1938,7 +1938,7 @@ fn gesture_event(
             w.view.clone()
         };
         if let Some(view) = view {
-            crate::scroll::wheel(surface, &view, dx, dy);
+            crate::scroll::wheel(surface, &view, dx, dy, time);
         }
     }
     if phase.intersects(NSEventPhase::Ended | NSEventPhase::Cancelled) {
@@ -1954,7 +1954,7 @@ fn gesture_event(
 }
 
 /// The system's momentum after a gesture: it goes to the gesture's view.
-fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32) {
+fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32, time: f64) {
     let input = &surface.input;
     let Some(view) = input.momentum.borrow().clone() else {
         return;
@@ -1965,7 +1965,7 @@ fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32) 
         return;
     }
     if phase.intersects(NSEventPhase::Began | NSEventPhase::Changed) && (dx != 0.0 || dy != 0.0) {
-        crate::scroll::momentum(surface, &view, dx, dy);
+        crate::scroll::momentum(surface, &view, dx, dy, time);
     }
     if phase.intersects(NSEventPhase::Ended | NSEventPhase::Cancelled) {
         end_momentum(surface);

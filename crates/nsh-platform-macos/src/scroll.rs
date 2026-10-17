@@ -131,6 +131,74 @@ pub(crate) struct Live {
     indicator: Option<Retained<CALayer>>,
     /// The refresh spinner's layer, with a sublayer per spoke.
     spinner: Option<Retained<CALayer>>,
+    /// Trackpad offsets waiting to be shown ([`Resampled`]).
+    resampled: Option<Resampled>,
+}
+
+/// Where trackpad events (gestures and their momentum) put the offset, by
+/// the events' time (ms), shown at display frames ([`tick`]) rather than
+/// as they come. Events come at about the display's rate but not in step
+/// with it: shown as they come, some frames get two and some none, and a
+/// steady scroll judders (measured on a 120 Hz screen: up to a quarter of
+/// the frames of a fling moved twice or not at all, depending on how the
+/// events fell between the frames). Each frame shows the offset the
+/// events give for a moment one event interval before it, interpolated,
+/// so every frame moves by what that interval did.
+#[derive(Debug, Default, Clone)]
+struct Resampled {
+    /// `(time, offset)`, oldest first; the first is the offset shown
+    /// when the events began.
+    points: std::collections::VecDeque<(f64, f32)>,
+    /// The time between events (ms), smoothed.
+    interval: f64,
+}
+
+impl Resampled {
+    /// The newest offset (where the events have put the view).
+    fn goal(&self) -> Option<f32> {
+        self.points.back().map(|p| p.1)
+    }
+
+    /// Adds where an event at `time` put the offset.
+    fn push(&mut self, time: f64, pos: f32) {
+        match self.points.back() {
+            Some(&(last, _)) if time <= last => {
+                // The same instant (or out of order): the newest wins.
+                self.points.pop_back();
+                self.points.push_back((last, pos));
+            }
+            Some(&(last, _)) => {
+                // Gaps beyond a frame at 60 Hz are pauses, not the rate.
+                let gap = (time - last).clamp(4.0, 17.0);
+                self.interval += (gap - self.interval) * 0.25;
+                self.points.push_back((time, pos));
+            }
+            None => self.points.push_back((time, pos)),
+        }
+    }
+
+    /// The offset at `t` (ms), dropping points before it, and whether
+    /// `t` is past the newest (which it then is).
+    fn sample(&mut self, t: f64) -> (f32, bool) {
+        while self.points.len() > 2 && self.points[1].0 <= t {
+            self.points.pop_front();
+        }
+        let Some(&(t0, p0)) = self.points.front() else {
+            return (0.0, true);
+        };
+        let Some(&(t1, p1)) = self.points.get(1) else {
+            return (p0, true);
+        };
+        if t >= t1 {
+            return (p1, true);
+        }
+        let k = if t1 > t0 {
+            ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        (p0 + (p1 - p0) * k as f32, false)
+    }
 }
 
 // Pure logic.
@@ -366,7 +434,8 @@ fn emit(surface: &Surface, view: &NshView, kind: EventKind) {
 
 /// Ends a glide or a snap a new input interrupts (`onMomentumScrollEnd`,
 /// as UIKit sends when a drag catches a glide).
-fn interrupt(surface: &Surface, view: &NshView) {
+fn interrupt(surface: &Rc<Surface>, view: &NshView) {
+    settle(surface, view);
     let momentum = matches!(
         phase(view),
         Phase::Glide { .. } | Phase::Momentum | Phase::Animate { momentum: true, .. }
@@ -375,6 +444,57 @@ fn interrupt(surface: &Surface, view: &NshView) {
     if momentum {
         emit(surface, view, EventKind::MomentumScrollEnd);
     }
+}
+
+/// A trackpad event at `time` (ms, on the display link's clock) put the
+/// offset at `pos`: shown from the next frame on ([`Resampled`]).
+fn feed(surface: &Rc<Surface>, view: &NshView, pos: f32, time: f64) {
+    if !mapped(view) {
+        return moved_to(surface, view, pos);
+    }
+    {
+        let mut state = view.state_mut();
+        let Some(s) = state.scroll.as_mut() else {
+            return;
+        };
+        let shown = main(s);
+        let r = s.live.resampled.get_or_insert_with(|| Resampled {
+            points: Default::default(),
+            interval: 1000.0 / 120.0,
+        });
+        if r.points.is_empty() {
+            // The motion starts from what shows, an interval before.
+            r.points.push_back((time - r.interval, shown));
+        }
+        r.push(time, pos);
+    }
+    ensure_ticking(surface, view);
+}
+
+/// The offset trackpad events have put `view` at (ahead of what shows
+/// while [`Resampled`] catches up).
+fn goal(s: &ScrollState) -> f32 {
+    s.live
+        .resampled
+        .as_ref()
+        .and_then(Resampled::goal)
+        .unwrap_or_else(|| main(s))
+}
+
+/// Shows where trackpad events put `view` at once (something else moves
+/// it from there).
+fn settle(surface: &Rc<Surface>, view: &NshView) {
+    let goal = {
+        let mut state = view.state_mut();
+        let Some(s) = state.scroll.as_mut() else {
+            return;
+        };
+        match s.live.resampled.take().and_then(|r| r.goal()) {
+            Some(goal) => goal,
+            None => return,
+        }
+    };
+    moved_to(surface, view, goal);
 }
 
 // Moving.
@@ -458,6 +578,7 @@ fn animate_to(
     momentum: bool,
     end: bool,
 ) {
+    settle(surface, view);
     let (min, max) = limits(&view.state());
     let to = to.clamp(min, max.max(min));
     let from = view.state().scroll.as_ref().map_or(0.0, main);
@@ -490,6 +611,7 @@ fn animate_to(
 /// the offset grows): bounces back, snaps, glides (`glide`) or settles.
 /// Snapping uses `snap_velocity` when it is not 0 (a settled mouse wheel).
 fn release(surface: &Rc<Surface>, view: &NshView, v: f32, snap_velocity: f32, glide: bool) {
+    settle(surface, view);
     let (pos, min, max, target) = {
         let state = view.state();
         let Some(s) = &state.scroll else { return };
@@ -575,6 +697,33 @@ fn ensure_ticking(surface: &Rc<Surface>, view: &NshView) {
 
 /// One frame of `view`'s motion; false when there is nothing left to do.
 fn tick(surface: &Rc<Surface>, view: &NshView, now: f64) -> bool {
+    let sampled = {
+        let mut state = view.state_mut();
+        let Some(s) = state.scroll.as_mut() else {
+            return false;
+        };
+        // Events still come in these phases: hold at the newest until the
+        // next one, rather than ending.
+        let input = matches!(
+            s.live.phase,
+            Phase::Wheel { gesture: true, .. } | Phase::AwaitMomentum { .. } | Phase::Momentum
+        );
+        match s.live.resampled.as_mut() {
+            Some(r) => {
+                // A little more than an interval back: the event after it
+                // has come by then, even a little late.
+                let (pos, past) = r.sample(now - r.interval - 2.0);
+                if past && !input {
+                    s.live.resampled = None;
+                }
+                Some(pos)
+            }
+            None => None,
+        }
+    };
+    if let Some(pos) = sampled {
+        moved_to(surface, view, pos);
+    }
     let (phase, pos, rate, (min, max)) = {
         let state = view.state();
         let Some(s) = &state.scroll else { return false };
@@ -662,7 +811,7 @@ fn tick(surface: &Rc<Surface>, view: &NshView, now: f64) -> bool {
         let mut busy = !matches!(
             s.live.phase,
             Phase::Idle | Phase::Drag { .. } | Phase::Momentum | Phase::Wheel { gesture: true, .. }
-        );
+        ) || s.live.resampled.is_some();
         let mut overlays = false;
         if s.live.alpha > 0.0 {
             let alpha = indicator_alpha(now - s.live.shown);
@@ -1050,6 +1199,11 @@ pub(crate) fn scroll_by(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32)
             },
             other => other,
         };
+        if let Some(r) = s.live.resampled.as_mut() {
+            for p in &mut r.points {
+                p.1 += d;
+            }
+        }
         s.live.report = true;
         (main(s), d)
     };
@@ -1311,7 +1465,7 @@ pub(crate) fn wheel_begin(surface: &Rc<Surface>, view: &NshView) {
 /// A wheel or trackpad scroll by `(dx, dy)` points (positive: the content
 /// moves up / left). Without [`wheel_begin`] it is a mouse wheel, which
 /// settles by itself once it stops.
-pub(crate) fn wheel(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32) {
+pub(crate) fn wheel(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32, time: f64) {
     if !enabled(view) {
         return;
     }
@@ -1362,7 +1516,11 @@ pub(crate) fn wheel(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32) {
             raw,
         },
     );
-    moved_to(surface, view, pos);
+    if gesture {
+        feed(surface, view, pos, time);
+    } else {
+        moved_to(surface, view, pos);
+    }
     ensure_ticking(surface, view);
 }
 
@@ -1389,7 +1547,7 @@ pub(crate) fn wheel_end(surface: &Rc<Surface>, view: &NshView, vx: f32, vy: f32)
     // After the refresh check: refreshing lowers the top limit.
     let (pos, (min, max)) = {
         let state = view.state();
-        (state.scroll.as_ref().map_or(0.0, main), limits(&state))
+        (state.scroll.as_ref().map_or(0.0, goal), limits(&state))
     };
     let outside = pos < min - 0.5 || pos > max.max(min) + 0.5;
     if gesture && !outside && !snaps {
@@ -1419,7 +1577,7 @@ pub(crate) fn momentum_begin(surface: &Rc<Surface>, view: &NshView) -> bool {
 
 /// The system's momentum moved `view` by `(dx, dy)` points (as
 /// [`wheel`]); it stops at the edges.
-pub(crate) fn momentum(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32) {
+pub(crate) fn momentum(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32, time: f64) {
     if phase(view) != Phase::Momentum {
         return;
     }
@@ -1427,12 +1585,12 @@ pub(crate) fn momentum(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32) 
         let state = view.state();
         let Some(s) = &state.scroll else { return };
         let (min, max) = limits(&state);
-        let pos = main(s);
+        let pos = goal(s);
         let lo = min.min(pos);
         let hi = max.max(min).max(pos);
         (pos + wheel_delta(s, dx, dy)).clamp(lo, hi)
     };
-    moved_to(surface, view, pos);
+    feed(surface, view, pos, time);
 }
 
 /// The system's momentum on `view` ended.
@@ -1642,6 +1800,29 @@ pub(crate) fn reveal(surface: &Rc<Surface>, target: &NshView) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resampling_moves_evenly_between_events() {
+        let mut r = Resampled {
+            points: Default::default(),
+            interval: 8.0,
+        };
+        r.points.push_back((0.0, 0.0));
+        // Events every 8 ms, 10 points each; frames sample at other times.
+        for i in 1..=4 {
+            r.push(i as f64 * 8.0, i as f32 * 10.0);
+        }
+        assert!((r.interval - 8.0).abs() < 1e-9);
+        assert_eq!(r.goal(), Some(40.0));
+        assert_eq!(r.sample(4.0), (5.0, false));
+        assert_eq!(r.sample(12.0), (15.0, false));
+        assert_eq!(r.sample(20.0), (25.0, false));
+        // Past the newest event: it holds there.
+        assert_eq!(r.sample(50.0), (40.0, true));
+        // An event at the same instant replaces the newest.
+        r.push(32.0, 42.0);
+        assert_eq!(r.goal(), Some(42.0));
+    }
 
     #[test]
     fn rubber_band_resists() {

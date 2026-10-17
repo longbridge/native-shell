@@ -61,6 +61,14 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   gallery's Lists (a shadow and an inset highlight on every card) was composited at ~55 of 120 Hz with the masks and
   ~107 without, although the app committed every frame in time (Instruments' Animation Hitches: every frame one
   refresh late).
+- **Trackpad scrolls are shown in step with the display** (`scroll.rs`, `Resampled`): gesture and momentum events come
+  at about the display's rate (120 Hz) but not in step with it, so applied as they come some frames moved twice and
+  some not at all (up to a quarter of a fling's frames, depending on how the events fell; the frame rate still read
+  120). Events record where they put the offset at their timestamp; each display frame shows that path one event
+  interval (+2 ms) back, interpolated. It adds ~10 ms of latency, and the main thread does the move once per frame
+  instead of once per event (each event committed a Core Animation transaction of its own). Mouse wheels (no phases)
+  still move at once. Anything else that moves the view (a drag, an animated scroll, a spring back) first shows where
+  the events got to (`settle`).
 - **One hop per commit.** The engine runs on its own thread; its sink queues each commit and wakes the main queue once
   (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
   Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared

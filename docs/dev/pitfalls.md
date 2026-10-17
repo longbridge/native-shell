@@ -218,6 +218,11 @@ Things that were found the hard way. Read the section of the area you change bef
   not, and Core Image is not even loaded (`CIFilter` is missing) unless something links it. Backdrop blur is an
   `NSVisualEffectView` with within-window blending; it needs `wantsLayer` set when created, or it has no layer to order
   and clip until AppKit makes one.
+- Trackpad scroll events come at about the display's rate but not in step with it: applied as they come, frames move
+  twice or not at all while the frame rate reads 120. Resample them at display frames by their timestamps (`scroll.rs`).
+- `NSEvent.timestamp` is on `CACurrentMediaTime`'s clock (`systemUptime`); a `CGEvent` made without a source has
+  timestamp 0 until set (nanoseconds). `NSWindow.sendEvent:` drops synthesized momentum-phase scroll events: scripts
+  hand them to the view under the pointer.
 - In `define_class!` methods, an early `return` of a `bool` or `Option<Retained<_>>` does not compile (the macro wraps
   the return type): write the body as one expression.
 - In-process screenshots (`cacheDisplayInRect:`, `renderInContext:`) ignore `maskedCorners`, `shadowPath`, Core Image
