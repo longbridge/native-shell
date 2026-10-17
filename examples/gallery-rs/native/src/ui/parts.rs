@@ -492,7 +492,8 @@ impl IntoElement for Badge {
 pub(crate) struct Stat {
     label: Label,
     value: Label,
-    tone: Option<Reactive<Tone>>,
+    /// The value's tone (none: the text's color).
+    tone: Reactive<Option<Tone>>,
     width: Option<f32>,
 }
 
@@ -505,14 +506,21 @@ impl Stat {
         Self {
             label: label.into_reactive(),
             value: value.into_reactive(),
-            tone: None,
+            tone: Reactive::Static(None),
             width: None,
         }
     }
 
     /// The value in `tone`'s color.
     pub(crate) fn tone(mut self, tone: impl IntoReactive<Tone>) -> Self {
-        self.tone = Some(tone.into_reactive());
+        self.tone = tone.into_reactive().map(Some);
+        self
+    }
+
+    /// The value in `tone`'s color while `when` holds, in the text's
+    /// otherwise.
+    pub(crate) fn tone_when(mut self, when: impl IntoReactive<bool>, tone: Tone) -> Self {
+        self.tone = when.into_reactive().map(move |on| on.then_some(tone));
         self
     }
 
@@ -537,10 +545,7 @@ impl IntoElement for Stat {
             .child(
                 text(self.value)
                     .text_size(px(15.0))
-                    .text_color(match self.tone {
-                        Some(tone) => tone.map(Tone::color),
-                        None => Reactive::Static(colors::TEXT),
-                    })
+                    .text_color(self.tone.map(|t| t.map_or(colors::TEXT, Tone::color)))
                     .tabular_nums(),
             )
             .into_element()
