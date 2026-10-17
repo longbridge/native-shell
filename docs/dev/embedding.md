@@ -74,7 +74,10 @@ in a resizable split.
   registers the stop). A press focuses it; keys reach it only while it is focused, so several surfaces and the host's
   inputs never share keys. Its key context `NshAppView` binds Tab and Shift + Tab deeper than GPUI Kit's `Root` (which
   binds them to move the window's focus): the surface's text fields come first, and past the last one (the first
-  with Shift) the field is blurred and `window.focus_next()` / `focus_prev()` move on to the host's widgets.
+  with Shift) the field is blurred and `window.focus_next()` / `focus_prev()` move on to the host's widgets. Tab from
+  the host's widgets onto the view goes on to its first field (its last with Shift: a keystroke observer, since the
+  host handles that Tab); in a window with no other tab stop (`run_app`) the fields wrap around, as on the other
+  backends.
 - **Overlays.** The surface draws only inside its bounds and takes the mouse only on its hitbox: GPUI Kit's dialogs,
   sheets, popovers and notifications (drawn by `Root` above the content) cover it and take the input, while its app
   keeps running.

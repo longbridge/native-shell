@@ -167,6 +167,8 @@ pub struct AppView {
     surface: Rc<Surface>,
     focus: FocusHandle,
     options: RefCell<AppOptions>,
+    /// Tab into the view from the host's widgets ([`AppView::tab_entered`]).
+    _keystrokes: gpui::Subscription,
     #[cfg(feature = "dev")]
     pub(crate) dev: RefCell<Option<crate::dev::DevSession>>,
 }
@@ -190,6 +192,7 @@ impl AppView {
             surface,
             focus: cx.focus_handle().tab_stop(true),
             options: RefCell::new(options),
+            _keystrokes: cx.observe_keystrokes(Self::tab_entered),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
         }
@@ -285,7 +288,8 @@ impl AppView {
     }
 
     /// Tab: the surface's next text field; past its last one, the window's
-    /// next tab stop (the embedding app's widgets).
+    /// next tab stop (the embedding app's widgets), or the first field again
+    /// when there is none.
     fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
         self.tab(false, window, cx);
     }
@@ -293,6 +297,27 @@ impl AppView {
     /// Shift + Tab, the other way.
     fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
         self.tab(true, window, cx);
+    }
+
+    /// After every keystroke: when Tab (handled by the host, GPUI Kit's
+    /// `Root`) moved the window's focus onto the view, the focus goes on to
+    /// its first text field (its last with Shift), not to the view itself.
+    fn tab_entered(
+        &mut self,
+        event: &gpui::KeystrokeEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let k = &event.keystroke;
+        let m = &k.modifiers;
+        if k.key != "tab" || m.control || m.alt || m.platform {
+            return;
+        }
+        if !self.focus.is_focused(window) || crate::text_input::focused(&self.surface).is_some() {
+            return;
+        }
+        crate::input::tab_to_edge(&self.surface, m.shift);
+        crate::rt::flush(cx);
     }
 
     fn tab(&self, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -306,11 +331,15 @@ impl AppView {
             },
         };
         if !crate::input::key(&self.surface, event) {
-            crate::text_input::blur_all(&self.surface);
             if shift {
                 window.focus_prev(cx);
             } else {
                 window.focus_next(cx);
+            }
+            // Still focused: the window has no other tab stop (a window of
+            // its own), so the fields wrap around.
+            if !self.focus.is_focused(window) || !crate::input::tab_to_edge(&self.surface, shift) {
+                crate::text_input::blur_all(&self.surface);
             }
         }
         crate::rt::flush(cx);
