@@ -43,8 +43,8 @@ futures-channel.workspace = true
 futures-util.workspace = true
 nsh-dev = { workspace = true, features = ["client"], optional = true }
 
-# The desktop's settings (XDG settings portal, AT-SPI).
 [target.'cfg(target_os = "linux")'.dependencies]
+# The desktop's settings (XDG settings portal, AT-SPI).
 zbus.workspace = true
 # `shot` script steps read the window from the X server.
 raw-window-handle.workspace = true

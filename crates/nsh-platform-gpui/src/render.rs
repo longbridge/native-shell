@@ -447,7 +447,13 @@ impl Element for SurfaceElement {
     ) {
         let surface = self.surface.clone();
         let dark = crate::system::dark(&surface);
-        let background = crate::system::window_background(&surface);
+        // Embedded with a theme, the surface is drawn on the host's
+        // background.
+        let background = match &*surface.host_theme.borrow() {
+            Some(theme) if dark => theme.background.dark,
+            Some(theme) => theme.background.light,
+            None => crate::system::window_background(&surface),
+        };
         if background.0 & 0xff != 0 {
             window.paint_quad(gpui::fill(bounds, hsla(background)));
         }

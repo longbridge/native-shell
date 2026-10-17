@@ -657,8 +657,10 @@ struct BarState {
     /// The back button's frame, when it shows.
     back: Option<Rect>,
     back_label: Option<TextLine>,
-    /// The appearance it was last drawn in.
-    dark: Option<bool>,
+    /// The appearance the screen was styled in.
+    dark: bool,
+    /// Drawn in another appearance, it asked the screens to follow.
+    asked: bool,
     hovered: bool,
     pressed: bool,
 }
@@ -704,7 +706,8 @@ impl Hosted for HeaderBar {
     fn draw(&self, cx: &mut DrawCx<'_>, size: (f32, f32)) {
         let mut s = self.state.borrow_mut();
         let t = theme(cx.dark);
-        if s.dark.replace(cx.dark).is_some_and(|d| d != cx.dark) {
+        if s.dark != cx.dark && !s.asked {
+            s.asked = true;
             // The appearance changed without a batch (a system setting):
             // the backgrounds and sheets follow, after this frame.
             let key = self.surface;
@@ -920,6 +923,8 @@ impl ScreenNav {
             s.background = c.background_color;
             s.title_color = c.title_color;
             s.tint = c.tint_color;
+            s.dark = dark;
+            s.asked = false;
             let size = if c.large_title {
                 TITLE_SIZE.1
             } else {
