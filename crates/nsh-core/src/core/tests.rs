@@ -4208,54 +4208,47 @@ mod components {
 
     /// A form: an input it controls, a scroll view, a modal while the
     /// name is long enough, a canvas drawing its length.
-    #[derive(Default)]
-    struct Form {
-        name: String,
-        focused: bool,
-        field: Option<ElementRef>,
-    }
-
-    impl Component for Form {
-        type Props = FormProps;
-        type Event = NoEvent;
-
-        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
-            self.field = Some(cx.element_ref());
-        }
-
-        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let len = self.name.len() as f32;
-            view()
-                .child(
-                    scroll().bounces(false).child(
-                        input()
-                            .element_ref(self.field.as_ref().unwrap())
-                            .value(self.name.clone())
-                            .when(self.name.is_empty(), |i| i.placeholder("Name"))
-                            .on_change_text(cx.listener(|this: &mut Self, text: &str, cx| {
-                                this.name = text.to_owned();
-                                cx.notify();
-                            }))
-                            .on_focus(cx.listener(|this: &mut Self, _, cx| {
-                                this.focused = true;
-                                cx.notify();
-                            })),
-                    ),
-                )
-                .child(canvas(Painter::new().fill_rect(0.0, 0.0, len, 4.0)))
-                .children((self.name.len() > 2).then(|| {
+    #[component]
+    fn Form(_props: FormProps) -> impl IntoElement {
+        let name = signal(String::new());
+        let focused = signal(false);
+        let field = element_ref();
+        let back = field.clone();
+        view()
+            .child(
+                scroll().bounces(false).child(
+                    input()
+                        .element_ref(&field)
+                        .value(move || name.get())
+                        .placeholder(move || {
+                            if name.with(String::is_empty) {
+                                "Name"
+                            } else {
+                                ""
+                            }
+                        })
+                        .on_change_text(move |text: &str| name.set(text.to_owned()))
+                        .on_focus(move |_: &()| focused.set(true)),
+                ),
+            )
+            .child(canvas(move || {
+                let len = name.with(String::len) as f32;
+                Painter::new().fill_rect(0.0, 0.0, len, 4.0)
+            }))
+            .child(If::new(
+                move || name.with(String::len) > 2,
+                move || {
                     modal()
                         .transparent(true)
-                        .child(text(format!("Hi {}", self.name)))
-                }))
-                .child(text(if self.focused { "focused" } else { "idle" }))
-                // Back to the field: focus it, the caret at the end.
-                .child(view().on_press(cx.listener(|this: &mut Self, _, _| {
-                    let field = this.field.as_ref().unwrap();
-                    field.focus();
-                    field.set_selection(3, 3);
-                })))
-        }
+                        .child(text(move || format!("Hi {}", name.get())))
+                },
+            ))
+            .child(text(move || if focused.get() { "focused" } else { "idle" }))
+            // Back to the field: focus it, the caret at the end.
+            .child(view().on_press(move |_: &()| {
+                back.focus();
+                back.set_selection(3, 3);
+            }))
     }
 
     #[derive(Clone, PartialEq, Props)]
@@ -4369,60 +4362,37 @@ mod components {
     }
 
     /// Measures its box when pressed (and a ref no element carries).
-    #[derive(Default)]
-    struct Ruler {
-        target: Option<ElementRef>,
-        unused: Option<ElementRef>,
-        shown: String,
-    }
-
-    impl Component for Ruler {
-        type Props = ();
-        type Event = NoEvent;
-
-        fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-            self.target = Some(cx.element_ref());
-            self.unused = Some(cx.element_ref());
-        }
-
-        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view()
-                .p_4()
-                .child(
-                    view().pl(px(10.0)).child(
-                        view()
-                            .element_ref(self.target.as_ref().unwrap())
-                            .w(px(30.0))
-                            .h(px(20.0)),
-                    ),
-                )
-                .child(text(self.shown.clone()))
-                .child(view().w(px(5.0)).h(px(5.0)).on_press(cx.listener(
-                    |this: &mut Self, _, cx| {
-                        let target = this.target.as_ref().unwrap().measure();
-                        let unused = this.unused.as_ref().unwrap().measure();
-                        cx.spawn(|this, _| async move {
-                            let (m, none) = (target.await, unused.await);
-                            this.update(move |this: &mut Self, cx| {
-                                let m = m.expect("laid out");
-                                this.shown = format!(
-                                    "{},{} {}x{} at {},{} {}",
-                                    m.frame.x,
-                                    m.frame.y,
-                                    m.frame.width,
-                                    m.frame.height,
-                                    m.page_x,
-                                    m.page_y,
-                                    none.is_none()
-                                );
-                                cx.notify();
-                            })
-                            .await;
-                        })
-                        .detach();
-                    },
-                )))
-        }
+    #[component]
+    fn Ruler() -> impl IntoElement {
+        let target = element_ref();
+        let unused = element_ref();
+        let shown = signal(String::new());
+        let measured = target.clone();
+        view()
+            .p_4()
+            .child(
+                view()
+                    .pl(px(10.0))
+                    .child(view().element_ref(&target).w(px(30.0)).h(px(20.0))),
+            )
+            .child(text(move || shown.get()))
+            .child(view().w(px(5.0)).h(px(5.0)).on_press(move |_: &()| {
+                let (target, unused) = (measured.measure(), unused.measure());
+                spawn(async move {
+                    let (m, none) = (target.await, unused.await);
+                    let m = m.expect("laid out");
+                    shown.set(format!(
+                        "{},{} {}x{} at {},{} {}",
+                        m.frame.x,
+                        m.frame.y,
+                        m.frame.width,
+                        m.frame.height,
+                        m.page_x,
+                        m.page_y,
+                        none.is_none()
+                    ));
+                });
+            }))
     }
 
     #[test]
@@ -4466,16 +4436,10 @@ mod components {
         assert_eq!(shown.last().unwrap(), "10,0 30x20 at 26,16 true");
     }
 
-    /// Provides an accent to what is below it, through the app's JSX.
-    #[derive(Default)]
-    struct Theming {
-        accent: u32,
-    }
-
     #[derive(Clone, PartialEq, Debug)]
     struct Accent(u32);
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct Clicks(u32);
 
     #[derive(Clone, PartialEq, Props)]
@@ -4483,43 +4447,32 @@ mod components {
         children: Children,
     }
 
-    impl Component for Theming {
-        type Props = WithChildren;
-        type Event = NoEvent;
-
-        fn render(&self, props: &WithChildren, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            cx.provide(Accent(self.accent));
-            view()
-                .on_press(cx.listener(|this: &mut Self, _, cx| {
-                    this.accent += 1;
-                    cx.notify();
-                }))
-                .child(props.children)
-        }
+    /// Provides an accent to what is below it, through the app's JSX.
+    #[component]
+    fn Theming(props: WithChildren) -> impl IntoElement {
+        let accent = signal(Accent(0));
+        provide_context(accent);
+        view()
+            .on_press(move |_: &()| accent.update(|a| a.0 += 1))
+            .child(props.children)
     }
 
     /// Shows the accent above it and the surface's clicks; a press counts
     /// one.
-    #[derive(Default)]
-    struct AccentSwatch;
-
-    impl Component for AccentSwatch {
-        type Props = FormProps;
-        type Event = NoEvent;
-
-        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let accent = cx.context::<Accent>().map_or(0, |a| a.0);
-            let clicks = cx.global::<Clicks>().0;
-            view()
-                .on_press(cx.listener(|_: &mut Self, _, cx| {
-                    cx.update_global(|c: &mut Clicks, _| c.0 += 1);
-                }))
-                .child(text(format!("accent {accent} clicks {clicks}")))
-        }
+    #[component]
+    fn AccentSwatch(_props: FormProps) -> impl IntoElement {
+        let accent = use_context::<Signal<Accent>>();
+        let clicks = global::<Clicks>();
+        view()
+            .on_press(move |_: &()| clicks.update(|c| c.0 += 1))
+            .child(text(move || {
+                let accent = accent.map_or(0, |a| a.with(|a| a.0));
+                format!("accent {accent} clicks {}", clicks.with(|c| c.0))
+            }))
     }
 
     #[test]
-    fn context_flows_down_and_globals_render_their_readers() {
+    fn context_flows_down_and_globals_reach_their_readers() {
         let mut c = core();
         let mut registry = Registry::new();
         registry.register::<Theming>().register::<AccentSwatch>();
@@ -4555,148 +4508,37 @@ mod components {
         shown.sort();
         assert_eq!(shown, ["accent 0 clicks 0", "accent 0 clicks 0"]);
 
-        // A new value: only the swatch below the provider renders again.
+        // A new value: only the swatch below the provider changes.
         assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
         assert_eq!(texts(&c.commit().unwrap()), ["accent 1 clicks 0"]);
 
-        // A global changed by one swatch renders both.
+        // A global changed by one swatch changes both.
         assert!(c.component_event(8, EventKind::Press, &EventPayload::None));
         let mut shown = texts(&c.commit().unwrap());
         shown.sort();
         assert_eq!(shown, ["accent 0 clicks 1", "accent 1 clicks 1"]);
     }
 
-    /// A counter that hands its handle to the surface when set up.
-    #[derive(Default)]
-    struct Owner {
-        count: u32,
-    }
-
-    /// The owner's handle, for whoever wants to change it.
-    #[derive(Default)]
-    struct OwnerHandle(Option<WeakComponent<Owner>>);
-
-    impl Component for Owner {
-        type Props = FormProps;
-        type Event = NoEvent;
-
-        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
-            let weak = cx.weak();
-            cx.update_global(|h: &mut OwnerHandle, _| h.0 = Some(weak));
-        }
-
-        fn render(&self, _: &FormProps, _: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view().child(text(format!("count {}", self.count)))
-        }
-    }
-
-    /// Changes the owner through its handle when pressed.
-    #[derive(Default)]
-    struct Remote;
-
-    impl Component for Remote {
-        type Props = FormProps;
-        type Event = NoEvent;
-
-        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let handle = cx.global::<OwnerHandle>().0.clone();
-            view().on_press(cx.listener(move |_: &mut Self, _, _| {
-                if let Some(owner) = &handle {
-                    drop(owner.update(|owner, cx| {
-                        owner.count += 1;
-                        cx.notify();
-                    }));
-                }
-            }))
-        }
-    }
-
-    #[test]
-    fn a_component_changes_another_through_its_weak_handle() {
-        let mut c = core();
-        let mut registry = Registry::new();
-        registry.register::<Owner>().register::<Remote>();
-        c.set_components(registry);
-        let mut ops = Vec::new();
-        for (id, name) in [
-            (2, std::any::type_name::<Owner>()),
-            (4, std::any::type_name::<Remote>()),
-        ] {
-            ops.push(Op::Create { id, tag: Tag::View });
-            ops.push(Op::SetProp {
-                id,
-                prop: Prop::Component(name.into()),
-            });
-            ops.push(Op::Insert {
-                parent: ROOT_ID,
-                child: id,
-                before: None,
-            });
-        }
-        apply(&mut c, ops);
-        assert_eq!(texts(&c.commit().unwrap()), ["count 0"]);
-
-        // The press updates the owner, not the remote, before the commit.
-        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
-        c.run_component_tasks();
-        assert_eq!(texts(&c.commit().unwrap()), ["count 1"]);
-
-        // Once the owner is gone, the handle changes nothing.
-        apply(
-            &mut c,
-            vec![
-                Op::Remove {
-                    parent: ROOT_ID,
-                    child: 2,
-                },
-                Op::Release { id: 2 },
-            ],
-        );
-        c.commit();
-        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
-        c.run_component_tasks();
-        assert!(c.commit().is_none_or(|b| texts(&b).is_empty()));
-    }
-
     /// A sheet that follows drags natively and springs back when let go.
-    #[derive(Default)]
-    struct Sheet {
-        offset: Option<NativeValue>,
-        state: &'static str,
-        spring: Option<Task<()>>,
-    }
-
-    impl Component for Sheet {
-        type Props = FormProps;
-        type Event = NoEvent;
-
-        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
-            self.offset = Some(cx.native_value(0.0));
-            self.state = "resting";
-        }
-
-        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            let offset = self.offset.as_ref().unwrap();
-            view()
-                .bind_translate_y(offset)
-                .bind_opacity(&offset.interpolate(&[0.0, 300.0], &[1.0, 0.2]))
-                .pan_values(None, Some(offset))
-                .on_pan_end(cx.listener(|this: &mut Self, e: &PanEvent, cx| {
-                    assert_eq!(e.value_y, Some(120.0));
-                    let end = this.offset.as_ref().unwrap().spring(0.0, Spring::default());
-                    this.state = "springing";
-                    cx.notify();
-                    this.spring = Some(cx.spawn(|this, _| async move {
-                        let finished = end.await;
-                        this.update(move |this, cx| {
-                            this.state = if finished { "back" } else { "stopped" };
-                            cx.notify();
-                        })
-                        .await;
-                    }));
-                }))
-                .child(text(self.state))
-        }
+    #[component]
+    fn Sheet(_props: FormProps) -> impl IntoElement {
+        let offset = native_value(0.0);
+        let state = signal("resting");
+        let springing = offset.clone();
+        view()
+            .bind_translate_y(&offset)
+            .bind_opacity(&offset.interpolate(&[0.0, 300.0], &[1.0, 0.2]))
+            .pan_values(None, Some(&offset))
+            .on_pan_end(move |e: &PanEvent| {
+                assert_eq!(e.value_y, Some(120.0));
+                let end = springing.spring(0.0, Spring::default());
+                state.set("springing");
+                spawn(async move {
+                    let finished = end.await;
+                    state.set(if finished { "back" } else { "stopped" });
+                });
+            })
+            .child(text(move || state.get()))
     }
 
     #[test]

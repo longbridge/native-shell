@@ -313,6 +313,8 @@ pub(super) struct Components {
     pub(super) measures: Vec<(NodeId, AnswerSlot<Option<crate::Measurement>>)>,
     /// The components' own lists, by node.
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
+    /// Views JS made, waiting to be in the tree to make their view.
+    waiting: Vec<NodeId>,
     /// The row counts the cells of views' lists read (their positions), by
     /// list, each under a root of its own that goes with the list.
     list_counts: FxHashMap<NodeId, (crate::ui::Owner, crate::ui::Signal<usize>)>,
@@ -368,6 +370,7 @@ impl Default for Components {
             measures: Vec::new(),
             virtual_lists: FxHashMap::default(),
             list_counts: FxHashMap::default(),
+            waiting: Vec::new(),
             list_layouts: FxHashMap::default(),
             insets: FxHashMap::default(),
             js_back: false,
@@ -1206,7 +1209,8 @@ impl<M: TextEngine> Core<M> {
             let changed = self.drain_views();
             let rendered = self.render_dirty();
             let failed = self.report_failures();
-            if !changed && !rendered && !failed {
+            let woke = self.wake_waiting();
+            if !changed && !rendered && !failed && !woke {
                 break;
             }
         }
@@ -1260,6 +1264,17 @@ impl<M: TextEngine> Core<M> {
         }
         let mut rendered = std::mem::take(&mut self.components.rendered);
         while let Some(host) = self.components.dirty.pop() {
+            // A view JS made waits to be in the tree (under what places it):
+            // its context comes from above it.
+            if self.waits_for_tree(host) {
+                if let Some(inst) = self.components.instances.get_mut(&host) {
+                    inst.dirty = false;
+                }
+                if !self.components.waiting.contains(&host) {
+                    self.components.waiting.push(host);
+                }
+                continue;
+            }
             let Some(mut inst) = self.components.instances.remove(&host) else {
                 continue;
             };
@@ -1295,6 +1310,45 @@ impl<M: TextEngine> Core<M> {
             let (style, classes) = (root.style.clone(), root.classes.clone());
             root.classes = self.apply_styles(host, &style, &style, classes, user);
         }
+    }
+
+    /// Whether `host` is a component that runs once, made by JS (no owner
+    /// placed it), whose view is not made yet, out of the tree.
+    fn waits_for_tree(&self, host: NodeId) -> bool {
+        let Some(inst) = self.components.instances.get(&host) else {
+            return false;
+        };
+        let Inner::Component(inner) = &inst.inner else {
+            return false;
+        };
+        inst.binding
+            && inst.root.is_none()
+            && inner.failure_owner().is_some_and(|o| !o.is_live())
+            && !self.id_in_tree(host)
+    }
+
+    /// Whether node `id` is in the root's tree.
+    fn id_in_tree(&self, id: NodeId) -> bool {
+        self.key(id).is_ok_and(|k| self.in_tree(k))
+    }
+
+    /// The views that waited for the tree and are in it now render;
+    /// whether there were any.
+    fn wake_waiting(&mut self) -> bool {
+        let waiting = std::mem::take(&mut self.components.waiting);
+        let mut woke = false;
+        for host in waiting {
+            if !self.components.instances.contains_key(&host) {
+                continue;
+            }
+            if self.id_in_tree(host) {
+                self.components.mark(host);
+                woke = true;
+            } else {
+                self.components.waiting.push(host);
+            }
+        }
+        woke
     }
 
     /// The owner of the nearest component above `host` in the tree (its
