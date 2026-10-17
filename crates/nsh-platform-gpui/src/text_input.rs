@@ -53,3 +53,11 @@ pub(crate) fn set_selection(_view: &NshView, _start: u32, _end: u32) {}
 pub(crate) fn tab_to(_view: &NshView) {}
 /// `InputValue`.
 pub(crate) fn value(_view: &NshView, _text: &str, _count: u32) {}
+/// The text, access and kind of an input, for accessibility.
+pub(crate) fn accessible_value(_view: &NshView) -> Option<crate::access::FieldValue> {
+    None
+}
+/// An assistive technology sets an input's text. True when it was set.
+pub(crate) fn set_accessible_value(_surface: &Rc<Surface>, _view: &NshView, _text: &str) -> bool {
+    false
+}

@@ -53,8 +53,11 @@ pub(crate) fn set_appearance(surface: &Rc<Surface>, appearance: Appearance) {
 }
 
 /// Root commands: dialogs, toasts, the clipboard.
-pub(crate) fn command(_surface: &Rc<Surface>, _id: NodeId, command: &Command) {
-    log::debug!("system: {command:?} is not supported yet");
+pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
+    match command {
+        Command::Announce(text) => crate::access::announce(surface, text),
+        _ => log::debug!("system: {command:?} is not supported yet"),
+    }
 }
 
 /// The batch is applied.
