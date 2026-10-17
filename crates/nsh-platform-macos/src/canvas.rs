@@ -563,6 +563,12 @@ impl<'a> Replay<'a> {
         }
     }
 
+    /// Whether the current state casts a shadow.
+    fn shadowed(&self) -> bool {
+        let (color, blur, x, y) = self.state.shadow;
+        color.0 & 0xff != 0 && (blur > 0.0 || x != 0.0 || y != 0.0)
+    }
+
     /// Alpha, blend mode and shadow of the current state, for one draw.
     fn compositing(&self) {
         let c = self.ctx();
@@ -570,7 +576,7 @@ impl<'a> Replay<'a> {
         CGContext::set_alpha(c, s.alpha);
         CGContext::set_blend_mode(c, blend(s.composite));
         let (color, blur, x, y) = s.shadow;
-        if color.0 & 0xff != 0 && (blur > 0.0 || x != 0.0 || y != 0.0) {
+        if self.shadowed() {
             let color = crate::text::cg_color(color);
             // Shadow offsets are in the layer's base space, which is y up
             // under AppKit's flipped context: a positive offset goes down.
@@ -588,6 +594,15 @@ impl<'a> Replay<'a> {
             Mode::Fill(_) => &s.fill,
             Mode::Stroke => &s.stroke,
         };
+        // A gradient is drawn through a clip, which would clip its shadow
+        // too: drawn in a transparency layer, the shadow falls from what
+        // the layer holds.
+        let layered = self.color(paint).is_none() && self.shadowed();
+        if layered {
+            // SAFETY: a valid context; ended below, before the state is
+            // restored.
+            unsafe { CGContext::begin_transparency_layer(c, None) };
+        }
         match mode {
             Mode::Fill(rule) => {
                 CGContext::add_path(c, Some(path));
@@ -664,6 +679,9 @@ impl<'a> Replay<'a> {
                     }
                 }
             }
+        }
+        if layered {
+            CGContext::end_transparency_layer(c);
         }
         CGContext::restore_g_state(c);
     }
