@@ -850,6 +850,17 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
     if !event.precise && dx == 0.0 && event.modifiers.shift {
         (dx, dy) = (dy, dx);
     }
+    // A multiline field under the pointer scrolls its own lines first, as
+    // GTK's and AppKit's text views do.
+    if dy.abs() > dx.abs()
+        && let Some(hit) = pick(&surface.root, x, y, true)
+        && let Some(field) = chain(&hit.view)
+            .into_iter()
+            .find(|v| v.kind() == ViewKind::Input)
+        && crate::text_input::wheel(&field, dy)
+    {
+        return;
+    }
     let kind = if event.precise {
         WheelInput::Touchpad
     } else {
