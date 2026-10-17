@@ -75,6 +75,15 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
   Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared
   between surfaces.
+- **Resizes are shown at once** (`Surface::resized`, the one place the main thread waits for the engine): when the
+  window resizes the root, the main thread waits for the layout at the new size (the engine reports it after its
+  commit: `MountSink::resized`), at most 16 ms, and applies it before AppKit draws the window. AppKit's animated
+  resizes (zoom, the green button, a double click on the title bar) run the run loop in a private mode
+  (`_NSMoveTimerRunLoopMode`) where the main queue does not drain: the window grew around the old content for the
+  whole animation (~360 ms, 41 of 41 captured frames), its new area white. Now it is laid out on every step (the wait
+  is ~0.1–1.5 ms of engine time; mounting what comes into view is the rest); a live resize takes the same path. A capture still shows a few frames one step behind (2–12 of ~60 per zoom and unzoom), as a plain AppKit window
+  does (13): the window server shows the window's new frame before the commit that fills it. An engine that misses
+  the deadline (JS busy) is not waited for again until it reports a resize done, so a busy app resizes as before.
 - **Text is typeset on the engine thread** by CoreText (`text.rs`, the iOS engine with `NSFont`); the main thread
   draws the finished `CTLine`s.
 - **Frames**: native animations, JS frame requests, scroll glides, transitions and toasts run on the root view's display
