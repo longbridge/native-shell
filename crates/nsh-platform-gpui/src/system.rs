@@ -899,7 +899,6 @@ mod os {
 pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
     match command {
         Command::Dialog(dialog) => show_dialog(surface, dialog),
-        Command::Desktop(command) => crate::chrome::command(surface, command),
         Command::Toast { text, long } => show_toast(surface, text, *long),
         Command::SetClipboard(text) => {
             let text = text.clone();
@@ -935,7 +934,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
         }
         Command::Announce(text) => crate::access::announce(surface, text),
         // The status bar is a phone's; layout animations arrive as mount
-        // items. `Back` is routed by the mounter.
+        // items. `Back` and `Desktop` are routed by the mounter.
         Command::StatusBar(_) | Command::SetStatusBar(_) | Command::LayoutAnimation(_) => {}
         other => log::debug!("gpui: command {other:?} is not supported"),
     }
