@@ -115,8 +115,8 @@ including the user-facing pages in `website/` (English and `zh-CN`).
 ## Commands
 
 ```sh
-cargo run [-- <app>] [-- --target ios|android]                                     # the gallery in Mac Catalyst, hot reload; rebuilt and restarted on Rust changes
-cargo xtask [<app>] [--target ios|android] [-v]                                    # the same without cargo's own two lines; -v (any nsh / xtask command): all output
+cargo run [-- <app>] [-- --target catalyst|ios|android]                            # the gallery on this machine's backend (AppKit / GTK), hot reload; rebuilt and restarted on Rust changes
+cargo xtask [<app>] [--target catalyst|ios|android] [-v]                           # the same without cargo's own two lines; -v (any nsh / xtask command): all output
 cargo build -p nsh-cli                                                             # build the nsh CLI
 ./target/debug/nsh init my-app                                                     # new app: App.tsx, nsh.json, tsconfig.json, .nsh/types
 cargo build -p nsh-ios-host --target aarch64-apple-ios-macabi                          # the Catalyst development host (nsh run builds it in a checkout)

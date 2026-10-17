@@ -6,7 +6,7 @@ macos`. It follows the Linux backend's desktop design (`linux.md`: nsh picks vie
 their own, nsh draws screens, headers and modals, sheets are centered cards, `desktop={{…}}` props apply) with the iOS
 backend's Apple drawing (CoreText, Core Graphics, Core Animation layers, ImageIO, `NSURLSession`, AVFoundation, WebKit).
 Mac Catalyst (`nsh-platform-ios` on `aarch64-apple-ios-macabi`) stays the default `nsh run` target on macOS: it is
-UIKit, phone-style. User-facing page: `website/docs/macos.md`.
+UIKit, phone-style. In a checkout, `cargo run` runs the gallery here (`--target catalyst` for Catalyst). User-facing page: `website/docs/macos.md`.
 
 ## Building and checking
 

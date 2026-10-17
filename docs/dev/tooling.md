@@ -223,7 +223,7 @@ The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distributi
 
 Commands that build an app take its entry module or its directory (the current one by default), whose `App.tsx` is
 the entry (matched in any case: `crates/nsh-cli/src/entry.rs`). `cargo run` is `xtask run` (the workspace's default
-member): the gallery in the Mac Catalyst host (on Linux the GTK host) through `nsh run`, in a process group of its own that is stopped and
+member): the gallery on the machine's own backend (the AppKit host on macOS, the GTK host on Linux; `--target` picks another) through `nsh run`, in a process group of its own that is stopped and
 started again when a source under `crates/` changes (`crates/xtask/src/run.rs`; it watches the canonical
 `crates/`: inotify reports paths under the one watched as given, and the `..` of `CARGO_MANIFEST_DIR/../..` would make
 every path look like a dot entry, which is skipped). The first two lines (`Finished`,
