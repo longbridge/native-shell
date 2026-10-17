@@ -80,7 +80,8 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 ## Checking a change: `--script`
 
 `nsh-macos-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or new
-lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.png>`, `tap <x> <y> [count]`, `rtap`,
+lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.png>`, `tap [mods] <x> <y> [count]`
+(`tap shift 10 20`: a shift-click), `down` / `up` (a held press, for pressed states), `rtap`,
 `drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `notch` (a mouse wheel),
 `hover`, `type <text>`, `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
 `quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
@@ -94,8 +95,8 @@ nsh build examples/gallery -o /tmp/gallery
 
 `shot` renders the window's content in process (`cacheDisplayInRect:`), so it needs no Screen Recording permission and
 works while the screen is locked. That rendering is not Core Animation's own: it ignores `maskedCorners`, cuts masks at
-their layer's bounds, ignores `shadowPath` and Core Image filters, and does not show sheets, `AVPlayerLayer` or
-`WKWebView` content. `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
+their layer's bounds, ignores `shadowPath` and Core Image filters, flattens 3D transforms (perspective, `rotateX`,
+`rotateY`), and does not show backdrop blur, sheets, `AVPlayerLayer` or `WKWebView` content. `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
 shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them.
 
 ## Not implemented, or different

@@ -8,7 +8,8 @@
 //! |---|---|
 //! | `wait <ms>` | Waits. |
 //! | `shot <file.png>` | Renders the window's content to a PNG (in process, whatever covers the window). |
-//! | `tap <x> <y> [count]` | Presses and releases the left button at a point (points, from the content's top left); `count` clicks in a row (2: a double click). |
+//! | `tap [mods] <x> <y> [count]` | Presses and releases the left button at a point (points, from the content's top left); `count` clicks in a row (2: a double click); `mods` as for `key`, without the key (`tap shift 10 20`: a shift-click). |
+//! | `down [mods] <x> <y>` / `up <x> <y>` | Presses the left button and keeps it down (pressed states, long presses) / releases it. |
 //! | `rtap <x> <y>` | Presses and releases the right button (a secondary click). |
 //! | `drag <x0> <y0> <x1> <y1> [ms]` | Moves the pointer to the start, presses, moves in steps a frame apart over `ms` (default 300), releases. |
 //! | `wheel <x> <y> <dx> <dy> [ms]` | A trackpad scroll gesture by `(dx, dy)` points over `ms` (default 100): phase began, changed events a frame apart, ended; no momentum. Positive moves the content up / left. |
@@ -45,7 +46,9 @@ use crate::surface::Surface;
 enum Step {
     Wait(u64),
     Shot(String),
-    Tap(f64, f64, u32),
+    Tap(f64, f64, u32, NSEventModifierFlags),
+    Down(f64, f64, NSEventModifierFlags),
+    Up(f64, f64),
     RightTap(f64, f64),
     Drag(f64, f64, f64, f64, u64),
     Wheel(f64, f64, f64, f64, u64),
@@ -74,7 +77,16 @@ fn parse(script: &str) -> Vec<Step> {
             continue;
         }
         let (name, rest) = raw.split_once(' ').unwrap_or((raw, ""));
-        let rest = rest.trim();
+        let mut rest = rest.trim();
+        // Pointer steps may start with modifiers (`tap shift 10 20`).
+        let mut mods = NSEventModifierFlags::empty();
+        if matches!(name, "tap" | "down")
+            && let Some((first, after)) = rest.split_once(' ')
+            && let Some(flags) = modifiers(first)
+        {
+            mods = flags;
+            rest = after.trim();
+        }
         let nums: Vec<f64> = rest
             .split_whitespace()
             .filter_map(|n| n.parse().ok())
@@ -82,8 +94,10 @@ fn parse(script: &str) -> Vec<Step> {
         let step = match (name, nums.as_slice()) {
             ("wait", [ms]) => Some(Step::Wait(*ms as u64)),
             ("shot", _) if !rest.is_empty() => Some(Step::Shot(rest.to_owned())),
-            ("tap", [x, y]) => Some(Step::Tap(*x, *y, 1)),
-            ("tap", [x, y, n]) if *n >= 1.0 => Some(Step::Tap(*x, *y, *n as u32)),
+            ("tap", [x, y]) => Some(Step::Tap(*x, *y, 1, mods)),
+            ("tap", [x, y, n]) if *n >= 1.0 => Some(Step::Tap(*x, *y, *n as u32, mods)),
+            ("down", [x, y]) => Some(Step::Down(*x, *y, mods)),
+            ("up", [x, y]) => Some(Step::Up(*x, *y)),
             ("rtap", [x, y]) => Some(Step::RightTap(*x, *y)),
             ("drag", [x0, y0, x1, y1]) => Some(Step::Drag(*x0, *y0, *x1, *y1, 300)),
             ("drag", [x0, y0, x1, y1, ms]) => Some(Step::Drag(*x0, *y0, *x1, *y1, *ms as u64)),
@@ -164,12 +178,18 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
     match step {
         Step::Wait(ms) => return Some(ms),
         Step::Shot(path) => shot(window, &path),
-        Step::Tap(x, y, count) => {
+        Step::Tap(x, y, count, mods) => {
             for clicks in 1..=count as isize {
-                mouse(window, NSEventType::LeftMouseDown, x, y, clicks);
-                mouse(window, NSEventType::LeftMouseUp, x, y, clicks);
+                mouse_with(window, NSEventType::LeftMouseDown, x, y, clicks, mods);
+                mouse_with(window, NSEventType::LeftMouseUp, x, y, clicks, mods);
             }
         }
+        Step::Down(x, y, mods) => {
+            // A real pointer arrives before it presses (hover state).
+            mouse(window, NSEventType::MouseMoved, x, y, 0);
+            mouse_with(window, NSEventType::LeftMouseDown, x, y, 1, mods);
+        }
+        Step::Up(x, y) => mouse(window, NSEventType::LeftMouseUp, x, y, 1),
         Step::RightTap(x, y) => {
             mouse(window, NSEventType::RightMouseDown, x, y, 1);
             mouse(window, NSEventType::RightMouseUp, x, y, 1);
@@ -250,10 +270,21 @@ fn to_window(window: &NSWindow, x: f64, y: f64) -> NSPoint {
 }
 
 fn mouse(window: &NSWindow, kind: NSEventType, x: f64, y: f64, clicks: isize) {
+    mouse_with(window, kind, x, y, clicks, NSEventModifierFlags::empty());
+}
+
+fn mouse_with(
+    window: &NSWindow,
+    kind: NSEventType,
+    x: f64,
+    y: f64,
+    clicks: isize,
+    mods: NSEventModifierFlags,
+) {
     let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
         kind,
         to_window(window, x, y),
-        NSEventModifierFlags::empty(),
+        mods,
         timestamp(),
         window.windowNumber(),
         None,
@@ -317,18 +348,33 @@ fn type_text(window: &NSWindow, text: &str) {
     }
 }
 
+/// One modifier's flag.
+fn modifier(name: &str) -> Option<NSEventModifierFlags> {
+    Some(match name {
+        "cmd" => NSEventModifierFlags::Command,
+        "shift" => NSEventModifierFlags::Shift,
+        "alt" => NSEventModifierFlags::Option,
+        "ctrl" => NSEventModifierFlags::Control,
+        _ => return None,
+    })
+}
+
+/// Modifiers alone, `+`-separated (`cmd+shift`).
+fn modifiers(names: &str) -> Option<NSEventModifierFlags> {
+    names
+        .split('+')
+        .try_fold(NSEventModifierFlags::empty(), |flags, m| {
+            Some(flags | modifier(m)?)
+        })
+}
+
 fn key(window: &NSWindow, name: &str) {
     let mut flags = NSEventModifierFlags::empty();
     let mut name = name;
     // `cmd++` is Command and `+`.
-    while let Some((modifier, rest)) = name.split_once('+').filter(|(_, r)| !r.is_empty()) {
-        flags |= match modifier {
-            "cmd" => NSEventModifierFlags::Command,
-            "shift" => NSEventModifierFlags::Shift,
-            "alt" => NSEventModifierFlags::Option,
-            "ctrl" => NSEventModifierFlags::Control,
-            _ => break,
-        };
+    while let Some((m, rest)) = name.split_once('+').filter(|(_, r)| !r.is_empty()) {
+        let Some(flag) = modifier(m) else { break };
+        flags |= flag;
         name = rest;
     }
     // (characters, virtual key code)
@@ -415,14 +461,32 @@ mod tests {
             vec![
                 Step::Wait(500),
                 Step::Shot("a.png".into()),
-                Step::Tap(10.0, 20.0, 1),
+                Step::Tap(10.0, 20.0, 1, NSEventModifierFlags::empty()),
                 Step::Drag(1.0, 2.0, 3.0, 4.0, 100),
                 Step::Key("Return".into()),
                 Step::Quit,
-                Step::Tap(1.0, 2.0, 2),
+                Step::Tap(1.0, 2.0, 2, NSEventModifierFlags::empty()),
                 Step::RightTap(3.0, 4.0),
                 Step::Wheel(1.0, 2.0, 0.0, 50.0, 100),
                 Step::Notch(1.0, 2.0, 0.0, -3.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_modifiers_and_holds() {
+        assert_eq!(
+            parse("tap shift 5 6; tap cmd+shift 1 2 2; down alt 3 4; up 3 4"),
+            vec![
+                Step::Tap(5.0, 6.0, 1, NSEventModifierFlags::Shift),
+                Step::Tap(
+                    1.0,
+                    2.0,
+                    2,
+                    NSEventModifierFlags::Command | NSEventModifierFlags::Shift
+                ),
+                Step::Down(3.0, 4.0, NSEventModifierFlags::Option),
+                Step::Up(3.0, 4.0),
             ]
         );
     }
