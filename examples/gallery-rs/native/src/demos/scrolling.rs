@@ -67,22 +67,23 @@ fn api(names: &'static str) -> impl IntoElement {
     code(names).text_size(px(12.0)).text_color(colors::FAINT)
 }
 
-/// A small [`Segmented`] of `labels`; `on_change` gets the index pressed.
+/// A small [`Segmented`] of `labels`, `selected` the index of the selected
+/// one; `on_change` gets the index pressed.
 fn choice(
     labels: &[&'static str],
-    selected: usize,
-    on_change: Listener<u32>,
-) -> impl IntoElement + use<> {
+    selected: Signal<usize>,
+    on_change: impl Into<Listener<u32>>,
+) -> ComponentElement<Segmented> {
     Segmented::element(SegmentedProps {
         options: labels
             .iter()
             .map(|l| Segment::new(*l))
             .collect::<Vec<_>>()
             .into(),
-        selected: (selected as u32).into(),
+        selected: Prop::bind(move || selected.get() as u32),
         size: SegmentedSize::Small,
     })
-    .on_event(on_change.map(|e: &SegmentedEvent| {
+    .on_event(on_change.into().map(|e: &SegmentedEvent| {
         let SegmentedEvent::Change(i) = e;
         *i
     }))
@@ -300,187 +301,105 @@ const ALIGNS: [(SnapAlignment, &str); 3] = [
 ];
 
 /// Cards that snap; a fling can pass several unless limited to one.
-#[derive(Debug)]
-struct Cards {
-    align: usize,
-    one_step: bool,
-}
-
-impl Default for Cards {
-    fn default() -> Self {
-        Self {
-            align: 1,
-            one_step: false,
-        }
-    }
-}
-
-impl Component for Cards {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        const CARD: f32 = 220.0;
-        const GAP: f32 = 12.0;
-        let cards = virtual_list(20, |at| {
-            let i = at.index();
-            let tone = TONES[i % TONES.len()];
-            view()
-                .w(px(CARD))
-                .h(px(128.0))
-                .rounded(px(18.0))
-                .border_curve(BorderCurve::Continuous)
-                .bg(colors::RAISED)
-                .finish(Finish::Raised)
-                .border_1()
-                .border_color(colors::BORDER)
-                .p_4()
-                .justify_between()
-                .overflow_hidden()
-                .child(
-                    view()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .bottom_0()
-                        .w(px(3.0))
-                        .bg(tone.color()),
-                )
-                .child(
-                    view()
-                        .flex_row()
-                        .items_center()
-                        .child(
-                            text(format!("at {} pt", i as f32 * (CARD + GAP)))
-                                .flex_1()
-                                .text_size(px(13.0))
-                                .text_color(colors::FAINT)
-                                .tabular_nums(),
-                        )
-                        .child(Badge::new(tone_name(tone)).tone(tone)),
-                )
-                .child(
-                    text(format!("Card {}", i + 1))
-                        .text_size(px(24.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(colors::TEXT)
-                        .tabular_nums(),
-                )
-        })
-        .horizontal()
-        .estimated_item_size(CARD + GAP)
-        .snap_interval(CARD + GAP)
-        .snap_alignment(ALIGNS[self.align].0)
-        // `decelerationRate="fast"`.
-        .deceleration(0.99)
-        .disable_interval_momentum(self.one_step)
-        .shows_indicator(false)
-        .h(px(128.0))
-        .row_gap(GAP)
-        .content_padding_x(14.0);
+#[component]
+fn Cards() -> impl IntoElement {
+    const CARD: f32 = 220.0;
+    const GAP: f32 = 12.0;
+    // Which of [`ALIGNS`].
+    let align = signal(1_usize);
+    let one_step = signal(false);
+    // A cell shows other cards as it is reused: what differs between cards
+    // is bound to its position.
+    let cards = virtual_list(20, |at| {
+        let tone = move || TONES[at.index() % TONES.len()];
         view()
-            .gap_3()
-            .child(view().mx(px(-14.0)).child(cards))
-            .child(choice(
-                &ALIGNS.map(|a| a.1),
-                self.align,
-                cx.listener(|this: &mut Self, i: &u32, cx| {
-                    this.align = *i as usize;
-                    cx.notify();
-                }),
-            ))
-            .child(switch_row(
-                "One card per fling",
-                Some("disableIntervalMomentum"),
-                None,
-                self.one_step,
-                cx.listener(|this: &mut Self, on: &bool, cx| {
-                    this.one_step = *on;
-                    cx.notify();
-                }),
-            ))
-    }
+            .w(px(CARD))
+            .h(px(128.0))
+            .rounded(px(18.0))
+            .border_curve(BorderCurve::Continuous)
+            .bg(colors::RAISED)
+            .finish(Finish::Raised)
+            .border_1()
+            .border_color(colors::BORDER)
+            .p_4()
+            .justify_between()
+            .overflow_hidden()
+            .child(
+                view()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .bottom_0()
+                    .w(px(3.0))
+                    .bg(move || tone().color()),
+            )
+            .child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .child(
+                        text(move || format!("at {} pt", at.index() as f32 * (CARD + GAP)))
+                            .flex_1()
+                            .text_size(px(13.0))
+                            .text_color(colors::FAINT)
+                            .tabular_nums(),
+                    )
+                    .child(Badge::new(move || tone_name(tone())).tone(tone)),
+            )
+            .child(
+                text(move || format!("Card {}", at.index() + 1))
+                    .text_size(px(24.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(colors::TEXT)
+                    .tabular_nums(),
+            )
+    })
+    .horizontal()
+    .estimated_item_size(CARD + GAP)
+    .snap_interval(CARD + GAP)
+    .snap_alignment(move || ALIGNS[align.get()].0)
+    // `decelerationRate="fast"`.
+    .deceleration(0.99)
+    .disable_interval_momentum(one_step)
+    .shows_indicator(false)
+    .h(px(128.0))
+    .row_gap(GAP)
+    .content_padding_x(14.0);
+    view()
+        .gap_3()
+        .child(view().mx(px(-14.0)).child(cards))
+        .child(choice(&ALIGNS.map(|a| a.1), align, move |i: &u32| {
+            align.set(*i as usize);
+        }))
+        .child(switch_row(
+            "One card per fling",
+            Some("disableIntervalMomentum"),
+            None,
+            one_step,
+            move |on: &bool| one_step.set(*on),
+        ))
 }
 
 /// The throttles, in milliseconds.
 const THROTTLES: [u32; 3] = [0, 100, 500];
 
-/// `onScroll` (throttled), drag and momentum events, `scrollEnabled`,
-/// bounces, content insets.
-#[derive(Debug)]
-struct Events {
-    offset: Option<ScrollEvent>,
-    /// The latest drag and momentum events, newest first: the event, at
-    /// which offset, its tone.
-    log: Vec<(&'static str, f32, Tone)>,
-    enabled: bool,
-    bounces: bool,
-    inset: bool,
-    /// Which of [`THROTTLES`].
-    throttle: usize,
-}
-
-impl Default for Events {
-    fn default() -> Self {
-        Self {
-            offset: None,
-            log: Vec::new(),
-            enabled: true,
-            bounces: true,
-            inset: false,
-            throttle: 1,
-        }
-    }
-}
-
-impl Component for Events {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let note = |name: &'static str, tone: Tone| {
-            cx.listener(move |this: &mut Self, e: &ScrollOffset, cx| {
-                this.log.insert(0, (name, e.y.round(), tone));
-                this.log.truncate(5);
-                cx.notify();
-            })
-        };
-        let progress = match &self.offset {
-            Some(o) if o.content_height > o.height => o.y / (o.content_height - o.height),
-            _ => 0.0,
-        };
-        let rows = (1..=30).map(|i: u32| {
-            view()
-                .flex_row()
-                .items_center()
-                .gap_3()
-                .h(px(32.0))
-                .px_3()
-                .child(
-                    text(i.to_string())
-                        .w(px(24.0))
-                        .text_size(px(12.0))
-                        .text_color(colors::FAINT)
-                        .tabular_nums()
-                        .text_right(),
-                )
-                .child(
-                    view()
-                        .h(px(4.0))
-                        .rounded(px(2.0))
-                        .w(relative((20 + (i * 37) % 70) as f32 / 100.0))
-                        .bg(colors::RAISED),
-                )
-        });
-        let log = view().gap(px(6.0)).min_h(px(100.0)).map(|v| {
-            if self.log.is_empty() {
-                v.child(
+/// The drag and momentum events logged, newest first (at most 5): the
+/// event, at which offset, its tone.
+fn event_log(log: Signal<Vec<(&'static str, f32, Tone)>>) -> impl IntoElement {
+    // The entries come and go with each drag: made again then.
+    view().gap(px(6.0)).min_h(px(100.0)).child(dynamic(move || {
+        log.with(|log| {
+            if log.is_empty() {
+                return vec![
                     text("No drags yet")
                         .text_size(px(13.0))
-                        .text_color(colors::FAINT),
-                )
-            } else {
-                v.children(self.log.iter().enumerate().map(|(i, &(name, y, tone))| {
+                        .text_color(colors::FAINT)
+                        .into_element(),
+                ];
+            }
+            log.iter()
+                .enumerate()
+                .map(|(i, &(name, y, tone))| {
                     view()
                         .flex_row()
                         .items_center()
@@ -500,110 +419,152 @@ impl Component for Events {
                                 .text_color(colors::FAINT)
                                 .tabular_nums(),
                         )
-                }))
-            }
-        });
-        let figure = match &self.offset {
-            Some(o) => {
-                Figure::new(o.y.round().to_string()).note(format!("/ {}", o.content_height.round()))
-            }
-            None => Figure::new("0").note("Scroll the box"),
-        };
-        let viewport = self
-            .offset
-            .map_or("—".to_owned(), |o| o.height.round().to_string());
+                        .into_element()
+                })
+                .collect()
+        })
+    }))
+}
+
+/// `onScroll` (throttled), drag and momentum events, `scrollEnabled`,
+/// bounces, content insets.
+#[component]
+fn Events() -> impl IntoElement {
+    let offset = signal(None::<ScrollEvent>);
+    let log = signal(Vec::<(&'static str, f32, Tone)>::new());
+    let enabled = signal(true);
+    let bounces = signal(true);
+    let inset = signal(false);
+    // Which of [`THROTTLES`].
+    let throttle = signal(1_usize);
+    let note = move |name: &'static str, tone: Tone| {
+        move |e: &ScrollOffset| {
+            log.update(|log| {
+                log.insert(0, (name, e.y.round(), tone));
+                log.truncate(5);
+            });
+        }
+    };
+    let progress = move || match offset.get() {
+        Some(o) if o.content_height > o.height => o.y / (o.content_height - o.height),
+        _ => 0.0,
+    };
+    let rows = (1..=30).map(|i: u32| {
         view()
+            .flex_row()
+            .items_center()
             .gap_3()
+            .h(px(32.0))
+            .px_3()
+            .child(
+                text(i.to_string())
+                    .w(px(24.0))
+                    .text_size(px(12.0))
+                    .text_color(colors::FAINT)
+                    .tabular_nums()
+                    .text_right(),
+            )
             .child(
                 view()
-                    .flex_row()
-                    .items_end()
-                    .child(view().flex_1().child(figure.unit("pt").tone(Tone::Info)))
-                    .child(
-                        text(format!("viewport {viewport} pt"))
-                            .text_size(px(13.0))
-                            .text_color(colors::FAINT)
-                            .tabular_nums()
-                            .pb(px(6.0)),
-                    ),
+                    .h(px(4.0))
+                    .rounded(px(2.0))
+                    .w(relative((20 + (i * 37) % 70) as f32 / 100.0))
+                    .bg(colors::RAISED),
             )
-            .child(Meter::new(progress).tone(Tone::Info))
-            .child(
-                scroll()
-                    .h(px(180.0))
-                    .rounded(px(radius::CONTROL))
-                    .bg(colors::SURFACE)
-                    .finish(Finish::Card)
-                    .border_1()
-                    .border_color(colors::LINE)
-                    .scroll_enabled(self.enabled)
-                    .bounces(self.bounces)
-                    .when(self.inset, |s| {
-                        s.content_inset(EdgeInsets {
+    });
+    let figure = Figure::new(move || {
+        offset
+            .get()
+            .map_or("0".to_owned(), |o| o.y.round().to_string())
+    })
+    .note(move || {
+        offset.get().map_or("Scroll the box".to_owned(), |o| {
+            format!("/ {}", o.content_height.round())
+        })
+    });
+    view()
+        .gap_3()
+        .child(
+            view()
+                .flex_row()
+                .items_end()
+                .child(view().flex_1().child(figure.unit("pt").tone(Tone::Info)))
+                .child(
+                    text(move || {
+                        let viewport = offset
+                            .get()
+                            .map_or("—".to_owned(), |o| o.height.round().to_string());
+                        format!("viewport {viewport} pt")
+                    })
+                    .text_size(px(13.0))
+                    .text_color(colors::FAINT)
+                    .tabular_nums()
+                    .pb(px(6.0)),
+                ),
+        )
+        .child(Meter::new(progress).tone(Tone::Info))
+        .child(
+            scroll()
+                .h(px(180.0))
+                .rounded(px(radius::CONTROL))
+                .bg(colors::SURFACE)
+                .finish(Finish::Card)
+                .border_1()
+                .border_color(colors::LINE)
+                .scroll_enabled(enabled)
+                .bounces(bounces)
+                .content_inset(move || {
+                    if inset.get() {
+                        EdgeInsets {
                             top: 40.0,
                             bottom: 40.0,
                             ..EdgeInsets::default()
-                        })
-                    })
-                    .event_throttle(THROTTLES[self.throttle] as f32)
-                    .on_scroll(cx.listener(|this: &mut Self, e: &ScrollEvent, cx| {
-                        this.offset = Some(*e);
-                        cx.notify();
-                    }))
-                    .on_scroll_begin_drag(note("begin drag", Tone::Accent))
-                    .on_scroll_end_drag(note("end drag", Tone::Warn))
-                    .on_momentum_scroll_begin(note("momentum begin", Tone::Info))
-                    .on_momentum_scroll_end(note("momentum end", Tone::Up))
-                    .child(view().py(px(6.0)).children(rows)),
-            )
-            .child(log)
-            .child(
-                view()
-                    .gap_2()
-                    .child(caption("Scroll events at most every", Some("ms")))
-                    .child(choice(
-                        &["0", "100", "500"],
-                        self.throttle,
-                        cx.listener(|this: &mut Self, i: &u32, cx| {
-                            this.throttle = *i as usize;
-                            cx.notify();
-                        }),
-                    )),
-            )
-            .child(
-                view()
-                    .child(switch_row(
-                        "Scroll enabled",
-                        Some("scrollEnabled"),
-                        None,
-                        self.enabled,
-                        cx.listener(|this: &mut Self, on: &bool, cx| {
-                            this.enabled = *on;
-                            cx.notify();
-                        }),
-                    ))
-                    .child(switch_row(
-                        "Bounces",
-                        Some("bounces"),
-                        None,
-                        self.bounces,
-                        cx.listener(|this: &mut Self, on: &bool, cx| {
-                            this.bounces = *on;
-                            cx.notify();
-                        }),
-                    ))
-                    .child(switch_row(
-                        "Content inset",
-                        None,
-                        Some("40 pt at the top and bottom"),
-                        self.inset,
-                        cx.listener(|this: &mut Self, on: &bool, cx| {
-                            this.inset = *on;
-                            cx.notify();
-                        }),
-                    )),
-            )
-    }
+                        }
+                    } else {
+                        EdgeInsets::default()
+                    }
+                })
+                .event_throttle(move || THROTTLES[throttle.get()] as f32)
+                .on_scroll(move |e: &ScrollEvent| offset.set(Some(*e)))
+                .on_scroll_begin_drag(note("begin drag", Tone::Accent))
+                .on_scroll_end_drag(note("end drag", Tone::Warn))
+                .on_momentum_scroll_begin(note("momentum begin", Tone::Info))
+                .on_momentum_scroll_end(note("momentum end", Tone::Up))
+                .child(view().py(px(6.0)).children(rows)),
+        )
+        .child(event_log(log))
+        .child(
+            view()
+                .gap_2()
+                .child(caption("Scroll events at most every", Some("ms")))
+                .child(choice(&["0", "100", "500"], throttle, move |i: &u32| {
+                    throttle.set(*i as usize);
+                })),
+        )
+        .child(
+            view()
+                .child(switch_row(
+                    "Scroll enabled",
+                    Some("scrollEnabled"),
+                    None,
+                    enabled,
+                    move |on: &bool| enabled.set(*on),
+                ))
+                .child(switch_row(
+                    "Bounces",
+                    Some("bounces"),
+                    None,
+                    bounces,
+                    move |on: &bool| bounces.set(*on),
+                ))
+                .child(switch_row(
+                    "Content inset",
+                    None,
+                    Some("40 pt at the top and bottom"),
+                    inset,
+                    move |on: &bool| inset.set(*on),
+                )),
+        )
 }
 
 /// Pinch to zoom (natively); tap a tile to zoom in on it.
@@ -841,130 +802,113 @@ const TAPS: [(KeyboardTaps, &str); 3] = [
 ];
 
 /// The demo's page.
-#[derive(Debug, Default)]
-pub(crate) struct Scrolling {
-    taps: usize,
-    presses: u32,
-}
-
-impl Component for Scrolling {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let explained = match TAPS[self.taps].0 {
-            KeyboardTaps::Never => {
-                "A tap outside the input only hides the keyboard; the button does not get it."
-            }
-            KeyboardTaps::Handled => {
-                "The button gets the tap and the keyboard stays; a tap on empty space hides it."
-            }
-            KeyboardTaps::Always => "Taps never hide the keyboard.",
-        };
-        let tap_me = press_with(
-            PressProps {
-                label: Some("Count a tap".into()).into(),
-                ..PressProps::default()
-            },
-            cx.listener(|this: &mut Self, _, cx| {
-                this.presses += 1;
-                cx.notify();
-            }),
+#[component]
+pub(crate) fn Scrolling() -> impl IntoElement {
+    // Which of [`TAPS`].
+    let taps = signal(0_usize);
+    let presses = signal(0_u32);
+    let explained = move || match TAPS[taps.get()].0 {
+        KeyboardTaps::Never => {
+            "A tap outside the input only hides the keyboard; the button does not get it."
+        }
+        KeyboardTaps::Handled => {
+            "The button gets the tap and the keyboard stays; a tap on empty space hides it."
+        }
+        KeyboardTaps::Always => "Taps never hide the keyboard.",
+    };
+    let tap_me = press_with(
+        PressProps {
+            label: Some("Count a tap".into()).into(),
+            ..PressProps::default()
+        },
+        move |_: &()| presses.update(|p| *p += 1),
+    )
+    .child(
+        view()
+            .h(px(44.0))
+            .rounded(px(radius::CONTROL))
+            .border_curve(BorderCurve::Continuous)
+            .bg(colors::LIGHT)
+            .finish(Finish::Light)
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .child(
+                text("Tap me")
+                    .text_size(px(15.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(colors::ON_LIGHT),
+            )
+            .child(
+                text(move || presses.get().to_string())
+                    .text_size(px(15.0))
+                    .text_color(AdaptiveColor::new(rgb(0x9a9ea4), rgb(0x55595f)))
+                    .tabular_nums(),
+            ),
+    );
+    let taps_section = Section::new("Taps with the keyboard up")
+        .child(api("keyboardShouldPersistTaps"))
+        .child(choice(&TAPS.map(|t| t.1), taps, move |i: &u32| {
+            taps.set(*i as usize);
+        }))
+        .child(
+            text(explained)
+                .text_color(colors::MUTED)
+                .text_size(px(13.0))
+                .line_height(px(18.0)),
         )
         .child(
-            view()
+            input()
+                .placeholder("Type here, then tap the button")
+                .placeholder_color(|| color(colors::FAINT))
+                .selection_color(|| color(colors::ACCENT))
                 .h(px(44.0))
+                .text_size(px(15.0))
+                .text_color(colors::TEXT)
+                .bg(colors::SURFACE)
+                .finish(Finish::Inset)
+                .border_1()
+                .border_color(colors::BORDER)
                 .rounded(px(radius::CONTROL))
-                .border_curve(BorderCurve::Continuous)
-                .bg(colors::LIGHT)
-                .finish(Finish::Light)
-                .flex_row()
-                .items_center()
-                .justify_center()
-                .gap_2()
-                .child(
-                    text("Tap me")
-                        .text_size(px(15.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(colors::ON_LIGHT),
-                )
-                .child(
-                    text(self.presses.to_string())
-                        .text_size(px(15.0))
-                        .text_color(AdaptiveColor::new(rgb(0x9a9ea4), rgb(0x55595f)))
-                        .tabular_nums(),
-                ),
-        );
-        let taps = Section::new("Taps with the keyboard up")
-            .child(api("keyboardShouldPersistTaps"))
-            .child(choice(
-                &TAPS.map(|t| t.1),
-                self.taps,
-                cx.listener(|this: &mut Self, i: &u32, cx| {
-                    this.taps = *i as usize;
-                    cx.notify();
-                }),
-            ))
-            .child(
-                text(explained)
-                    .text_color(colors::MUTED)
-                    .text_size(px(13.0))
-                    .line_height(px(18.0)),
-            )
-            .child(
-                input()
-                    .placeholder("Type here, then tap the button")
-                    .placeholder_color(cx.color(colors::FAINT))
-                    .selection_color(cx.color(colors::ACCENT))
-                    .h(px(44.0))
-                    .text_size(px(15.0))
-                    .text_color(colors::TEXT)
-                    .bg(colors::SURFACE)
-                    .finish(Finish::Inset)
-                    .border_1()
-                    .border_color(colors::BORDER)
-                    .rounded(px(radius::CONTROL))
-                    .px(px(14.0)),
-            )
-            .child(tap_me)
-            .child(view().h(px(300.0)));
-        view().flex_1().child(
-            scroll()
-                .flex_1()
-                .bg(colors::BACKGROUND)
-                .keyboard_taps(TAPS[self.taps].0)
-                .child(
-                    view()
-                        .p_4()
-                        .gap_4()
-                        .child(
-                            Section::new("Paging")
-                                .note("5 pages")
-                                .child(api("pagingEnabled · scrollValue"))
-                                .child(Pager::element(())),
-                        )
-                        .child(
-                            Section::new("Snapping")
-                                .note("20 cards")
-                                .child(api("snapToInterval · snapToAlignment"))
-                                .child(Cards::element(())),
-                        )
-                        .child(
-                            Section::new("Zoom")
-                                .note("Pinch or tap a tile")
-                                .child(api("maximumZoomScale · zoomTo()"))
-                                .child(Zoom::element(())),
-                        )
-                        .child(
-                            Section::new("Events and behavior")
-                                .child(api("onScroll · onScrollBeginDrag · onMomentumScrollEnd"))
-                                .child(Events::element(())),
-                        )
-                        .child(
-                            Section::new("Prepending keeps the position").child(Feed::element(())),
-                        )
-                        .child(taps),
-                ),
+                .px(px(14.0)),
         )
-    }
+        .child(tap_me)
+        .child(view().h(px(300.0)));
+    view().flex_1().child(
+        scroll()
+            .flex_1()
+            .bg(colors::BACKGROUND)
+            .keyboard_taps(move || TAPS[taps.get()].0)
+            .child(
+                view()
+                    .p_4()
+                    .gap_4()
+                    .child(
+                        Section::new("Paging")
+                            .note("5 pages")
+                            .child(api("pagingEnabled · scrollValue"))
+                            .child(Pager::element(())),
+                    )
+                    .child(
+                        Section::new("Snapping")
+                            .note("20 cards")
+                            .child(api("snapToInterval · snapToAlignment"))
+                            .child(Cards::element(())),
+                    )
+                    .child(
+                        Section::new("Zoom")
+                            .note("Pinch or tap a tile")
+                            .child(api("maximumZoomScale · zoomTo()"))
+                            .child(Zoom::element(())),
+                    )
+                    .child(
+                        Section::new("Events and behavior")
+                            .child(api("onScroll · onScrollBeginDrag · onMomentumScrollEnd"))
+                            .child(Events::element(())),
+                    )
+                    .child(Section::new("Prepending keeps the position").child(Feed::element(())))
+                    .child(taps_section),
+            ),
+    )
 }
