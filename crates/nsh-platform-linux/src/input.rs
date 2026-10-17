@@ -375,7 +375,11 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
     let id = {
         let mut s = view.state_mut();
         s.tracked = states;
-        s.states = 0;
+        // The core keeps the states still tracked and forgets the rest
+        // (`Core::update_tracking`): so do we, or a change it was not told
+        // about (the pointer leaving a view whose hover was tracked
+        // throughout) would never reach it.
+        s.states &= states;
         s.id
     };
     let mut tracked = surface.input.hover_tracked.borrow_mut();
@@ -383,6 +387,9 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
         tracked.insert(id);
     } else {
         tracked.remove(&id);
+        // Not hovered as far as anyone knows: picked again if it tracks
+        // hovers again under the pointer.
+        surface.input.hovered.borrow_mut().retain(|v| v != view);
     }
 }
 

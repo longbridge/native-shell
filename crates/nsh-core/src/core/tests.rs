@@ -2629,6 +2629,34 @@ fn press_and_group_states() {
 }
 
 #[test]
+fn untracked_states_are_forgotten() {
+    use crate::tailwind::state::{HOVERED, PRESSED};
+    // A sidebar row: `hover:` while not selected, plain once selected.
+    let mut c = core();
+    view_with_classes(&mut c, 2, "bg-white hover:bg-zinc-200");
+    c.commit().unwrap();
+    c.set_states(2, HOVERED | PRESSED);
+    c.commit().unwrap();
+    // Selected: nothing reads the states, so the platform stops reporting
+    // them and the pointer leaves unreported.
+    apply(&mut c, vec![class_op(2, "bg-zinc-500")]);
+    let batch = c.commit().unwrap();
+    assert!(
+        batch
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::TrackStates { id: 2, states: 0 }))
+    );
+    // Not selected again: no stale hover.
+    apply(&mut c, vec![class_op(2, "bg-white hover:bg-zinc-200")]);
+    let batch = c.commit().unwrap();
+    assert_eq!(
+        view_style_of(&batch, 2).unwrap().background_color,
+        Color(0xffff_ffff)
+    );
+}
+
+#[test]
 fn text_inherits_from_views_and_classes_set_props() {
     let mut c = core();
     view_with_classes(&mut c, 2, "text-white text-lg text-center");

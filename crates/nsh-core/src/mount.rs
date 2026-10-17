@@ -504,7 +504,10 @@ pub enum MountItem {
     },
     /// Report the view's interaction states named by these bits
     /// (`tailwind::state`: pressed, hovered, focused, focus within) with
-    /// `EngineControl::set_states`; 0 stops reporting.
+    /// `EngineControl::set_states`; 0 stops reporting. The states no
+    /// longer tracked are forgotten on both sides (the core and the
+    /// platform keep `states & tracked`), so the two never disagree about
+    /// a state the platform stopped reporting.
     TrackStates {
         /// View id.
         id: NodeId,
