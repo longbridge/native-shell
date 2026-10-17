@@ -1,0 +1,41 @@
+[package]
+name = "nsh-platform-gpui"
+description = "GPUI backend (macOS, Windows, Linux): nsh apps drawn by GPUI, embeddable in GPUI and GPUI Kit apps."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["js"]
+# JS apps (bundles, signed packages); without it, the library only runs a
+# Rust app and links no QuickJS.
+js = ["nsh-engine/js"]
+# Development support: dev server client, log forwarding, error overlay.
+dev = ["js", "dep:nsh-dev"]
+
+[dependencies]
+log.workspace = true
+
+# Empty off the desktop (like the other platform crates off their targets).
+[target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
+nsh-core.workspace = true
+nsh-animation.workspace = true
+nsh-engine.workspace = true
+nsh-ui-mobile.workspace = true
+gpui.workspace = true
+gpui_platform.workspace = true
+image = { workspace = true, features = ["gif", "webp", "jpeg"] }
+rustc-hash.workspace = true
+serde_json.workspace = true
+ttf-parser.workspace = true
+ureq.workspace = true
+base64.workspace = true
+anyhow.workspace = true
+crossbeam-channel.workspace = true
+futures-channel.workspace = true
+futures-util.workspace = true
+nsh-dev = { workspace = true, features = ["client"], optional = true }

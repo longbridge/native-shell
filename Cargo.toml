@@ -29,12 +29,19 @@ nsh-platform-android = { path = "crates/nsh-platform-android", default-features 
 nsh-platform-linux = { path = "crates/nsh-platform-linux", default-features = false }
 nsh-platform-macos = { path = "crates/nsh-platform-macos", default-features = false }
 nsh-platform-windows = { path = "crates/nsh-platform-windows", default-features = false }
+nsh-platform-gpui = { path = "crates/nsh-platform-gpui", default-features = false }
 nsh-dev = { path = "crates/nsh-dev" }
 
 anyhow = "1"
 thiserror = "2"
 clap = { version = "4.6", features = ["derive"] }
 crossbeam-channel = "0.5"
+futures-channel = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# GPUI Fast (Zed's GPUI with retained rendering), the GPUI backend's renderer;
+# the published crates under GPUI's library names, as GPUI Kit apps use them.
+gpui = { package = "gpui-fast", version = "0.1.7", default-features = false, features = ["font-kit", "wayland", "x11"] }
+gpui_platform = { package = "gpui-fast-platform", version = "0.1.7", default-features = false, features = ["font-kit", "wayland", "x11"] }
 notify = "8.2"
 log = "0.4"
 libc = "0.2"

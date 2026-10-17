@@ -1,0 +1,18 @@
+[package]
+name = "nsh-gpui-host"
+description = "Development host app (GPUI) that runs a nsh bundle on macOS, Windows and Linux."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+log.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
+nsh-platform-gpui = { workspace = true, features = ["dev"] }
+nsh-dev.workspace = true
+nsh-engine = { workspace = true, features = ["js"] }
