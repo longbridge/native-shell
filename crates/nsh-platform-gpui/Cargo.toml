@@ -39,3 +39,7 @@ crossbeam-channel.workspace = true
 futures-channel.workspace = true
 futures-util.workspace = true
 nsh-dev = { workspace = true, features = ["client"], optional = true }
+
+# The desktop's settings (XDG settings portal, AT-SPI).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus.workspace = true
