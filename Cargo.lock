@@ -1030,6 +1030,8 @@ dependencies = [
  "nsh-core",
  "nsh-engine",
  "nsh-ui-mobile",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

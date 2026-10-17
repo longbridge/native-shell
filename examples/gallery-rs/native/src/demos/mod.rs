@@ -178,7 +178,7 @@ const GROUPS: &[Group] = &[
             },
             Demo {
                 name: "System",
-                detail: "Status bar, alerts, action sheets, environment, timers",
+                detail: "Status bar, alerts, action sheets, environment, timers, HTTP",
                 icon: IconName::System,
                 content: || system::System::element(()).into_element(),
             },
