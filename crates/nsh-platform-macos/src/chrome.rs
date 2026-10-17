@@ -22,9 +22,13 @@
 //!   carries them out (the focused field's `copy:`, the application's
 //!   `terminate:`); an item with a role is never reported to the app.
 //!   Other items target an [`MenuTarget`] of the surface, which reports
-//!   their id as [`EventKind::Menu`]. `autoenablesItems` is off, so an
-//!   item's `enabled` is what shows. The main menu the app replaced is
-//!   kept and comes back with `setApplicationMenu(null)`.
+//!   their id as [`EventKind::Menu`]. AppKit enables the items as it
+//!   validates the menu, as it does its own: a role is enabled when the
+//!   responder chain can carry it out (`Undo` with something to undo,
+//!   `Paste` in a field), and gets AppKit's title for the state (`Exit
+//!   Full Screen`). A disabled item's action is one nothing answers. The
+//!   main menu the app replaced is kept and comes back with
+//!   `setApplicationMenu(null)`.
 //! - Context menus track the mouse in a loop of their own, so they are
 //!   shown from the main queue once the batch is applied, never while it
 //!   is.
@@ -482,6 +486,12 @@ fn target(surface: &Surface) -> Retained<MenuTarget> {
         .clone()
 }
 
+/// The action of disabled items: nothing answers it, so AppKit disables
+/// them as it validates the menu.
+fn disabled() -> Sel {
+    sel!(nshMenuItemDisabled:)
+}
+
 /// The standard action of a role (sent down the responder chain).
 fn role_action(role: MenuRole) -> Sel {
     match role {
@@ -560,7 +570,6 @@ fn key_equivalent(shortcut: &Shortcut) -> (String, NSEventModifierFlags) {
 fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> {
     let mtm = surface.mtm;
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
-    menu.setAutoenablesItems(false);
     let mut last_separator = true;
     for item in items {
         match item {
@@ -577,6 +586,7 @@ fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> 
                     .map(key_equivalent)
                     .unwrap_or_else(|| (String::new(), NSEventModifierFlags::empty()));
                 let selector = match action.role {
+                    _ if !action.enabled => Some(disabled()),
                     Some(role) => Some(role_action(role)),
                     None if action.id != 0 => Some(sel!(menuItemChosen:)),
                     None => None,
@@ -594,7 +604,7 @@ fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> 
                 if action.shortcut.is_some() {
                     ns.setKeyEquivalentModifierMask(mask);
                 }
-                if action.role.is_none() && action.id != 0 {
+                if selector == Some(sel!(menuItemChosen:)) {
                     let target = target(surface);
                     // SAFETY: the target answers `menuItemChosen:`; the
                     // surface keeps it while its menus exist (menu items do
@@ -602,7 +612,6 @@ fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> 
                     unsafe { ns.setTarget(Some(&target)) };
                     ns.setTag(action.id as isize);
                 }
-                ns.setEnabled(action.enabled && selector.is_some());
                 if let Some(checked) = action.checked {
                     ns.setState(if checked { 1 } else { 0 });
                 }
@@ -614,24 +623,35 @@ fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> 
                 enabled,
                 items,
             } => {
-                let sub = self::menu(surface, label, items);
-                // SAFETY: an item with no action, holding the submenu.
-                let ns = unsafe {
-                    NSMenuItem::initWithTitle_action_keyEquivalent(
-                        NSMenuItem::alloc(mtm),
-                        &NSString::from_str(label),
-                        None,
-                        ns_string!(""),
-                    )
-                };
-                ns.setSubmenu(Some(&sub));
-                ns.setEnabled(*enabled);
+                let ns = holder(surface, label, *enabled, items);
                 menu.addItem(&ns);
                 last_separator = false;
             }
         }
     }
     menu
+}
+
+/// An item holding a submenu of `items`.
+fn holder(
+    surface: &Surface,
+    label: &str,
+    enabled: bool,
+    items: &[MenuItem],
+) -> Retained<NSMenuItem> {
+    let sub = menu(surface, label, items);
+    // SAFETY: an item with no action (or one nothing answers, which
+    // disables it), holding the submenu.
+    let ns = unsafe {
+        NSMenuItem::initWithTitle_action_keyEquivalent(
+            NSMenuItem::alloc(surface.mtm),
+            &NSString::from_str(label),
+            (!enabled).then(disabled),
+            ns_string!(""),
+        )
+    };
+    ns.setSubmenu(Some(&sub));
+    ns
 }
 
 /// The application menu: the main menu, with a menu of the bar per
@@ -651,7 +671,6 @@ fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
         return;
     };
     let bar = NSMenu::new(mtm);
-    bar.setAutoenablesItems(false);
     for item in items {
         // A top-level item that is not a submenu gets one of its own.
         let (label, enabled, sub_items) = match item {
@@ -663,19 +682,7 @@ fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
             MenuItem::Action(action) => (title(action), true, vec![item.clone()]),
             MenuItem::Separator => continue,
         };
-        let sub = menu(surface, &label, &sub_items);
-        // SAFETY: an item with no action, holding the submenu.
-        let holder = unsafe {
-            NSMenuItem::initWithTitle_action_keyEquivalent(
-                NSMenuItem::alloc(mtm),
-                &NSString::from_str(&label),
-                None,
-                ns_string!(""),
-            )
-        };
-        holder.setSubmenu(Some(&sub));
-        holder.setEnabled(enabled);
-        bar.addItem(&holder);
+        bar.addItem(&holder(surface, &label, enabled, &sub_items));
     }
     app.setMainMenu(Some(&bar));
 }
