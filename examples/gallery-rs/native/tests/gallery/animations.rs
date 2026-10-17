@@ -1,8 +1,8 @@
 //! The Animations demo on a headless engine, with the platform's animation
-//! graph played here: its sections render, the compositions run natively
-//! and report finishing, stopping and resetting (back to where the run
-//! started), the interpolation's chips and the layout's button follow
-//! their state.
+//! graph played here: its cards render, the hero loops by itself, the
+//! compositions run natively and report finishing, stopping and resetting
+//! (back to where the run started), the race reverses, the interpolation's
+//! segments and the layout's buttons follow their state.
 
 use std::time::Duration;
 
@@ -93,16 +93,7 @@ impl Platform {
         self.pump();
     }
 
-    /// Presses the text `label` (a chip).
-    fn press_text(&mut self, label: &str) {
-        let id = self
-            .screen
-            .find(label)
-            .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
-        self.dispatch(id);
-    }
-
-    /// Presses the parent of the text `label` (a button).
+    /// Presses what the text `label` is in (a button, a chip, a segment).
     fn press(&mut self, label: &str) {
         let text = self
             .screen
@@ -121,13 +112,45 @@ impl Platform {
         self.pump();
     }
 
-    /// What the bound properties are now.
-    fn bound_values(&self) -> Vec<AnimationValue> {
-        self.bound.iter().map(|&n| self.graph.eval(n)).collect()
+    /// What the bound properties are now (those `still` lists).
+    fn bound_values(&self, still: &[NodeId]) -> Vec<AnimationValue> {
+        still.iter().map(|&n| self.graph.eval(n)).collect()
+    }
+
+    /// The bound nodes that do not move by themselves (the hero's loops
+    /// run all the time).
+    fn still(&mut self) -> Vec<NodeId> {
+        let before: Vec<AnimationValue> = self.bound.iter().map(|&n| self.graph.eval(n)).collect();
+        self.advance(0.5);
+        let mid: Vec<AnimationValue> = self.bound.iter().map(|&n| self.graph.eval(n)).collect();
+        self.advance(0.7);
+        self.bound
+            .iter()
+            .enumerate()
+            .filter(|&(i, &n)| before.get(i) == Some(&mid[i]) && mid[i] == self.graph.eval(n))
+            .map(|(_, &n)| n)
+            .collect()
     }
 
     fn shows(&self, text: &str) -> bool {
         shows(&self.screen, text)
+    }
+
+    /// The first text `label` mounted after the text `after` (in the same
+    /// card: the cards' texts are mounted one card after another).
+    fn after(&self, label: &str, after: &str) -> u32 {
+        let from = self.screen.find(after).expect("the anchor");
+        self.screen
+            .texts
+            .iter()
+            .filter(|t| t.1 == label && t.0 > from)
+            .map(|t| t.0)
+            .min()
+            .unwrap_or_else(|| panic!("no {label} after {after}"))
+    }
+
+    fn count(&self, text: &str) -> usize {
+        self.screen.texts.iter().filter(|t| t.1 == text).count()
     }
 }
 
@@ -135,60 +158,77 @@ impl Platform {
 fn animations_render_and_react() {
     let mut p = Platform::open();
     for text in [
-        "EASING CURVES",
-        "SEQUENCE, PARALLEL, STAGGER, LOOP",
-        "SPRINGS",
-        "INTERPOLATION",
-        "DIFFCLAMP: A HEADER THAT HIDES ON SCROLL",
-        "LAYOUT ANIMATION",
+        "Native motion",
+        "Animated.stagger",
+        "Easing",
+        "Side by side",
+        "Composition",
+        "Springs",
+        "Interpolation",
+        "Hiding header",
+        "Layout animation",
         "bounce out",
-        "wobbly",
+        "Wobbly 180 / 8",
         "idle",
-        "Scroll up to hide me",
+        "Search",
         "Row 30",
-        "t = 0 ●",
+        "diffClamp(0, 52)",
+        "t = 0",
+        "5 views",
     ] {
         assert!(p.shows(text), "{text}: {:?}", p.screen.texts);
     }
+    // The page has come in; the hero's loops keep going.
+    p.advance(2.0);
+    let still = p.still();
+    assert!(still.len() < p.bound.len(), "the hero moves by itself");
+    let rest = p.bound_values(&still);
 
     // A composition runs to its end natively.
-    p.press_text("Stagger");
-    assert!(p.shows("stagger…"), "{:?}", p.screen.texts);
+    p.press("Stagger");
+    assert!(p.shows("stagger running"), "{:?}", p.screen.texts);
     p.advance(3.0);
-    assert!(p.shows("stagger: finished"), "{:?}", p.screen.texts);
-
-    let rest = p.bound_values();
+    assert!(p.shows("stagger finished"), "{:?}", p.screen.texts);
+    assert_eq!(p.bound_values(&still), rest);
 
     // A loop goes on until stopped, where it is; a reset puts it back.
-    p.press_text("Loop");
+    p.press("Loop");
     p.advance(1.0);
-    assert!(p.shows("loop…"), "{:?}", p.screen.texts);
-    p.press_text("Stop");
-    assert!(p.shows("loop: stopped"), "{:?}", p.screen.texts);
-    assert_ne!(p.bound_values(), rest, "partway");
-    p.press_text("Reset");
-    assert_eq!(p.bound_values(), rest);
+    assert!(p.shows("loop running"), "{:?}", p.screen.texts);
+    p.press("Stop");
+    assert!(p.shows("loop stopped"), "{:?}", p.screen.texts);
+    assert_ne!(p.bound_values(&still), rest, "partway");
+    p.press("Reset");
+    assert_eq!(p.bound_values(&still), rest);
 
     // A reset stops a run going on and puts its values back where the run
     // started.
-    p.press_text("Sequence");
-    assert!(p.shows("sequence…"), "{:?}", p.screen.texts);
+    p.press("Sequence");
+    assert!(p.shows("sequence running"), "{:?}", p.screen.texts);
     // Turned, waited, fading.
     p.advance(0.9);
-    assert_ne!(p.bound_values(), rest, "partway");
-    p.press_text("Reset");
-    assert!(p.shows("sequence: stopped"), "{:?}", p.screen.texts);
-    assert_eq!(p.bound_values(), rest);
+    assert_ne!(p.bound_values(&still), rest, "partway");
+    p.press("Reset");
+    assert!(p.shows("sequence stopped"), "{:?}", p.screen.texts);
+    assert_eq!(p.bound_values(&still), rest);
 
-    p.press_text("t = 2");
-    assert!(
-        p.shows("t = 2 ●") && p.shows("t = 0"),
-        "{:?}",
-        p.screen.texts
-    );
+    // A curve chip plays it; the race reverses.
+    let chip = p.after("linear", "Curves are data, evaluated natively");
+    p.dispatch(p.screen.press_target(chip));
+    let race = p.after("Play", "Animated.parallel");
+    p.dispatch(p.screen.press_target(race));
+    assert!(p.shows("Reverse"), "{:?}", p.screen.texts);
+
+    p.press("t = 2");
+    assert_eq!(p.count("t = 2"), 2, "the badge: {:?}", p.screen.texts);
 
     p.press("Column");
     assert!(p.shows("Row"), "{:?}", p.screen.texts);
     p.press("Row");
     assert!(p.shows("Column"), "{:?}", p.screen.texts);
+    p.press("Add");
+    assert!(p.shows("6 views"), "{:?}", p.screen.texts);
+    p.press("Remove");
+    p.press("Remove");
+    assert!(p.shows("4 views"), "{:?}", p.screen.texts);
 }
