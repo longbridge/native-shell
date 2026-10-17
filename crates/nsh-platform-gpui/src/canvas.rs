@@ -417,7 +417,6 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
                 drawing: drawing.clone(),
                 args: canvas.args.clone(),
                 images: canvas.images.clone(),
-                text: cx.window.text_system().clone(),
                 system: cx.app.text_system().clone(),
                 key,
                 region,
@@ -531,7 +530,8 @@ struct Job {
     drawing: Arc<Drawing>,
     args: Vec<Option<AnimationValue>>,
     images: FxHashMap<Arc<str>, Option<Arc<sk::Pixmap>>>,
-    text: Arc<WindowTextSystem>,
+    /// The app's text system (each worker shapes with a line layout cache
+    /// of its own over it: the window's is the frame's).
     system: Arc<gpui::TextSystem>,
     key: Key,
     region: IRect,
@@ -539,6 +539,31 @@ struct Job {
     version: u64,
     /// Uploaded at this opacity (again on the main thread if it changed).
     opacity: f32,
+}
+
+/// Rasterizations a worker's line layout cache serves before it is made
+/// again: it only empties with frames, which workers do not have.
+const WORKER_TEXT_JOBS: u32 = 256;
+
+/// This worker's text shaping over the app's text system `system` (the
+/// same fonts, so the same font ids).
+fn worker_text(system: &Arc<gpui::TextSystem>) -> Arc<WindowTextSystem> {
+    thread_local! {
+        static TEXT: RefCell<Option<(usize, u32, Arc<WindowTextSystem>)>> =
+            const { RefCell::new(None) };
+    }
+    let key = Arc::as_ptr(system) as usize;
+    TEXT.with_borrow_mut(|text| match text {
+        Some((k, jobs, t)) if *k == key && *jobs < WORKER_TEXT_JOBS => {
+            *jobs += 1;
+            t.clone()
+        }
+        _ => {
+            let t = Arc::new(WindowTextSystem::new(system.clone()));
+            *text = Some((key, 1, t.clone()));
+            t
+        }
+    })
 }
 
 /// Queues `job` on the canvas workers (started on first use).
@@ -571,7 +596,7 @@ fn rasterize(job: Job) {
         &job.drawing,
         &job.args,
         &job.images,
-        (&job.text, &job.system),
+        (&worker_text(&job.system), &job.system),
         job.key,
         job.region,
         job.frac,
@@ -905,7 +930,20 @@ fn patch(
         // Nothing of it is in the pixmap.
         return true;
     };
-    let part = record(drawing, args, images, text, recorded.key, area, frac);
+    // Shadows of shapes reaching into the area are blurred from all of
+    // their shape: the replay covers the area grown by the farthest a
+    // shadow reaches, and only the area is copied back.
+    let k = (a.hypot(b)).max(c.hypot(d)) as f64;
+    let reach = shadow_reach(drawing, k);
+    let grown = IRect {
+        x0: area.x0 - reach,
+        y0: area.y0 - reach,
+        x1: area.x1 + reach,
+        y1: area.y1 + reach,
+    }
+    .intersect(&recorded.region)
+    .unwrap_or(area);
+    let part = record(drawing, args, images, text, recorded.key, grown, frac);
     let same = part.layers.len() == recorded.layers.len()
         && part
             .layers
@@ -925,21 +963,26 @@ fn patch(
         return false;
     }
     // The part's pixmap coordinates to the recorded ones.
-    let (dx, dy) = (area.x0 - recorded.region.x0, area.y0 - recorded.region.y0);
+    let (dx, dy) = (grown.x0 - recorded.region.x0, grown.y0 - recorded.region.y0);
+    // The area, in the recorded pixmap's and in the part's coordinates.
     let local = IRect {
-        x0: dx,
-        y0: dy,
-        x1: dx + area.width(),
-        y1: dy + area.height(),
+        x0: area.x0 - recorded.region.x0,
+        y0: area.y0 - recorded.region.y0,
+        x1: area.x1 - recorded.region.x0,
+        y1: area.y1 - recorded.region.y0,
     };
+    let (ix, iy) = ((area.x0 - grown.x0) as usize, (area.y0 - grown.y0) as usize);
+    let (aw, ah) = (area.width() as usize, area.height() as usize);
     for (p, r) in part.layers.into_iter().zip(&mut recorded.layers) {
         match (p, r) {
             (Layer::Pixels(from, _), Layer::Pixels(to, tiled)) => {
                 let width = to.width() as usize;
-                let (fw, tp) = (from.width() as usize, to.pixels_mut());
-                for (row, src) in from.pixels().chunks(fw).enumerate() {
-                    let start = (dy as usize + row) * width + dx as usize;
-                    tp[start..start + fw].copy_from_slice(src);
+                let fw = from.width() as usize;
+                let (src, tp) = (from.pixels(), to.pixels_mut());
+                for row in 0..ah {
+                    let from_start = (iy + row) * fw + ix;
+                    let to_start = (local.y0 as usize + row) * width + local.x0 as usize;
+                    tp[to_start..to_start + aw].copy_from_slice(&src[from_start..from_start + aw]);
                 }
                 for tile in tiled.iter_mut() {
                     if tile.rect.intersect(&local).is_some() {
@@ -972,6 +1015,24 @@ fn patch(
         }
     }
     true
+}
+
+/// How far (device pixels, `k` per point) a shadow of `drawing` reaches
+/// from its shape: three deviations of its blur and its offset.
+fn shadow_reach(drawing: &Drawing, k: f64) -> i32 {
+    let (mut blur, mut offset) = (0.0f64, 0.0f64);
+    for op in &drawing.ops {
+        match *op {
+            CanvasOp::ShadowBlur(b) => {
+                blur = blur.max(3.0 * (b.max(0.0) as f64 / 2.0 * k).min(MAX_SIGMA));
+            }
+            CanvasOp::ShadowOffset(x, y) => {
+                offset = offset.max((x.abs() + y.abs()) as f64 * k);
+            }
+            _ => {}
+        }
+    }
+    (blur + offset).ceil().min(f64::from(MAX_SIDE)) as i32
 }
 
 // --- Replay ----------------------------------------------------------------
@@ -1519,7 +1580,13 @@ impl<'a> Replay<'a> {
         let Paint::Gradient(gradient) = paint else {
             return None;
         };
-        let pixels = self.clipped(area.bounds())?;
+        let Some(pixels) = self.clipped(area.bounds()) else {
+            // None of it is in the pixmap: painted as nothing rather than
+            // skipped, so which layer later operations go to (and whether
+            // the pixmap is drawn) does not depend on the area rasterized
+            // ([`patch`]).
+            return Some(Source::Solid(sk::Color::TRANSPARENT));
+        };
         // Only the pixels the area covers are worked out (a stroke covers
         // little of its bounds).
         let mut covered = sk::Mask::new(pixels.width() as u32, pixels.height() as u32)?;
@@ -1892,8 +1959,9 @@ pub(crate) fn font_registered(data: &[u8]) {
 #[derive(Default)]
 struct Fonts {
     /// The system's fonts and the registered ones, once found (finding
-    /// the system's takes long: a worker does it, [`load_fonts`]).
-    db: Option<fontdb::Database>,
+    /// the system's takes long: a worker does it, [`load_fonts`]); shared,
+    /// so searches run without the lock.
+    db: Option<Arc<fontdb::Database>>,
     /// A worker is finding the system's fonts.
     loading: bool,
     /// How many of [`REGISTERED_FONTS`] `db` has.
@@ -1994,14 +2062,16 @@ impl ttf_parser::OutlineBuilder for Outline {
 /// font GPUI fell back to, a variable font at another weight, a system
 /// font fontdb cannot read).
 fn font_file(system: &gpui::TextSystem, id: gpui::FontId) -> Option<Arc<FontFile>> {
-    let fonts = &mut *self::fonts();
-    {
+    let (db, registered) = {
+        let fonts = &mut *self::fonts();
         let Some(db) = fonts.db.as_mut() else {
             load_fonts(fonts);
             return None;
         };
         let registered = REGISTERED_FONTS.lock().unwrap_or_else(|e| e.into_inner());
         if registered.len() > fonts.registered {
+            // Copied only while a search elsewhere holds the database.
+            let db = Arc::make_mut(db);
             for data in &registered[fonts.registered..] {
                 db.load_font_data(data.to_vec());
             }
@@ -2013,10 +2083,17 @@ fn font_file(system: &gpui::TextSystem, id: gpui::FontId) -> Option<Arc<FontFile
         if let Some(file) = fonts.by_id.get(&id) {
             return file.clone();
         }
-        let file = find_font_file(db, system, id).map(Arc::new);
-        fonts.by_id.insert(id, file.clone());
-        file
+        (db.clone(), fonts.registered)
+    };
+    // Reading a font file takes long (tens of milliseconds for a large
+    // one): the main thread never waits for a worker's search.
+    let file = find_font_file(&db, system, id).map(Arc::new);
+    let mut fonts = self::fonts();
+    // A search that raced with newly registered fonts is not kept.
+    if fonts.registered == registered {
+        return fonts.by_id.entry(id).or_insert(file).clone();
     }
+    file
 }
 
 /// Starts finding the system's fonts on a worker (hundreds of
@@ -2042,7 +2119,7 @@ fn load_fonts(fonts: &mut Fonts) {
         });
     if let Err(e) = spawned {
         log::warn!("canvas: cannot find the system's fonts: {e}");
-        fonts.db = Some(fontdb::Database::new());
+        fonts.db = Some(Arc::new(fontdb::Database::new()));
     }
 }
 
@@ -2051,7 +2128,7 @@ fn load_fonts(fonts: &mut Fonts) {
 fn fonts_loaded(db: fontdb::Database) {
     {
         let mut fonts = fonts();
-        fonts.db = Some(db);
+        fonts.db = Some(Arc::new(db));
         fonts.loading = false;
     }
     let waiting = WAITING.with_borrow_mut(std::mem::take);
@@ -3043,6 +3120,89 @@ mod tests {
         // The dot left its old place.
         assert_eq!(at(pixels(&patched), 50, 90), [0, 0, 255, 255]);
         assert_eq!(at(pixels(&patched), 250, 90), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn a_patch_blurs_shadows_from_their_whole_shape() {
+        // A card casting a blurred shadow, half inside the area a moving dot
+        // damages: its shadow there is blurred from all of the card.
+        let ops = vec![
+            CanvasOp::FillStyle(Paint::Color(Color(0xffff_ffff))),
+            CanvasOp::FillRect(rect(0.0, 0.0, 200.0, 100.0)),
+            CanvasOp::Save,
+            CanvasOp::ShadowColor(BLUE),
+            CanvasOp::ShadowBlur(16.0),
+            CanvasOp::ShadowOffset(4.0, 4.0),
+            CanvasOp::FillStyle(Paint::Color(RED)),
+            CanvasOp::FillRect(rect(75.0, 30.0, 60.0, 40.0)),
+            CanvasOp::Restore,
+            CanvasOp::FillStyle(Paint::Color(BLUE)),
+            CanvasOp::FillRect([slot(0), c(10.0), c(10.0), c(10.0)]),
+        ];
+        let drawing = Drawing {
+            ops,
+            slots: Vec::new(),
+        };
+        let system = Arc::new(gpui::TextSystem::new(Arc::new(gpui::NoopTextSystem::new())));
+        let text = WindowTextSystem::new(system.clone());
+        let key = Key {
+            linear: [2.0, 0.0, 0.0, 2.0],
+            scale: 2.0,
+            size: (200.0, 100.0),
+        };
+        let (region, _) = region(&key, (0.0, 0.0), [0.0, 0.0, 400.0, 200.0]).unwrap();
+        let args = |x: f32| vec![Some(AnimationValue::Number(x))];
+        let images = FxHashMap::default();
+        let mut patched = record(
+            &drawing,
+            &args(60.0),
+            &images,
+            (&text, &system),
+            key,
+            region,
+            (0.0, 0.0),
+        );
+        // The damage, as the scan bounds it, reaches into the card.
+        let damage = nsh_core::Rect {
+            x: 55.0,
+            y: 5.0,
+            width: 40.0,
+            height: 90.0,
+        };
+        assert!(patch(
+            &mut patched,
+            &drawing,
+            &args(70.0),
+            &images,
+            (&text, &system),
+            damage,
+        ));
+        let full = record(
+            &drawing,
+            &args(70.0),
+            &images,
+            (&text, &system),
+            key,
+            region,
+            (0.0, 0.0),
+        );
+        assert_eq!(pixels(&patched).data(), pixels(&full).data());
+    }
+
+    #[test]
+    fn culled_gradients_still_paint() {
+        // A gradient fill wholly outside the pixmap paints nothing but
+        // still counts as painting: the pixmap is kept, as where the fill
+        // shows, so a partial redraw has the layers of a full one.
+        let g = CanvasGradient::linear(0.0, 0.0, 10.0, 0.0)
+            .add_color_stop(0.0, RED)
+            .add_color_stop(1.0, BLUE);
+        let ops = vec![
+            CanvasOp::FillStyle(Paint::Gradient(Arc::new(g))),
+            CanvasOp::FillRect(rect(500.0, 500.0, 10.0, 10.0)),
+        ];
+        let r = raster(ops, 1.0, 50.0, 50.0);
+        assert_eq!(at(pixels(&r), 5, 5), [0, 0, 0, 0]);
     }
 
     #[test]
