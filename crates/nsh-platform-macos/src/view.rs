@@ -364,6 +364,24 @@ define_class!(
         #[unsafe(method(updateLayer))]
         fn update_layer(&self) {}
 
+        // AppKit sets a layer-backed view's layer geometry (anchor,
+        // position, transform) from the view when it lays it out or
+        // displays it: nsh's transforms would be gone after the first
+        // display of a view whose transform does not animate.
+        #[unsafe(method(layout))]
+        fn layout(&self) {
+            // SAFETY: NSView's own layout.
+            unsafe { msg_send![super(self), layout] }
+            NshView(self.retain()).set_layer_geometry();
+        }
+
+        #[unsafe(method(viewWillDraw))]
+        fn view_will_draw(&self) {
+            // SAFETY: NSView's own preparation (it displays the subviews).
+            unsafe { msg_send![super(self), viewWillDraw] }
+            NshView(self.retain()).set_layer_geometry();
+        }
+
         #[unsafe(method(drawRect:))]
         fn draw_rect(&self, _dirty: NSRect) {
             let Some(context) = NSGraphicsContext::currentContext() else {
@@ -530,8 +548,17 @@ define_class!(
             }
         }
 
+        #[unsafe(method(viewDidMoveToSuperview))]
+        fn view_did_move_to_superview(&self) {
+            // AppKit resets the layer's geometry when it attaches the
+            // view: views placed before they were inserted lose their
+            // transforms.
+            NshView(self.retain()).set_layer_geometry();
+        }
+
         #[unsafe(method(viewDidMoveToWindow))]
         fn view_did_move_to_window(&self) {
+            NshView(self.retain()).set_layer_geometry();
             if let Some(surface) = self.surface() {
                 self.install_tracking();
                 crate::system::window_changed(&surface);
@@ -848,7 +875,7 @@ impl NshView {
                 .is_some_and(|sc| sc.mirrored)
                 .then_some(s.frame.width)
         });
-        let (rect, transform, opacity, hidden, root) = {
+        let (rect, root) = {
             let s = self.state();
             let f = s.frame;
             let mut x = f.x + s.shift.0;
@@ -858,11 +885,6 @@ impl NshView {
             let y = f.y + s.shift.1;
             (
                 ns_rect(x, y, f.width, f.height),
-                s.transform(),
-                s.opacity(),
-                // A hidden NSView (a screen under the top one) keeps its
-                // layer hidden too.
-                s.style.hidden || crate::decor::backface_away(&s) || self.ns().isHidden(),
                 s.id == ROOT_ID && self.ivars().surface.borrow().strong_count() > 0,
             )
         };
@@ -872,19 +894,40 @@ impl NshView {
             crate::native::resized(self);
             self.place_natives();
         }
-        if let Some(layer) = self.ns().layer() {
-            // AppKit sets a layer-backed view's anchor, position and
-            // transform when it moves the view: set them again after.
-            layer.setAnchorPoint(CGPoint::new(0.0, 0.0));
-            layer.setPosition(rect.origin);
-            let t = transform.as_ref().map_or(IDENTITY, ca_transform);
-            layer.setTransform(t);
-            layer.setOpacity(opacity.clamp(0.0, 1.0));
-            layer.setHidden(hidden);
-        }
+        self.set_layer_geometry();
         if self.state().draws() {
             self.ns().setNeedsDisplay(true);
         }
+    }
+
+    /// Sets the layer's anchor, position, transform, opacity and
+    /// visibility from the view's frame and state. AppKit sets a
+    /// layer-backed view's anchor, position and transform when it moves the
+    /// view or attaches it: this runs again after each.
+    fn set_layer_geometry(&self) {
+        let Some(layer) = self.ns().layer() else {
+            return;
+        };
+        let (transform, opacity, hidden) = {
+            // AppKit may attach the view while its state is being changed
+            // (mounting): that change places it again.
+            let Ok(s) = self.0.ivars().state.try_borrow() else {
+                return;
+            };
+            (
+                s.transform(),
+                s.opacity(),
+                // A hidden NSView (a screen under the top one) keeps its
+                // layer hidden too.
+                s.style.hidden || crate::decor::backface_away(&s) || self.ns().isHidden(),
+            )
+        };
+        layer.setAnchorPoint(CGPoint::new(0.0, 0.0));
+        layer.setPosition(self.ns().frame().origin);
+        let t = transform.as_ref().map_or(IDENTITY, ca_transform);
+        layer.setTransform(t);
+        layer.setOpacity(opacity.clamp(0.0, 1.0));
+        layer.setHidden(hidden);
     }
 
     /// Hosted native views at their rectangles.
