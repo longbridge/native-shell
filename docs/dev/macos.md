@@ -33,7 +33,8 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 - **Children live in a container** when the view needs one: scroll views always (the container's bounds origin is
   the scroll offset, as `NSClipView` scrolls, so a scroll is one call), and views that clip their children and cast a
   shadow (clipping a layer clips its shadow). Hosted AppKit views (text fields, headers, videos, web views) are
-  `ViewState::natives`, above the children.
+  `ViewState::natives`, above the children, except a sheet's scrim (hosted by the root, below its card); hit testing
+  follows the AppKit order of hosted views and children, so a click on the card reaches the card.
 - **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
   `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
   contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no

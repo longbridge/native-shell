@@ -685,7 +685,7 @@ fn pick_in(view: &NshView, p: (f32, f32)) -> Option<Hit> {
     if !view.can_target() {
         return None;
     }
-    let (pe, in_slop, children, native) = {
+    let (pe, in_slop, children) = {
         let s = view.state();
         let (w, h) = (s.frame.width, s.frame.height);
         let (x, y) = p;
@@ -705,12 +705,7 @@ fn pick_in(view: &NshView, p: (f32, f32)) -> Option<Hit> {
             // items) and the core knows no area for them.
             true
         };
-        // Hosted views sit above the children.
-        let native = s.natives.iter().rev().any(|n| {
-            let r = n.rect;
-            !n.view.isHidden() && x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height
-        });
-        (s.props.pointer_events, in_slop, children, native)
+        (s.props.pointer_events, in_slop, children)
     };
     let own = || {
         (pe != PointerEvents::BoxNone && in_slop).then(|| Hit {
@@ -722,24 +717,55 @@ fn pick_in(view: &NshView, p: (f32, f32)) -> Option<Hit> {
         return own();
     }
     if pe != PointerEvents::BoxOnly {
-        if native {
-            return Some(Hit {
-                view: view.clone(),
-                native: true,
-            });
-        }
-        let offset = container_offset(view);
-        let p = (p.0 + offset.0, p.1 + offset.1);
-        for child in view.child_views().iter().rev() {
-            let Some(cp) = into_child(child, p) else {
-                continue;
-            };
-            if let Some(hit) = pick_in(child, cp) {
-                return Some(hit);
+        // Hosted views and children in their AppKit order, topmost first:
+        // hosted views are usually above the children, but not always (a
+        // sheet's card is above its scrim, which the root hosts).
+        let container = view.container_view();
+        let subviews: Vec<_> = view.ns().subviews().iter().collect();
+        for sub in subviews.into_iter().rev() {
+            if container.as_deref() == Some(&*sub) {
+                if let Some(hit) = pick_children(view, p) {
+                    return Some(hit);
+                }
+            } else if let Some(child) = NshView::from_ns(&sub) {
+                if let Some(hit) = into_child(&child, p).and_then(|cp| pick_in(&child, cp)) {
+                    return Some(hit);
+                }
+            } else if on_native(view, &sub, p) {
+                return Some(Hit {
+                    view: view.clone(),
+                    native: true,
+                });
             }
         }
     }
     own()
+}
+
+/// The innermost view at `p` (`view`'s coordinates) among the children
+/// in `view`'s container.
+fn pick_children(view: &NshView, p: (f32, f32)) -> Option<Hit> {
+    let offset = container_offset(view);
+    let p = (p.0 + offset.0, p.1 + offset.1);
+    view.child_views()
+        .iter()
+        .rev()
+        .find_map(|child| into_child(child, p).and_then(|cp| pick_in(child, cp)))
+}
+
+/// Whether `p` (`view`'s coordinates) is on `sub`, a hosted view of
+/// `view`'s.
+fn on_native(view: &NshView, sub: &objc2_app_kit::NSView, p: (f32, f32)) -> bool {
+    let (x, y) = p;
+    view.state().natives.iter().any(|n| {
+        let r = n.rect;
+        &*n.view == sub
+            && !n.view.isHidden()
+            && x >= r.x
+            && y >= r.y
+            && x < r.x + r.width
+            && y < r.y + r.height
+    })
 }
 
 /// The origin of `view`'s container's bounds (its scroll offset).
