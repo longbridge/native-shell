@@ -89,9 +89,18 @@ impl Sdk {
                 format!("CARGO_TARGET_{}_LINKER", env_triple.to_uppercase()),
                 &clang,
             )
+            // bindgen splits this variable like a shell: quoted, with forward slashes,
+            // so that the backslashes and spaces of a Windows path survive.
             .env(
                 format!("BINDGEN_EXTRA_CLANG_ARGS_{env_triple}"),
-                format!("--sysroot={}", toolchain.join("sysroot").display()),
+                format!(
+                    "--sysroot=\"{}\"",
+                    toolchain
+                        .join("sysroot")
+                        .display()
+                        .to_string()
+                        .replace('\\', "/")
+                ),
             );
         Ok(cmd)
     }
