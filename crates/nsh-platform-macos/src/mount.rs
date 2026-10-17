@@ -96,6 +96,7 @@ impl Mounter {
         self.layout_animation = None;
         crate::navigation::end_batch(surface);
         crate::system::end_batch(surface);
+        crate::input::content_moved(surface);
     }
 
     fn get(&self, id: NodeId) -> Option<&NshView> {

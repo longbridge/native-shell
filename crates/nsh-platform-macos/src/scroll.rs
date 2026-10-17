@@ -410,6 +410,7 @@ fn moved_to(surface: &Rc<Surface>, view: &NshView, pos: f32) {
         pin_sticky(surface, view);
         update_overlays(view);
     });
+    crate::input::content_moved(surface);
     if surface.anim.borrow_mut().scrolled(id, x, y) && surface.mounter.try_borrow().is_ok() {
         // While a batch is applied the surface writes animations after it.
         surface.write_animations();

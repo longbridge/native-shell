@@ -120,6 +120,9 @@ pub(crate) struct Input {
     js_block: Cell<bool>,
     /// Where the mouse last was (root coordinates), while over the root.
     last: Cell<Option<(f32, f32)>>,
+    /// Hovered views and the cursor are picked again on the main queue
+    /// (what is under the mouse moved).
+    repick: Cell<bool>,
     /// Next touch identifier.
     next_id: Cell<u32>,
     /// Next press / fade / zoom generation (invalidates callbacks of
@@ -513,6 +516,29 @@ fn refresh_cursor(surface: &Surface) {
     if let Some((x, y)) = surface.input.last.get() {
         update_cursor(surface, x, y);
     }
+}
+
+/// What is under the mouse may have moved (a scroll, a batch): hovered
+/// views and the cursor follow it, as AppKit's tracking areas do, though
+/// the mouse did not move. Once per main-queue turn, however many scroll
+/// views moved or batches came.
+pub(crate) fn content_moved(surface: &Surface) {
+    let input = &surface.input;
+    if input.repick.get() || input.last.get().is_none() {
+        return;
+    }
+    input.repick.set(true);
+    let key = surface.key();
+    DispatchQueue::main().exec_async(move || {
+        let Some(surface) = Surface::with_key(key) else {
+            return;
+        };
+        surface.input.repick.set(false);
+        if let Some((x, y)) = surface.input.last.get() {
+            crate::surface::quiet(|| hover(&surface, x, y));
+            update_cursor(&surface, x, y);
+        }
+    });
 }
 
 // --- AppKit events ------------------------------------------------------------------
