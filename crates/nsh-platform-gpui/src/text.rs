@@ -475,16 +475,13 @@ impl TextEngine for GpuiTextEngine {
         let s = &text.text;
         let mut utf16 = Vec::with_capacity(s.len() + 1);
         let mut u = 0u32;
-        for (i, c) in s.char_indices() {
-            while utf16.len() < i {
+        for c in s.chars() {
+            for _ in 0..c.len_utf8() {
                 utf16.push(u);
             }
-            utf16.push(u);
             u += c.len_utf16() as u32;
         }
-        while utf16.len() <= s.len() {
-            utf16.push(u);
-        }
+        utf16.push(u);
         let byte_of =
             |offset: u32| -> usize { utf16.partition_point(|x| *x < offset).min(s.len()) };
         let styles: Vec<&ResolvedTextStyle> = text.spans.iter().map(|sp| &sp.style).collect();
