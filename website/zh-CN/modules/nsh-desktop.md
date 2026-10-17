@@ -88,7 +88,7 @@ const titleBar: Accessor<{ height: number; left: number; right: number }>;
 
 | | `height` | `left` | `right` |
 |---|---|---|---|
-| macOS | `height`，否则为标题栏的高度（28） | 红绿灯的宽度 | 0 |
+| macOS | `height`，否则为标题栏的高度（28 或 32，视 macOS 版本而定） | 红绿灯的宽度 | 0 |
 | Windows | `height`，否则为 32 | 0 | 三个标题栏按钮（138） |
 | Linux | `height`，否则为标题栏（header bar）的高度 | 开头的窗口按钮（按桌面的按钮布局） | 末尾的窗口按钮 |
 

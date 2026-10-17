@@ -88,7 +88,7 @@ The hidden title bar's area, in points (reactive): its `height`, and the widths 
 
 | | `height` | `left` | `right` |
 |---|---|---|---|
-| macOS | `height`, else the title bar's (28) | The traffic lights' width | 0 |
+| macOS | `height`, else the title bar's (28 or 32, by macOS version) | The traffic lights' width | 0 |
 | Windows | `height`, else 32 | 0 | The three caption buttons (138) |
 | Linux | `height`, else the header bar's | The window buttons at the start (the desktop's button layout) | The window buttons at the end |
 
