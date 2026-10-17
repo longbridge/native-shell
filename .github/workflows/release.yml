@@ -1,0 +1,196 @@
+name: Release
+
+# Builds the distribution (`cargo xtask dist`: the CLI, the prebuilt runtimes
+# and the embedding SDKs) on macOS, Linux and Windows, and publishes it as a
+# GitHub release.
+#
+# - Pushing a tag `vX.Y.Z` (the workspace version in Cargo.toml) builds every
+#   platform and, once all of them have built, creates a draft release with
+#   their archives; publish it from the releases page.
+# - Running it by hand without a tag builds the archives only (workflow
+#   artifacts): a dry run before tagging. With a tag it releases that tag.
+# - Pull requests that change this workflow or xtask build the archives
+#   only, so a broken distribution shows before a release.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "crates/xtask/**"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0); empty: build only"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+
+jobs:
+  dist:
+    name: dist (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The iOS runtimes and SDK need Xcode; the macOS runtime is built
+          # for this machine (Apple silicon).
+          - name: macos-arm64
+            os: macos-15
+          # 24.04 has GTK 4.14 and Pango 1.52+, what the Linux runtime needs;
+          # its binaries need glibc 2.39 and GTK 4.14 or newer where they run.
+          - name: linux-x86_64
+            os: ubuntu-24.04
+          - name: windows-x86_64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A release run builds the tag, never the branch it was started on.
+          ref: ${{ env.TAG || github.ref }}
+
+      - name: Check the version
+        if: env.TAG != ''
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [[ "$TAG" != "v$version" ]]; then
+            echo "::error::tag $TAG does not match the workspace version $version"
+            exit 1
+          fi
+
+      # Temporary directories (tests, tools) outside the checkout.
+      - name: Set up the environment
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          echo "TMPDIR=$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
+          echo "ARCHIVE=nsh-${TAG:-${GITHUB_SHA::7}}-${{ matrix.name }}" >> "$GITHUB_ENV"
+
+      - name: Set up Windows
+        if: runner.os == 'Windows'
+        run: |
+          # QuickJS is C: bindgen needs libclang, which the image's LLVM has.
+          echo "LIBCLANG_PATH=C:\\Program Files\\LLVM\\bin" >> "$GITHUB_ENV"
+          # rustc can overflow its default stack on the `windows` crate.
+          echo "RUST_MIN_STACK=268435456" >> "$GITHUB_ENV"
+
+      # QuickJS is C (bindgen needs libclang); the Linux runtime links GTK 4.
+      - name: Install clang and GTK 4
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev libgtk-4-dev
+
+      # The Android runtime: `javac` + `d8` (Java 17), the SDK's
+      # `platforms;android-35` and an NDK (the images have the SDK and NDKs).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install the Android platform
+        run: |
+          if [[ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ]]; then
+            sdkmanager=$(ls "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager* | head -1)
+            yes | "$sdkmanager" "platforms;android-35" > /dev/null || true
+          fi
+          test -f "$ANDROID_HOME/platforms/android-35/android.jar"
+          ls "$ANDROID_HOME/ndk" || true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-release-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-release-cargo-
+
+      - name: Build the distribution
+        run: cargo xtask dist -v
+
+      # The packaged CLI makes and bundles a new app.
+      - name: Smoke test
+        run: |
+          nsh=dist/nsh/bin/nsh
+          [[ "$RUNNER_OS" != Windows ]] || nsh=dist/nsh/bin/nsh.exe
+          "$nsh" --version
+          app="$RUNNER_TEMP/smoke-app"
+          "$nsh" init "$app"
+          "$nsh" build "$app" -o "$RUNNER_TEMP/smoke-out" --release
+          ls "$RUNNER_TEMP/smoke-out"
+          find dist/nsh -type f | sort
+
+      - name: Package
+        run: |
+          mkdir -p target/release-assets
+          cp -R dist/nsh "target/release-assets/$ARCHIVE"
+          cp README.md LICENSE-APACHE "target/release-assets/$ARCHIVE/"
+          cd target/release-assets
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            7z a -tzip "$ARCHIVE.zip" "$ARCHIVE" > /dev/null
+            sha256sum "$ARCHIVE.zip" > "$ARCHIVE.zip.sha256"
+          else
+            tar -czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+            shasum -a 256 "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
+          fi
+          # The embedding SDKs on their own, for native apps that embed nsh
+          # and need no CLI (iOS from macOS, Android from Linux).
+          embed() {
+            local name="nsh-${TAG:-${GITHUB_SHA::7}}-embed-$1"
+            mkdir -p "$name"
+            cp -R "$ARCHIVE/embed/$1/." "$name/"
+            zip -qry "$name.zip" "$name"
+            shasum -a 256 "$name.zip" > "$name.zip.sha256"
+          }
+          [[ "$RUNNER_OS" != macOS ]] || embed ios
+          [[ "$RUNNER_OS" != Linux ]] || embed android
+          rm -rf "$ARCHIVE" nsh-*-embed-*/
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nsh-${{ matrix.name }}
+          path: target/release-assets/*
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: dist
+    if: inputs.tag != '' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nsh-*
+          path: assets
+          merge-multiple: true
+
+      # Created only after every platform has built; a draft until it is
+      # published by hand.
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: nsh ${{ env.TAG }}
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: assets/*
