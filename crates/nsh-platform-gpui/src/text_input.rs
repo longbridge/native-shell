@@ -1433,7 +1433,6 @@ pub(crate) fn pointer(surface: &Rc<Surface>, view: &NshView, event: &ItemPointer
 
 /// A wheel over input `view`: scrolls the lines of a multiline field that
 /// do not fit. True when it scrolled (an outer scroll view does not).
-#[allow(dead_code)] // For `crate::input`'s wheel routing.
 pub(crate) fn wheel(view: &NshView, dy: f32) -> bool {
     let Some(input) = input_of(view) else {
         return false;
