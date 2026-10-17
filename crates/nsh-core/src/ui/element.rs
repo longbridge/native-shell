@@ -1439,9 +1439,9 @@ pub fn text(content: impl IntoReactive<SharedString>) -> Text {
 /// An image loading `src`: a URL, a file path or `asset:/` URI, or an
 /// [`super::ImageAsset`] (`asset!("logo@2x.png")`), which lays out at its
 /// natural size before it loads.
-pub fn image(src: impl Into<super::ImageSrc>) -> Image {
+pub fn image(src: impl IntoReactive<super::ImageSrc>) -> Image {
     let mut node = ElNode::new(Tag::Image);
-    node.attrs.src = Some(src.into());
+    node.bind_attr(src, |a, src| a.src = Some(src));
     Image(node)
 }
 
