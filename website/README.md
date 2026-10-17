@@ -41,6 +41,29 @@ When changing a documentation page, update its English and Chinese
 counterparts together. Keep their `order`, `group` and `demo` frontmatter in sync, and
 link to pages in the same language.
 
+Name the product **Native Shell** in formal places (page titles, the home page,
+a page's first mention, the README's opening, meta descriptions) and **NSH**
+everywhere else in prose, as GPUI is written: "NSH apps", "NSH's components",
+"NSH 应用". Lowercase `nsh` is for code only, in backticks: the CLI (`nsh run`),
+`nsh.json`, the modules (`nsh`, `nsh/list`), crates and packages. A short,
+uppercase name is one the community can build on (`nsh-*` crates, NSH plugins).
+
+Write in positive terms: say what nsh, a platform or a feature is and does,
+in both languages.
+
+- **Describe a thing by what it is.** "The macOS backend renders with AppKit
+  views", not "this is not Mac Catalyst"; readers make no comparison the page
+  does not put in their heads.
+- **Leave out what is missing, planned or unfinished.** No "not yet", "in
+  development", "demos only", "there is no …", "without …" or "no Node.js";
+  a page lists what works. When a reader needs a boundary to use a feature
+  correctly, state it as the rule that holds ("`AppView` loads bundles from
+  the app's own files"), and keep the detailed reference (a "What differs on
+  …" section, standards compliance notes) factual.
+- **Name things after what nsh is.** nsh is native UI: the standard globals
+  are "global APIs", not "web APIs"; the web platform renders HTML in a page
+  (say "the web", "HTML", "the browser", never the technology underneath it).
+
 Frontmatter (checked by `src/content.config.ts`):
 
 ```yaml
