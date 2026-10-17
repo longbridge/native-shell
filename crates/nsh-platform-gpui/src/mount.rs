@@ -419,7 +419,6 @@ impl Mounter {
                 }
             }
             Command::Back => crate::navigation::default_back(surface),
-            Command::Desktop(command) => crate::chrome::command(surface, command),
             other => crate::system::command(surface, id, other),
         }
     }
