@@ -38,8 +38,8 @@ use objc2::{
     rc::Retained, runtime::AnyObject,
 };
 use objc2_app_kit::{
-    NSEvent, NSGraphicsContext, NSResponder, NSTrackingArea, NSTrackingAreaOptions, NSView,
-    NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
+    NSEvent, NSEventType, NSGraphicsContext, NSResponder, NSTrackingArea, NSTrackingAreaOptions,
+    NSView, NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect};
@@ -485,7 +485,8 @@ define_class!(
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
             match self.surface() {
-                Some(surface) => crate::input::event(&surface, event),
+                // Scrolls move views: a frame for the performance monitor.
+                Some(surface) => surface.measure(true, || crate::input::event(&surface, event)),
                 // SAFETY: NSResponder's own handling (passes it up).
                 None => unsafe { msg_send![super(self), scrollWheel: event] },
             }
@@ -519,9 +520,9 @@ define_class!(
 
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
-            let handled = self
-                .surface()
-                .is_some_and(|surface| crate::input::key(&surface, event, true));
+            let handled = self.surface().is_some_and(|surface| {
+                surface.measure(false, || crate::input::key(&surface, event, true))
+            });
             if !handled {
                 // SAFETY: NSResponder's own handling (beeps at the end).
                 unsafe { msg_send![super(self), keyDown: event] }
@@ -609,7 +610,15 @@ impl ViewObj {
 
     fn pointer(&self, event: &NSEvent) {
         if let Some(surface) = self.surface() {
-            crate::input::event(&surface, event);
+            // Drags may scroll or pan (a frame for the performance
+            // monitor); the rest changes the screen through the engine.
+            let drag = matches!(
+                event.r#type(),
+                NSEventType::LeftMouseDragged
+                    | NSEventType::RightMouseDragged
+                    | NSEventType::OtherMouseDragged
+            );
+            surface.measure(drag, || crate::input::event(&surface, event));
         }
     }
 

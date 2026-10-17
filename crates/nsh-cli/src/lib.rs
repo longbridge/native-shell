@@ -169,6 +169,10 @@ enum Command {
         /// Log per-commit timings.
         #[arg(long)]
         trace: bool,
+        /// Show the performance monitor over the app: frame rate, frame and
+        /// commit costs, CPU, GPU, memory (`--target macos`).
+        #[arg(long)]
+        fps: bool,
         /// Where to run.
         #[arg(long, value_enum, default_value_t = run::Target::native())]
         target: run::Target,
@@ -466,9 +470,17 @@ fn dispatch(command: Command) -> anyhow::Result<()> {
             port,
             release,
             trace,
+            fps,
             target,
             device,
-        } => run::run(&entry, port, release, trace, target, device.as_deref()),
+        } => run::run(
+            &entry,
+            port,
+            release,
+            run::HostFlags { trace, fps },
+            target,
+            device.as_deref(),
+        ),
         Command::Keygen { name } => sign::keygen(&name),
         Command::Certify {
             root,

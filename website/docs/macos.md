@@ -41,6 +41,25 @@ dist/nsh/runtime/macos/nsh-macos-host --bundle build/bundle.qbc --size 1200x800 
 
 `--size` is the window's initial size; the window can be resized.
 
+### Performance monitor
+
+`--fps` (`nsh run my-app --target macos --fps`, the host's `--fps`, a packaged app's `open -a MyApp --args --fps`, or
+`AppOptions { fps: true, .. }` / `AppView::set_fps_monitor(true)` when embedding) shows a panel at the top right of the
+app that updates twice a second:
+
+| Row | Measures |
+|---|---|
+| `FPS` | Frames shown over the last second: display refreshes in which the app changed (an idle app reads low; that is not slowness). `max` is what the main thread could keep up with, then the display's rate (120 Hz on ProMotion screens). |
+| `TICK` | The gaps between display refreshes as they arrived (mean, p95) and `gap`, the p95 gap between shown frames: one refresh (8.3 ms at 120 Hz) when nothing is late. |
+| `MAIN` | Main-thread time per frame (applying the engine's changes, drawing text and canvases, animations, input), its 95th percentile, and `drop`: the share of frames that took longer than one refresh. |
+| `JS` / `CORE` | Per commit: your code (handlers, timers, list rows) and nsh's core (layout, text, diffing); commits per second, native view changes per commit. |
+| `HOP` | How long changes wait between the engine thread and the main thread; how busy the engine thread is. |
+| `CPU` / `GPU` / `MEM` | The process: CPU (100% is one core), its GPU share, its memory footprint (Activity Monitor's figure). |
+
+The bars below are the last 120 frames' main-thread time against one refresh (the line): green within half of it, amber
+within it, red over. With `--trace` too, the host also logs the readings once a second (milliseconds as
+mean/p50/p95/max). Measure release builds; the monitor costs nothing while it is off.
+
 ## Packaging
 
 ```sh

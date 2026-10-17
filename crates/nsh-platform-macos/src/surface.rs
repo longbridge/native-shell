@@ -14,12 +14,13 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
+    time::Instant,
 };
 
 use crossbeam_channel::{Receiver, Sender};
 use dispatch2::DispatchQueue;
 use nsh_core::{EventKind, EventPayload, MountBatch, MountItem, NodeId, ROOT_ID, Size};
-use nsh_engine::{Engine, EngineConfig, EngineControl, Environment, MountSink};
+use nsh_engine::{Engine, EngineConfig, EngineControl, Environment, MountSink, perf::PerfMonitor};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained, sel,
 };
@@ -31,7 +32,9 @@ use crate::{animation::UiAnimation, mount::Mounter, text::CoreTextEngine, view::
 
 /// What the engine thread sends the main thread.
 enum Message {
-    Batch(MountBatch),
+    /// A batch, and when the engine handed it over (while a performance
+    /// monitor measures).
+    Batch(MountBatch, Option<Instant>),
     Error(String),
     Frame,
     HotUpdateFailed,
@@ -56,6 +59,8 @@ struct Sink {
     tx: Sender<Message>,
     /// A wake-up is on its way: no need for another.
     pending: Arc<AtomicBool>,
+    /// A performance monitor measures: batches carry when they were sent.
+    perf: Arc<AtomicBool>,
 }
 
 impl Sink {
@@ -74,7 +79,8 @@ impl Sink {
 
 impl MountSink for Sink {
     fn submit(&self, batch: MountBatch) {
-        self.send(Message::Batch(batch));
+        let sent = self.perf.load(Ordering::Relaxed).then(Instant::now);
+        self.send(Message::Batch(batch, sent));
     }
 
     fn report_error(&self, message: &str) {
@@ -146,6 +152,10 @@ pub(crate) struct Surface {
     frame_callbacks: RefCell<Vec<FrameCallback>>,
     /// The display link, while it runs.
     link: RefCell<Option<Retained<CADisplayLink>>>,
+    /// The performance monitor ([`Surface::set_perf_monitor`]), and whether
+    /// there is one (for the sink, on the engine thread).
+    perf: RefCell<Option<Arc<PerfMonitor>>>,
+    perf_on: Arc<AtomicBool>,
     /// When the last frame ran (`CACurrentMediaTime`), and whether the
     /// fallback timer is scheduled ([`Surface::watch_link`]).
     last_tick: Cell<f64>,
@@ -185,6 +195,8 @@ impl Surface {
             js_frame: Cell::new(false),
             frame_callbacks: RefCell::default(),
             link: RefCell::new(None),
+            perf: RefCell::new(None),
+            perf_on: Arc::new(AtomicBool::new(false)),
             last_tick: Cell::new(0.0),
             fallback: Cell::new(false),
             on_error: RefCell::new(None),
@@ -225,11 +237,15 @@ impl Surface {
             key: self.key,
             tx,
             pending: pending.clone(),
+            perf: self.perf_on.clone(),
         };
         *self.rx.borrow_mut() = Some(rx);
         *self.pending.borrow_mut() = pending;
         match Engine::start(config, CoreTextEngine::default, sink) {
             Ok(engine) => {
+                if let Some(monitor) = &*self.perf.borrow() {
+                    engine.control().set_perf_monitor(Some(monitor.clone()));
+                }
                 *self.control.borrow_mut() = Some(engine.control());
                 *self.engine.borrow_mut() = Some(engine);
             }
@@ -306,8 +322,33 @@ impl Surface {
         crate::system::surface_resized(self, width, height);
     }
 
+    /// Measures this surface's frames and commits into `monitor` from now
+    /// on (`None`: stops). While one measures, the display link runs on
+    /// every refresh (it closes the frames).
+    pub(crate) fn set_perf_monitor(self: &Rc<Self>, monitor: Option<Arc<PerfMonitor>>) {
+        self.perf_on.store(monitor.is_some(), Ordering::Relaxed);
+        self.control(|c| c.set_perf_monitor(monitor.clone()));
+        *self.perf.borrow_mut() = monitor;
+        self.ensure_ticking();
+    }
+
+    /// Runs `f`, main-thread work on the surface, and adds its time to the
+    /// current frame of the performance monitor, if one measures; `dirty`:
+    /// it changes what the screen shows.
+    pub(crate) fn measure<R>(&self, dirty: bool, f: impl FnOnce() -> R) -> R {
+        let Some(monitor) = self.perf.borrow().clone() else {
+            return f();
+        };
+        let start = Instant::now();
+        let r = f();
+        monitor.record_work(start.elapsed(), dirty);
+        r
+    }
+
     /// Applies what the engine sent.
     fn drain(self: &Rc<Self>) {
+        let monitor = self.perf.borrow().clone();
+        let start = monitor.as_ref().map(|_| Instant::now());
         self.pending.borrow().store(false, Ordering::Release);
         let messages: Vec<Message> = match &*self.rx.borrow() {
             Some(rx) => rx.try_iter().collect(),
@@ -317,7 +358,10 @@ impl Surface {
         quiet(|| {
             for message in messages {
                 match message {
-                    Message::Batch(batch) => {
+                    Message::Batch(batch, sent) => {
+                        if let (Some(monitor), Some(sent)) = (&monitor, sent) {
+                            monitor.record_latency(sent.elapsed());
+                        }
                         self.apply(&batch);
                         applied = true;
                     }
@@ -339,6 +383,10 @@ impl Surface {
                 self.write_animations();
             }
         });
+        if let (Some(monitor), Some(start)) = (monitor, start) {
+            // Core Animation's commit (drawing what changed) included.
+            monitor.record_work(start.elapsed(), applied);
+        }
         self.ensure_ticking();
     }
 
@@ -384,14 +432,22 @@ impl Surface {
             || !self.frame_callbacks.borrow().is_empty()
     }
 
-    /// Runs the display link while animations run or JS wants a frame.
+    /// Runs the display link while animations run or JS wants a frame (or
+    /// a performance monitor measures).
     pub(crate) fn ensure_ticking(self: &Rc<Self>) {
         if !self.wants_frames() {
-            return;
+            if self.perf.borrow().is_none() {
+                return;
+            }
+        } else {
+            self.watch_link();
         }
-        self.watch_link();
         if let Some(link) = &*self.link.borrow() {
-            link.setPaused(false);
+            if link.isPaused() {
+                // The window may have moved to another screen meanwhile.
+                link.setPreferredFrameRateRange(self.frame_rate_range());
+                link.setPaused(false);
+            }
             return;
         }
         let ticker = Ticker::alloc(self.mtm).set_ivars(self.key);
@@ -404,6 +460,7 @@ impl Surface {
                 .ns()
                 .displayLinkWithTarget_selector(&ticker, sel!(tick:))
         };
+        link.setPreferredFrameRateRange(self.frame_rate_range());
         // SAFETY: the main run loop exists while the app runs.
         unsafe {
             link.addToRunLoop_forMode(
@@ -412,6 +469,25 @@ impl Surface {
             )
         };
         *self.link.borrow_mut() = Some(link);
+    }
+
+    /// The frame rates the display link asks for: the screen's highest
+    /// (120 Hz on ProMotion), at least 80 there. Without it the link may
+    /// settle on 60 Hz.
+    fn frame_rate_range(&self) -> objc2_quartz_core::CAFrameRateRange {
+        let max = self
+            .root
+            .ns()
+            .window()
+            .and_then(|w| w.screen())
+            .or_else(|| objc2_app_kit::NSScreen::mainScreen(self.mtm))
+            .map_or(60, |s| s.maximumFramesPerSecond())
+            .max(1) as f32;
+        objc2_quartz_core::CAFrameRateRange {
+            minimum: max.min(80.0),
+            maximum: max,
+            preferred: max,
+        }
     }
 
     /// Keeps frames coming when the display link stops: it does not fire
@@ -434,7 +510,7 @@ impl Surface {
             let stalled = now - surface.last_tick.get() > 0.1;
             if stalled {
                 surface.last_tick.set(now);
-                quiet(|| surface.tick(now));
+                surface.frame(now, 1.0 / 60.0);
             }
             let delay = if stalled { 16 } else { 100 };
             after(delay, move || check(key));
@@ -446,10 +522,26 @@ impl Surface {
     fn ticked(self: &Rc<Self>, link: &CADisplayLink) {
         let now = link.timestamp();
         self.last_tick.set(objc2_quartz_core::CACurrentMediaTime());
-        quiet(|| self.tick(now));
-        if !self.wants_frames() {
+        self.frame(now, link.targetTimestamp() - link.timestamp());
+        if !self.wants_frames() && self.perf.borrow().is_none() {
             link.setPaused(true);
         }
+    }
+
+    /// One display frame at `now`, `period` seconds after the previous one
+    /// (the display link's, or the fallback timer's).
+    fn frame(self: &Rc<Self>, now: f64, period: f64) {
+        let Some(monitor) = self.perf.borrow().clone() else {
+            return quiet(|| self.tick(now));
+        };
+        let start = Instant::now();
+        let dirty = self.wants_frames();
+        quiet(|| self.tick(now));
+        monitor.record_work(start.elapsed(), dirty);
+        monitor.vsync(
+            Instant::now(),
+            std::time::Duration::from_secs_f64(period.max(0.0)),
+        );
     }
 
     fn tick(self: &Rc<Self>, now: f64) {
@@ -471,6 +563,7 @@ impl Surface {
             self.control(|c| c.frame());
         }
     }
+
 }
 
 impl Drop for Surface {

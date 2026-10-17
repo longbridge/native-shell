@@ -64,7 +64,7 @@ nsh init [DIR] [--name <NAME>]
 ## nsh run
 
 ```sh
-nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
+nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace] [--fps]
 ```
 
 启动开发服务器（同 `nsh dev`），启动一个从它加载应用的开发宿主，并在每次保存时重新构建。热模块替换会就地修补正在运行的应用；应用的日志和错误会打印在终端里。用 Ctrl-C 停止（或关闭 Catalyst、macOS 或 Linux 窗口）。
@@ -76,6 +76,7 @@ nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] 
 | `--port <PORT>` | `8790` | 开发服务器端口。被占用时使用下一个空闲端口。 |
 | `--release` | | 压缩代码并去掉调试信息。release 包没有热模块替换：每次保存都会重新加载应用。 |
 | `--trace` | | 宿主把每次 commit 的耗时（JS、布局、挂载项）记录到终端。 |
+| `--fps` | | 在应用上方显示性能监视器：帧率、每帧和每次 commit 的开销、CPU、GPU 和内存（[macOS](./macos.md#性能监视器)；目前仅限 `--target macos`）。 |
 
 使用 `--target android` 时，会选用 `adb devices` 列出的第一台设备；开发服务器的端口通过 `adb reverse` 转发到设备上。参见[快速开始](./getting-started.md)和[开发服务器与调试](./dev-server-and-debugging.md)。
 

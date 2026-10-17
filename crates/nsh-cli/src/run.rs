@@ -50,16 +50,29 @@ impl Target {
     }
 }
 
+/// What the development host shows besides the app.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct HostFlags {
+    /// Log per-commit timings.
+    pub(crate) trace: bool,
+    /// The performance monitor (the macOS host's).
+    pub(crate) fps: bool,
+}
+
 /// Starts a dev session and runs the app in a development host, which
 /// loads bundles from the dev server and reloads on change.
 pub(crate) fn run(
     entry: &Path,
     port: u16,
     release: bool,
-    trace: bool,
+    flags: HostFlags,
     target: Target,
     device: Option<&str>,
 ) -> anyhow::Result<()> {
+    let HostFlags { trace, fps } = flags;
+    if fps && target != Target::Macos {
+        bail!("--fps needs --target macos (the other hosts have no performance monitor yet)");
+    }
     let work = entry
         .canonicalize()?
         .parent()
@@ -84,6 +97,9 @@ pub(crate) fn run(
     let mut args = vec!["--dev-server".to_owned(), session.local_url()];
     if trace {
         args.push("--trace".to_owned());
+    }
+    if fps {
+        args.push("--fps".to_owned());
     }
     match target {
         Target::Catalyst => {

@@ -81,6 +81,9 @@ pub struct AppOptions {
     /// first frame, the window opens in it rather than flashing the
     /// system's.
     pub appearance: Appearance,
+    /// Shows the performance monitor over the app (frame rate, frame and
+    /// commit costs, CPU, GPU, memory): see [`AppView::set_fps_monitor`].
+    pub fps: bool,
 }
 
 impl Default for AppOptions {
@@ -93,6 +96,7 @@ impl Default for AppOptions {
             script: None,
             components: Default::default(),
             appearance: Appearance::System,
+            fps: false,
         }
     }
 }
@@ -127,6 +131,8 @@ pub struct AppView {
     /// overlay above it.
     container: Retained<NSView>,
     options: RefCell<AppOptions>,
+    /// The performance monitor's HUD, while it shows.
+    fps: RefCell<Option<Rc<crate::fps::Hud>>>,
     #[cfg(feature = "dev")]
     pub(crate) dev: RefCell<Option<crate::dev::DevSession>>,
 }
@@ -158,10 +164,14 @@ impl AppView {
             surface,
             container,
             options: RefCell::new(options),
+            fps: RefCell::new(None),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
         });
         crate::system::watch_environment(&view.surface);
+        if view.options.borrow().fps {
+            view.set_fps_monitor(true);
+        }
         view
     }
 
@@ -205,6 +215,30 @@ impl AppView {
         self.surface.native.components().register(name, factory);
     }
 
+    /// Shows (or hides) the performance monitor: a panel at the top right
+    /// with the frame rate, what frames cost the main thread, what commits
+    /// cost the engine thread (JS, layout), and the process' CPU, GPU and
+    /// memory. Measuring starts with it and stops when it hides; it
+    /// survives reloads.
+    pub fn set_fps_monitor(&self, show: bool) {
+        let mut hud = self.fps.borrow_mut();
+        match (show, hud.is_some()) {
+            (true, false) => {
+                let log = self.options.borrow().trace;
+                *hud = Some(crate::fps::Hud::show(self, log));
+            }
+            (false, true) => *hud = None,
+            _ => {}
+        }
+    }
+
+    /// What the performance monitor measured, while it shows
+    /// ([`AppView::set_fps_monitor`]): [`nsh_engine::perf::PerfMonitor::snapshot`]
+    /// reads it.
+    pub fn perf_monitor(&self) -> Option<Arc<nsh_engine::perf::PerfMonitor>> {
+        self.fps.borrow().as_ref().map(|h| h.monitor().clone())
+    }
+
     /// Stops the app.
     pub fn stop(&self) {
         self.surface.stop();
@@ -214,8 +248,7 @@ impl AppView {
         &self.surface
     }
 
-    /// The view the surface is in (development overlays go above it).
-    #[cfg(feature = "dev")]
+    /// The view the surface is in (overlays go above it).
     pub(crate) fn container(&self) -> &NSView {
         &self.container
     }

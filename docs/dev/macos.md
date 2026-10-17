@@ -57,8 +57,11 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 - **Text is typeset on the engine thread** by CoreText (`text.rs`, the iOS engine with `NSFont`); the main thread
   draws the finished `CTLine`s.
 - **Frames**: native animations, JS frame requests, scroll glides, transitions and toasts run on the root view's display
-  link (`NSView::displayLinkWithTarget_selector`) while something animates. The link does not fire while the window is
-  occluded or minimized or the screen is locked; while frames are wanted and it has not ticked for 100 ms a 60 Hz
+  link (`NSView::displayLinkWithTarget_selector`) while something animates. Its `preferredFrameRateRange` asks for the
+  screen's `maximumFramesPerSecond` (120 Hz on ProMotion; set again when the link resumes, as the window may have
+  moved to another screen); measured, it delivered 120 Hz before that too (refresh gaps p50 8.33 ms). The link does
+  not fire while the window is occluded or minimized or the screen is locked; while frames are wanted and it has not
+  ticked for 100 ms a 60 Hz
   main-queue timer ticks instead, so animations still end (a transition detaches its views when it does).
 - **Embedding**: `AppView` (`app.rs`) is one surface as a view; `run_app` opens one in a window with a standard menu
   (Hide, Quit; Edit's undo / cut / copy / paste / select all, which fields answer; Minimize, Close). `set_ui_sets`
@@ -87,6 +90,27 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 | Clipboard | `system.rs` | `NSPasteboard` |
 | Networking | `net.rs` | `NSURLSession` (the iOS backend's) |
 | Dev | `dev.rs` | The dev server client on its own thread; a status line and the error overlay above the surface; Cmd+R reloads the latest build |
+| Performance monitor | `fps.rs`, `gpu.rs` | `--fps` / `AppOptions::fps` / `AppView::set_fps_monitor`: a panel above the surface that lets the mouse through, redrawn twice a second from the surface's `nsh_engine::perf::PerfMonitor` (see below); GPU time from the IO registry (`accumulatedGPUTime` of the process' accelerator clients) |
+
+## Measuring: the performance monitor
+
+`nsh-macos-host --fps` (`nsh run --target macos --fps`) shows `fps.rs`'s HUD (rows: `website/docs/macos.md`). What
+it reads is `nsh_engine::perf` (`docs/dev/performance.md`):
+
+- The surface measures (`Surface::measure`, `drain`, `frame`) only while a monitor is installed; then the display
+  link runs on every refresh, and each refresh closes a frame: the main-thread time since the previous one (batches
+  with Core Animation's commit, which is where `drawRect:` content is drawn; ticks; wheel, drag and key handling).
+  Refreshes in which nothing changed are not frames. The fallback timer closes frames at 60 Hz while the link is
+  stopped (the screen locked).
+- Batches carry when the sink got them (only while measuring), for `HOP`.
+- The engine records its commits (`EngineControl::set_perf_monitor`).
+
+For checking a change: run a release host with `--fps --trace` and `--script` (`wait`, `wheel`, `tap`); the host logs
+the readings once a second (`nsh::perf fps …`, milliseconds as mean/p50/p95/max: `tick` the delivered refresh gaps,
+`frame-gap` the gaps between shown frames, `main` the main-thread time per frame). The script's `wheel` sends an
+event every 16 ms (a real trackpad on ProMotion: every 8 ms). For where the time goes, `sample
+<pid> 5` the host (Instruments' Time Profiler: `xctrace record --template 'Time Profiler' --attach <pid>`).
+
 
 ## Checking a change: `--script`
 

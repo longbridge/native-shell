@@ -65,6 +65,8 @@ pub fn main() -> std::process::ExitCode {
         Some("dark") => options.appearance = Appearance::Dark,
         _ => {}
     }
+    // `open -a <App> --args --fps` shows the performance monitor.
+    options.fps = std::env::args().any(|arg| arg == "--fps");
     run_app(AppSource::Bundle(bundle), options)
 }
 

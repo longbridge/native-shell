@@ -202,6 +202,8 @@ objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
   "UIVisualEffect",
   "UIVisualEffectView",
 ] }
+# The macOS performance monitor's per-process GPU time (the IO registry).
+objc2-io-kit = { version = "0.3.2", default-features = false, features = ["std", "libc"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "CFArray",
@@ -253,6 +255,7 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
   "objc2-core-foundation",
   "objc2-core-graphics",
   "CADisplayLink",
+  "CAFrameRateRange",
   "CALayer",
   "CATransform3D",
   "CAAnimation",

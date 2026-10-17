@@ -66,7 +66,7 @@ Creates an app in `DIR` (default: the current directory, created if missing): `A
 ## nsh run
 
 ```sh
-nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace]
+nsh run [ENTRY] [--target catalyst|ios|android|macos|linux] [--device <DEVICE>] [--port <PORT>] [--release] [--trace] [--fps]
 ```
 
 Starts the dev server (as `nsh dev`), launches a development host that loads the app from it, and rebuilds on every save. Hot module replacement patches the running app in place; logs and errors from the app are printed in the terminal. Stop it with Ctrl-C (or by closing the Catalyst, macOS or Linux window). However it ends (Ctrl-C, `kill` / `pkill`, an error), it stops the host it started: the Catalyst app, the macOS or Linux host, the development host in the simulator, or on the Android device.
@@ -78,6 +78,7 @@ Starts the dev server (as `nsh dev`), launches a development host that loads the
 | `--port <PORT>` | `8790` | Dev server port. If it is taken, the next free one is used. |
 | `--release` | | Minify and strip debug info. Release bundles have no hot module replacement: every save reloads the app. |
 | `--trace` | | The host logs the timing of every commit (JS, layout, mount items) to the terminal. |
+| `--fps` | | Shows the performance monitor over the app: frame rate, what frames and commits cost, CPU, GPU and memory ([macOS](./macos.md#performance-monitor); `--target macos` only for now). |
 
 With `--target android`, the first device `adb devices` lists is used; the dev server's port is forwarded to it with `adb reverse`. See [Getting started](./getting-started.md#run-it) and [Dev server and debugging](./dev-server-and-debugging.md).
 

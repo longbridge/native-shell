@@ -8,6 +8,8 @@
 //! - `--script "wait 800; shot a.png; tap 100 200; wait 300; shot b.png;
 //!   quit"` runs steps once the window shows: window screenshots and
 //!   simulated input, to check the backend without touching the screen.
+//! - `--fps` shows the performance monitor (frame rate, frame and commit
+//!   costs, CPU, GPU, memory) at the top right.
 //! - `--size 1200x800` sets the window size (1200×800 by default; 390x844
 //!   shows an app's phone layout).
 //!
@@ -49,6 +51,8 @@ pub fn main() -> std::process::ExitCode {
                 source = Some(AppSource::Bundle(bundle));
             }
             "--trace" => options.trace = true,
+            // The performance monitor over the app.
+            "--fps" => options.fps = true,
             // Steps run once the window shows (`nsh_platform_macos`'s
             // `script` module): window screenshots and simulated input.
             "--script" => options.script = args.next(),

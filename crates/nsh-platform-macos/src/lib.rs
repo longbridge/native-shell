@@ -28,6 +28,8 @@ mod canvas;
 mod decor;
 #[cfg(feature = "dev")]
 pub mod dev;
+mod fps;
+mod gpu;
 mod image;
 mod input;
 mod mount;
@@ -45,7 +47,7 @@ mod view;
 mod visual;
 
 pub use nsh_core::platform::Appearance;
-pub use nsh_engine::{App, Bundle, Root};
+pub use nsh_engine::{App, Bundle, Root, perf};
 pub use objc2;
 pub use objc2_app_kit;
 pub use objc2_foundation;
