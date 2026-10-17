@@ -798,7 +798,13 @@ static_reactive!(f64: f64);
 static_reactive!(u32: u32);
 static_reactive!(i32: i32);
 static_reactive!(usize: usize);
-static_reactive!(String: String, &'static str);
+static_reactive!(String: String);
+
+impl IntoReactive<String> for &str {
+    fn into_reactive(self) -> Reactive<String> {
+        Reactive::Static(self.to_owned())
+    }
+}
 static_reactive!(super::SharedString: super::SharedString, String, &'static str);
 
 impl<T: 'static> IntoReactive<Option<T>> for Option<T> {

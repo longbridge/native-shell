@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use super::{
-    Accessible, AnyElement, Interactive,
+    Accessible, AnyElement, Interactive, IntoReactive,
     element::{ElNode, Element, IntoElement, Listener, ParentElement},
     events::{self, NativeEvent, Selection, VideoInfo, VideoProgress, WebNavigation},
 };
@@ -41,11 +41,36 @@ pub(crate) fn reset(prop: &Prop) -> Option<Prop> {
 
 /// Sets `prop` on `node`, replacing the value of the same property.
 pub(crate) fn set(node: &mut ElNode, prop: Prop) {
-    let props = &mut node.attrs.props;
+    set_in(&mut node.attrs.props, prop);
+}
+
+crate::static_reactive!(Color: Color);
+crate::static_reactive!(AutoCapitalize: AutoCapitalize);
+crate::static_reactive!(AutoFill: AutoFill);
+crate::static_reactive!(KeyboardAppearance: KeyboardAppearance);
+crate::static_reactive!(KeyboardType: KeyboardType);
+crate::static_reactive!(ModalAnimation: ModalAnimation);
+crate::static_reactive!(ModalPresentation: ModalPresentation);
+crate::static_reactive!(ResizeMode: ResizeMode);
+crate::static_reactive!(ReturnKeyType: ReturnKeyType);
+crate::static_reactive!(SubmitBehavior: SubmitBehavior);
+
+/// Sets `prop` among `props`, replacing one of its kind.
+fn set_in(props: &mut Vec<Prop>, prop: Prop) {
     match props.iter_mut().find(|p| same_kind(p, &prop)) {
         Some(p) => *p = prop,
         None => props.push(prop),
     }
+}
+
+/// Sets the prop `prop` makes of `value`: now when it is static, else as a
+/// bound part.
+pub(crate) fn bind_prop<T: 'static>(
+    node: &mut ElNode,
+    value: impl IntoReactive<T>,
+    prop: impl Fn(T) -> Prop + 'static,
+) {
+    node.bind_attr(value, move |attrs, v| set_in(&mut attrs.props, prop(v)));
 }
 
 /// Adds a typed listener of `kind`.
@@ -84,6 +109,15 @@ macro_rules! host_element {
         impl $name {
             fn set(mut self, prop: Prop) -> Self {
                 set(&mut self.0, prop);
+                self
+            }
+
+            fn bind_prop<T: 'static>(
+                mut self,
+                value: impl IntoReactive<T>,
+                prop: impl Fn(T) -> Prop + 'static,
+            ) -> Self {
+                bind_prop(&mut self.0, value, prop);
                 self
             }
 
@@ -274,100 +308,104 @@ pub fn native(name: &str) -> NativeView {
 impl Input {
     /// The text, when the component controls it (update it from
     /// [`Self::on_change_text`]).
-    pub fn value(self, text: impl Into<String>) -> Self {
-        self.set(Prop::Value(text.into()))
+    pub fn value(self, text: impl IntoReactive<String>) -> Self {
+        self.bind_prop(text, |text: String| Prop::Value(text))
     }
 
     /// The first text, when the input keeps its own.
-    pub fn default_value(self, text: impl Into<String>) -> Self {
-        self.set(Prop::DefaultValue(text.into()))
+    pub fn default_value(self, text: impl IntoReactive<String>) -> Self {
+        self.bind_prop(text, |text: String| Prop::DefaultValue(text))
     }
 
     /// Shown while it is empty.
-    pub fn placeholder(self, text: impl Into<String>) -> Self {
-        self.set(Prop::Placeholder(text.into()))
+    pub fn placeholder(self, text: impl IntoReactive<String>) -> Self {
+        self.bind_prop(text, |text: String| Prop::Placeholder(text))
     }
 
     /// The placeholder's color (`cx.color(theme.muted_foreground)`).
-    pub fn placeholder_color(self, color: Color) -> Self {
-        self.set(Prop::PlaceholderColor(Some(color)))
+    pub fn placeholder_color(self, color: impl IntoReactive<Color>) -> Self {
+        self.bind_prop(color, |color: Color| Prop::PlaceholderColor(Some(color)))
     }
 
     /// The caret's and the selection's color.
-    pub fn selection_color(self, color: Color) -> Self {
-        self.set(Prop::SelectionColor(Some(color)))
+    pub fn selection_color(self, color: impl IntoReactive<Color>) -> Self {
+        self.bind_prop(color, |color: Color| Prop::SelectionColor(Some(color)))
     }
 
     /// Hides what is typed (passwords).
-    pub fn secure(self, secure: bool) -> Self {
-        self.set(Prop::Secure(secure))
+    pub fn secure(self, secure: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(secure, |secure: bool| Prop::Secure(secure))
     }
 
     /// The software keyboard's layout.
-    pub fn keyboard_type(self, kind: KeyboardType) -> Self {
-        self.set(Prop::KeyboardType(kind))
+    pub fn keyboard_type(self, kind: impl IntoReactive<KeyboardType>) -> Self {
+        self.bind_prop(kind, |kind: KeyboardType| Prop::KeyboardType(kind))
     }
 
     /// The software keyboard's light or dark look (iOS; TS:
     /// `ios={{ keyboardAppearance }}`).
-    pub fn keyboard_appearance(self, appearance: KeyboardAppearance) -> Self {
-        self.set(Prop::KeyboardAppearance(appearance))
+    pub fn keyboard_appearance(self, appearance: impl IntoReactive<KeyboardAppearance>) -> Self {
+        self.bind_prop(appearance, |appearance: KeyboardAppearance| {
+            Prop::KeyboardAppearance(appearance)
+        })
     }
 
     /// The return key's label.
-    pub fn return_key_type(self, kind: ReturnKeyType) -> Self {
-        self.set(Prop::ReturnKeyType(kind))
+    pub fn return_key_type(self, kind: impl IntoReactive<ReturnKeyType>) -> Self {
+        self.bind_prop(kind, |kind: ReturnKeyType| Prop::ReturnKeyType(kind))
     }
 
     /// Automatic capitals.
-    pub fn auto_capitalize(self, mode: AutoCapitalize) -> Self {
-        self.set(Prop::AutoCapitalize(mode))
+    pub fn auto_capitalize(self, mode: impl IntoReactive<AutoCapitalize>) -> Self {
+        self.bind_prop(mode, |mode: AutoCapitalize| Prop::AutoCapitalize(mode))
     }
 
     /// Spelling correction (default on).
-    pub fn auto_correct(self, on: bool) -> Self {
-        self.set(Prop::AutoCorrect(on))
+    pub fn auto_correct(self, on: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(on, |on: bool| Prop::AutoCorrect(on))
     }
 
     /// What it holds, for autofill and suggestions.
-    pub fn auto_fill(self, kind: AutoFill) -> Self {
-        self.set(Prop::AutoFill(kind))
+    pub fn auto_fill(self, kind: impl IntoReactive<AutoFill>) -> Self {
+        self.bind_prop(kind, |kind: AutoFill| Prop::AutoFill(kind))
     }
 
     /// Several lines, growing with the text (return adds a line).
-    pub fn multiline(self, multiline: bool) -> Self {
-        self.set(Prop::Multiline(multiline))
+    pub fn multiline(self, multiline: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(multiline, |multiline: bool| Prop::Multiline(multiline))
     }
 
     /// At most `length` characters.
-    pub fn max_length(self, length: u32) -> Self {
-        self.set(Prop::MaxLength(Some(length)))
+    pub fn max_length(self, length: impl IntoReactive<u32>) -> Self {
+        self.bind_prop(length, |length: u32| Prop::MaxLength(Some(length)))
     }
 
     /// Editable (default yes).
-    pub fn editable(self, editable: bool) -> Self {
-        self.set(Prop::Editable(editable))
+    pub fn editable(self, editable: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(editable, |editable: bool| Prop::Editable(editable))
     }
 
     /// The return key unfocuses it (default yes, for one line).
-    pub fn blur_on_submit(self, blur: bool) -> Self {
-        self.set(Prop::BlurOnSubmit(blur))
+    pub fn blur_on_submit(self, blur: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(blur, |blur: bool| Prop::BlurOnSubmit(blur))
     }
 
     /// What return does (`submitBehavior`; default: submit and unfocus for
     /// one line, a line break for several).
-    pub fn submit_behavior(self, behavior: SubmitBehavior) -> Self {
-        self.set(Prop::SubmitBehavior(Some(behavior)))
+    pub fn submit_behavior(self, behavior: impl IntoReactive<SubmitBehavior>) -> Self {
+        self.bind_prop(behavior, |behavior: SubmitBehavior| {
+            Prop::SubmitBehavior(Some(behavior))
+        })
     }
 
     /// Focused when it appears.
-    pub fn auto_focus(self, focus: bool) -> Self {
-        self.set(Prop::AutoFocus(focus))
+    pub fn auto_focus(self, focus: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(focus, |focus: bool| Prop::AutoFocus(focus))
     }
 
     /// No caret.
-    pub fn caret_hidden(self, hidden: bool) -> Self {
-        self.set(Prop::CaretHidden(hidden))
+    pub fn caret_hidden(self, hidden: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(hidden, |hidden: bool| Prop::CaretHidden(hidden))
     }
 
     /// Shows the input accessory with this `nativeID` over the keyboard
@@ -431,8 +469,8 @@ impl Scroll {
     }
 
     /// Whether the scroll indicator shows (default yes).
-    pub fn shows_indicator(self, shows: bool) -> Self {
-        self.set(Prop::ShowsIndicator(shows))
+    pub fn shows_indicator(self, shows: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(shows, |shows: bool| Prop::ShowsIndicator(shows))
     }
 
     /// Pinch zoom between `min` and `max`.
@@ -442,24 +480,30 @@ impl Scroll {
     }
 
     /// The zoom.
-    pub fn zoom(self, scale: f32) -> Self {
-        self.set(Prop::Scroll(ScrollProp::Zoom(scale)))
+    pub fn zoom(self, scale: impl IntoReactive<f32>) -> Self {
+        self.bind_prop(scale, |scale: f32| Prop::Scroll(ScrollProp::Zoom(scale)))
     }
 
     /// Pinches may go past the zoom limits and spring back (default yes;
     /// TS: `bouncesZoom`).
-    pub fn bounces_zoom(self, bounces: bool) -> Self {
-        self.set(Prop::Scroll(ScrollProp::BouncesZoom(bounces)))
+    pub fn bounces_zoom(self, bounces: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(bounces, |bounces: bool| {
+            Prop::Scroll(ScrollProp::BouncesZoom(bounces))
+        })
     }
 
     /// The user can pinch to zoom (default yes; TS: `pinchGestureEnabled`).
-    pub fn pinch_gesture_enabled(self, enabled: bool) -> Self {
-        self.set(Prop::Scroll(ScrollProp::Pinch(enabled)))
+    pub fn pinch_gesture_enabled(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |enabled: bool| {
+            Prop::Scroll(ScrollProp::Pinch(enabled))
+        })
     }
 
     /// Content smaller than the view sits in its center (zoomed images).
-    pub fn center_content(self, center: bool) -> Self {
-        self.set(Prop::Scroll(ScrollProp::CenterContent(center)))
+    pub fn center_content(self, center: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(center, |center: bool| {
+            Prop::Scroll(ScrollProp::CenterContent(center))
+        })
     }
 }
 
@@ -571,23 +615,31 @@ impl Screen {
 
 impl Modal {
     /// How it comes in (default: slides up).
-    pub fn animation(self, animation: ModalAnimation) -> Self {
-        self.set(Prop::Modal(ModalProp::Animation(animation)))
+    pub fn animation(self, animation: impl IntoReactive<ModalAnimation>) -> Self {
+        self.bind_prop(animation, |animation: ModalAnimation| {
+            Prop::Modal(ModalProp::Animation(animation))
+        })
     }
 
     /// Full screen, or a sheet (iOS).
-    pub fn presentation(self, presentation: ModalPresentation) -> Self {
-        self.set(Prop::Modal(ModalProp::Presentation(presentation)))
+    pub fn presentation(self, presentation: impl IntoReactive<ModalPresentation>) -> Self {
+        self.bind_prop(presentation, |presentation: ModalPresentation| {
+            Prop::Modal(ModalProp::Presentation(presentation))
+        })
     }
 
     /// What is behind shows through (its content draws the dimming).
-    pub fn transparent(self, transparent: bool) -> Self {
-        self.set(Prop::Modal(ModalProp::Transparent(transparent)))
+    pub fn transparent(self, transparent: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(transparent, |transparent: bool| {
+            Prop::Modal(ModalProp::Transparent(transparent))
+        })
     }
 
     /// Under the status bar (Android).
-    pub fn status_bar_translucent(self, translucent: bool) -> Self {
-        self.set(Prop::Modal(ModalProp::StatusBarTranslucent(translucent)))
+    pub fn status_bar_translucent(self, translucent: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(translucent, |translucent: bool| {
+            Prop::Modal(ModalProp::StatusBarTranslucent(translucent))
+        })
     }
 
     /// The orientations it allows while it is presented (iOS; default:
@@ -603,8 +655,10 @@ impl Modal {
     /// Swipes down and the back button dismiss it, reporting
     /// [`Self::on_dismiss`] (default: they ask with
     /// [`Self::on_request_close`]).
-    pub fn dismissible(self, dismissible: bool) -> Self {
-        self.set(Prop::Modal(ModalProp::Dismissible(dismissible)))
+    pub fn dismissible(self, dismissible: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(dismissible, |dismissible: bool| {
+            Prop::Modal(ModalProp::Dismissible(dismissible))
+        })
     }
 
     /// The user asked to close it (back button, swipe down): leave it out
@@ -681,18 +735,24 @@ impl WebView {
     }
 
     /// Scrolls (default yes).
-    pub fn scroll_enabled(self, enabled: bool) -> Self {
-        self.set(Prop::Native(NativeProp::ScrollEnabled(enabled)))
+    pub fn scroll_enabled(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |enabled: bool| {
+            Prop::Native(NativeProp::ScrollEnabled(enabled))
+        })
     }
 
     /// Runs the pages' JavaScript (default yes).
-    pub fn java_script_enabled(self, enabled: bool) -> Self {
-        self.set(Prop::Native(NativeProp::JavaScriptEnabled(enabled)))
+    pub fn java_script_enabled(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |enabled: bool| {
+            Prop::Native(NativeProp::JavaScriptEnabled(enabled))
+        })
     }
 
     /// Swipes go back and forward (iOS).
-    pub fn back_forward_gestures(self, enabled: bool) -> Self {
-        self.set(Prop::Native(NativeProp::BackForwardGestures(enabled)))
+    pub fn back_forward_gestures(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |enabled: bool| {
+            Prop::Native(NativeProp::BackForwardGestures(enabled))
+        })
     }
 
     /// A page started loading.
@@ -727,43 +787,53 @@ impl WebView {
 
 impl Video {
     /// Paused.
-    pub fn paused(self, paused: bool) -> Self {
-        self.set(Prop::Native(NativeProp::Paused(paused)))
+    pub fn paused(self, paused: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(paused, |paused: bool| {
+            Prop::Native(NativeProp::Paused(paused))
+        })
     }
 
     /// Without sound.
-    pub fn muted(self, muted: bool) -> Self {
-        self.set(Prop::Native(NativeProp::Muted(muted)))
+    pub fn muted(self, muted: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(muted, |muted: bool| Prop::Native(NativeProp::Muted(muted)))
     }
 
     /// 0..1.
-    pub fn volume(self, volume: f32) -> Self {
-        self.set(Prop::Native(NativeProp::Volume(volume)))
+    pub fn volume(self, volume: impl IntoReactive<f32>) -> Self {
+        self.bind_prop(volume, |volume: f32| {
+            Prop::Native(NativeProp::Volume(volume))
+        })
     }
 
     /// Playback speed.
-    pub fn rate(self, rate: f32) -> Self {
-        self.set(Prop::Native(NativeProp::Rate(rate)))
+    pub fn rate(self, rate: impl IntoReactive<f32>) -> Self {
+        self.bind_prop(rate, |rate: f32| Prop::Native(NativeProp::Rate(rate)))
     }
 
     /// Starts over at the end.
-    pub fn repeat(self, repeat: bool) -> Self {
-        self.set(Prop::Native(NativeProp::Repeat(repeat)))
+    pub fn repeat(self, repeat: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(repeat, |repeat: bool| {
+            Prop::Native(NativeProp::Repeat(repeat))
+        })
     }
 
     /// How the picture fits (default: contain).
-    pub fn resize_mode(self, mode: ResizeMode) -> Self {
-        self.set(Prop::Native(NativeProp::VideoResizeMode(mode)))
+    pub fn resize_mode(self, mode: impl IntoReactive<ResizeMode>) -> Self {
+        self.bind_prop(mode, |mode: ResizeMode| {
+            Prop::Native(NativeProp::VideoResizeMode(mode))
+        })
     }
 
     /// The platform's playback controls.
-    pub fn controls(self, controls: bool) -> Self {
-        self.set(Prop::Native(NativeProp::Controls(controls)))
+    pub fn controls(self, controls: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(controls, |controls: bool| {
+            Prop::Native(NativeProp::Controls(controls))
+        })
     }
 
     /// Milliseconds between [`Self::on_progress`] events (default 250).
-    pub fn progress_interval(self, ms: f32) -> Self {
-        self.set(Prop::Native(NativeProp::ProgressInterval(ms)))
+    pub fn progress_interval(self, ms: impl IntoReactive<f32>) -> Self {
+        self.bind_prop(ms, |ms: f32| Prop::Native(NativeProp::ProgressInterval(ms)))
     }
 
     /// It started loading.
