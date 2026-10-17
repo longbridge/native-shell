@@ -138,7 +138,10 @@ pub(crate) fn install(
     let h = hitbox.clone();
     let f = focus.clone();
     window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble || !h.is_hovered(window) {
+        // Hit tested at the event's own position against the frame on
+        // screen: a press is the surface's whatever the window last saw
+        // (no move since it opened, keyboard input since).
+        if phase != DispatchPhase::Bubble || !h.is_hovered_at(e.position, window) {
             return;
         }
         let Some(button) = button(e.button) else {
@@ -213,7 +216,7 @@ pub(crate) fn install(
         if phase != DispatchPhase::Bubble {
             return;
         }
-        let hovered = h.is_hovered(window);
+        let hovered = h.is_hovered_at(e.position, window);
         if s.input_pressed.get() & 1 != 0 && e.pressed_button.is_none() {
             cancel_press(&s, &e.modifiers);
         }
@@ -316,7 +319,7 @@ pub(crate) fn install(
         }
         // A pinch begins over the surface and is its own until it ends.
         let ours = s.input.pinching();
-        if !ours && (e.phase != TouchPhase::Started || !h.is_hovered(window)) {
+        if !ours && (e.phase != TouchPhase::Started || !h.is_hovered_at(e.position, window)) {
             return;
         }
         let (x, y) = root_point(&s, e.position);
