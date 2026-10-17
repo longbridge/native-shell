@@ -33,6 +33,7 @@ mod fps;
 mod gpu;
 mod image;
 mod input;
+mod keymap;
 mod mount;
 mod native;
 mod navigation;

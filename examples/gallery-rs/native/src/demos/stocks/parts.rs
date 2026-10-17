@@ -1,0 +1,445 @@
+//! What the market's screens share (as the TSX gallery's
+//! `demos/stocks/parts.tsx`): bars and dots that move natively, the market
+//! button, a calm axis range, and the flat blocks a stock's screen is made
+//! of.
+
+use nsh_core::{
+    Rect,
+    nsh_animation::{Curve, EaseMode},
+    ui::{AnyElement, prelude::*},
+};
+
+use super::{Feed, Running};
+use crate::ui::{Finish, Finished, IconName, PressProps, Tint, colors, icon, press_with};
+
+/// Grid lines of charts: the hairline color, a step darker on the light
+/// page.
+pub(crate) const GRID: AdaptiveColor = AdaptiveColor::new(colors::BORDER.light, colors::LINE.dark);
+
+/// A bar that grows from one edge of its track to `share` (0..1) with a
+/// native spring: the bar is the track's width and slides in, clipped.
+#[derive(Debug, Default)]
+pub(crate) struct SpringBar {
+    x: Option<NativeValue>,
+    width: f32,
+    placed: bool,
+}
+
+/// The props of [`SpringBar`].
+#[derive(Debug, Clone, PartialEq, Props)]
+pub(crate) struct SpringBarProps {
+    /// How much of the track it fills, 0..1.
+    pub(crate) share: f32,
+    /// Its color.
+    pub(crate) color: Tint,
+    /// It grows from the right edge.
+    #[prop(default)]
+    pub(crate) from_right: bool,
+    /// Its height.
+    #[prop(default = 8.0)]
+    pub(crate) height: f32,
+    /// Its corners (half the height without one).
+    pub(crate) radius: Option<f32>,
+}
+
+impl SpringBar {
+    fn place(&mut self, props: &SpringBarProps) {
+        if self.width <= 0.0 {
+            return;
+        }
+        let share = props.share.clamp(0.0, 1.0);
+        let to = if props.from_right { 1.0 } else { -1.0 } * (1.0 - share) * self.width;
+        let x = self.x.as_ref().expect("set up");
+        if self.placed {
+            let _ = x.spring(
+                to,
+                Spring {
+                    stiffness: 180.0,
+                    damping: 22.0,
+                    ..Spring::default()
+                },
+            );
+        } else {
+            x.set(to);
+        }
+        self.placed = true;
+    }
+}
+
+impl Component for SpringBar {
+    type Props = SpringBarProps;
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &SpringBarProps, cx: &mut Context<'_, Self>) {
+        self.x = Some(cx.native_value(0.0));
+    }
+
+    fn props_changed(
+        &mut self,
+        old: &SpringBarProps,
+        new: &SpringBarProps,
+        _: &mut Context<'_, Self>,
+    ) {
+        if old.share != new.share {
+            self.place(new);
+        }
+    }
+
+    fn render(&self, props: &SpringBarProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let radius = props.radius.unwrap_or(props.height / 2.0);
+        let color = AdaptiveColor::new(props.color.light, props.color.dark);
+        view()
+            .h(px(props.height))
+            .overflow_hidden()
+            .rounded(px(radius))
+            .on_layout(cx.listener(|this: &mut Self, frame: &Rect, cx| {
+                if this.width != frame.width {
+                    this.width = frame.width;
+                    this.place(cx.props());
+                }
+            }))
+            .child(
+                view()
+                    .absolute()
+                    .inset_0()
+                    .rounded(px(radius))
+                    .bg(color)
+                    .bind_translate_x(self.x.as_ref().expect("set up")),
+            )
+    }
+}
+
+/// A [`SpringBar`] of `color` filled to `share`.
+pub(crate) fn spring_bar(share: f64, color: AdaptiveColor) -> SpringBarProps {
+    SpringBarProps {
+        share: share as f32,
+        color: color.into(),
+        ..SpringBarProps::default()
+    }
+}
+
+/// A dot with a ring that pulses natively while the market runs: 0 → 1
+/// over 1.4 s, looped.
+#[derive(Debug, Default)]
+pub(crate) struct LiveDot {
+    pulse: Option<(NativeValue, Animation)>,
+}
+
+/// The props of [`LiveDot`].
+#[derive(Debug, Clone, PartialEq, Props)]
+pub(crate) struct LiveDotProps {
+    /// The market runs.
+    pub(crate) running: bool,
+    /// The dot's size.
+    #[prop(default = 8.0)]
+    pub(crate) size: f32,
+}
+
+/// A value that pulses 0 → 1 over 1.4 s, looped (started by
+/// [`run_pulse`]).
+pub(crate) fn pulse<C: Component>(cx: &Context<'_, C>) -> (NativeValue, Animation) {
+    let v = cx.native_value(0.0);
+    let looped = Animation::timing(
+        &v,
+        1.0,
+        Timing::new(1400.0, Easing::Curve(Curve::Cubic, EaseMode::Out)),
+    )
+    .looped(None);
+    (v, looped)
+}
+
+/// Runs a [`pulse`] while `running`; stopped, it fades back to 0.
+pub(crate) fn run_pulse((v, looped): &(NativeValue, Animation), running: bool) {
+    if running {
+        let _ = looped.start();
+    } else {
+        looped.stop();
+        let _ = v.timing(0.0, 200.0, Easing::EaseInOut);
+    }
+}
+
+impl Component for LiveDot {
+    type Props = LiveDotProps;
+    type Event = NoEvent;
+
+    fn setup(&mut self, props: &LiveDotProps, cx: &mut Context<'_, Self>) {
+        let pulse = pulse(cx);
+        run_pulse(&pulse, props.running);
+        self.pulse = Some(pulse);
+    }
+
+    fn props_changed(&mut self, old: &LiveDotProps, new: &LiveDotProps, _: &mut Context<'_, Self>) {
+        if old.running != new.running {
+            run_pulse(self.pulse.as_ref().expect("set up"), new.running);
+        }
+    }
+
+    fn render(&self, props: &LiveDotProps, _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let (p, _) = self.pulse.as_ref().expect("set up");
+        let size = props.size;
+        view()
+            .size(px(size * 2.5))
+            .items_center()
+            .justify_center()
+            .child(
+                view()
+                    .absolute()
+                    .size(px(size))
+                    .rounded(px(size / 2.0))
+                    .bg(colors::ACCENT)
+                    .bind_opacity(&p.interpolate(&[0.0, 1.0], &[0.55, 0.0]))
+                    .bind_scale(&p.interpolate(&[0.0, 1.0], &[1.0, 2.5])),
+            )
+            .child(
+                view()
+                    .size(px(size))
+                    .rounded(px(size / 2.0))
+                    .bg(if props.running {
+                        colors::ACCENT
+                    } else {
+                        colors::FAINT
+                    }),
+            )
+    }
+}
+
+/// [`LiveDot`] of `size`.
+pub(crate) fn live_dot(running: bool, size: f32) -> ComponentElement<LiveDot> {
+    LiveDot::element(LiveDotProps { running, size })
+}
+
+/// Pauses or resumes the market: a pill while it runs, citrus while it
+/// is paused.
+#[derive(Debug, Default)]
+pub(crate) struct MarketButton;
+
+impl Component for MarketButton {
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let running = cx.global::<Running>().0;
+        let owner = cx.global::<Feed>().owner.clone();
+        let toggle = cx.listener(move |_: &mut Self, _: &(), _| {
+            if let Some(owner) = &owner {
+                drop(owner.update(|stocks, cx| stocks.toggle(cx)));
+            }
+        });
+        // A component's root is a view: the press sits in one.
+        view().child(
+            press_with(
+                PressProps {
+                    hit_slop: Some(6.0),
+                    label: Some(
+                        if running {
+                            "Pause the market"
+                        } else {
+                            "Resume the market"
+                        }
+                        .into(),
+                    ),
+                    ..PressProps::default()
+                },
+                toggle,
+            )
+            .child(
+                view()
+                    .size(px(32.0))
+                    .rounded(px(16.0))
+                    .items_center()
+                    .justify_center()
+                    .map(|v| {
+                        if running {
+                            v.finish(Finish::Pill).border_1()
+                        } else {
+                            v.finish(Finish::Accent)
+                        }
+                    })
+                    .child(icon(
+                        if running {
+                            IconName::Pause
+                        } else {
+                            IconName::Play
+                        },
+                        13.0,
+                        if running {
+                            colors::MUTED
+                        } else {
+                            colors::ON_ACCENT
+                        },
+                    )),
+            ),
+        )
+    }
+}
+
+/// An axis range that follows its data calmly: it widens at once (nothing
+/// is clipped) and narrows by `rate` of the gap per fit, so a redraw never
+/// jumps the scale. [`Calm::reset`] forgets it (another period, another
+/// stock).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Calm {
+    rate: f64,
+    range: Option<(f64, f64)>,
+}
+
+impl Calm {
+    pub(crate) fn new(rate: f64) -> Self {
+        Self { rate, range: None }
+    }
+
+    pub(crate) fn fit(&mut self, l: f64, h: f64) -> (f64, f64) {
+        let next = match self.range {
+            None => (l, h),
+            Some((lo, hi)) => (
+                if l < lo { l } else { lo + (l - lo) * self.rate },
+                if h > hi { h } else { hi + (h - hi) * self.rate },
+            ),
+        };
+        self.range = Some(next);
+        next
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.range = None;
+    }
+}
+
+/// Diagonal stripes over a rectangle (projections, zones).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn hatch(p: Painter, x: f32, y: f32, w: f32, h: f32, color: Color, gap: f32) -> Painter {
+    if w <= 0.0 || h <= 0.0 {
+        return p;
+    }
+    let mut p = p
+        .save()
+        .begin_path()
+        .rect(x, y, w, h)
+        .clip()
+        .stroke_color(color)
+        .line_width(1.0)
+        .begin_path();
+    let mut i = -h;
+    while i < w {
+        p = p.move_to(x + i, y + h).line_to(x + i + h, y);
+        i += gap;
+    }
+    p.stroke().restore()
+}
+
+/// A dashed horizontal line.
+pub(crate) fn dashed(p: Painter, x0: f32, x1: f32, y: f32, color: Color, dash: &[f32]) -> Painter {
+    p.stroke_color(color)
+        .line_width(1.0)
+        .line_dash(dash)
+        .begin_path()
+        .move_to(x0, y)
+        .line_to(x1, y)
+        .stroke()
+        .line_dash(&[])
+}
+
+/// A flat section of a screen: a title with a faint note (or a control) on
+/// the right, the content below, a hairline above all but the first.
+pub(crate) struct Block {
+    title: Option<SharedString>,
+    note: Option<SharedString>,
+    right: Option<AnyElement>,
+    first: bool,
+    gap: f32,
+    content: Vec<AnyElement>,
+}
+
+impl Block {
+    pub(crate) fn new() -> Self {
+        Self {
+            title: None,
+            note: None,
+            right: None,
+            first: false,
+            gap: 10.0,
+            content: Vec::new(),
+        }
+    }
+
+    pub(crate) fn title(mut self, title: impl Into<SharedString>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub(crate) fn note(mut self, note: impl Into<SharedString>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+
+    pub(crate) fn right(mut self, right: impl IntoElement) -> Self {
+        self.right = Some(right.into_element());
+        self
+    }
+
+    pub(crate) fn child(mut self, child: impl IntoElement) -> Self {
+        self.content.push(child.into_element());
+        self
+    }
+}
+
+impl IntoElement for Block {
+    fn into_element(self) -> AnyElement {
+        let header = self.title.map(|title| {
+            view()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .min_h(px(22.0))
+                .child(
+                    text(title)
+                        .flex_1()
+                        .text_size(px(15.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(colors::TEXT),
+                )
+                .children(self.note.map(|note| {
+                    text(note)
+                        .text_size(px(12.0))
+                        .text_color(colors::FAINT)
+                        .tabular_nums()
+                }))
+                .children(self.right)
+        });
+        view()
+            .px_4()
+            .py(px(14.0))
+            .gap(px(self.gap))
+            .when(!self.first, |v| v.border_t_1().border_t_color(colors::LINE))
+            .children(header)
+            .children(self.content)
+            .into_element()
+    }
+}
+
+/// How wide a column is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Col {
+    /// This wide.
+    Fixed(f32),
+    /// The rest of the row.
+    Flex,
+    /// As wide as its label.
+    Auto,
+}
+
+/// A quiet header for columns ("PRICE", "SIZE"), on the right with
+/// `right`.
+pub(crate) fn head(label: &'static str, col: Col, right: bool) -> Text {
+    text(label)
+        .map(|t| match col {
+            Col::Fixed(w) => t.w(px(w)),
+            Col::Flex => t.flex_1(),
+            Col::Auto => t,
+        })
+        .when(right, |t| t.text_right())
+        .text_size(px(11.0))
+        .text_color(colors::FAINT)
+        .tabular_nums()
+        .letter_spacing(0.6)
+}

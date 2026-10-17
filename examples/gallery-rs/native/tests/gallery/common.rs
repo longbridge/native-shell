@@ -111,6 +111,27 @@ impl Screen {
         self.texts.iter().find(|t| t.1 == label).map(|t| t.0)
     }
 
+    /// What a press on the text `text` goes to: its nearest ancestor
+    /// listening to presses (a row, a button, the gallery's `Press` around
+    /// them), else its parent.
+    pub fn press_target(&self, text: u32) -> u32 {
+        let parent = self.parents[&text];
+        let mut at = parent;
+        loop {
+            if self
+                .events
+                .get(&at)
+                .is_some_and(|e| e.contains(EventKind::Press))
+            {
+                return at;
+            }
+            match self.parents.get(&at) {
+                Some(&up) => at = up,
+                None => return parent,
+            }
+        }
+    }
+
     /// The scroll view or list `id` is in (its nearest one).
     pub fn scroll_of(&self, mut id: u32) -> Option<u32> {
         loop {
@@ -138,8 +159,13 @@ impl Screen {
     }
 }
 
+/// Applies batches until none comes for 300 ms, or for 2 s at most (a
+/// live feed never goes quiet).
 pub fn drain(rx: &Receiver<MountBatch>, screen: &mut Screen) {
-    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
+    let end = std::time::Instant::now() + Duration::from_secs(2);
+    while std::time::Instant::now() < end
+        && let Ok(batch) = rx.recv_timeout(Duration::from_millis(300))
+    {
         screen.apply(&batch);
     }
 }
@@ -182,13 +208,14 @@ pub fn start() -> (nsh_engine::Engine, Receiver<MountBatch>) {
     (engine, rx)
 }
 
-/// Presses the parent of the text `label` (a row or a button), and waits
-/// for what it changes.
+/// Presses what the text `label` is in (a row or a button: its nearest
+/// ancestor listening to presses, else its parent), and waits for what it
+/// changes.
 pub fn press(engine: &Engine, rx: &Receiver<MountBatch>, screen: &mut Screen, label: &str) {
     let text = screen
         .find(label)
         .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
-    let target = screen.parents[&text];
+    let target = screen.press_target(text);
     engine
         .control()
         .dispatch_event(target, EventKind::Press, EventPayload::None);

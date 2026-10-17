@@ -4637,6 +4637,98 @@ mod components {
         assert_eq!(shown, ["accent 0 clicks 1", "accent 1 clicks 1"]);
     }
 
+    /// A counter that hands its handle to the surface when set up.
+    #[derive(Default)]
+    struct Owner {
+        count: u32,
+    }
+
+    /// The owner's handle, for whoever wants to change it.
+    #[derive(Default)]
+    struct OwnerHandle(Option<WeakComponent<Owner>>);
+
+    impl Component for Owner {
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
+            let weak = cx.weak();
+            cx.update_global(|h: &mut OwnerHandle, _| h.0 = Some(weak));
+        }
+
+        fn render(&self, _: &FormProps, _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(text(format!("count {}", self.count)))
+        }
+    }
+
+    /// Changes the owner through its handle when pressed.
+    #[derive(Default)]
+    struct Remote;
+
+    impl Component for Remote {
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let handle = cx.global::<OwnerHandle>().0.clone();
+            view().on_press(cx.listener(move |_: &mut Self, _, _| {
+                if let Some(owner) = &handle {
+                    drop(owner.update(|owner, cx| {
+                        owner.count += 1;
+                        cx.notify();
+                    }));
+                }
+            }))
+        }
+    }
+
+    #[test]
+    fn a_component_changes_another_through_its_weak_handle() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Owner>().register::<Remote>();
+        c.set_components(registry);
+        let mut ops = Vec::new();
+        for (id, name) in [
+            (2, std::any::type_name::<Owner>()),
+            (4, std::any::type_name::<Remote>()),
+        ] {
+            ops.push(Op::Create { id, tag: Tag::View });
+            ops.push(Op::SetProp {
+                id,
+                prop: Prop::Component(name.into()),
+            });
+            ops.push(Op::Insert {
+                parent: ROOT_ID,
+                child: id,
+                before: None,
+            });
+        }
+        apply(&mut c, ops);
+        assert_eq!(texts(&c.commit().unwrap()), ["count 0"]);
+
+        // The press updates the owner, not the remote, before the commit.
+        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
+        c.run_component_tasks();
+        assert_eq!(texts(&c.commit().unwrap()), ["count 1"]);
+
+        // Once the owner is gone, the handle changes nothing.
+        apply(
+            &mut c,
+            vec![
+                Op::Remove {
+                    parent: ROOT_ID,
+                    child: 2,
+                },
+                Op::Release { id: 2 },
+            ],
+        );
+        c.commit();
+        assert!(c.component_event(4, EventKind::Press, &EventPayload::None));
+        c.run_component_tasks();
+        assert!(c.commit().is_none_or(|b| texts(&b).is_empty()));
+    }
+
     /// A sheet that follows drags natively and springs back when let go.
     #[derive(Default)]
     struct Sheet {
@@ -4880,6 +4972,85 @@ mod components {
                 .iter()
                 .all(|i| !matches!(i, MountItem::Create { .. }))
         );
+    }
+
+    /// Its own rows indexing its data; a press clears the data. Its errors
+    /// show as a text.
+    #[derive(Default)]
+    struct Clearable {
+        rows: std::rc::Rc<Vec<String>>,
+        error: Option<ComponentError>,
+    }
+
+    impl Component for Clearable {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), _: &mut Context<'_, Self>) {
+            self.rows = std::rc::Rc::new((0..3).map(|i| format!("row {i}")).collect());
+        }
+
+        fn catch_error(&mut self, error: &ComponentError, cx: &mut Context<'_, Self>) -> bool {
+            self.error = Some(error.clone());
+            cx.notify();
+            true
+        }
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let rows = self.rows.clone();
+            view()
+                .flex_1()
+                .child(
+                    view()
+                        .h(px(20.0))
+                        .on_press(cx.listener(|this: &mut Self, _, cx| {
+                            this.rows = std::rc::Rc::default();
+                            cx.notify();
+                        })),
+                )
+                .children(
+                    self.error
+                        .as_ref()
+                        .map(|e| text(format!("failed: {}", e.message))),
+                )
+                .child(
+                    virtual_list(rows.len(), move |i, _| {
+                        view().h(px(40.0)).child(text(rows[i].clone()))
+                    })
+                    .estimated_item_size(40.0)
+                    .flex_1(),
+                )
+        }
+    }
+
+    #[test]
+    fn virtual_lists_drop_rows_that_are_gone() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Clearable>(|| ()));
+        let batch = c.commit().unwrap();
+        assert!(
+            texts(&batch).contains(&"row 2".to_owned()),
+            "{:?}",
+            texts(&batch)
+        );
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button");
+        // The cells of rows that are gone render nothing until the list
+        // binds them again, never a row past the end.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            if let Some(batch) = c.commit() {
+                shown.extend(texts(&batch));
+            }
+        }
+        assert!(shown.iter().all(|t| !t.starts_with("failed")), "{shown:?}");
     }
 
     /// A chat: its own rows in a list that follows its end; a press makes
@@ -5930,6 +6101,51 @@ fn overflowing_children_mount_their_area() {
     let batch = c.commit().unwrap();
     assert_eq!(overflow(&batch, 5), Some(None));
     assert_eq!(overflow(&batch, 2), Some(None));
+}
+
+/// A view that loses its only, absolutely placed child lays out again:
+/// taffy keeps the children it hoisted out of flow while the view has no
+/// children to lay out, so the freed child must not stay listed there.
+#[test]
+fn a_view_that_loses_its_absolute_child_lays_out() {
+    let mut c = core();
+    for (id, absolute) in [(2, false), (4, true), (6, false)] {
+        c.apply(Op::Create { id, tag: Tag::View }).unwrap();
+        let mut props = vec![("height", StyleValue::Number(20.0))];
+        if absolute {
+            props.push(("position", StyleValue::Str("absolute")));
+        }
+        c.apply(style_op(id, &props)).unwrap();
+    }
+    for (parent, child) in [(2, 4), (ROOT_ID, 2), (ROOT_ID, 6)] {
+        c.apply(Op::Insert {
+            parent,
+            child,
+            before: None,
+        })
+        .unwrap();
+    }
+    c.commit().unwrap();
+    c.apply(Op::Release { id: 4 }).unwrap();
+    // A new node takes the freed one's slot.
+    c.apply(Op::Create {
+        id: 8,
+        tag: Tag::View,
+    })
+    .unwrap();
+    c.apply(Op::Insert {
+        parent: 6,
+        child: 8,
+        before: None,
+    })
+    .unwrap();
+    c.apply(style_op(2, &[("height", StyleValue::Number(30.0))]))
+        .unwrap();
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(|i| matches!(
+        i,
+        MountItem::Frame { id: 6, frame, .. } if frame.y == 30.0
+    )));
 }
 
 /// `measure` gives the frame in the parent and the position in the root

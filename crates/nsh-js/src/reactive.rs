@@ -1633,6 +1633,13 @@ pub(crate) fn with_root<R>(ctx: *mut JsContext, f: impl FnOnce() -> R) -> (u32, 
     (id, r)
 }
 
+/// Whether something owns what runs now (a component, an effect, a
+/// root): its cleanups run when it goes.
+pub(crate) fn has_owner(ctx: *mut JsContext) -> bool {
+    let owner = unsafe { graph(ctx) }.owner;
+    owner != NONE && owner != UNOWNED
+}
+
 /// The current owner (for [`with_root_under`] later).
 pub(crate) fn current_owner(ctx: *mut JsContext) -> u32 {
     unsafe { graph(ctx) }.owner

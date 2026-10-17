@@ -26,7 +26,8 @@
 //!   `gtk::PopoverMenuBar` above the app, not shown while the title bar is
 //!   hidden or in full screen; shortcuts are a `gtk::ShortcutController` on
 //!   the window in the capture phase, so they win over the app's keys,
-//!   except the editing roles', which stay the text field's. Context menus
+//!   except the editing roles', which stay the text field's, and a
+//!   binding of `nsh/keymap` of the same keystroke (`keymap::claims`). Context menus
 //!   are `gtk::PopoverMenu`s with a group of their own (`nshpopup`).
 
 use std::{
@@ -612,8 +613,23 @@ fn install_menu(surface: &Rc<Surface>, window: &gtk::Window) {
     controller.set_propagation_phase(gtk::PropagationPhase::Capture);
     for (accel, action) in builder.shortcuts {
         if let Some(trigger) = gtk::ShortcutTrigger::parse_string(&accel) {
-            let shortcut = gtk::Shortcut::new(Some(trigger), Some(gtk::NamedAction::new(&action)));
-            controller.add_shortcut(shortcut);
+            let named = gtk::NamedAction::new(&action);
+            let weak = Rc::downgrade(surface);
+            let keys = controller.downgrade();
+            // A binding of `nsh/keymap` of the same keystroke comes first.
+            let action = gtk::CallbackAction::new(move |widget, args| {
+                let claimed = weak.upgrade().is_some_and(|surface| {
+                    keys.upgrade()
+                        .and_then(|c| c.current_event())
+                        .is_some_and(|event| crate::keymap::claims(&surface, &event))
+                });
+                if !claimed && named.activate(gtk::ShortcutActionFlags::empty(), widget, args) {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            });
+            controller.add_shortcut(gtk::Shortcut::new(Some(trigger), Some(action)));
         }
     }
     window.add_controller(controller.clone());

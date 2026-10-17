@@ -11,27 +11,37 @@ use crate::common::shows;
 fn typed_styles_shows_every_card() {
     let (_engine, _rx, screen) = crate::common::open("Typed styles");
     for text in [
-        "BUTTONS: ACTIVE, HOVER, TRANSITION, DISABLED",
-        "CARDS: SHADOW, RING, GROUP, GRADIENT",
-        "FLEX, GRID, BREAKPOINTS",
-        "PALETTE",
-        "SHADOWS, RINGS, OUTLINES",
-        "GRADIENTS",
-        "TYPOGRAPHY",
-        "FILTERS, BACKDROP BLUR, BLEND MODES",
-        "ANIMATIONS AND TRANSFORMS",
-        "FIRST:, EVEN:, LAST:",
-        "INPUTS",
+        "Resolved natively",
+        ".dark(..)",
+        "This screen, styled with typed methods",
+        "13 cards",
+        "Stat grid",
+        "40",
+        "8 hues × 5 shades",
+        "Buttons",
+        "Cards and badges",
         "Group press",
-        "Gradient card",
+        "Pending",
+        "Flex, grid, breakpoints",
         "col-span-2",
-        "emerald",
+        "row-span-2",
+        "Shadows, rings, outlines",
         "2xl",
+        "Glow",
+        "Gradients",
+        "45°",
+        "Typography",
         "Display",
         "CAPS",
+        "Filters and blur",
         "blur-sm",
-        "bounce",
+        "Animations and transforms",
+        "Bounce",
+        "Structural variants",
         "Archive",
+        "Inputs",
+        "Palette",
+        "emerald",
     ] {
         assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
@@ -46,10 +56,10 @@ fn typed_styles_buttons_keep_their_state() {
     crate::common::press(&engine, &rx, &mut screen, "Reset");
     assert!(shows(&screen, "Pressed 0×"), "{:?}", screen.texts);
 
-    crate::common::press(&engine, &rx, &mut screen, "Enabled");
+    crate::common::press(&engine, &rx, &mut screen, "Disable me");
     assert!(shows(&screen, "Disabled"), "{:?}", screen.texts);
     crate::common::press(&engine, &rx, &mut screen, "Enable again");
-    assert!(shows(&screen, "Enabled"), "{:?}", screen.texts);
+    assert!(shows(&screen, "Disable me"), "{:?}", screen.texts);
 }
 
 #[test]
@@ -58,9 +68,11 @@ fn typed_styles_send_gradients_filters_and_animations_natively() {
     let mut screen = crate::common::Screen::default();
     crate::common::drain(&rx, &mut screen);
     let text = screen.find("Typed styles").expect("the demo in the index");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut styles: HashMap<u32, ViewStyle> = HashMap::new();
     let mut tracked = 0;
     while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {
@@ -76,13 +88,15 @@ fn typed_styles_send_gradients_filters_and_animations_natively() {
     }
     let count = |f: &dyn Fn(&ViewStyle) -> bool| styles.values().filter(|s| f(s)).count();
     let effects = |s: &ViewStyle| s.effects.clone().unwrap_or_default();
-    // The four gradients and the gradient card: no canvas, no layout.
-    assert_eq!(count(&|s| !effects(s).background_images.is_empty()), 5);
+    let gradients = count(&|s| !effects(s).background_images.is_empty());
+    // The four gradients, the hero and its glow, and the finishes: no
+    // canvas, no layout.
+    assert!(gradients >= 6, "{gradients}");
     assert_eq!(count(&|s| !effects(s).backdrop_filters.is_empty()), 1);
     assert_eq!(
         count(&|s| s.animation.is_some()),
-        4,
-        "spin, ping, pulse, bounce"
+        5,
+        "the hero's ping, spin, ping, pulse, bounce"
     );
     assert_eq!(count(&|s| s.blend_mode == nsh_core::BlendMode::Multiply), 1);
     assert!(count(&|s| s.transition.is_some()) >= 4);

@@ -638,6 +638,12 @@ pub enum MountItem {
         /// What the app asks for.
         appearance: crate::platform::Appearance,
     },
+    /// The surface's keyboard shortcuts (replaces the previous table;
+    /// empty: none). The platform matches every key it gets against it on
+    /// the spot ([`crate::keymap::Keymap::find`]), consumes the keys that
+    /// fire a binding and reports them with
+    /// [`crate::EventKind::KeyCommand`] on the root.
+    Keymap(std::sync::Arc<crate::keymap::Keymap>),
     /// The sticky cells of a list (replaces the previous set): each one
     /// is translated along the main axis by `clamp(offset - start, 0,
     /// end - start)` on every scroll, natively.

@@ -1,7 +1,8 @@
 import { cleanup, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Toast } from "nsh/android";
-import { colorScheme, fontScale, windowSize } from "nsh/device";
+import { colorScheme, fontScale, Platform, windowSize } from "nsh/device";
+import { keymap } from "nsh/keymap";
 import { ActionSheet, Alert, keyboard, safeArea, StatusBar } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import {
@@ -297,6 +298,53 @@ function FramesAndTimers() {
   );
 }
 
+/** App-level shortcuts: bound while the demo shows (the component's own). */
+function Shortcuts() {
+  const mod = Platform.OS === "macos" || Platform.OS === "ios" ? "⌘" : "Ctrl+";
+  const count = signal(0);
+  const on = signal(false);
+  const last = signal("");
+  keymap.bind({
+    "mod+k": (k) => {
+      count.set(count() + 1);
+      last.set(k);
+    },
+    "mod+shift+l": (k) => {
+      on.set(!on());
+      last.set(k);
+    },
+  });
+  keymap.bind("mod+backspace", (k) => {
+    count.set(0);
+    last.set(k);
+  }, { when: "notEditing" });
+  const keys: [string, string][] = [
+    [`${mod}K`, "Counts"],
+    [`${mod}Shift+L`, "Switches the light"],
+    [`${mod}Backspace`, "Resets (not while typing)"],
+  ];
+  return (
+    <Card icon="bell" title="Keyboard shortcuts" subtitle="nsh/keymap · desktop">
+      <View>
+        <Each of={keys}>
+          {(key, i) => (
+            <Row first={i() === 0}>
+              <Text style={{ width: 120, fontSize: 14, color: colors.accent, fontFamily: mono }}>{key()[0]}</Text>
+              <Text style={{ flex: 1, fontSize: 15, color: colors.text }}>{key()[1]}</Text>
+            </Row>
+          )}
+        </Each>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Badge label={on() ? "Light on" : "Light off"} tone={on() ? "up" : "neutral"} />
+        <View style={{ flex: 1 }}>
+          <Caption label={`Counted ${count()}`} note={last() || "–"} />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 type Post = { id: number; title: string };
 
 function Network() {
@@ -360,6 +408,6 @@ function Network() {
 }
 
 export function System() {
-  const sections = [Environment, StatusBarCard, Dialogs, FramesAndTimers, Network];
+  const sections = [Environment, StatusBarCard, Dialogs, FramesAndTimers, Shortcuts, Network];
   return <DemoPage cards={sections} />;
 }

@@ -68,7 +68,7 @@ impl Shown {
             .screen
             .find(label)
             .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
-        let target = self.screen.parents[&text];
+        let target = self.screen.press_target(text);
         engine
             .control()
             .dispatch_event(target, EventKind::Press, EventPayload::None);
@@ -105,16 +105,27 @@ fn open() -> (Engine, Receiver<MountBatch>, Shown) {
 fn images_render_their_sections() {
     let (_engine, _rx, shown) = open();
     for text in [
-        "RESIZE MODES (A 2:1 IMAGE IN SQUARES)",
+        "Resize modes",
+        "A 2:1 image in square frames",
         "cover",
         "center",
-        "logo@2x.png",
-        "#1a7f37",
+        "Corners and borders",
+        "Two corners",
+        "logo@2x.png, tinted natively",
+        "Original",
+        "Danger",
         "spinner.webp",
-        "fade 300ms",
-        "blur 16",
+        "Scaled, round",
+        "300 ms",
+        "Loads",
+        "None",
+        "16 pt",
+        "—",
+        "0% · not shown",
         "Prefetch, then show: no download, no progress",
-        "no load events yet",
+        "Loaded, … px",
+        "Loading…",
+        "No load events yet",
     ] {
         assert!(shown.shows(text), "{text}: {:?}", shown.screen.texts);
     }
@@ -128,15 +139,16 @@ fn images_render_their_sections() {
         Some((96.0, 96.0))
     );
     shown.image("asset:/@gallery-native/spinner.webp");
-    shown.image("https://picsum.photos/seed/nsh-fade-1-1000/300/300");
+    shown.image("https://picsum.photos/id/1069/601/601");
 }
 
 #[test]
 fn images_show_what_get_size_and_prefetch_answer() {
     let (engine, rx, mut shown) = open();
-    let big = "https://picsum.photos/seed/nsh-progress/2400/1600";
-    shown.press(&engine, &rx, "getSize");
-    shown.press(&engine, &rx, "prefetch");
+    let big = "https://picsum.photos/id/1018/2400/1600";
+    shown.press(&engine, &rx, "Size");
+    shown.press(&engine, &rx, "Prefetch");
+    assert!(shown.shows("loading…"), "{:?}", shown.screen.texts);
     let infos = shown.infos.clone();
     let [(size, size_uri), (prefetch, prefetch_uri)] = &infos[..] else {
         panic!("two requests: {infos:?}");
@@ -169,11 +181,7 @@ fn images_show_what_get_size_and_prefetch_answer() {
         EventKind::ImageInfo,
         answer(prefetch, None),
     );
-    assert!(
-        shown.shows("2400×1600 px · failed"),
-        "{:?}",
-        shown.screen.texts
-    );
+    assert!(shown.shows("failed"), "{:?}", shown.screen.texts);
 }
 
 #[test]
@@ -189,13 +197,9 @@ fn images_report_their_events() {
             message: "not found".into(),
         },
     );
-    assert!(
-        shown.shows("onError: not found"),
-        "{:?}",
-        shown.screen.texts
-    );
+    assert!(shown.shows("not found"), "{:?}", shown.screen.texts);
 
-    let loads = shown.image("https://picsum.photos/seed/nsh-load/300/200");
+    let loads = shown.image("https://picsum.photos/id/1084/600/400");
     shown.send(
         &engine,
         &rx,
@@ -214,12 +218,15 @@ fn images_report_their_events() {
         },
     );
     shown.send(&engine, &rx, loads, EventKind::LoadEnd, EventPayload::None);
-    assert!(shown.shows("onLoad: 300×200"), "{:?}", shown.screen.texts);
     assert!(
-        shown.shows("onLoadStart → onLoad → onLoadEnd"),
+        shown.shows("Loaded, 300×200 px"),
         "{:?}",
         shown.screen.texts
     );
+    for badge in ["onLoadStart", "onLoad", "onLoadEnd"] {
+        assert!(shown.shows(badge), "{badge}: {:?}", shown.screen.texts);
+    }
+    assert!(!shown.shows("No load events yet"));
 }
 
 #[test]
@@ -227,7 +234,7 @@ fn show_and_reload_change_what_loads() {
     let (engine, rx, mut shown) = open();
     shown.press(&engine, &rx, "Show");
     assert!(shown.shows("Hide"), "{:?}", shown.screen.texts);
-    let big = shown.image("https://picsum.photos/seed/nsh-progress/2400/1600");
+    let big = shown.image("https://picsum.photos/id/1018/2400/1600");
     shown.send(
         &engine,
         &rx,
@@ -238,7 +245,7 @@ fn show_and_reload_change_what_loads() {
             ("total", PayloadValue::Number(1024.0)),
         ]),
     );
-    assert!(shown.shows("50%"), "{:?}", shown.screen.texts);
+    assert!(shown.shows("50% · not shown"), "{:?}", shown.screen.texts);
     shown.send(
         &engine,
         &rx,
@@ -249,10 +256,11 @@ fn show_and_reload_change_what_loads() {
             height: 1600.0,
         },
     );
-    assert!(shown.shows("50% loaded"), "{:?}", shown.screen.texts);
+    assert!(shown.shows("100% · loaded"), "{:?}", shown.screen.texts);
 
     shown.press(&engine, &rx, "Reload");
-    shown.image("https://picsum.photos/seed/nsh-fade-2-0/300/300");
+    shown.image("https://picsum.photos/id/1043/602/602");
+    assert!(shown.shows("2"), "{:?}", shown.screen.texts);
 }
 
 #[test]

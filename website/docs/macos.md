@@ -150,6 +150,9 @@ their order with the cancel button last and no default; Escape presses the cance
 | Cmd+W, Cmd+M, Ctrl+Cmd+F, Cmd+H, Option+Cmd+H, Cmd+Q | Close, minimize, full screen, hide, hide others, quit (`nsh package` and `nsh run` apps' menus) |
 | Cmd+R | Reloads the latest build (`nsh run`) |
 
+The app's own shortcuts ([`nsh/keymap`](../modules/nsh-keymap.md)) come before all of these, except Quit, Hide,
+Minimize and Full Screen, which cannot be bound.
+
 Shortcuts work with any keyboard layout (on a Cyrillic or Greek one, Cmd+C is the key that types C on a US layout).
 A return that commits an input method's composition (Chinese, Japanese, ...) never submits. `onKeyPress` reports
 what React Native reports: the typed text, `"Enter"`, `"Backspace"`, and `"Escape"`.

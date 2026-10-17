@@ -21,6 +21,7 @@ mod env;
 mod error;
 mod host;
 mod hot;
+mod keymap;
 mod list;
 mod modules;
 mod navigation;

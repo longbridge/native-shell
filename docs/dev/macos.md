@@ -162,6 +162,18 @@ any layout; the dev host's Cmd+R is a local key monitor (`dev.rs`).
   Cmd+[), Tab / Shift+Tab into the fields, and scrolling the scroll view around the focused view or under the mouse:
   arrows by a line, Page Up / Down, Option+Up / Down and Space / Shift+Space by a page, Home / End and Cmd+Up / Down
   to the edges. The mouse's back button goes back from `input::event`.
+- **The app's shortcuts** (`nsh/keymap`, `keymap.rs`): while the surface has bindings, a local key-down monitor
+  matches every key of its window against the mounted table (`Keymap::find`) before AppKit dispatches it, so they
+  come before menus' key equivalents, the field editor's key bindings and the root's keys (Escape going back,
+  Tab, scrolling); a match is consumed and reported as the root's `KeyCommand`. Quit, Hide, Hide Others, Minimize
+  and Full Screen cannot be bound (`Keystroke::reserved`), so the app menu keeps them; Cmd+W, the Edit menu's keys
+  give way to a binding (monitors run newest first); built with `dev`, Cmd+R is never matched
+  (`Keystroke::reloads`), so the dev host's reload monitor gets it. An auto-repeat (`isARepeat`) of a binding without
+  `repeat` is consumed silently. A surface takes the key while the
+  window's first responder is inside its root (a field or hosted view there counts as editing: `when`), or is the
+  window itself. The key is read as `Keystroke`: virtual key codes for named and function keys, else the character
+  without modifiers (`charactersByApplyingModifiers:` with none when Shift is held, so Shift+/ is `shift+/`), the US
+  layout's (`input::us_key`) when that is not ASCII. The monitor is removed when the table empties or the app stops.
 - Shortcuts nsh matches itself (Cmd+A / C / [ / R) read `input::shortcut_key`: the character without modifiers, or on
   a layout that types none in ASCII the US layout's key, as menus do.
 
@@ -198,7 +210,8 @@ lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.p
 (`tap shift 10 20`: a shift-click), `down` / `up` (a held press, for pressed states), `rtap`,
 `drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `fling <x> <y> <dx> <dy> [ms]`
 (a 120 Hz trackpad flick with momentum), `notch` (a mouse wheel), `hover`, `type <text>`, `mark <text>` (an input
-method's marked text), `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
+method's marked text), `key <name>` (with modifiers: `cmd+a`, `shift+Tab`; `Escape`, `F5`, ...: through the
+application, as real keys, so key monitors see them), `dark` / `light`, `resize <w> <h>`,
 `zoom` (AppKit's animated zoom), `fullscreen` (enter or leave), `quit`. Mouse events are posted to the application's
 queue, so they take the path real ones take (and become `NSApp.currentEvent`); wheels are handed to the window, and the root's
 `hitTest:` sees them as the current event (it keeps them from pages with `scrollEnabled={false}`). Presses make the app

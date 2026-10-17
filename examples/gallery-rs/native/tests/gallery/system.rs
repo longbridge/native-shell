@@ -1,5 +1,6 @@
-//! The System demo: the environment, the status bar's settings, system
-//! dialogs and their answers, a toast, a timer and display frames.
+//! The System demo: the environment, the status bar's settings (following
+//! the appearance until one is picked), system dialogs and their answers,
+//! a toast, a timer and display frames.
 
 use std::time::Duration;
 
@@ -19,9 +20,11 @@ fn press_for_dialog(
     label: &str,
 ) -> Dialog {
     let text = screen.find(label).expect(label);
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut dialog = None;
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
         screen.apply(&batch);
@@ -57,36 +60,88 @@ fn answer(
     crate::common::drain(rx, screen);
 }
 
+/// The status bar's setting last sent.
+fn status_bar(screen: &crate::common::Screen) -> Option<nsh_core::StatusBarConfig> {
+    screen
+        .commands
+        .iter()
+        .rev()
+        .find_map(|(_, command)| match command {
+            Command::StatusBar(config) => Some(*config),
+            _ => None,
+        })
+}
+
 #[test]
 fn system_shows_the_environment_and_the_status_bar() {
     let (engine, rx, mut screen) = crate::common::open("System");
     for text in [
-        "ENVIRONMENT (REACTIVE)",
-        "390 × 844",
-        "0 / 0 / 0 / 0",
+        "Environment",
+        "Live",
+        "390 × 844 pt",
         "0 pt",
-        "light",
-        "1.00",
-        "STATUS BAR",
-        "default",
-        "ALERTS",
-        "Answer",
-        "FRAMES AND TIMERS",
+        "1.00×",
+        "Safe area insets",
+        "Bottom",
+        "Light scheme",
+        "Status bar",
+        "barStyle: \"dark-content\"",
+        "Alerts and sheets",
+        "None yet",
+        "Frames and timers",
+        "Network and logs",
+        "Three posts from jsonplaceholder.typicode.com",
     ] {
         assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
-    crate::common::press(&engine, &rx, &mut screen, "Next style");
-    assert!(shows(&screen, "light-content"), "{:?}", screen.texts);
-    crate::common::press(&engine, &rx, &mut screen, "Next style");
-    assert!(shows(&screen, "dark-content"), "{:?}", screen.texts);
-    crate::common::press(&engine, &rx, &mut screen, "Hide");
-    assert!(shows(&screen, "Show"), "{:?}", screen.texts);
+    // The style follows the appearance until one is picked.
+    assert_eq!(
+        status_bar(&screen).map(|s| s.style),
+        Some(nsh_core::StatusBarStyle::Dark)
+    );
+    crate::common::press(&engine, &rx, &mut screen, "Light");
+    assert!(
+        shows(&screen, "barStyle: \"light-content\""),
+        "{:?}",
+        screen.texts
+    );
+    assert_eq!(
+        status_bar(&screen).map(|s| s.style),
+        Some(nsh_core::StatusBarStyle::Light)
+    );
+    crate::common::press(&engine, &rx, &mut screen, "Default");
+    assert!(
+        shows(&screen, "barStyle: \"default\""),
+        "{:?}",
+        screen.texts
+    );
+
+    // The toggle next to "Hidden" hides it.
+    let hidden = screen.find("Hidden").unwrap();
+    let row = screen.parents[&screen.parents[&hidden]];
+    let switch = *screen
+        .parents
+        .iter()
+        .find(|&(child, parent)| {
+            *parent == row
+                && screen
+                    .events
+                    .get(child)
+                    .is_some_and(|e| e.contains(EventKind::Press))
+        })
+        .expect("the toggle")
+        .0;
+    engine
+        .control()
+        .dispatch_event(switch, EventKind::Press, EventPayload::None);
+    crate::common::drain(&rx, &mut screen);
+    assert_eq!(status_bar(&screen).map(|s| s.hidden), Some(true));
 }
 
 #[test]
 fn system_shows_what_dialogs_answer() {
     let (engine, rx, mut screen) = crate::common::open("System");
-    let dialog = press_for_dialog(&engine, &rx, &mut screen, "Confirm (cancel / destructive)");
+    let dialog = press_for_dialog(&engine, &rx, &mut screen, "Confirm");
     assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
     assert_eq!(dialog.buttons.len(), 2);
     assert!(dialog.cancelable && !dialog.sheet);
@@ -111,10 +166,11 @@ fn system_counts_seconds() {
     std::thread::sleep(Duration::from_millis(1100));
     crate::common::drain(&rx, &mut screen);
     assert!(
-        screen
-            .texts
-            .iter()
-            .any(|t| t.1.parse::<u32>().is_ok_and(|n| n >= 1)),
+        screen.texts.iter().any(|t| t
+            .1
+            .strip_suffix(" every 1 s")
+            .and_then(|n| n.parse::<u32>().ok())
+            .is_some_and(|n| n >= 1)),
         "{:?}",
         screen.texts
     );
@@ -123,10 +179,12 @@ fn system_counts_seconds() {
 #[test]
 fn system_shows_a_toast() {
     let (engine, rx, mut screen) = crate::common::open("System");
-    let text = screen.find("Toast (Android)").expect("the toast's button");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    let text = screen.find("Toast").expect("the toast's button");
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut toast = None;
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
         screen.apply(&batch);
@@ -146,10 +204,10 @@ fn system_shows_a_toast() {
 #[test]
 fn system_counts_frames() {
     let (engine, rx, mut screen) = crate::common::open("System");
-    assert!(shows(&screen, "stopped"), "{:?}", screen.texts);
+    assert!(shows(&screen, "– fps stopped"), "{:?}", screen.texts);
     crate::common::press(&engine, &rx, &mut screen, "Count frames");
     assert!(
-        shows(&screen, "0 fps") && shows(&screen, "Stop counting frames"),
+        shows(&screen, "0 fps live") && shows(&screen, "Stop counting frames"),
         "{:?}",
         screen.texts
     );
@@ -163,12 +221,12 @@ fn system_counts_frames() {
     assert!(
         screen.texts.iter().any(|t| t
             .1
-            .strip_suffix(" fps")
+            .strip_suffix(" fps live")
             .and_then(|n| n.parse::<u32>().ok())
             .is_some_and(|n| n > 0)),
         "{:?}",
         screen.texts
     );
     crate::common::press(&engine, &rx, &mut screen, "Stop counting frames");
-    assert!(shows(&screen, "stopped"), "{:?}", screen.texts);
+    assert!(shows(&screen, "– fps stopped"), "{:?}", screen.texts);
 }

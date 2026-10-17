@@ -1,5 +1,6 @@
 //! The native ES modules apps import: nsh's own (`nsh`,
-//! `nsh:rt`, `nsh/device`, `nsh/accessibility`; [`nsh_core::js::NATIVE_MODULES`])
+//! `nsh:rt`, `nsh/device`, `nsh/accessibility`, `nsh/keymap`, ...;
+//! [`nsh_core::js::NATIVE_MODULES`])
 //! and those of registries (`Registry::specifier`): the UI sets a host
 //! serves (`nsh/ui/mobile`) and the runtime's (`nsh/android`, ...), whose
 //! components, modules and re-exports become exports (`components.rs`).
@@ -19,7 +20,7 @@ use nsh_core::ui::{ComponentSpec, ModuleSpec, Registry};
 use rquickjs::qjs;
 
 use crate::{
-    animated, canvas, components, desktop, dom, env, list, platform_modules,
+    animated, canvas, components, desktop, dom, env, keymap, list, platform_modules,
     reactive::{self, Native},
     touch,
 };
@@ -279,6 +280,11 @@ pub(crate) const MODULES: &[NativeModule] = &[
         name: "nsh/image",
         exports: IMAGE_EXPORTS,
         types: "",
+    },
+    NativeModule {
+        name: "nsh/keymap",
+        exports: keymap::EXPORTS,
+        types: keymap::TYPES,
     },
 ];
 

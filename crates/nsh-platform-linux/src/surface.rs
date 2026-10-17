@@ -118,6 +118,8 @@ pub(crate) struct Surface {
     pub(crate) access: RefCell<Arc<nsh_core::access::Access>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
+    /// The app's keyboard shortcuts ([`crate::keymap`]).
+    pub(crate) keymap: crate::keymap::KeymapState,
     /// The window's chrome: title bar, menus ([`crate::chrome`]).
     pub(crate) chrome: crate::chrome::Chrome,
 }
@@ -149,6 +151,7 @@ impl Surface {
             asset_base: RefCell::new(None),
             access: RefCell::new(Arc::default()),
             native: Default::default(),
+            keymap: Default::default(),
             chrome: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
@@ -204,6 +207,7 @@ impl Surface {
         *self.anim.borrow_mut() = UiAnimation::default();
         self.nav.borrow_mut().reset();
         crate::input::reset(self);
+        crate::keymap::clear(self);
         self.js_frame.set(false);
     }
 

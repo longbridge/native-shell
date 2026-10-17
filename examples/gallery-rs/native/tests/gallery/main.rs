@@ -5,6 +5,7 @@ mod common;
 
 mod animations;
 mod canvas;
+mod chat;
 mod components;
 mod form;
 mod gestures;
@@ -16,6 +17,7 @@ mod mobile_ui;
 mod photos;
 mod physics;
 mod scrolling;
+mod stocks;
 mod styles;
 mod system;
 mod text_demo;

@@ -579,6 +579,15 @@ impl<'a, C: Component> Context<'a, C> {
         task::spawn(&self.inner.executor, self.inner.host, f)
     }
 
+    /// This component as a handle others keep (TS: handing another part
+    /// of the app an object with methods, a store's `start()` / `stop()`):
+    /// a component elsewhere, on another screen say, changes it with
+    /// [`WeakComponent::update`], applied before the next render, `None`
+    /// once it is gone. Its tasks get the same handle.
+    pub fn weak(&self) -> WeakComponent<C> {
+        WeakComponent::new(self.inner.host, Rc::downgrade(&self.inner.executor))
+    }
+
     /// Listens to the Android back button (TS:
     /// `BackHandler.addEventListener("hardwareBackPress", f)`): when no modal
     /// is shown, `f` runs before the stack pops, newest listener first, and

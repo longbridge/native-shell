@@ -1,13 +1,15 @@
 //! The Web and video demo: two web views and a video, the buttons driving
-//! them and what they tell the app.
+//! them and what they tell the app; the inline page follows the
+//! appearance.
 
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use nsh_core::{
-    Command, EventKind, EventPayload, MountBatch, MountItem, NodeId, PayloadValue, ViewKind,
+    Command, EventKind, EventPayload, MountBatch, MountItem, NativeProps, NodeId, PayloadValue,
+    ViewKind, WebSource, platform::ColorScheme,
 };
-use nsh_engine::Engine;
+use nsh_engine::{Engine, Environment};
 
 use crate::common::shows;
 
@@ -19,6 +21,10 @@ struct Media {
     web_views: Vec<NodeId>,
     videos: Vec<NodeId>,
     commands: Vec<(NodeId, Command)>,
+    /// The HTML of each inline page, as last sent.
+    html: Vec<(NodeId, String)>,
+    /// Views by accessibility label (round buttons have no text).
+    labels: Vec<(String, NodeId)>,
 }
 
 impl Media {
@@ -38,6 +44,28 @@ impl Media {
                     MountItem::Command { id, command } => {
                         self.commands.push((*id, command.clone()))
                     }
+                    MountItem::ViewProps { id, props } => {
+                        self.labels.retain(|l| l.1 != *id);
+                        if let Some(label) = &props.accessibility.label {
+                            self.labels.push((label.to_string(), *id));
+                        }
+                    }
+                    MountItem::NativeProps {
+                        id,
+                        props: NativeProps::WebView(web),
+                        ..
+                    } => {
+                        if let WebSource::Html { html, .. } = &web.source {
+                            self.html.retain(|h| h.0 != *id);
+                            self.html.push((*id, html.to_string()));
+                        }
+                    }
+                    MountItem::AccessibilityLabel { id, label } => {
+                        self.labels.retain(|l| l.1 != *id);
+                        if let Some(label) = label {
+                            self.labels.push((label.to_string(), *id));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -50,10 +78,25 @@ impl Media {
             .find(label)
             .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
         engine.control().dispatch_event(
-            self.screen.parents[&text],
+            self.screen.press_target(text),
             EventKind::Press,
             EventPayload::None,
         );
+        self.drain(rx);
+    }
+
+    /// Presses the view labelled `label` for assistive technologies.
+    fn press_labelled(&mut self, engine: &Engine, rx: &Receiver<MountBatch>, label: &str) {
+        let node = self
+            .labels
+            .iter()
+            .rev()
+            .find(|l| l.0 == label)
+            .unwrap_or_else(|| panic!("no {label}: {:?}", self.labels))
+            .1;
+        engine
+            .control()
+            .dispatch_event(node, EventKind::Press, EventPayload::None);
         self.drain(rx);
     }
 
@@ -91,12 +134,23 @@ fn open() -> (Engine, Receiver<MountBatch>, Media) {
 fn media_shows_its_sections_and_toggles_the_video() {
     let (engine, rx, mut media) = open();
     for text in [
-        "WEB VIEW",
-        "A WEB SITE",
-        "VIDEO",
+        "Web view",
+        "Inline HTML, with messages both ways",
+        "From the page",
+        "To the page",
+        "A web site",
+        "Navigation state, back and forward",
+        "Loaded",
+        "Video",
+        "AVPlayer / MediaPlayer",
+        "Paused",
         "Post to the page",
         "…",
         "Reload",
+        "Restart",
+        "0:00",
+        "Own controls",
+        "System controls",
     ] {
         assert!(
             shows(&media.screen, text),
@@ -107,13 +161,12 @@ fn media_shows_its_sections_and_toggles_the_video() {
     assert_eq!(media.web_views.len(), 2);
     assert_eq!(media.videos.len(), 1);
 
-    media.press(&engine, &rx, "Play");
-    assert!(shows(&media.screen, "Pause"), "{:?}", media.screen.texts);
-    media.press(&engine, &rx, "System controls");
+    media.press_labelled(&engine, &rx, "Play");
+    assert!(shows(&media.screen, "Playing"), "{:?}", media.screen.texts);
     assert!(
-        shows(&media.screen, "Own controls"),
+        media.labels.iter().any(|l| l.0 == "Pause"),
         "{:?}",
-        media.screen.texts
+        media.labels
     );
 
     let video = media.videos[0];
@@ -136,16 +189,33 @@ fn media_shows_its_sections_and_toggles_the_video() {
             ("duration", PayloadValue::Number(5.0)),
         ],
     );
+    assert!(shows(&media.screen, "0:01"), "{:?}", media.screen.texts);
+    assert!(shows(&media.screen, "0:05"), "{:?}", media.screen.texts);
+    media.event(
+        &engine,
+        &rx,
+        video,
+        EventKind::Buffer,
+        vec![("isBuffering", PayloadValue::Bool(true))],
+    );
     assert!(
-        shows(&media.screen, "1.5 / 5.0 s"),
+        shows(&media.screen, "Buffering"),
         "{:?}",
         media.screen.texts
     );
+
+    // The system's controls replace the demo's own.
+    media.press(&engine, &rx, "System controls");
+    assert!(!shows(&media.screen, "Restart"), "{:?}", media.screen.texts);
+    media.press(&engine, &rx, "Own controls");
+    assert!(shows(&media.screen, "Restart"), "{:?}", media.screen.texts);
 }
 
 #[test]
 fn media_talks_to_its_web_views() {
     let (engine, rx, mut media) = open();
+    // In the order of the render (the core may create them in another).
+    media.web_views.sort();
     let (page, site) = (media.web_views[0], media.web_views[1]);
 
     media.event(
@@ -162,6 +232,11 @@ fn media_talks_to_its_web_views() {
     );
 
     media.press(&engine, &rx, "Post to the page");
+    assert!(
+        media.screen.texts.iter().any(|t| t.1.starts_with("hi #")),
+        "{:?}",
+        media.screen.texts
+    );
     assert!(
         media
             .commands
@@ -180,20 +255,22 @@ fn media_talks_to_its_web_views() {
         vec![
             (
                 "url",
-                PayloadValue::Str("https://en.m.wikipedia.org/wiki/React_Native".into()),
+                PayloadValue::Str("https://native-shell.com/docs/".into()),
             ),
-            ("title", PayloadValue::Str("React Native".into())),
+            ("title", PayloadValue::Str("native-shell".into())),
             ("loading", PayloadValue::Bool(true)),
             ("canGoBack", PayloadValue::Bool(true)),
             ("canGoForward", PayloadValue::Bool(false)),
         ],
     );
-    assert!(
-        shows(&media.screen, "Loading React Native"),
-        "{:?}",
-        media.screen.texts
-    );
-    media.press(&engine, &rx, "Back");
+    for text in ["native-shell", "native-shell.com", "Loading"] {
+        assert!(
+            shows(&media.screen, text),
+            "{text}: {:?}",
+            media.screen.texts
+        );
+    }
+    media.press_labelled(&engine, &rx, "Back");
     assert!(
         media
             .commands
@@ -202,4 +279,19 @@ fn media_talks_to_its_web_views() {
         "{:?}",
         media.commands
     );
+}
+
+#[test]
+fn media_page_follows_the_appearance() {
+    let (engine, rx, mut media) = open();
+    let light = media.html.last().expect("the inline page").1.clone();
+    assert!(light.contains("background: #f0f0ec"), "{light}");
+    engine.control().set_environment(Environment {
+        color_scheme: ColorScheme::Dark,
+        ..Environment::default()
+    });
+    media.drain(&rx);
+    let dark = &media.html.last().unwrap().1;
+    assert!(dark.contains("background: #0c0d0f"), "{dark}");
+    assert!(dark.contains("color: #eceef1"), "{dark}");
 }

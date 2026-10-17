@@ -25,6 +25,7 @@ mod decor;
 pub mod dev;
 mod image;
 mod input;
+mod keymap;
 mod mount;
 mod native;
 mod navigation;

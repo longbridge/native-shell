@@ -1,6 +1,7 @@
 //! The Styles demo on a headless engine: its cards render with their
-//! shadows, corners, borders and transforms; the clipping card toggles;
-//! "Flip" lays the surface out right to left and back.
+//! shadows, corners, borders and transforms; the clipping tile and the
+//! stacking tile take taps; "Flip" lays the surface out right to left and
+//! back.
 
 use std::collections::HashMap;
 
@@ -10,17 +11,32 @@ use nsh_core::{BorderStyle, EventKind, EventPayload, MountItem, TransformKind, V
 fn styles_render_their_cards() {
     let (_engine, _rx, screen) = crate::common::open("Styles");
     for text in [
-        "Shadow",
+        "Corners",
+        "Continuous",
         "Top corners",
         "Mixed radii",
-        "Clipped (tap)",
         "Per-side borders",
-        "zIndex (tap)",
-        "rotateY + perspective",
-        "skewX (iOS)",
-        "Front (tap)",
-        "Back: backfaceVisibility",
-        "Left to right",
+        "Dashed / dotted",
+        "Shadows and glow",
+        "Glow",
+        "Offset shadow",
+        "Shadow",
+        "Text corners",
+        "Elevation",
+        "Clipped",
+        "overflow: hidden",
+        "Stacking order",
+        "Front: 1 of 3 · tap",
+        "0.45",
+        "Perspective",
+        "rotateX: 40deg",
+        "Skew",
+        "Tap to flip",
+        "backfaceVisibility",
+        "1,111.11",
+        "Small Caps",
+        "Right to left",
+        "isRTL: false",
         "12",
     ] {
         assert!(
@@ -37,9 +53,11 @@ fn styles_send_the_cards_styles() {
     let mut screen = crate::common::Screen::default();
     crate::common::drain(&rx, &mut screen);
     let text = screen.find("Styles").expect("the demo in the index");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut styles: HashMap<u32, ViewStyle> = HashMap::new();
     while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {
         for item in &batch.items {
@@ -49,11 +67,14 @@ fn styles_send_the_cards_styles() {
         }
     }
     let any = |f: &dyn Fn(&ViewStyle) -> bool| styles.values().any(f);
-    // "Mixed radii": a blue shadow and three corners of their own.
-    assert!(any(&|s| s.shadow.opacity == 0.35
+    // "Mixed radii": three corners of their own; "Offset shadow": a
+    // colored shadow, offset.
+    assert!(any(
+        &|s| s.corner_radius[..3] == [Some(44.0), Some(6.0), Some(28.0)]
+    ));
+    assert!(any(&|s| s.shadow.opacity == 0.45
         && s.shadow.radius == 10.0
-        && (s.shadow.offset_x, s.shadow.offset_y) == (4.0, 8.0)
-        && s.corner_radius[..3] == [Some(44.0), Some(6.0), Some(28.0)]));
+        && (s.shadow.offset_x, s.shadow.offset_y) == (4.0, 8.0)));
     // Per-side borders.
     assert!(any(&|s| s.borders.widths == [6.0, 2.0, 4.0, 1.0]));
     assert!(any(&|s| s.borders.style == BorderStyle::Dashed));
@@ -72,17 +93,47 @@ fn styles_send_the_cards_styles() {
 }
 
 #[test]
-fn the_clipping_card_toggles() {
+fn the_layer_tiles_take_taps() {
     let (engine, rx, mut screen) = crate::common::open("Styles");
-    crate::common::press(&engine, &rx, &mut screen, "Clipped (tap)");
+    crate::common::press(&engine, &rx, &mut screen, "Tap");
+    for text in ["Visible", "overflow: visible"] {
+        assert!(
+            screen.texts.iter().any(|t| t.1 == text),
+            "{text}: {:?}",
+            screen.texts
+        );
+    }
+    crate::common::press(&engine, &rx, &mut screen, "Tap");
     assert!(
-        screen.texts.iter().any(|t| t.1 == "Visible (tap)"),
+        screen.texts.iter().any(|t| t.1 == "Clipped"),
         "{:?}",
         screen.texts
     );
-    crate::common::press(&engine, &rx, &mut screen, "Visible (tap)");
+    // The stacking tile's stage (its specimen has no text): the pressable
+    // view inside the tile the note is in.
+    let note = screen.find("Front: 1 of 3 · tap").unwrap();
+    let tile = screen.parents[&screen.parents[&note]];
+    let inside = |mut id: u32| {
+        while let Some(&up) = screen.parents.get(&id) {
+            if up == tile {
+                return true;
+            }
+            id = up;
+        }
+        false
+    };
+    let stage = *screen
+        .events
+        .iter()
+        .find(|(id, e)| e.contains(EventKind::Press) && inside(**id))
+        .expect("the stage takes presses")
+        .0;
+    engine
+        .control()
+        .dispatch_event(stage, EventKind::Press, EventPayload::None);
+    crate::common::drain(&rx, &mut screen);
     assert!(
-        screen.texts.iter().any(|t| t.1 == "Clipped (tap)"),
+        screen.texts.iter().any(|t| t.1 == "Front: 2 of 3 · tap"),
         "{:?}",
         screen.texts
     );
@@ -91,7 +142,7 @@ fn the_clipping_card_toggles() {
 #[test]
 fn flip_lays_the_surface_out_right_to_left() {
     let (engine, rx, mut screen) = crate::common::open("Styles");
-    let flip = screen.find("Flip").expect("the Flip button");
+    let flip = screen.press_target(screen.find("Flip").expect("the Flip button"));
     let mut directions = Vec::new();
     let mut press = |screen: &mut crate::common::Screen| {
         engine
@@ -108,13 +159,13 @@ fn flip_lays_the_surface_out_right_to_left() {
     };
     press(&mut screen);
     assert!(
-        screen.texts.iter().any(|t| t.1 == "Right to left"),
+        screen.texts.iter().any(|t| t.1 == "isRTL: true"),
         "{:?}",
         screen.texts
     );
     press(&mut screen);
     assert!(
-        screen.texts.iter().any(|t| t.1 == "Left to right"),
+        screen.texts.iter().any(|t| t.1 == "isRTL: false"),
         "{:?}",
         screen.texts
     );

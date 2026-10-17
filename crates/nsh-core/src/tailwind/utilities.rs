@@ -80,6 +80,8 @@ pub(crate) enum Part {
     Delay(f32),
     TransitionNone,
     Animate(Option<Keyframes>),
+    /// A keyframe animation with its own timing.
+    Animation(KeyframeAnimation),
     TextShadow(Arc<[TextShadow]>),
     TextShadowColor(Color, bool),
 }
@@ -264,7 +266,7 @@ pub(crate) struct Parts {
     ease: Option<[f32; 4]>,
     delay: Option<f32>,
     transition_none: bool,
-    animate: Option<Option<Keyframes>>,
+    animate: Option<Option<KeyframeAnimation>>,
     text_shadow: Option<Arc<[TextShadow]>>,
     text_shadow_color: Option<(Color, bool)>,
     /// `w-screen` and friends, resolved against the window.
@@ -293,7 +295,7 @@ impl Parts {
             TransitionProps(_) | Duration(_) | Ease(_) | Delay(_) | TransitionNone => {
                 touched::TRANSITION
             }
-            Animate(_) => touched::ANIMATE,
+            Animate(_) | Animation(_) => touched::ANIMATE,
             TextShadow(_) | TextShadowColor(..) => touched::TEXT_SHADOW,
         };
         match part {
@@ -375,7 +377,8 @@ impl Parts {
                 self.transition_none = true;
                 self.transition_props = None;
             }
-            Animate(k) => self.animate = Some(k),
+            Animate(k) => self.animate = Some(k.map(preset)),
+            Animation(a) => self.animate = Some(Some(a)),
             TextShadow(layers) => self.text_shadow = Some(layers),
             TextShadowColor(c, a) => self.text_shadow_color = Some((c, a)),
         }
@@ -552,36 +555,7 @@ impl Parts {
             });
         }
         if let Some(k) = self.animate.filter(|_| has(touched::ANIMATE)) {
-            style.view.animation = k.map(|keyframes| match keyframes {
-                Keyframes::Spin => KeyframeAnimation {
-                    keyframes,
-                    duration: 1000.0,
-                    delay: 0.0,
-                    easing: [0.0, 0.0, 1.0, 1.0],
-                    iterations: None,
-                },
-                Keyframes::Ping => KeyframeAnimation {
-                    keyframes,
-                    duration: 1000.0,
-                    delay: 0.0,
-                    easing: [0.0, 0.0, 0.2, 1.0],
-                    iterations: None,
-                },
-                Keyframes::Pulse => KeyframeAnimation {
-                    keyframes,
-                    duration: 2000.0,
-                    delay: 0.0,
-                    easing: [0.4, 0.0, 0.6, 1.0],
-                    iterations: None,
-                },
-                Keyframes::Bounce => KeyframeAnimation {
-                    keyframes,
-                    duration: 1000.0,
-                    delay: 0.0,
-                    easing: [0.8, 0.0, 1.0, 1.0],
-                    iterations: None,
-                },
-            });
+            style.view.animation = k;
         }
         if let Some(layers) = self
             .text_shadow
@@ -2105,4 +2079,38 @@ fn text(theme: &Theme, v: &str, _neg: bool) -> Option<Vec<Decl>> {
         }
     }
     one(set(K::Color, color_str(color(theme, v)?)))
+}
+
+/// Tailwind's timing of `animate-*`.
+fn preset(keyframes: Keyframes) -> KeyframeAnimation {
+    match keyframes {
+        Keyframes::Spin => KeyframeAnimation {
+            keyframes,
+            duration: 1000.0,
+            delay: 0.0,
+            easing: [0.0, 0.0, 1.0, 1.0],
+            iterations: None,
+        },
+        Keyframes::Ping => KeyframeAnimation {
+            keyframes,
+            duration: 1000.0,
+            delay: 0.0,
+            easing: [0.0, 0.0, 0.2, 1.0],
+            iterations: None,
+        },
+        Keyframes::Pulse => KeyframeAnimation {
+            keyframes,
+            duration: 2000.0,
+            delay: 0.0,
+            easing: [0.4, 0.0, 0.6, 1.0],
+            iterations: None,
+        },
+        Keyframes::Bounce => KeyframeAnimation {
+            keyframes,
+            duration: 1000.0,
+            delay: 0.0,
+            easing: [0.8, 0.0, 1.0, 1.0],
+            iterations: None,
+        },
+    }
 }

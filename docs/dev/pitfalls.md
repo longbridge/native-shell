@@ -35,6 +35,10 @@ Things that were found the hard way. Read the section of the area you change bef
 - **Taffy 0.15 custom measure callbacks must delegate to `taffy::compute_leaf_layout`** and only compute the content size. Returning the
   content size directly skips resolving the leaf's own style (width / height / padding / min / max), so leaves such as
   `<Image style={{width: 48}}>` end up with a zero size.
+- **Taffy 0.15 keeps a node's hoisted (absolutely placed) children while the node has no children**: it rewrites the list only when it lays
+  out a container, and a childless node is laid out as a leaf. A view whose last child, an absolute one, is removed would keep listing it,
+  and the next rounding pass fails on the freed node (`invalid SlotMap key`); `unlink` gives such a view a fresh Taffy node
+  (`forget_hoisted`).
 - **List cells are independent Taffy roots** (not children of the list's Taffy node; their width follows the list's cross axis): scrolling only
   relays out dirty cells and only emits frames for relaid cell subtrees; when the main tree is clean, `compute_layout` and the frame walk of the
   main tree are skipped (Taffy runs a full rounding pass even over a clean root).
