@@ -246,6 +246,14 @@ workflow by hand without a tag, or a pull request that changes it or xtask, buil
 artifacts). The binaries are not signed: macOS quarantines downloads from a browser (`xattr -dr
 com.apple.quarantine nsh`), and the Linux runtime needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later).
 
+The same tag runs `.github/workflows/release-crate.yml`, which publishes the library crates to crates.io (secret
+`CARGO_REGISTRY_TOKEN`): the main workspace's crates that do not inherit `publish = false` (they set `homepage`,
+`readme` and `repository` instead), then `nsh-platform-gpui` from `crates/gpui`. The hosts, the runners,
+`nsh-platform-web` and xtask are never published. A new version also sets the `version` of the `nsh-*` entries of
+both workspaces' `[workspace.dependencies]` (the run fails otherwise). Crates already on crates.io at that version are
+skipped, so a run stopped by crates.io's rate limit on new crates can simply be run again; running it by hand with
+*dry run* packages and verifies without uploading.
+
 How users get it (`website/docs/installation.md`):
 
 - `website/public/install.sh` and `install.ps1` (served at `native-shell.com/install.sh`, `/install.ps1`, and
