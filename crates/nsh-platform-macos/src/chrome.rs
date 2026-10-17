@@ -185,7 +185,9 @@ fn center_traffic_lights(window: &NSWindow, height: f32) {
     .map(|b| window.standardWindowButton(b));
     let Some(close) = &buttons[0] else { return };
     // The buttons are in the title bar view, which fills its container.
-    let Some(container) = close.superview().and_then(|bar| bar.superview()) else {
+    let Some(container) =
+        crate::view::superview(close).and_then(|bar| crate::view::superview(&bar))
+    else {
         return;
     };
     let height = f64::from(height);
@@ -421,7 +423,7 @@ fn menu(surface: &Surface, title: &str, items: &[MenuItem]) -> Retained<NSMenu> 
                 let ns = unsafe {
                     NSMenuItem::initWithTitle_action_keyEquivalent(
                         NSMenuItem::alloc(mtm),
-                        &NSString::from_str(&title(action)),
+                        &NSString::from_str(&self::title(action)),
                         selector,
                         &NSString::from_str(&key),
                     )
