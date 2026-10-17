@@ -2088,6 +2088,45 @@ fn stroke(
     }
 }
 
+/// Paints the view's glyphs all in `color` (with the pass's filters and
+/// opacity), moved by each of `offsets` (view coordinates): the
+/// silhouette of the text, which shadows of the content are drawn with
+/// ([`crate::decor::draw_content_shadow`]).
+pub(crate) fn draw_silhouette(
+    cx: &mut DrawCx<'_>,
+    state: &ViewState,
+    offsets: &[(f32, f32)],
+    color: nsh_core::Color,
+) {
+    let Some(drawn) = &state.text else { return };
+    let Some(layout) = drawn.layout.downcast::<GpuiLayout>() else {
+        return;
+    };
+    if cx.culled() || color.is_transparent() {
+        return;
+    }
+    let k = cx.transform_scale();
+    let c = drawn.content;
+    let tint = cx.color(color);
+    let mut glyphs = Vec::with_capacity(layout.glyphs.len() * offsets.len());
+    for line in &layout.lines {
+        for g in layout.glyphs[line.glyphs.clone()]
+            .iter()
+            .filter(|g| !g.attachment)
+        {
+            let (x, y) = (c.x + line.x + g.x, c.y + line.baseline);
+            for &(dx, dy) in offsets {
+                glyphs.push((cx.map(x + dx, y + dy), *g));
+            }
+        }
+    }
+    cx.paint(|window, _| {
+        for (p, g) in glyphs {
+            let _ = window.paint_glyph(p, g.font, g.id, px(g.size * k), tint);
+        }
+    });
+}
+
 /// The UTF-16 offset of the character at `(x, y)` (view coordinates), if
 /// any (presses on nested text links).
 pub(crate) fn char_at(state: &ViewState, x: f32, y: f32) -> Option<u32> {
