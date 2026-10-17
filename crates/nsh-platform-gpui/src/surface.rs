@@ -101,6 +101,10 @@ pub(crate) type ShortcutHandler = Box<dyn Fn(&crate::input::KeyEvent) -> bool>;
 /// Called when the app reports a fatal error (development hosts show it).
 pub(crate) type ErrorHandler = Box<dyn Fn(&str)>;
 
+/// A handler as kept: shared, so it is called with nothing borrowed (it may
+/// restart the app or set another handler).
+type Handler<F> = RefCell<Option<Rc<F>>>;
+
 /// One engine and its views.
 pub(crate) struct Surface {
     key: u64,
@@ -150,8 +154,11 @@ pub(crate) struct Surface {
     /// frame until they return false ([`Surface::on_frame`]).
     frame_clients: RefCell<Vec<FrameClient>>,
     epoch: std::time::Instant,
-    on_error: RefCell<Option<ErrorHandler>>,
-    on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
+    on_error: Handler<dyn Fn(&str)>,
+    on_hot_update_failed: Handler<dyn Fn()>,
+    /// Counts the apps stopped ([`Surface::stop`]): what an engine sent
+    /// before is not applied to the next one.
+    generation: Cell<u64>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
     /// What the running app may reach (checked for image redirects).
@@ -211,6 +218,7 @@ impl Surface {
             epoch: std::time::Instant::now(),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
+            generation: Cell::new(0),
             asset_base: RefCell::new(None),
             access: RefCell::new(Arc::default()),
             native: Default::default(),
@@ -299,6 +307,7 @@ impl Surface {
 
     /// Stops the app and removes its views.
     pub(crate) fn stop(&self) {
+        self.generation.set(self.generation.get() + 1);
         // Dropping the engine joins its thread.
         self.control.borrow_mut().take();
         self.engine.borrow_mut().take();
@@ -335,13 +344,13 @@ impl Surface {
 
     /// Shows fatal app errors with `f` (development hosts, embedding apps).
     pub(crate) fn set_error_handler(&self, f: ErrorHandler) {
-        *self.on_error.borrow_mut() = Some(f);
+        *self.on_error.borrow_mut() = Some(Rc::from(f));
     }
 
     /// Runs `f` when a hot update could not be applied in place.
     #[cfg(feature = "dev")]
     pub(crate) fn set_hot_update_failed(&self, f: impl Fn() + 'static) {
-        *self.on_hot_update_failed.borrow_mut() = Some(Box::new(f));
+        *self.on_hot_update_failed.borrow_mut() = Some(Rc::new(f));
     }
 
     /// Updates the environment and tells the engine.
@@ -425,8 +434,14 @@ impl Surface {
             Some(rx) => rx.try_iter().collect(),
             None => return,
         };
+        let generation = self.generation.get();
         let mut applied = false;
         for message in messages {
+            // A handler restarted or stopped the app: the rest was the old
+            // engine's.
+            if self.generation.get() != generation {
+                return;
+            }
             match message {
                 Message::Batch(batch) => {
                     self.apply(&batch);
@@ -436,13 +451,15 @@ impl Surface {
                 Message::Error(message) => {
                     log::error!("{message}");
                     crate::script::app_error();
-                    if let Some(f) = &*self.on_error.borrow() {
+                    let handler = self.on_error.borrow().clone();
+                    if let Some(f) = handler {
                         f(&message);
                     }
                 }
                 Message::Frame => self.js_frame.set(true),
                 Message::HotUpdateFailed => {
-                    if let Some(f) = &*self.on_hot_update_failed.borrow() {
+                    let handler = self.on_hot_update_failed.borrow().clone();
+                    if let Some(f) = handler {
                         f();
                     }
                 }
@@ -543,5 +560,59 @@ pub(crate) fn flush_all(cx: &mut gpui::App) {
     });
     for id in ids {
         cx.notify(id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A surface draining `messages` as if an engine had sent them.
+    fn sent(surface: &Surface, messages: Vec<Message>) {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        for m in messages {
+            tx.send(m).unwrap();
+        }
+        *surface.rx.borrow_mut() = Some(rx);
+    }
+
+    #[test]
+    fn an_error_handler_restarting_the_app_drops_the_old_engines_messages() {
+        let surface = Surface::new(nsh_engine::Environment::default());
+        let weak = Rc::downgrade(&surface);
+        surface.set_error_handler(Box::new(move |_| {
+            let surface = weak.upgrade().unwrap();
+            // What a restart does first; setting a handler again must not
+            // find it borrowed.
+            surface.stop();
+            surface.set_error_handler(Box::new(|_| {}));
+        }));
+        sent(
+            &surface,
+            vec![
+                Message::Error("boom".into()),
+                Message::Batch(MountBatch::default()),
+            ],
+        );
+        surface.drain();
+        assert_eq!(surface.batches.get(), 0);
+    }
+
+    #[test]
+    fn messages_apply_in_order_without_a_restart() {
+        let surface = Surface::new(nsh_engine::Environment::default());
+        let errors = Rc::new(Cell::new(0));
+        let seen = errors.clone();
+        surface.set_error_handler(Box::new(move |_| seen.set(seen.get() + 1)));
+        sent(
+            &surface,
+            vec![
+                Message::Error("first".into()),
+                Message::Batch(MountBatch::default()),
+                Message::Error("second".into()),
+            ],
+        );
+        surface.drain();
+        assert_eq!((errors.get(), surface.batches.get()), (2, 1));
     }
 }
