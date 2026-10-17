@@ -527,6 +527,13 @@ define_class!(
     unsafe impl NSObjectProtocol for ErrorText {}
 
     impl ErrorText {
+        /// A click in an inactive window dismisses too (the app's views
+        /// take first clicks as well).
+        #[unsafe(method(acceptsFirstMouse:))]
+        fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
+            true
+        }
+
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
             // NSTextView tracks the mouse until it goes up.
@@ -553,6 +560,11 @@ define_class!(
     unsafe impl NSObjectProtocol for ErrorView {}
 
     impl ErrorView {
+        #[unsafe(method(acceptsFirstMouse:))]
+        fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
+            true
+        }
+
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, _event: &NSEvent) {
             if let Some(ui) = session(*self.ivars()) {
@@ -589,7 +601,8 @@ fn show_error(ui: &Rc<RefCell<DevUi>>, title: &str, message: &str, prose: bool) 
     overlay.setAutoresizingMask(fill);
     overlay.setWantsLayer(true);
     if let Some(layer) = overlay.layer() {
-        let red = NSColor::colorWithSRGBRed_green_blue_alpha(0.55, 0.08, 0.08, 0.97);
+        // Opaque: the app's own text must not show through the message.
+        let red = NSColor::colorWithSRGBRed_green_blue_alpha(0.55, 0.08, 0.08, 1.0);
         layer.setBackgroundColor(Some(&red.CGColor()));
     }
 
@@ -611,8 +624,12 @@ fn show_error(ui: &Rc<RefCell<DevUi>>, title: &str, message: &str, prose: bool) 
     text.setTextContainerInset(NSSize::new(16.0, 20.0));
     text.setVerticallyResizable(true);
     text.setMaxSize(NSSize::new(f64::MAX, f64::MAX));
-    text.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
-    if !prose {
+    text.setMinSize(frame.size);
+    if prose {
+        text.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
+    } else {
+        // As wide as its longest line (`sizeToFit` below), so it scrolls
+        // sideways to the ends of long lines.
         text.setHorizontallyResizable(true);
         // SAFETY: a plain getter; the text view keeps its container.
         if let Some(c) = unsafe { text.textContainer() } {
@@ -661,6 +678,7 @@ fn show_error(ui: &Rc<RefCell<DevUi>>, title: &str, message: &str, prose: bool) 
             );
         }
     }
+    text.sizeToFit();
     scroll.setDocumentView(Some(&text));
     overlay.addSubview(&scroll);
     container.addSubview(&overlay);
