@@ -205,8 +205,16 @@ Things that were found the hard way. Read the section of the area you change bef
 - A layer-backed `NSView`'s layer belongs to AppKit: moving or resizing the view sets its layer's anchor point,
   position and transform again. `NshView::place` sets the frame first, then anchor (top left), position, transform and
   opacity, every time; a transform set elsewhere is lost on the next move.
-- Layer contents drawn by `drawRect:` sit below every sublayer of the view: a fill sublayer (differing corners,
-  gradients) would hide a text or canvas view's drawing, so those views keep their background on the layer itself.
+- Layer contents sit below every sublayer of the view: a fill sublayer (differing corners, gradients) would hide
+  content drawn into the view's own layer, so text and canvases draw into a content sublayer (`zPosition` between the
+  decoration behind the view and its children).
+- `setBoundsOrigin:` (scrolling) marks every `drawRect:` view below it for display (`NS_viewVisibleRectDidChange`),
+  clipped or not, on every scroll step; plain sublayers drawn by a delegate are not affected (`view.rs`).
+- Trackpad scroll events come at about the display's rate but not in step with it: applied as they come, frames move
+  twice or not at all while the frame rate reads 120. Resample them at display frames by their timestamps (`scroll.rs`).
+- `NSEvent.timestamp` is on `CACurrentMediaTime`'s clock (`systemUptime`); a `CGEvent` made without a source has
+  timestamp 0 until set (nanoseconds). `NSWindow.sendEvent:` drops synthesized momentum-phase scroll events: scripts
+  hand them to the view under the pointer.
 - Clipping a layer (`masksToBounds`, a mask) clips its shadow too: a view that clips its children and casts a shadow
   moves the children into a container that clips, and keeps the shadow on its own layer.
 - `NSView`'s display link does not fire while the window is occluded or minimized, or the screen is locked: a surface
@@ -218,11 +226,6 @@ Things that were found the hard way. Read the section of the area you change bef
   not, and Core Image is not even loaded (`CIFilter` is missing) unless something links it. Backdrop blur is an
   `NSVisualEffectView` with within-window blending; it needs `wantsLayer` set when created, or it has no layer to order
   and clip until AppKit makes one.
-- Trackpad scroll events come at about the display's rate but not in step with it: applied as they come, frames move
-  twice or not at all while the frame rate reads 120. Resample them at display frames by their timestamps (`scroll.rs`).
-- `NSEvent.timestamp` is on `CACurrentMediaTime`'s clock (`systemUptime`); a `CGEvent` made without a source has
-  timestamp 0 until set (nanoseconds). `NSWindow.sendEvent:` drops synthesized momentum-phase scroll events: scripts
-  hand them to the view under the pointer.
 - In `define_class!` methods, an early `return` of a `bool` or `Option<Retained<_>>` does not compile (the macro wraps
   the return type): write the body as one expression.
 - In-process screenshots (`cacheDisplayInRect:`, `renderInContext:`) ignore `maskedCorners`, `shadowPath`, Core Image

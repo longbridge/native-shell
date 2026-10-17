@@ -36,24 +36,20 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   `ViewState::natives`, above the children, except a sheet's scrim (hosted by the root, below its card); hit testing
   follows the AppKit order of hosted views and children, so a click on the card reaches the card.
 - **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
-  `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
-  contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
-  backing store. Implicit animations are off for every change nsh makes (`surface::quiet`).
-- **Drawing views clip to their bounds** (`decor.rs`, as UIKit's `drawRect:` does), unless a shadow or outline is drawn
-  outside them. Since macOS 14 views do not clip by default, and AppKit then backs what a `drawRect:` view could draw
-  outside its bounds up to what its ancestors show, and draws it again whenever that changes
-  (`NS_viewVisibleRectDidChange`): every text of a scroll view on every scroll step (~150 redraws per wheel event in
-  the gallery's Lists demo). `NSView.clipsToBounds` is the layer's `masksToBounds`, so decoration owns it.
-- **Out-of-sight canvases are not redrawn by animations** (`Mounter::draw_when_shown`): a canvas whose animated values
-  change (on every frame while they run) is drawn again only if some of it can be seen (`visibleRect`), else when it
-  shows (after scrolls, batches and frames). Lists keep rows out of sight; the Stocks demo's pulsing sparklines
-  redrew all 22 rows at 120 Hz.
-- **AppKit draws `drawRect:` content twice**: it records the drawing into a display list, then replays it into the
-  layer's backing store (half-float on wide-color screens, on several threads). Drawing into a bitmap of our own in
-  `updateLayer` instead was measured slower (one thread), and `contentsFormat` / `drawsAsynchronously` changed nothing:
-  the lever is drawing less. Rendering canvases into bitmaps on a background queue was measured too (Stocks:
-  main-thread frame 2.7 → 0.3 ms) and left out: the process' CPU went from ~53% to ~140% (Core Graphics on the CPU
-  instead of AppKit's display-list replay), and the canvas showed a frame late.
+  `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw into a **content layer** of their own
+  (`NshView::redraw`: a plain `CALayer` sublayer whose delegate draws in `drawLayer:inContext:`, above the decoration
+  behind the view and below its children); no view uses `drawRect:`, every view uses `updateLayer` and gets no backing
+  store. Implicit animations are off for every change nsh makes (`surface::quiet`; the content layer's delegate
+  answers no action).
+- **Why not `drawRect:`**: scrolling moves a container's bounds origin, and `setBoundsOrigin:` walks the subtree
+  (`NSViewHierarchyInvalidateVisibleRect`) and marks every `drawRect:` view's layer for display
+  (`NS_viewVisibleRectDidChange`), clipped or not: every text of a scroll view went through AppKit's display pass on
+  every frame of a scroll (~165 `viewWillDraw` and backing-store checks per frame in the gallery's Lists demo, ~70% of
+  the frame's main-thread time). Plain sublayers are not visible-rect managed. A content layer is drawn again when
+  its content changes and when its size does (`needsDisplayOnBoundsChange`), not when the view moves (transitions
+  redrew every moving text on every frame before). Canvases draw asynchronously (`drawsAsynchronously`: Core
+  Animation replays the drawing on its threads; Stocks idle, main-thread time per frame ~3.3 → ~1.8 ms, process CPU
+  ~60% → ~30%); text draws at once, which measured faster than asynchronously.
 - **No masks on what scrolls, where avoidable** (`visual.rs`): the window server pays for a mask on every frame its
   layer moves. Outer box shadows under an opaque background (a fill layer, or an opaque gradient, both above them)
   are plain `shadowPath` casters, masked only under translucent ones; inset shadows are clipped by their holder's
@@ -61,6 +57,12 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   gallery's Lists (a shadow and an inset highlight on every card) was composited at ~55 of 120 Hz with the masks and
   ~107 without, although the app committed every frame in time (Instruments' Animation Hitches: every frame one
   refresh late).
+- **Out-of-sight content is not drawn** (`Mounter::draw_when_shown`): text and canvases whose content changes (a
+  canvas's animated values on every frame while they run) are drawn only if some of the view can be seen
+  (`visibleRect`), else when it shows (after scrolls, batches and frames; a view out of the tree waits until it is
+  inserted and shows). Lists keep rows out of sight, hidden screens stay mounted, and a content layer, unlike AppKit's
+  lazy `drawRect:`, would otherwise draw them all at once (the Stocks demo's pulsing sparklines redrew all 22 rows at
+  120 Hz).
 - **Trackpad scrolls are shown in step with the display** (`scroll.rs`, `Resampled`): gesture and momentum events come
   at about the display's rate (120 Hz) but not in step with it, so applied as they come some frames moved twice and
   some not at all (up to a quarter of a fling's frames, depending on how the events fell; the frame rate still read

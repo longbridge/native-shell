@@ -38,12 +38,13 @@ use objc2::{
     rc::Retained, runtime::AnyObject,
 };
 use objc2_app_kit::{
-    NSEvent, NSEventType, NSGraphicsContext, NSResponder, NSTrackingArea, NSTrackingAreaOptions,
-    NSView, NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
+    NSEvent, NSEventType, NSResponder, NSTrackingArea, NSTrackingAreaOptions, NSView,
+    NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
 };
 use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
+use objc2_core_graphics::CGContext;
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect};
-use objc2_quartz_core::CATransform3D;
+use objc2_quartz_core::{CALayer, CALayerDelegate, CATransform3D};
 
 use crate::surface::{Surface, quiet};
 
@@ -338,7 +339,57 @@ pub(crate) struct Ivars {
     surface: RefCell<Weak<Surface>>,
     /// Set once the root's tracking area is installed.
     tracking: Cell<bool>,
+    /// Text and canvas views: the layer their content is drawn in
+    /// ([`NshView::redraw`]), and its delegate.
+    content: RefCell<Option<(Retained<CALayer>, Retained<Drawer>)>>,
+    /// Its content changed while it could not be seen
+    /// ([`crate::mount::Mounter::draw_when_shown`]).
+    stale: Cell<bool>,
 }
+
+define_class!(
+    /// Draws a text or canvas view's content into its content layer.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = objc2::rc::Weak<ViewObj>]
+    #[name = "NshContentDrawer"]
+    struct Drawer;
+
+    unsafe impl NSObjectProtocol for Drawer {}
+
+    unsafe impl CALayerDelegate for Drawer {
+        #[unsafe(method(drawLayer:inContext:))]
+        fn draw_layer(&self, layer: &CALayer, ctx: &CGContext) {
+            let Some(view) = self.ivars().load() else {
+                return;
+            };
+            let Ok(state) = view.ivars().state.try_borrow() else {
+                return;
+            };
+            let c = Some(ctx);
+            CGContext::save_g_state(c);
+            if !layer.contentsAreFlipped() {
+                // Drawing is top down, as in a flipped view.
+                CGContext::translate_ctm(c, 0.0, layer.bounds().size.height);
+                CGContext::scale_ctm(c, 1.0, -1.0);
+            }
+            crate::text::draw(ctx, &state);
+            crate::canvas::draw(ctx, &state);
+            CGContext::restore_g_state(c);
+        }
+
+        // Nothing nsh changes animates implicitly.
+        #[unsafe(method_id(actionForLayer:forKey:))]
+        fn action_for_layer(
+            &self,
+            _layer: &CALayer,
+            _key: &objc2_foundation::NSString,
+        ) -> Option<Retained<AnyObject>> {
+            // SAFETY: `+[NSNull null]` returns the shared instance.
+            unsafe { msg_send![objc2::class!(NSNull), null] }
+        }
+    }
+);
 
 define_class!(
     /// The AppKit class of [`NshView`].
@@ -358,7 +409,12 @@ define_class!(
 
         #[unsafe(method(wantsUpdateLayer))]
         fn wants_update_layer(&self) -> bool {
-            self.ivars().state.try_borrow().is_ok_and(|s| !s.draws())
+            // Text and canvas content is drawn in a layer of its own
+            // ([`NshView::redraw`]): drawn by `drawRect:`, AppKit would
+            // display every such view under a scroll view on every
+            // scroll step (it invalidates them when their visible rect
+            // changes, clipped or not).
+            true
         }
 
         #[unsafe(method(updateLayer))]
@@ -380,19 +436,6 @@ define_class!(
             // SAFETY: NSView's own preparation (it displays the subviews).
             unsafe { msg_send![super(self), viewWillDraw] }
             NshView(self.retain()).set_layer_geometry();
-        }
-
-        #[unsafe(method(drawRect:))]
-        fn draw_rect(&self, _dirty: NSRect) {
-            let Some(context) = NSGraphicsContext::currentContext() else {
-                return;
-            };
-            let cg = context.CGContext();
-            let Ok(state) = self.ivars().state.try_borrow() else {
-                return;
-            };
-            crate::text::draw(&cg, &state);
-            crate::canvas::draw(&cg, &state);
         }
 
         #[unsafe(method_id(hitTest:))]
@@ -568,6 +611,7 @@ define_class!(
         #[unsafe(method(viewDidMoveToWindow))]
         fn view_did_move_to_window(&self) {
             NshView(self.retain()).set_layer_geometry();
+            NshView(self.retain()).rescale();
             if let Some(surface) = self.surface() {
                 self.install_tracking();
                 crate::system::window_changed(&surface);
@@ -583,6 +627,7 @@ define_class!(
 
         #[unsafe(method(viewDidChangeBackingProperties))]
         fn view_did_change_backing_properties(&self) {
+            NshView(self.retain()).rescale();
             if let Some(surface) = self.surface() {
                 crate::system::window_changed(&surface);
             }
@@ -759,6 +804,8 @@ impl NshView {
             container: RefCell::new(None),
             surface: RefCell::new(Weak::new()),
             tracking: Cell::new(false),
+            content: RefCell::new(None),
+            stale: Cell::new(false),
         });
         // SAFETY: NSView's designated initializer.
         let obj: Retained<ViewObj> = unsafe { msg_send![super(obj), initWithFrame: NSRect::ZERO] };
@@ -871,13 +918,83 @@ impl NshView {
     /// Something it draws changed: content (text, canvas) is drawn again
     /// and the decoration applied again.
     pub(crate) fn changed(&self) {
+        self.restyle();
+        self.redraw();
+    }
+
+    /// Its style changed: the decoration is applied again (the content is
+    /// drawn again separately, [`NshView::redraw`]).
+    pub(crate) fn restyle(&self) {
         // Opacity is the layer's (an animated one changes without a move).
         if let Some(layer) = self.ns().layer() {
             layer.setOpacity(self.state().opacity().clamp(0.0, 1.0));
         }
         crate::decor::apply(self);
-        if self.state().draws() {
-            self.ns().setNeedsDisplay(true);
+    }
+
+    /// Marks its content as changed out of sight (or not); whether that
+    /// changed the mark.
+    pub(crate) fn set_stale(&self, stale: bool) -> bool {
+        self.ivars().stale.replace(stale) != stale
+    }
+
+    /// Draws its content (text, canvas) again, if it draws any.
+    pub(crate) fn redraw(&self) {
+        // A view that stopped drawing clears what it drew.
+        if !self.state().draws() && self.ivars().content.borrow().is_none() {
+            return;
+        }
+        if let Some(layer) = self.content_layer() {
+            layer.setNeedsDisplay();
+        }
+    }
+
+    /// The layer its content is drawn in (made on first use).
+    fn content_layer(&self) -> Option<Retained<CALayer>> {
+        if let Some((layer, _)) = &*self.ivars().content.borrow() {
+            return Some(layer.clone());
+        }
+        let host = self.ns().layer()?;
+        let mtm = MainThreadMarker::from(&*self.0);
+        let drawer = mtm
+            .alloc::<Drawer>()
+            .set_ivars(objc2::rc::Weak::from_retained(&self.0));
+        // SAFETY: NSObject's initializer.
+        let drawer: Retained<Drawer> = unsafe { msg_send![super(drawer), init] };
+        let layer = CALayer::new();
+        layer.setDelegate(Some(objc2::runtime::ProtocolObject::from_ref(&*drawer)));
+        layer.setAnchorPoint(CGPoint::new(0.0, 0.0));
+        layer.setNeedsDisplayOnBoundsChange(true);
+        // Canvases are drawn on Core Animation's threads (paths and
+        // gradients are costly; measured on the Stocks demo, main-thread
+        // time per frame went from 3.5 to 1.8 ms); text is cheap to draw
+        // and drawn at once, which was faster.
+        layer.setDrawsAsynchronously(self.state().canvas.is_some());
+        layer.setContentsScale(self.backing_scale());
+        // Above the decoration behind it (fills, gradients, inset
+        // shadows), below the children and the borders in front.
+        layer.setZPosition(crate::decor::BEHIND / 2.0);
+        let size = self.ns().frame().size;
+        layer.setFrame(CGRect::new(CGPoint::new(0.0, 0.0), size));
+        host.addSublayer(&layer);
+        *self.ivars().content.borrow_mut() = Some((layer.clone(), drawer));
+        Some(layer)
+    }
+
+    /// The scale of its window's backing (2 before it has one).
+    fn backing_scale(&self) -> CGFloat {
+        self.ns().window().map_or(2.0, |w| w.backingScaleFactor())
+    }
+
+    /// Its window or screen changed: the content layer draws at the new
+    /// scale.
+    fn rescale(&self) {
+        if let Some((layer, _)) = &*self.ivars().content.borrow() {
+            let scale = self.backing_scale();
+            if layer.contentsScale() != scale {
+                layer.setContentsScale(scale);
+                layer.setNeedsDisplay();
+            }
         }
     }
 
@@ -926,11 +1043,12 @@ impl NshView {
             self.size_container();
             crate::native::resized(self);
             self.place_natives();
+            if let Some((layer, _)) = &*self.ivars().content.borrow() {
+                // A new size draws it again (`needsDisplayOnBoundsChange`).
+                layer.setFrame(CGRect::new(CGPoint::new(0.0, 0.0), rect.size));
+            }
         }
         self.set_layer_geometry();
-        if self.state().draws() {
-            self.ns().setNeedsDisplay(true);
-        }
     }
 
     /// Sets the layer's anchor, position, transform, opacity and
