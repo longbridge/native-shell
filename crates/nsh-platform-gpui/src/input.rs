@@ -799,6 +799,81 @@ pub(crate) fn window_drag(surface: &Surface, x: f32, y: f32) -> bool {
     false
 }
 
+/// Where pressing drags the window, as rectangles in root coordinates:
+/// what [`window_drag`] answers point by point, for platforms that
+/// hit-test drag areas themselves (Windows, `crate::chrome`). The views
+/// that set `windowDrag`, less what is nearer and takes presses (text
+/// fields, hosted items, views with press or touch handlers or with
+/// `windowDrag: false`). Transforms are not followed.
+pub(crate) fn window_drag_rects(surface: &Surface) -> Vec<nsh_core::Rect> {
+    let mut drag = Vec::new();
+    let mut block = Vec::new();
+    collect_drag(&surface.root, (0.0, 0.0), false, &mut drag, &mut block);
+    for b in &block {
+        drag = drag
+            .into_iter()
+            .flat_map(|r| crate::geom::subtract(r, *b))
+            .collect();
+    }
+    drag
+}
+
+fn collect_drag(
+    view: &NshView,
+    origin: (f32, f32),
+    mut inside: bool,
+    drag: &mut Vec<nsh_core::Rect>,
+    block: &mut Vec<nsh_core::Rect>,
+) {
+    let s = view.state();
+    if s.style.hidden || s.concealed || s.props.pointer_events == PointerEvents::None {
+        return;
+    }
+    let r = crate::geom::rect(origin.0, origin.1, s.frame.width, s.frame.height);
+    match s.props.window_drag {
+        Some(true) => {
+            drag.push(r);
+            inside = true;
+        }
+        Some(false) => {
+            if inside {
+                block.push(r);
+            }
+            inside = false;
+        }
+        None => {
+            if inside
+                && (s.kind == ViewKind::Input
+                    || has_press(s.events)
+                    || s.events.contains(EventKind::Touch))
+            {
+                block.push(r);
+                inside = false;
+            }
+        }
+    }
+    if inside {
+        for n in &s.natives {
+            let n = n.rect;
+            block.push(crate::geom::rect(
+                origin.0 + n.x,
+                origin.1 + n.y,
+                n.width,
+                n.height,
+            ));
+        }
+    }
+    view.with_children(|children| {
+        for child in children {
+            let o = {
+                let c = child.state();
+                s.child_origin(c.frame, c.shift)
+            };
+            collect_drag(child, (origin.0 + o.0, origin.1 + o.1), inside, drag, block);
+        }
+    });
+}
+
 /// A right click at `(x, y)`: the edit menu of the text field or the
 /// selectable text under it.
 fn context_menu(surface: &Rc<Surface>, x: f32, y: f32) {

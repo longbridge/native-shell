@@ -667,9 +667,32 @@ pub(crate) fn render(
 /// a secondary press opens the window menu (Linux).
 fn drag_area(surface: &Rc<Surface>) -> impl IntoElement {
     let s = surface.clone();
+    let drag = surface.clone();
     canvas(
-        |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
-        move |_, hitbox: Hitbox, window, _| {
+        move |bounds, window, _| {
+            let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+            // Windows moves the window itself, from its hit test: the
+            // drag areas are marked as `HTCAPTION` (which also maximizes
+            // and restores on a double click and opens the window menu on
+            // a right click); `start_window_move` does nothing there.
+            let areas: Vec<Hitbox> = if PLATFORM == Platform::Windows {
+                let (ox, oy) = drag.origin.get();
+                crate::input::window_drag_rects(&drag)
+                    .into_iter()
+                    .map(|r| {
+                        let b = crate::render::bounds(ox + r.x, oy + r.y, r.width, r.height);
+                        window.insert_hitbox(b.intersect(&bounds), HitboxBehavior::Normal)
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            (hitbox, areas)
+        },
+        move |_, (hitbox, areas): (Hitbox, Vec<Hitbox>), window, _| {
+            for area in areas {
+                window.insert_window_control_hitbox(WindowControlArea::Drag, area);
+            }
             let surface = s.clone();
             let h = hitbox.clone();
             window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {

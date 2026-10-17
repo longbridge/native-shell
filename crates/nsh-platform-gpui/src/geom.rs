@@ -22,6 +22,29 @@ pub(crate) fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
     }
 }
 
+/// `r` less `b`: up to four rectangles (above, below, left and right of
+/// `b`), or `r` itself when they do not overlap.
+pub(crate) fn subtract(r: Rect, b: Rect) -> Vec<Rect> {
+    let (x0, y0) = (r.x.max(b.x), r.y.max(b.y));
+    let (x1, y1) = (
+        (r.x + r.width).min(b.x + b.width),
+        (r.y + r.height).min(b.y + b.height),
+    );
+    if x0 >= x1 || y0 >= y1 {
+        return vec![r];
+    }
+    let (right, bottom) = (r.x + r.width, r.y + r.height);
+    [
+        rect(r.x, r.y, r.width, y0 - r.y),
+        rect(r.x, y1, r.width, bottom - y1),
+        rect(r.x, y0, x0 - r.x, y1 - y0),
+        rect(x1, y0, right - x1, y1 - y0),
+    ]
+    .into_iter()
+    .filter(|p| p.width > 0.0 && p.height > 0.0)
+    .collect()
+}
+
 /// A 4x4 transform (row-vector convention: `m[row][col]`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Mat4 {
@@ -243,6 +266,20 @@ mod tests {
 
     fn close(a: (f32, f32), b: (f32, f32)) -> bool {
         (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3
+    }
+
+    #[test]
+    fn subtracting_rectangles() {
+        use super::{rect, subtract};
+        let r = rect(0.0, 0.0, 100.0, 40.0);
+        // A button in the middle of a bar: four pieces around it.
+        let pieces = subtract(r, rect(60.0, 10.0, 20.0, 20.0));
+        let area: f32 = pieces.iter().map(|p| p.width * p.height).sum();
+        assert_eq!(pieces.len(), 4);
+        assert_eq!(area, 4000.0 - 400.0);
+        // Apart: unchanged; covering: nothing left.
+        assert_eq!(subtract(r, rect(200.0, 0.0, 10.0, 10.0)), vec![r]);
+        assert!(subtract(r, rect(-1.0, -1.0, 200.0, 50.0)).is_empty());
     }
 
     #[test]
