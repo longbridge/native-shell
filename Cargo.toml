@@ -45,6 +45,8 @@ gpui_platform = { package = "gpui-fast-platform", version = "0.1.7", default-fea
 # The GPUI backend's script shots on Linux: the window read from the X server.
 raw-window-handle = "0.6"
 x11rb = { version = "0.13", default-features = false, features = ["dri3", "present"] }
+# The GPUI backend's canvas rasterizer (already in GPUI's tree through resvg).
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
 notify = "8.2"
 log = "0.4"
 libc = "0.2"

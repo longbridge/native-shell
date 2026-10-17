@@ -33,6 +33,7 @@ gpui.workspace = true
 gpui_platform.workspace = true
 image = { workspace = true, features = ["gif", "webp", "jpeg", "bmp", "ico", "tiff"] }
 rustc-hash.workspace = true
+tiny-skia.workspace = true
 serde_json.workspace = true
 ttf-parser.workspace = true
 ureq.workspace = true
