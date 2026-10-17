@@ -122,10 +122,7 @@ fn next(window: gtk::ApplicationWindow, surface: Rc<Surface>, steps: Rc<Vec<Stri
 /// its ancestors) until the next frame: a web view's page does so every
 /// time it paints, so a shot taken between frames came out empty or
 /// without the page.
-fn after_paint(
-    window: &gtk::ApplicationWindow,
-    f: impl FnOnce(&gtk::ApplicationWindow) + 'static,
-) {
+fn after_paint(window: &gtk::ApplicationWindow, f: impl FnOnce(&gtk::ApplicationWindow) + 'static) {
     let Some(clock) = window.frame_clock() else {
         f(window);
         return;
