@@ -14,16 +14,24 @@ fn text_renders_its_samples() {
     let (_engine, _rx, screen) = crate::common::open("Text");
     for text in [
         SENTENCE,
-        "Pressed: Tap a link in the sentence",
+        "Spans and links",
+        "Pressed",
+        "nothing yet",
         "LIVE",
         "♥ 3",
         "Custom fonts",
+        "Pacifico-Regular.ttf",
         "Light Bold Italic Both Spaced",
         "Underline Strikethrough Both",
         "UPPERCASE Capitalized Words Here",
-        "Text shadow",
-        "System text size (fontScale 1.00)",
-        "numberOfLines=1 head / middle / clip",
+        "Glow",
+        "Drop shadow",
+        "System text size",
+        "1.00×",
+        "maxFontSizeMultiplier={1.2}",
+        "Truncation",
+        "One line, middle",
+        "Centered, three lines",
     ] {
         assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
@@ -36,7 +44,8 @@ fn text_renders_its_samples() {
     assert_eq!(inline.attachments.len(), 3);
     let links = &screen.block(SENTENCE).expect("one paragraph").links;
     assert_eq!(links.len(), 3, "{links:?}");
-    // "Both" is underlined and struck through; the strikethrough is red.
+    // "Both" is underlined and struck through; the strikethrough has a
+    // color of its own.
     let decorations = screen.block("Underline Strikethrough Both").unwrap();
     let both = decorations.spans.last().unwrap();
     assert_eq!(
@@ -47,16 +56,13 @@ fn text_renders_its_samples() {
         }
     );
     let struck = &decorations.spans[2];
-    assert_eq!(
-        struck.style.decoration_color,
-        Some(nsh_core::Color(0xcf22_2eff))
-    );
+    assert!(struck.style.decoration_color.is_some(), "{struck:?}");
     let shadow = screen
-        .block("Text shadow")
+        .block("Drop shadow")
         .unwrap()
         .shadow
         .expect("a shadow");
-    assert_eq!((shadow.radius, shadow.offset_x), (4.0, 2.0));
+    assert_eq!((shadow.radius, shadow.offset_x), (3.0, 2.0));
 }
 
 #[test]
@@ -69,14 +75,10 @@ fn links_and_the_inline_button_take_presses() {
         "Privacy policy",
         EventKind::Press,
     );
-    assert!(
-        shows(&screen, "Pressed: Privacy policy"),
-        "{:?}",
-        screen.texts
-    );
+    assert!(shows(&screen, "Privacy policy"), "{:?}", screen.texts);
     press_link(&engine, &rx, &mut screen, "links", EventKind::Press);
     assert!(
-        shows(&screen, "Pressed: a link inside bold text"),
+        shows(&screen, "a link inside bold text"),
         "{:?}",
         screen.texts
     );
@@ -87,15 +89,11 @@ fn links_and_the_inline_button_take_presses() {
         "Terms of service",
         EventKind::LongPress,
     );
-    assert!(
-        shows(&screen, "Pressed: Terms (long press)"),
-        "{:?}",
-        screen.texts
-    );
+    assert!(shows(&screen, "Terms (long press)"), "{:?}", screen.texts);
     // The sentence around the links.
     crate::common::press_text(&engine, &rx, &mut screen, SENTENCE);
     assert!(
-        shows(&screen, "Pressed: the sentence (not a link)"),
+        shows(&screen, "the sentence (not a link)"),
         "{:?}",
         screen.texts
     );

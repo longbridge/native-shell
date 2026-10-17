@@ -1,6 +1,6 @@
-//! The Canvas demo on a headless engine: its sections render, its buttons
-//! draw again, its drawings use gradients, SVG paths and measured labels,
-//! and the sketch claims its touches.
+//! The Canvas demo on a headless engine: its cards render, the dial's
+//! presets draw it again, its drawings use gradients, SVG paths and
+//! measured labels, and the sketch claims its touches.
 
 use std::time::Duration;
 
@@ -45,17 +45,28 @@ fn press_drawing(
 fn canvas_renders_its_sections() {
     let (_engine, _rx, screen) = crate::common::open("Canvas");
     for text in [
-        "NATIVE ANIMATION (PROGRESS RING)",
-        "CHART",
-        "TRANSFORMS (A CLOCK)",
-        "PATH2D (SVG PATH DATA)",
-        "heart",
-        "check",
-        "IMAGES, COMPOSITING, SHADOWS",
-        "SKETCH (TOUCH → DRAW)",
-        "Random",
-        "New data",
+        "Turbine 3 load",
+        "Cruise",
+        "Nominal",
+        "7,296 rpm",
+        "Relay throughput",
+        "New",
+        "Footfall by hour",
+        "Peak 12:00–14:00",
+        "Beacon uptime",
+        "Incident",
+        "Route latency",
+        "Regressed",
+        "Transforms",
+        "Native loop",
+        "Path2D",
+        "Heart",
+        "Check",
+        "Compositing",
+        "Radial gradient",
+        "Sketch",
         "Clear",
+        "0 · 0 points",
     ] {
         assert!(
             screen.texts.iter().any(|t| t.1 == text),
@@ -66,10 +77,17 @@ fn canvas_renders_its_sections() {
 }
 
 #[test]
-fn full_draws_the_ring_again() {
+fn a_preset_draws_the_dial_again() {
     let (engine, rx, mut screen) = crate::common::open("Canvas");
-    let drawn = press_drawing(&engine, &rx, &mut screen, "Full");
-    assert!(drawn.iter().any(|t| t == "100%"), "{drawn:?}");
+    let drawn = press_drawing(&engine, &rx, &mut screen, "Peak");
+    assert!(drawn.iter().any(|t| t == "91"), "{drawn:?}");
+    for text in ["Redline", "11,648 rpm"] {
+        assert!(
+            screen.texts.iter().any(|t| t.1 == text),
+            "{text}: {:?}",
+            screen.texts
+        );
+    }
 }
 
 /// The drawing whose operations `pick` finds, among the canvases.
@@ -95,14 +113,18 @@ fn canvases_draw_gradients_paths_and_measured_labels() {
             _ => false,
         }
     };
-    // The ring strokes a conic gradient, the orange ball fills a radial
-    // one, the chart's area a linear one.
+    // The dial's sweep strokes a conic gradient, the compositing card's
+    // ball fills a radial one, the area chart a linear one.
     let conic_stroke = |op: &CanvasOp| matches!(op, CanvasOp::StrokeStyle(Paint::Gradient(g)) if matches!(g.shape, GradientShape::Conic(_)));
-    assert!(drawing_with(&screen, conic_stroke).is_some(), "the ring");
+    assert!(drawing_with(&screen, conic_stroke).is_some(), "the dial");
     assert!(drawing_with(&screen, gradient(|s| matches!(s, GradientShape::Radial(_)))).is_some());
-    let (_, chart) = drawing_with(&screen, gradient(|s| matches!(s, GradientShape::Linear(_))))
-        .expect("the chart");
-    // Its labels end 6 pt left of the plot: each placed by its width.
+    assert!(drawing_with(&screen, gradient(|s| matches!(s, GradientShape::Linear(_)))).is_some());
+    let (_, chart) = drawing_with(
+        &screen,
+        |op| matches!(op, CanvasOp::FillText { text, .. } if &**text == "deploy"),
+    )
+    .expect("the area chart");
+    // Its grid labels end 8 pt left of the plot: each placed by its width.
     let ends: Vec<(String, f32)> = chart
         .ops
         .iter()
@@ -111,13 +133,13 @@ fn canvases_draw_gradients_paths_and_measured_labels() {
                 text,
                 x: Num::Const(x),
                 ..
-            } => Some((text.to_string(), *x)),
+            } if ["0", "50", "100"].contains(&&**text) => Some((text.to_string(), *x)),
             _ => None,
         })
         .collect();
-    assert_eq!(ends.len(), 5, "{ends:?}");
+    assert_eq!(ends.len(), 3, "{ends:?}");
     assert!(
-        ends[0].1 > ends[4].1,
+        ends[0].1 > ends[2].1,
         "\"0\" starts right of \"100\": {ends:?}"
     );
     // The check icon strokes its SVG path.
@@ -155,6 +177,11 @@ fn the_sketch_claims_its_touches_and_draws_strokes() {
         })
         .collect();
     assert_eq!(points, [(10.0, 10.0), (40.0, 30.0)]);
+    assert!(
+        screen.texts.iter().any(|t| t.1 == "1 · 2 points"),
+        "{:?}",
+        screen.texts
+    );
     crate::common::touch(
         &engine,
         &rx,

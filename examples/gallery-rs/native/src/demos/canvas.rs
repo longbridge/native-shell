@@ -1,26 +1,37 @@
-//! Canvas: 2D drawing: paths, gradients, text, images, native animation
-//! (as the TSX gallery's `demos/CanvasDemo.tsx`).
+//! Canvas: 2D drawing on cards: a dial whose needle and sweep follow one
+//! native value, an area chart and a ridgeline that sweep in natively, a
+//! dot matrix with a pulsing dot, a dumbbell plot whose dots travel, a
+//! clock, SVG paths, compositing and touch drawing (as the TSX gallery's
+//! `demos/CanvasDemo.tsx`).
 
 use std::{
     cell::Cell,
-    f32::consts::{FRAC_PI_2, TAU},
+    f32::consts::{FRAC_PI_2, PI, TAU},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use nsh_core::{
     Rect,
     canvas::{
-        CanvasGradient, CanvasTextAlign, CanvasTextBaseline, Composite, FillRule, LineCap,
-        LineJoin, svg_path,
+        CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite, FillRule,
+        LineCap, LineJoin, Num, PathOp, svg_path,
     },
     nsh_animation::{Curve, EaseMode},
-    ui::{AnyElement, prelude::*},
+    ui::{Animation, prelude::*},
 };
 
-use crate::ui::legacy::{button, colors, page, section};
+use crate::ui::{
+    Button, ButtonVariant, Card, Figure, Finish, Finished, IconName, Segment, SegmentedEvent, Stat,
+    Tone, appear, caption, colors, legend, segmented,
+};
+
+/// A canvas font of the system family (TS `SANS(size, weight)`).
+fn sans(size: f32, weight: u32) -> String {
+    format!("{weight} {size}px system-ui")
+}
 
 /// A number in `0..1` (TS: `Math.random()`): xorshift, seeded by the clock.
-fn random() -> f32 {
+fn random() -> f64 {
     thread_local! {
         static STATE: Cell<u64> = Cell::new(
             SystemTime::now()
@@ -35,140 +46,441 @@ fn random() -> f32 {
         x ^= x >> 7;
         x ^= x << 17;
         state.set(x);
-        (x >> 40) as f32 / (1u64 << 24) as f32
+        (x >> 11) as f64 / (1u64 << 53) as f64
     })
 }
 
-/// A ring whose sweep is a native value: animating it redraws natively.
-#[derive(Debug, Default)]
-struct ProgressRing {
-    progress: Option<NativeValue>,
-    /// Where the ring goes (its label).
-    target: f32,
-}
-
-impl ProgressRing {
-    fn go(&mut self, to: f32, cx: &mut Context<'_, Self>) {
-        self.target = to;
-        if let Some(progress) = &self.progress {
-            // The ring follows natively; nothing waits for the end.
-            let _ = progress.timing(to, 900.0, Easing::Curve(Curve::Cubic, EaseMode::InOut));
-        }
-        cx.notify();
+/// A small seeded random generator (TS `seeded`, mulberry32), so the
+/// fictional data is stable and the same as the TSX gallery's.
+fn seeded(seed: u32) -> impl FnMut() -> f64 {
+    let mut s = seed;
+    move || {
+        s = s.wrapping_add(0x6d2b_79f5);
+        let mut t = s;
+        t = (t ^ (t >> 15)).wrapping_mul(t | 1);
+        t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
+        (t ^ (t >> 14)) as f64 / 4_294_967_296.0
     }
 }
 
-impl Component for ProgressRing {
+/// JS's `Math.round`.
+fn round(x: f64) -> f64 {
+    (x + 0.5).floor()
+}
+
+/// The palette for the appearance shown: a canvas takes one color each.
+#[derive(Clone, Copy)]
+struct Palette {
+    dark: bool,
+    surface: Color,
+    inset: Color,
+    raised: Color,
+    border: Color,
+    line: Color,
+    text: Color,
+    muted: Color,
+    faint: Color,
+    accent: Color,
+    accent_fill: Color,
+    info: Color,
+    warn: Color,
+    danger: Color,
+}
+
+impl Palette {
+    fn of<C: Component>(cx: &RenderCx<'_, C>) -> Self {
+        Self {
+            dark: cx.dark(),
+            surface: cx.color(colors::SURFACE),
+            inset: cx.color(colors::INSET),
+            raised: cx.color(colors::RAISED),
+            border: cx.color(colors::BORDER),
+            line: cx.color(colors::LINE),
+            text: cx.color(colors::TEXT),
+            muted: cx.color(colors::MUTED),
+            faint: cx.color(colors::FAINT),
+            accent: cx.color(colors::ACCENT),
+            accent_fill: cx.color(colors::ACCENT_FILL),
+            info: cx.color(colors::INFO),
+            warn: cx.color(colors::WARN),
+            danger: cx.color(colors::DANGER),
+        }
+    }
+}
+
+/// `color` at alpha `a` (TS `alpha(color, a)`; the palette's colors are
+/// opaque).
+fn alpha(color: Color, a: f32) -> Color {
+    color.with_alpha(a)
+}
+
+/// Diagonal hatching over the current clip (inside save / clip / restore).
+fn hatch(mut p: Painter, (x, y, w, h): (f32, f32, f32, f32), color: Color, gap: f32) -> Painter {
+    p = p.stroke_color(color).line_width(1.0).begin_path();
+    let mut i = -h;
+    while i < w {
+        p = p.move_to(x + i, y + h).line_to(x + i + h, y);
+        i += gap;
+    }
+    p.stroke()
+}
+
+/// A dashed horizontal or vertical reference line.
+fn dashed(p: Painter, (x0, y0): (f32, f32), (x1, y1): (f32, f32), color: Color) -> Painter {
+    p.save()
+        .line_dash(&[3.0, 4.0])
+        .stroke_color(color)
+        .line_width(1.0)
+        .begin_path()
+        .move_to(x0, y0)
+        .line_to(x1, y1)
+        .stroke()
+        .restore()
+}
+
+/// A rectangle whose width is a native value (the reveals' clips).
+fn rect_of(mut p: Painter, x: f32, y: f32, w: &NativeNode, h: f32) -> Painter {
+    let w = p.num(w);
+    p.op(CanvasOp::Path(PathOp::Rect([
+        Num::Const(x),
+        Num::Const(y),
+        w,
+        Num::Const(h),
+    ])))
+}
+
+/// A component that knows its canvas's width from the layout.
+trait Measured: Component {
+    fn width(&mut self) -> &mut f32;
+}
+
+/// Keeps `C`'s width up to date (the canvas's `on_layout`).
+fn track_width<C: Measured>(cx: &RenderCx<'_, C>) -> Listener<Rect> {
+    cx.listener(|this: &mut C, frame: &Rect, cx| {
+        if *this.width() != frame.width {
+            *this.width() = frame.width;
+            cx.notify();
+        }
+    })
+}
+
+/// A value that sweeps 0 → 1 once mounted and again on [`replay`]:
+/// canvases clip to it.
+fn reveal(cx: &mut Context<'_, impl Component>, duration: f32) -> NativeValue {
+    let t = cx.native_value(0.0);
+    replay(&t, duration);
+    t
+}
+
+fn replay(t: &NativeValue, duration: f32) {
+    t.set(0.0);
+    t.timing(1.0, duration, Easing::Curve(Curve::Cubic, EaseMode::Out));
+}
+
+/// A secondary button of a card's header.
+fn header_button(label: &'static str, on_press: Listener<()>) -> Button {
+    Button::new(label, on_press).variant(ButtonVariant::Secondary)
+}
+
+/// A row of legends.
+fn legends(items: impl IntoIterator<Item = (AdaptiveColor, &'static str)>) -> View {
+    view().flex_row().gap_4().children(
+        items
+            .into_iter()
+            .map(|(color, label)| legend(color, label, None::<&str>)),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// A dial: a tick ring, a hatched red zone, a gradient sweep and a needle, all
+// bound to one native value. Springing it moves the needle on the UI thread.
+
+/// The dial's presets: label and load.
+const PRESETS: [(&str, u32); 3] = [("Idle", 18), ("Cruise", 57), ("Peak", 91)];
+
+#[derive(Default)]
+struct Dial {
+    preset: u32,
+    needle: Option<NativeValue>,
+    width: f32,
+}
+
+impl Measured for Dial {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
+}
+
+impl Dial {
+    fn load(&self) -> u32 {
+        PRESETS[self.preset as usize].1
+    }
+
+    fn draw(&self, c: Palette, width: f32, height: f32) -> Painter {
+        let needle = self.needle.as_ref().expect("set up");
+        let (a0, a1) = (0.75 * PI, 2.25 * PI);
+        let angle = needle.interpolate(&[0.0, 100.0], &[a0, a1]);
+        let (cx, cy) = (width / 2.0, height * 0.54);
+        let r = (width / 2.0 - 8.0).min(height * 0.5) - 6.0;
+        let at = |v: f32| a0 + v / 100.0 * (a1 - a0);
+        // The red zone: an annular sector, hatched.
+        let mut p = Painter::new()
+            .save()
+            .begin_path()
+            .arc(cx, cy, r + 2.0, at(85.0), a1)
+            .arc_counterclockwise(cx, cy, r - 20.0, a1, at(85.0))
+            .close_path()
+            .clip()
+            .fill_color(alpha(c.danger, 0.08));
+        // The zone sits right of the hub, from just above it to 45° below.
+        let zone = (cx + 0.6 * r, cy - 0.2 * r, 0.4 * r + 4.0, r);
+        p = p.fill_rect(zone.0, zone.1, zone.2, zone.3);
+        p = hatch(p, zone, alpha(c.danger, 0.55), 5.0).restore();
+        // The tick ring.
+        for i in 0..=50 {
+            let a = at(i as f32 * 2.0);
+            let major = i % 10 == 0;
+            let inner = r - if major { 14.0 } else { 8.0 };
+            p = p
+                .stroke_color(if i * 2 >= 85 {
+                    c.danger
+                } else if major {
+                    c.muted
+                } else {
+                    c.faint
+                })
+                .line_width(if major { 2.0 } else { 1.0 })
+                .line_cap(LineCap::Round)
+                .begin_path()
+                .move_to(cx + a.cos() * inner, cy + a.sin() * inner)
+                .line_to(cx + a.cos() * r, cy + a.sin() * r)
+                .stroke();
+            if major {
+                p = p
+                    .font(&sans(11.0, 400))
+                    .fill_color(c.faint)
+                    .text_align(CanvasTextAlign::Center)
+                    .text_baseline(CanvasTextBaseline::Middle)
+                    .fill_text(
+                        &(i * 2).to_string(),
+                        cx + a.cos() * (r - 28.0),
+                        cy + a.sin() * (r - 28.0),
+                    );
+            }
+        }
+        // The sweep: a track, then a conic gradient arc ending at the needle.
+        let sr = r + 12.0;
+        p = p
+            .line_width(5.0)
+            .line_cap(LineCap::Round)
+            .stroke_color(c.raised)
+            .begin_path()
+            .arc(cx, cy, sr, a0, a1)
+            .stroke()
+            .stroke_style(
+                CanvasGradient::conic(a0 - 0.2, cx, cy)
+                    .add_color_stop(0.0, c.info)
+                    .add_color_stop(0.45, c.accent)
+                    .add_color_stop(0.75, c.warn)
+                    .add_color_stop(0.8, c.danger),
+            )
+            .begin_path()
+            .arc(cx, cy, sr, a0, &angle)
+            .stroke();
+        // The readout (redrawn only when the preset changes).
+        p = p
+            .text_align(CanvasTextAlign::Center)
+            .text_baseline(CanvasTextBaseline::Alphabetic)
+            .font(&sans(40.0, 600))
+            .fill_color(c.text)
+            .fill_text(&self.load().to_string(), cx, cy + r * 0.62)
+            .font(&sans(11.0, 400))
+            .fill_color(c.faint)
+            .fill_text("% load", cx, cy + r * 0.62 + 18.0);
+        // The needle, rotated natively.
+        let shade = if c.dark {
+            rgba(0x0000_0099)
+        } else {
+            alpha(rgb(0x14140a), 0.3)
+        };
+        p.save()
+            .translate(cx, cy)
+            .rotate(&angle)
+            .shadow(shade, 6.0, (0.0, 0.0))
+            .fill_color(c.text)
+            .begin_path()
+            .move_to(-14.0, -3.0)
+            .line_to(r - 18.0, 0.0)
+            .line_to(-14.0, 3.0)
+            .close_path()
+            .fill()
+            .restore()
+            .fill_color(c.raised)
+            .stroke_color(c.text)
+            .line_width(2.0)
+            .begin_path()
+            .arc(cx, cy, 7.0, 0.0, TAU)
+            .fill()
+            .stroke()
+    }
+}
+
+impl Component for Dial {
     type Props = ();
     type Event = NoEvent;
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        self.progress = Some(cx.native_value(0.3));
-        self.target = 0.3;
+        self.preset = 1;
+        let needle = cx.native_value(0.0);
+        needle.spring(self.load() as f32, spring(90.0, 9.0));
+        self.needle = Some(needle);
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let (x, y, r) = (60.0, 60.0, 50.0);
-        let mut ring = Painter::new()
-            .line_width(12.0)
-            .line_cap(LineCap::Round)
-            .stroke_color(rgb(0xe5e7eb))
-            .begin_path()
-            .arc(x, y, r, 0.0, TAU)
-            .stroke()
-            .stroke_style(
-                CanvasGradient::conic(-FRAC_PI_2, x, y)
-                    .add_color_stop(0.0, rgb(0x22d3ee))
-                    .add_color_stop(1.0, rgb(0x6366f1)),
+        let height = 230.0;
+        let drawing = if self.width > 0.0 {
+            self.draw(Palette::of(cx), self.width, height)
+        } else {
+            Painter::new()
+        };
+        let load = self.load();
+        let (zone, tone) = if load >= 85 {
+            ("Redline", Tone::Danger)
+        } else if load >= 60 {
+            ("High", Tone::Warn)
+        } else {
+            ("Nominal", Tone::Up)
+        };
+        Card::new()
+            .icon(IconName::Spark)
+            .title("Turbine 3 load")
+            .subtitle("Needle and sweep on one native value")
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(
+                segmented(PRESETS.map(|(label, _)| Segment::new(label)), self.preset).on_event(
+                    cx.listener(|this: &mut Self, event: &SegmentedEvent, cx| {
+                        let SegmentedEvent::Change(preset) = *event;
+                        this.preset = preset;
+                        this.needle
+                            .as_ref()
+                            .expect("set up")
+                            .spring(this.load() as f32, spring(140.0, 11.0));
+                        cx.notify();
+                    }),
+                ),
             )
-            .begin_path();
-        if let Some(progress) = &self.progress {
-            // The end angle reads the native value on every frame.
-            ring = ring.arc(
-                x,
-                y,
-                r,
-                -FRAC_PI_2,
-                &progress.node().mul(TAU).sub(FRAC_PI_2),
-            );
-        }
-        let ring = ring
-            .stroke()
-            .fill_color(colors::text())
-            .font("600 20px system-ui")
-            .text_align(CanvasTextAlign::Center)
-            .text_baseline(CanvasTextBaseline::Middle)
-            .fill_text(&format!("{}%", (self.target * 100.0).round()), x, y);
-        view().child(section(
-            "Native animation (progress ring)",
-            [view()
-                .flex_row()
-                .items_center()
-                .gap_4()
-                .child(canvas(ring).size(px(120.0)))
-                .child(
-                    view()
-                        .gap_2()
-                        .child(button("Random", colors::accent()).on_press(cx.listener(
-                            |this: &mut Self, _, cx| {
-                                this.go((random() * 100.0).round() / 100.0, cx)
-                            },
-                        )))
-                        .child(
-                            button("Full", rgb(0x1a7f37))
-                                .on_press(cx.listener(|this: &mut Self, _, cx| this.go(1.0, cx))),
-                        ),
-                )
-                .into_element()],
-        ))
+            .child(
+                view()
+                    .flex_row()
+                    .child(Stat::new("Zone", zone).tone(tone).width(0.33))
+                    .child(Stat::new("Spool", format!("{} rpm", grouped(load * 128))).width(0.33))
+                    .child(Stat::new("Limit", "85 %").tone(Tone::Danger).width(0.33)),
+            )
     }
 }
 
-/// A chart: gradient area, a line, labels measured with `measure_text`.
-#[derive(Debug)]
-struct Chart {
-    data: Vec<f32>,
-    /// The canvas's width, from its layout.
+fn spring(stiffness: f32, damping: f32) -> Spring {
+    Spring {
+        stiffness,
+        damping,
+        mass: 1.0,
+        velocity: None,
+    }
+}
+
+/// 7296 → "7,296".
+fn grouped(n: u32) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// An area chart: gradient fill, a line, a dashed average, a hatched window,
+// labels measured with measure_text. New data sweeps in natively.
+
+/// Fourteen days of data (TS `fresh`).
+fn fresh(mut rand: impl FnMut() -> f64) -> Vec<f64> {
+    (0..14)
+        .map(|i| round(28.0 + 40.0 * (i as f64 / 2.2).sin().powi(2) + rand() * 26.0))
+        .collect()
+}
+
+#[derive(Default)]
+struct AreaChart {
+    data: Vec<f64>,
+    sweep: Option<NativeValue>,
     width: f32,
 }
 
-impl Default for Chart {
-    fn default() -> Self {
-        Self {
-            data: vec![12.0, 30.0, 22.0, 48.0, 36.0, 60.0, 52.0, 75.0, 64.0, 88.0],
-            width: 0.0,
-        }
+impl Measured for AreaChart {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
     }
 }
 
-impl Chart {
-    fn draw(&self, cx: &RenderCx<'_, Self>, width: f32, height: f32) -> Painter {
-        let values = &self.data;
-        let (left, right, top, bottom) = (32.0, 12.0, 12.0, 24.0);
-        let (w, h) = (width - left - right, height - top - bottom);
-        let max = 100.0;
+impl AreaChart {
+    fn avg(&self) -> f64 {
+        round(self.data.iter().sum::<f64>() / self.data.len() as f64)
+    }
+
+    fn last(&self) -> f64 {
+        self.data[self.data.len() - 1]
+    }
+
+    fn draw(&self, cx: &RenderCx<'_, Self>, c: Palette, width: f32, height: f32) -> Painter {
+        let sweep = self.sweep.as_ref().expect("set up");
+        let values: Vec<f32> = self.data.iter().map(|v| *v as f32).collect();
+        let font = sans(11.0, 400);
+        let measure = |s: &str| cx.measure_text(&font, s);
+        let (left, right, top, bottom) = (measure("100") + 8.0, 4.0, 16.0, 20.0);
+        let w = width - left - right;
+        let h = height - top - bottom;
         let x = |i: usize| left + i as f32 / (values.len() - 1) as f32 * w;
-        let y = |v: f32| top + h - v / max * h;
-        let blue = rgb(0x3b82f6);
-        let font = "11px system-ui";
+        let y = |v: f32| top + h - v / 100.0 * h;
+        // Grid and labels.
         let mut p = Painter::new()
-            .font(font)
-            .fill_color(colors::muted())
-            .stroke_color(rgb(0xe5e7eb))
-            .line_width(1.0);
-        for v in [0.0, 25.0, 50.0, 75.0, 100.0] {
+            .font(&font)
+            .text_baseline(CanvasTextBaseline::Middle);
+        for v in [0.0, 50.0, 100.0] {
+            p = dashed(p, (left, y(v)), (width - right, y(v)), c.line);
             let label = format!("{v}");
             p = p
-                .begin_path()
-                .move_to(left, y(v))
-                .line_to(width - right, y(v))
-                .stroke()
-                .fill_text(
-                    &label,
-                    left - 6.0 - cx.measure_text(font, &label),
-                    y(v) + 4.0,
-                );
+                .fill_color(c.faint)
+                .fill_text(&label, left - 8.0 - measure(&label), y(v));
         }
+        // The deploy window: hatched.
+        let (wx, ww) = (x(9), x(11) - x(9));
+        p = p.save().begin_path().rect(wx, top, ww, h).clip();
+        p = hatch(p, (wx, top, ww, h), alpha(c.warn, 0.28), 6.0)
+            .restore()
+            .fill_color(c.warn)
+            .text_baseline(CanvasTextBaseline::Alphabetic)
+            .fill_text("deploy", wx + 2.0, top - 4.0);
+        // Day labels.
+        p = p.fill_color(c.faint);
+        for i in [0, 7, 13] {
+            let label = if i == 13 {
+                "now".to_owned()
+            } else {
+                format!("d-{}", 13 - i)
+            };
+            let lw = measure(&label);
+            p = p.fill_text(
+                &label,
+                (width - right - lw).min(left.max(x(i) - lw / 2.0)),
+                height - 4.0,
+            );
+        }
+        // Everything data-driven sweeps in left to right (a native clip).
+        p = p.save().begin_path();
+        p = rect_of(p, left - 6.0, 0.0, &sweep.mul(w + 12.0), height).clip();
         p = p.begin_path().move_to(x(0), y(values[0]));
         for (i, v) in values.iter().enumerate().skip(1) {
             p = p.line_to(x(i), y(*v));
@@ -179,8 +491,8 @@ impl Chart {
             .close_path()
             .fill_style(
                 CanvasGradient::linear(0.0, top, 0.0, top + h)
-                    .add_color_stop(0.0, rgba(0x3b82_f659))
-                    .add_color_stop(1.0, rgba(0x3b82_f600)),
+                    .add_color_stop(0.0, alpha(c.accent, 0.26))
+                    .add_color_stop(1.0, alpha(c.accent, 0.0)),
             )
             .fill()
             .begin_path();
@@ -192,65 +504,490 @@ impl Chart {
             };
         }
         p = p
-            .stroke_color(blue)
-            .line_width(2.5)
+            .stroke_color(c.accent)
+            .line_width(2.0)
             .line_join(LineJoin::Round)
-            .stroke()
-            .fill_color(rgb(0xffffff))
-            .stroke_color(blue)
-            .line_width(2.0);
+            .stroke();
         for (i, v) in values.iter().enumerate() {
             p = p
                 .begin_path()
-                .arc(x(i), y(*v), 3.5, 0.0, TAU)
+                .arc(
+                    x(i),
+                    y(*v),
+                    if i == values.len() - 1 { 4.5 } else { 2.5 },
+                    0.0,
+                    TAU,
+                )
+                .fill_color(c.inset)
                 .fill()
+                .stroke_color(c.accent)
+                .line_width(1.5)
                 .stroke();
+        }
+        p = p.restore();
+        // The average, with a pill label measured to fit.
+        let mean = self.avg() as f32;
+        p = dashed(p, (left, y(mean)), (width - right, y(mean)), c.muted);
+        let label = format!("avg {mean}");
+        let lw = measure(&label) + 12.0;
+        p.fill_color(c.raised)
+            .begin_path()
+            .round_rect(width - right - lw, y(mean) - 9.0, lw, 18.0, 9.0)
+            .fill()
+            .fill_color(c.text)
+            .text_baseline(CanvasTextBaseline::Middle)
+            .fill_text(&label, width - right - lw + 6.0, y(mean))
+    }
+}
+
+impl Component for AreaChart {
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self.data = fresh(seeded(7));
+        self.sweep = Some(reveal(cx, 1100.0));
+    }
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let height = 180.0;
+        let drawing = if self.width > 0.0 {
+            self.draw(cx, Palette::of(cx), self.width, height)
+        } else {
+            Painter::new()
+        };
+        let (last, avg) = (self.last(), self.avg());
+        let up = last >= avg;
+        Card::new()
+            .icon(IconName::Stocks)
+            .title("Relay throughput")
+            .subtitle("Area · average · hatching")
+            .right(header_button(
+                "New",
+                cx.listener(|this: &mut Self, _: &(), cx| {
+                    this.data = fresh(random);
+                    replay(this.sweep.as_ref().expect("set up"), 1100.0);
+                    cx.notify();
+                }),
+            ))
+            .child(
+                Figure::new(format!("{last}.{}", (last * 7.0) % 10.0))
+                    .unit("k/s")
+                    .note(format!(
+                        "{}{} vs. average",
+                        if up { "+" } else { "−" },
+                        (last - avg).abs()
+                    ))
+                    .tone(if up { Tone::Up } else { Tone::Down }),
+            )
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(legends([
+                (colors::ACCENT, "Messages"),
+                (colors::MUTED, "Average"),
+                (colors::WARN, "Deploy"),
+            ]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A ridgeline: one smooth curve per day, overlapping, each a low-alpha fill.
+
+const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/// Each day's footfall by hour (25 points, as the TSX gallery's).
+fn ridges() -> Vec<Vec<f32>> {
+    (0..DAYS.len())
+        .map(|d| {
+            let mut rand = seeded(100 + d as u32);
+            let peaks = [6.0 + rand() * 4.0, 12.0 + rand() * 3.0, 17.0 + rand() * 4.0];
+            let weights = [0.5 + rand() * 0.5, 0.4 + rand() * 0.6, 0.3 + rand() * 0.7]
+                .map(|w| if d >= 5 { w * 0.55 } else { w });
+            (0..25)
+                .map(|h| {
+                    peaks.iter().zip(weights).fold(0.04, |s, (p, w)| {
+                        s + w * (-((h as f64 - p).powi(2)) / 6.0).exp()
+                    }) as f32
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[derive(Default)]
+struct Ridgeline {
+    sweep: Option<NativeValue>,
+    width: f32,
+}
+
+impl Measured for Ridgeline {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
+}
+
+impl Ridgeline {
+    fn draw(&self, cx: &RenderCx<'_, Self>, c: Palette, width: f32, height: f32) -> Painter {
+        let sweep = self.sweep.as_ref().expect("set up");
+        let font = sans(11.0, 400);
+        let measure = |s: &str| cx.measure_text(&font, s);
+        let left = measure("Mon") + 10.0;
+        let bottom = 18.0;
+        let step = (height - bottom - 30.0) / (DAYS.len() - 1) as f32;
+        let x = |h: f32| left + h / 24.0 * (width - left);
+        // Peak window and hour labels.
+        let mut p = Painter::new().font(&font);
+        p = dashed(p, (x(12.0), 0.0), (x(12.0), height - bottom), c.border);
+        p = dashed(p, (x(14.0), 0.0), (x(14.0), height - bottom), c.border);
+        p = p
+            .fill_color(c.faint)
+            .text_baseline(CanvasTextBaseline::Alphabetic);
+        for h in [0, 6, 12, 18, 24] {
+            let label = format!("{h:02}");
+            let lw = measure(&label);
+            p = p.fill_text(
+                &label,
+                (width - lw).min(left.max(x(h as f32) - lw / 2.0)),
+                height - 3.0,
+            );
+        }
+        p = p.save().begin_path();
+        p = rect_of(p, 0.0, 0.0, &sweep.mul(width), height).clip();
+        for (d, series) in ridges().iter().enumerate() {
+            let base = 30.0 + d as f32 * step;
+            let y = |v: f32| base - v * 46.0;
+            p = p
+                .begin_path()
+                .move_to(x(0.0), base)
+                .line_to(x(0.0), y(series[0]));
+            for h in 1..series.len() {
+                let (x0, x1) = (x(h as f32 - 1.0), x(h as f32));
+                p = p.quadratic_curve_to(
+                    (x0, y(series[h - 1])),
+                    ((x0 + x1) / 2.0, (y(series[h - 1]) + y(series[h])) / 2.0),
+                );
+            }
+            let weekend = d >= 5;
+            // Occlude the ridge behind, then a low-alpha fill and the line.
+            p = p
+                .line_to(x(24.0), y(series[24]))
+                .line_to(x(24.0), base)
+                .close_path()
+                .fill_color(c.inset)
+                .fill()
+                .fill_color(if weekend {
+                    alpha(c.info, 0.18)
+                } else {
+                    alpha(c.accent, 0.1 + d as f32 * 0.025)
+                })
+                .fill()
+                .stroke_color(if weekend { c.info } else { c.accent })
+                .line_width(1.25)
+                .stroke();
+        }
+        p = p.restore().fill_color(c.muted);
+        for (d, day) in DAYS.iter().enumerate() {
+            p = p.fill_text(day, 0.0, 30.0 + d as f32 * step - 2.0);
         }
         p
     }
 }
 
-impl Component for Chart {
+impl Component for Ridgeline {
     type Props = ();
     type Event = NoEvent;
 
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self.sweep = Some(reveal(cx, 1400.0));
+    }
+
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let height = 180.0;
+        let height = 210.0;
         let drawing = if self.width > 0.0 {
-            self.draw(cx, self.width, height)
+            self.draw(cx, Palette::of(cx), self.width, height)
         } else {
             Painter::new()
         };
-        view().child(section(
-            "Chart",
-            [
-                canvas(drawing)
-                    .h(px(height))
-                    .on_layout(cx.listener(|this: &mut Self, frame: &Rect, cx| {
-                        if this.width != frame.width {
-                            this.width = frame.width;
-                            cx.notify();
-                        }
-                    }))
-                    .into_element(),
-                button("New data", colors::accent())
-                    .on_press(cx.listener(|this: &mut Self, _, cx| {
-                        for v in &mut this.data {
-                            *v = (10.0 + random() * 85.0).round();
-                        }
-                        cx.notify();
-                    }))
-                    .into_element(),
-            ],
-        ))
+        Card::new()
+            .icon(IconName::Animation)
+            .title("Footfall by hour")
+            .subtitle("Ridgeline, one curve a day")
+            .right(header_button(
+                "Replay",
+                cx.listener(|this: &mut Self, _: &(), _| {
+                    replay(this.sweep.as_ref().expect("set up"), 1400.0);
+                }),
+            ))
+            .child(caption("Gate B, last week", Some("Peak 12:00–14:00")))
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(legends([
+                (colors::ACCENT, "Weekday"),
+                (colors::INFO, "Weekend"),
+            ]))
     }
 }
 
-/// A clock: transforms, save / restore, a second hand spinning natively.
-#[derive(Debug, Default)]
+// ---------------------------------------------------------------------------
+// A dot matrix: uptime per hour block, a pulse on the newest dot (native
+// loop).
+
+/// The dot levels, from none to full.
+fn levels() -> [AdaptiveColor; 5] {
+    [
+        colors::RAISED,
+        colors::ACCENT.opacity(0.22),
+        colors::ACCENT.opacity(0.45),
+        colors::ACCENT.opacity(0.7),
+        colors::ACCENT,
+    ]
+}
+
+#[derive(Default)]
+struct DotMatrix {
+    pulse: Option<NativeValue>,
+    _pulse_loop: Option<Animation>,
+    width: f32,
+}
+
+impl Measured for DotMatrix {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
+}
+
+impl DotMatrix {
+    fn draw(&self, cx: &RenderCx<'_, Self>, c: Palette, width: f32, height: f32) -> Painter {
+        let pulse = self.pulse.as_ref().expect("set up");
+        let levels = levels().map(|level| cx.color(level));
+        let (rows, gap) = (7, 12.5);
+        let cols = (width / gap).floor() as i32;
+        let ox = (width - (cols - 1) as f32 * gap) / 2.0;
+        let oy = (height - (rows - 1) as f32 * gap) / 2.0;
+        let mut rand = seeded(42);
+        let (mut last_x, mut last_y) = (0.0, 0.0);
+        let mut p = Painter::new();
+        for col in 0..cols {
+            for row in 0..rows {
+                let n = rand() as f32;
+                let incident = (col == 6 && row == 2)
+                    || (col == 17 && row == 5)
+                    || (col == cols - 4 && row == 3);
+                let level =
+                    ((n * n * 5.0 + col as f32 / cols as f32 * 1.6).floor() as usize).min(4);
+                last_x = ox + col as f32 * gap;
+                last_y = oy + row as f32 * gap;
+                p = p
+                    .fill_color(if incident { c.danger } else { levels[level] })
+                    .begin_path()
+                    .arc(last_x, last_y, 3.6, 0.0, TAU)
+                    .fill();
+            }
+        }
+        // The pulse: radius and alpha follow a native loop.
+        p.save()
+            .global_alpha(&pulse.interpolate(&[0.0, 1.0], &[0.9, 0.0]))
+            .stroke_color(c.accent)
+            .line_width(1.5)
+            .begin_path()
+            .arc(
+                last_x,
+                last_y,
+                &pulse.interpolate(&[0.0, 1.0], &[4.0, 11.0]),
+                0.0,
+                TAU,
+            )
+            .stroke()
+            .restore()
+    }
+}
+
+impl Component for DotMatrix {
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        let pulse = cx.native_value(0.0);
+        let looped = Animation::timing(
+            &pulse,
+            1.0,
+            Timing::new(1400.0, Easing::Curve(Curve::Quad, EaseMode::Out)),
+        )
+        .looped(None);
+        looped.start();
+        self.pulse = Some(pulse);
+        self._pulse_loop = Some(looped);
+    }
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let height = 96.0;
+        let drawing = if self.width > 0.0 {
+            self.draw(cx, Palette::of(cx), self.width, height)
+        } else {
+            Painter::new()
+        };
+        let quiet = |s: &'static str| text(s).text_size(px(13.0)).text_color(colors::MUTED);
+        Card::new()
+            .icon(IconName::Bell)
+            .title("Beacon uptime")
+            .subtitle("Dot matrix, one column a day")
+            .child(
+                Figure::new("99.94")
+                    .unit("%")
+                    .note("3 incidents")
+                    .tone(Tone::Danger),
+            )
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(quiet("Less"))
+                    .children(levels().map(|color| view().size(px(9.0)).rounded(px(2.5)).bg(color)))
+                    .child(quiet("More").flex_1())
+                    .child(legend(colors::DANGER, "Incident", None::<&str>)),
+            )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A dumbbell plot: before → after per row, the after dots travel natively
+// (one value, staggered through each row's input range).
+
+/// Each route's latency before and after, in ms.
+const ROUTES: [(&str, f32, f32); 6] = [
+    ("North Gate", 182.0, 96.0),
+    ("Harbor", 240.0, 131.0),
+    ("Old Mill", 128.0, 104.0),
+    ("Ridge", 205.0, 88.0),
+    ("Lowfield", 96.0, 71.0),
+    ("Quarry", 151.0, 160.0),
+];
+
+#[derive(Default)]
+struct Dumbbell {
+    t: Option<NativeValue>,
+    width: f32,
+}
+
+impl Measured for Dumbbell {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
+}
+
+impl Dumbbell {
+    fn draw(&self, cx: &RenderCx<'_, Self>, c: Palette, width: f32, height: f32) -> Painter {
+        let t = self.t.as_ref().expect("set up");
+        let (name_font, small) = (sans(13.0, 400), sans(11.0, 400));
+        let left = ROUTES
+            .iter()
+            .map(|r| cx.measure_text(&name_font, r.0))
+            .fold(0.0, f32::max)
+            + 12.0;
+        let right = cx.measure_text(&small, "+00%") + 10.0;
+        let max = 250.0;
+        let x = |ms: f32| left + ms / max * (width - left - right);
+        let mut p = Painter::new()
+            .font(&small)
+            .text_baseline(CanvasTextBaseline::Alphabetic);
+        for ms in [0.0, 100.0, 200.0] {
+            p = dashed(p, (x(ms), 0.0), (x(ms), height - 18.0), c.line);
+            let label = format!("{ms}");
+            p = p.fill_color(c.faint).fill_text(
+                &label,
+                x(ms) - cx.measure_text(&small, &label) / 2.0,
+                height - 3.0,
+            );
+        }
+        for (i, &(name, before, after)) in ROUTES.iter().enumerate() {
+            let cy = 15.0 + i as f32 * 30.0;
+            let start = i as f32 * 0.07;
+            let to = t.interpolate(&[start, start + 0.6], &[x(before), x(after)]);
+            let worse = after > before;
+            let tone = if worse { c.danger } else { c.accent };
+            let pct = round(((after - before) / before * 100.0) as f64) as i32;
+            let label = format!("{}{pct}%", if pct > 0 { "+" } else { "" });
+            p = p
+                .font(&name_font)
+                .fill_color(c.muted)
+                .text_baseline(CanvasTextBaseline::Middle)
+                .fill_text(name, 0.0, cy)
+                .stroke_color(if worse {
+                    alpha(c.danger, 0.5)
+                } else {
+                    alpha(c.accent, 0.45)
+                })
+                .line_width(3.0)
+                .line_cap(LineCap::Round)
+                .begin_path()
+                .move_to(x(before), cy)
+                .line_to(&to, cy)
+                .stroke()
+                .fill_color(c.inset)
+                .stroke_color(c.muted)
+                .line_width(1.5)
+                .begin_path()
+                .arc(x(before), cy, 4.5, 0.0, TAU)
+                .fill()
+                .stroke()
+                .fill_color(tone)
+                .begin_path()
+                .arc(&to, cy, 5.5, 0.0, TAU)
+                .fill()
+                .font(&small)
+                .fill_color(tone)
+                .fill_text(&label, width - cx.measure_text(&small, &label), cy);
+        }
+        p
+    }
+
+    fn play(&self) {
+        let t = self.t.as_ref().expect("set up");
+        t.set(0.0);
+        t.timing(1.0, 1500.0, Easing::Curve(Curve::Cubic, EaseMode::Out));
+    }
+}
+
+impl Component for Dumbbell {
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self.t = Some(cx.native_value(0.0));
+        self.play();
+    }
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let height = 30.0 * ROUTES.len() as f32 + 24.0;
+        let drawing = if self.width > 0.0 {
+            self.draw(cx, Palette::of(cx), self.width, height)
+        } else {
+            Painter::new()
+        };
+        Card::new()
+            .icon(IconName::Physics)
+            .title("Route latency")
+            .subtitle("Dumbbell, before → after")
+            .right(header_button(
+                "Replay",
+                cx.listener(|this: &mut Self, _: &(), _| this.play()),
+            ))
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(legends([
+                (colors::MUTED, "Before"),
+                (colors::ACCENT, "After"),
+                (colors::DANGER, "Regressed"),
+            ]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A clock: transforms, save / restore, a second hand rotating natively.
+
+#[derive(Default)]
 struct Clock {
     seconds: Option<NativeValue>,
-    spin: Option<Task<()>>,
+    _spin: Option<Animation>,
 }
 
 impl Component for Clock {
@@ -259,31 +996,24 @@ impl Component for Clock {
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
         let seconds = cx.native_value(0.0);
-        let spun = seconds.clone();
-        // One turn a minute, natively (no work per frame).
-        self.spin = Some(cx.spawn(|_, _| async move {
-            loop {
-                spun.set(0.0);
-                if !spun.timing(60.0, 60_000.0, Easing::Linear).await {
-                    break;
-                }
-            }
-        }));
+        let spin =
+            Animation::timing(&seconds, 60.0, Timing::new(60_000.0, Easing::Linear)).looped(None);
+        spin.start();
         self.seconds = Some(seconds);
+        self._spin = Some(spin);
     }
 
-    fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let size = 160.0;
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let c = Palette::of(cx);
+        let size = 150.0;
         let r = size / 2.0;
-        let ink = rgb(0x0f172a);
-        let red = rgb(0xef4444);
         let mut p = Painter::new()
             .translate(r, r)
-            .fill_color(rgb(0xf8fafc))
-            .stroke_color(rgb(0x334155))
-            .line_width(3.0)
+            .fill_color(c.surface)
+            .stroke_color(c.border)
+            .line_width(1.5)
             .begin_path()
-            .arc(0.0, 0.0, r - 4.0, 0.0, TAU)
+            .arc(0.0, 0.0, r - 2.0, 0.0, TAU)
             .fill()
             .stroke();
         for i in 0..60 {
@@ -291,17 +1021,18 @@ impl Component for Clock {
             p = p
                 .save()
                 .rotate(i as f32 / 60.0 * TAU)
-                .line_width(if hour { 3.0 } else { 1.0 })
+                .stroke_color(if hour { c.muted } else { c.faint })
+                .line_width(if hour { 2.0 } else { 1.0 })
                 .begin_path()
-                .move_to(r - 10.0, 0.0)
-                .line_to(r - if hour { 20.0 } else { 14.0 }, 0.0)
+                .move_to(r - 8.0, 0.0)
+                .line_to(r - if hour { 17.0 } else { 12.0 }, 0.0)
                 .stroke()
                 .restore();
         }
         let hand = |p: Painter, angle: f32, length: f32, width: f32| {
             p.save()
                 .rotate(angle - FRAC_PI_2)
-                .stroke_color(ink)
+                .stroke_color(c.text)
                 .line_width(width)
                 .line_cap(LineCap::Round)
                 .begin_path()
@@ -310,119 +1041,187 @@ impl Component for Clock {
                 .stroke()
                 .restore()
         };
-        p = hand(p, 10.0 / 12.0 * TAU, r * 0.5, 5.0);
-        p = hand(p, 10.0 / 60.0 * TAU, r * 0.72, 3.5);
-        p = p.save();
-        if let Some(seconds) = &self.seconds {
-            // A turn per minute, as a native rotation.
-            p = p.rotate(&seconds.node().mul(TAU / 60.0));
-        }
+        p = hand(p, 10.0 / 12.0 * TAU, r * 0.48, 4.5);
+        p = hand(p, 10.0 / 60.0 * TAU, r * 0.7, 3.0);
+        let seconds = self.seconds.as_ref().expect("set up");
         let p = p
+            .save()
+            .rotate(&seconds.mul(TAU / 60.0))
             .rotate(-FRAC_PI_2)
-            .stroke_color(red)
+            .stroke_color(c.accent)
             .line_width(1.5)
             .begin_path()
             .move_to(-14.0, 0.0)
             .line_to(r * 0.8, 0.0)
             .stroke()
             .restore()
-            .fill_color(red)
+            .fill_color(c.accent)
             .begin_path()
             .arc(0.0, 0.0, 4.0, 0.0, TAU)
             .fill();
-        view().child(section(
-            "Transforms (a clock)",
-            [canvas(p).size(px(size)).self_center().into_element()],
-        ))
+        Card::new()
+            .icon(IconName::Search)
+            .title("Transforms")
+            .subtitle("translate · rotate · save / restore")
+            .child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap_4()
+                    .child(canvas(p).size(px(size)))
+                    .child(
+                        view()
+                            .flex_1()
+                            .gap_2()
+                            .child(caption("Ticks", Some("60 rotations")))
+                            .child(caption("Hands", Some("save, restore")))
+                            .child(caption("Second hand", Some("Native loop"))),
+                    ),
+            )
     }
 }
 
-/// SVG path data (TS: `Path2D`): icons.
-fn icons() -> AnyElement {
-    let icons = [
-        (
-            "heart",
-            "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z",
-            rgb(0xef4444),
-        ),
-        (
-            "star",
-            "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z",
-            rgb(0xf59e0b),
-        ),
-        ("bolt", "M13 2L3 14h7l-1 8 10-12h-7z", rgb(0x8b5cf6)),
-        ("check", "M20 6L9 17l-5-5", rgb(0x10b981)),
-    ];
-    let icons = icons.map(|(name, d, color)| {
-        let p = Painter::new().scale(40.0 / 24.0, 40.0 / 24.0);
-        let path = svg_path(d);
-        let p = if name == "check" {
-            p.stroke_color(color)
-                .line_width(2.5)
-                .line_cap(LineCap::Round)
-                .line_join(LineJoin::Round)
-                .stroke_path(&path)
-        } else {
-            p.fill_color(color).fill_path(&path, FillRule::NonZero)
-        };
-        view()
-            .items_center()
-            .gap_1()
-            .child(canvas(p).size(px(40.0)))
-            .child(text(name).text_size(px(12.0)).text_color(colors::muted()))
-            .into_element()
-    });
-    section(
-        "Path2D (SVG path data)",
-        [view().flex_row().gap_4().children(icons).into_element()],
-    )
-    .into_element()
+// ---------------------------------------------------------------------------
+// Path2D: SVG path data, filled or stroked.
+
+/// The glyphs: name, SVG path data, color, stroked.
+const GLYPHS: [(&str, &str, AdaptiveColor, bool); 4] = [
+    (
+        "Heart",
+        "M12 21s-7-4.35-9.5-8.5C.5 8.5 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6.5 4.5 4.5 8.5C19 16.65 12 21 12 21z",
+        colors::DANGER,
+        false,
+    ),
+    (
+        "Star",
+        "M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01z",
+        colors::WARN,
+        false,
+    ),
+    ("Bolt", "M13 2L3 14h7l-1 8 10-12h-7z", colors::INFO, false),
+    ("Check", "M20 6L9 17l-5-5", colors::ACCENT, true),
+];
+
+#[derive(Default)]
+struct Glyphs;
+
+impl Component for Glyphs {
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let glyphs = GLYPHS.map(|(name, d, color, stroke)| {
+            let color = cx.color(color);
+            let path = svg_path(d);
+            let p = Painter::new().scale(30.0 / 24.0, 30.0 / 24.0);
+            let p = if stroke {
+                p.stroke_color(color)
+                    .line_width(2.5)
+                    .line_cap(LineCap::Round)
+                    .line_join(LineJoin::Round)
+                    .stroke_path(&path)
+            } else {
+                p.fill_color(color).fill_path(&path, FillRule::NonZero)
+            };
+            view()
+                .items_center()
+                .gap_2()
+                .child(
+                    view()
+                        .size(px(60.0))
+                        .rounded(px(18.0))
+                        .border_curve(BorderCurve::Continuous)
+                        .bg(colors::RAISED)
+                        .finish(Finish::Raised)
+                        .border_1()
+                        .border_color(colors::BORDER)
+                        .items_center()
+                        .justify_center()
+                        .child(canvas(p).size(px(30.0))),
+                )
+                .child(text(name).text_size(px(13.0)).text_color(colors::MUTED))
+        });
+        Card::new()
+            .icon(IconName::Star)
+            .title("Path2D")
+            .subtitle("SVG path data, parsed natively")
+            .child(view().flex_row().justify_between().children(glyphs))
+    }
 }
 
-/// Images, compositing, shadows, dashes.
-#[derive(Debug, Default)]
+// ---------------------------------------------------------------------------
+// Images, clipping, shadows, compositing, dashes, radial gradients.
+
+#[derive(Default)]
 struct Compositing {
-    /// The canvas's width, from its layout.
     width: f32,
 }
 
+impl Measured for Compositing {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
+}
+
 impl Compositing {
-    fn draw(&self) -> Painter {
-        let width = self.width;
-        Painter::new()
-            // An image clipped to a circle.
+    fn draw(c: Palette, width: f32, height: f32) -> Painter {
+        let cy = height / 2.0;
+        // An image clipped to a circle, with a ring.
+        let p = Painter::new()
             .save()
             .begin_path()
-            .arc(60.0, 60.0, 48.0, 0.0, TAU)
+            .arc(46.0, cy, 42.0, 0.0, TAU)
             .clip()
-            .draw_image(crate::assets::LOGO.uri, 12.0, 12.0, 96.0, 96.0)
+            .fill_color(c.raised)
+            .fill_rect(0.0, 0.0, 92.0, height)
+            .draw_image(crate::assets::LOGO.uri, 10.0, cy - 36.0, 72.0, 72.0)
             .restore()
-            // A shadowed card with a cut-out hole (destination-out).
-            .save()
-            .shadow(rgba(0x0000_0040), 12.0, (0.0, 4.0))
-            .fill_color(rgb(0x6366f1))
+            .stroke_color(c.border)
+            .line_width(1.5)
             .begin_path()
-            .round_rect(130.0, 16.0, 110.0, 90.0, 14.0)
+            .arc(46.0, cy, 42.0, 0.0, TAU)
+            .stroke();
+        // A shadowed card with a hole punched through (destination-out).
+        let cx = width / 2.0;
+        let shade = if c.dark {
+            rgba(0x0000_00b3)
+        } else {
+            alpha(rgb(0x14140a), 0.25)
+        };
+        let p = p
+            .save()
+            .shadow(shade, 14.0, (0.0, 6.0))
+            .fill_style(
+                CanvasGradient::linear(cx - 46.0, 0.0, cx + 46.0, height)
+                    .add_color_stop(0.0, c.accent_fill)
+                    .add_color_stop(1.0, rgb(0x7fbf3a)),
+            )
+            .begin_path()
+            .round_rect(cx - 46.0, cy - 40.0, 92.0, 80.0, 16.0)
             .fill()
             .restore()
             .composite(Composite::DestinationOut)
             .begin_path()
-            .arc(185.0, 61.0, 22.0, 0.0, TAU)
+            .arc(cx, cy, 18.0, 0.0, TAU)
             .fill()
-            .composite(Composite::SourceOver)
-            // Dashes and a radial gradient.
-            .fill_style(
-                CanvasGradient::radial(width - 50.0, 50.0, 4.0, width - 50.0, 50.0, 44.0)
-                    .add_color_stop(0.0, rgb(0xfde68a))
-                    .add_color_stop(1.0, rgb(0xf97316)),
-            )
-            .begin_path()
-            .arc(width - 50.0, 60.0, 40.0, 0.0, TAU)
-            .fill()
-            .line_dash(&[6.0, 5.0])
-            .stroke_color(rgb(0x9a3412))
-            .line_width(2.0)
-            .stroke()
+            .composite(Composite::SourceOver);
+        // A radial gradient with a dashed outline.
+        let rx = width - 46.0;
+        p.fill_style(
+            CanvasGradient::radial(rx - 10.0, cy - 12.0, 4.0, rx, cy, 40.0)
+                .add_color_stop(0.0, rgb(0xffe2a8))
+                .add_color_stop(0.55, c.warn)
+                .add_color_stop(1.0, alpha(c.danger, 0.2)),
+        )
+        .begin_path()
+        .arc(rx, cy, 38.0, 0.0, TAU)
+        .fill()
+        .line_dash(&[5.0, 5.0])
+        .stroke_color(c.warn)
+        .line_width(1.5)
+        .begin_path()
+        .arc(rx, cy, 43.0, 0.0, TAU)
+        .stroke()
     }
 }
 
@@ -431,31 +1230,43 @@ impl Component for Compositing {
     type Event = NoEvent;
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let height = 120.0;
         let drawing = if self.width > 0.0 {
-            self.draw()
+            Self::draw(Palette::of(cx), self.width, height)
         } else {
             Painter::new()
         };
-        view().child(section(
-            "Images, compositing, shadows",
-            [canvas(drawing)
-                .h(px(130.0))
-                .on_layout(cx.listener(|this: &mut Self, frame: &Rect, cx| {
-                    if this.width != frame.width {
-                        this.width = frame.width;
-                        cx.notify();
-                    }
-                }))
-                .into_element()],
-        ))
+        let label = |s: &'static str| text(s).text_size(px(13.0)).text_color(colors::MUTED);
+        Card::new()
+            .icon(IconName::Image)
+            .title("Compositing")
+            .subtitle("Clip, shadow, destination-out, dashes")
+            .child(canvas(drawing).h(px(height)).on_layout(track_width(cx)))
+            .child(
+                view()
+                    .flex_row()
+                    .justify_between()
+                    .child(label("Clipped image"))
+                    .child(label("Cut-out"))
+                    .child(label("Radial gradient")),
+            )
     }
 }
 
-/// Touch drawing: each move draws again. The canvas claims the touches
-/// and keeps them: the page around it does not scroll while drawing.
-#[derive(Debug, Default)]
+// ---------------------------------------------------------------------------
+// Touch drawing: each move draws again. The canvas claims the touches and
+// keeps them: the page around it does not scroll while drawing.
+
+#[derive(Default)]
 struct Sketch {
     strokes: Vec<Vec<(f32, f32)>>,
+    width: f32,
+}
+
+impl Measured for Sketch {
+    fn width(&mut self) -> &mut f32 {
+        &mut self.width
+    }
 }
 
 impl Component for Sketch {
@@ -463,8 +1274,29 @@ impl Component for Sketch {
     type Event = NoEvent;
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let mut p = Painter::new()
-            .stroke_color(rgb(0x0f172a))
+        let c = Palette::of(cx);
+        let (width, height) = (self.width, 200.0);
+        // A dot grid to draw on.
+        let mut p = Painter::new().fill_color(c.border);
+        let mut x = 8.0;
+        while x < width {
+            let mut y = 8.0;
+            while y < height {
+                p = p.fill_rect(x - 0.75, y - 0.75, 1.5, 1.5);
+                y += 16.0;
+            }
+            x += 16.0;
+        }
+        if self.strokes.is_empty() && width > 0.0 {
+            p = p
+                .font(&sans(14.0, 400))
+                .fill_color(c.faint)
+                .text_align(CanvasTextAlign::Center)
+                .text_baseline(CanvasTextBaseline::Middle)
+                .fill_text("Draw here", width / 2.0, height / 2.0);
+        }
+        p = p
+            .stroke_color(c.accent)
             .line_width(3.0)
             .line_cap(LineCap::Round)
             .line_join(LineJoin::Round);
@@ -479,10 +1311,10 @@ impl Component for Sketch {
             }
             p = p.stroke();
         }
+        let points: usize = self.strokes.iter().map(Vec::len).sum();
         let sketch = canvas(p)
-            .h(px(180.0))
-            .bg(rgb(0xf8fafc))
-            .rounded(px(10.0))
+            .h(px(height))
+            .on_layout(track_width(cx))
             .claim_touches(TouchClaim::on_start())
             .keep_touches(true)
             .on_responder_grant(cx.listener(|this: &mut Self, e: &ResponderEvent, cx| {
@@ -495,18 +1327,25 @@ impl Component for Sketch {
                     cx.notify();
                 }
             }));
-        view().child(section(
-            "Sketch (touch → draw)",
-            [
-                sketch.into_element(),
-                button("Clear", colors::gray())
-                    .on_press(cx.listener(|this: &mut Self, _, cx| {
+        Card::new()
+            .icon(IconName::Gestures)
+            .title("Sketch")
+            .subtitle("Touch → draw from Rust")
+            .right(
+                header_button(
+                    "Clear",
+                    cx.listener(|this: &mut Self, _: &(), cx| {
                         this.strokes.clear();
                         cx.notify();
-                    }))
-                    .into_element(),
-            ],
-        ))
+                    }),
+                )
+                .disabled(self.strokes.is_empty()),
+            )
+            .child(sketch)
+            .child(caption(
+                "Strokes",
+                Some(format!("{} · {points} points", self.strokes.len())),
+            ))
     }
 }
 
@@ -518,14 +1357,27 @@ impl Component for CanvasDemo {
     type Props = ();
     type Event = NoEvent;
 
-    fn render(&self, _: &(), _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        view().flex_1().child(page([
-            ProgressRing::element(()).into_element(),
-            Chart::element(()).into_element(),
+    fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let cards = [
+            Dial::element(()).into_element(),
+            AreaChart::element(()).into_element(),
+            Ridgeline::element(()).into_element(),
+            DotMatrix::element(()).into_element(),
+            Dumbbell::element(()).into_element(),
             Clock::element(()).into_element(),
-            icons(),
+            Glyphs::element(()).into_element(),
             Compositing::element(()).into_element(),
             Sketch::element(()).into_element(),
-        ]))
+        ];
+        view().flex_1().child(
+            scroll().flex_1().bg(colors::BACKGROUND).child(
+                view().p_4().pb(px(40.0)).gap_4().children(
+                    cards
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, card)| appear(i as u32).child(card)),
+                ),
+            ),
+        )
     }
 }
