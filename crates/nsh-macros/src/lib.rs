@@ -906,7 +906,7 @@ fn component_fn(item: ItemFn, methods: Option<syn::Path>) -> syn::Result<TokenSt
         methods.map(|api| quote!(const METHODS: #ui::Methods = #ui::Methods::of::<#api>();));
     Ok(quote! {
         #(#attrs)*
-        #[derive(::core::default::Default)]
+        #[derive(::core::fmt::Debug, ::core::default::Default, ::core::clone::Clone, ::core::marker::Copy)]
         #vis struct #name;
 
         impl #ui::Component for #name {
