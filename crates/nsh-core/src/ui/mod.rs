@@ -81,7 +81,7 @@ pub use self::{
         GestureEvent, ImageProgress, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection,
         VideoInfo, VideoProgress, WebNavigation,
     },
-    flow::{Each, If, IntoElements, dynamic},
+    flow::{Each, If, IntoElements, catch_error, dynamic},
     host::{
         CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, Modal, NativeView,
         Orientation, Painter, Screen, Scroll, Stack, Video, WebView, canvas, input,
@@ -295,8 +295,8 @@ pub mod prelude {
             set_clipboard, set_color_scheme, set_interval, set_timeout, spawn, theme, timer,
             timer_until, toast, update_status_bar, window,
         },
-        batch, cleanup, component, computed, dynamic, effect, provide_context, signal, signal_with,
-        stored, untracked, use_context,
+        batch, catch_error, cleanup, component, computed, dynamic, effect, provide_context, signal,
+        signal_with, stored, untracked, use_context,
     };
 }
 

@@ -1205,7 +1205,8 @@ impl<M: TextEngine> Core<M> {
         loop {
             let changed = self.drain_views();
             let rendered = self.render_dirty();
-            if !changed && !rendered {
+            let failed = self.report_failures();
+            if !changed && !rendered && !failed {
                 break;
             }
         }
@@ -1220,13 +1221,32 @@ impl<M: TextEngine> Core<M> {
         for owner in std::mem::take(&mut self.components.transient) {
             owner.dispose();
         }
-        for (owner, message) in self.components.runtime.take_failures() {
+    }
+
+    /// Sends the failures of views' code (bindings, effects, listeners) to
+    /// the nearest error boundary, else to their component's; whether there
+    /// were any.
+    fn report_failures(&mut self) -> bool {
+        let failures = self.components.runtime.take_failures();
+        let any = !failures.is_empty();
+        for (owner, message) in failures {
             let host = self.host_of_owner(owner);
+            let component = host
+                .and_then(|h| match &self.components.instances.get(&h)?.inner {
+                    Inner::Component(inner) => Some(inner.name()),
+                    _ => None,
+                })
+                .unwrap_or("a binding");
+            if let Some(boundary) = crate::ui::reactive::boundary_of(owner) {
+                boundary.set(Some(ComponentError { component, message }));
+                continue;
+            }
             match host {
                 Some(host) => self.component_failed(host, message),
                 None => log::error!(target: "js", "a binding failed: {message}"),
             }
         }
+        any
     }
 
     /// Renders the components marked dirty; whether there were any.
@@ -3221,6 +3241,20 @@ impl<M: TextEngine> Core<M> {
             _ => "a list row",
         };
         let error = ComponentError { component, message };
+        // The nearest error boundary of a view above it.
+        let owner = self
+            .components
+            .instances
+            .get(&host)
+            .and_then(|inst| match &inst.inner {
+                Inner::Component(inner) => inner.failure_owner(),
+                _ => inst.cell_owner,
+            });
+        if let Some(boundary) = owner.and_then(crate::ui::reactive::boundary_of) {
+            let _entered = self.components.runtime.enter();
+            boundary.set(Some(error));
+            return;
+        }
         let mut key = self.key(host).ok();
         while let Some(k) = key {
             let parent = self.nodes[k as usize].parent;

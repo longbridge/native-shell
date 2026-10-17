@@ -7132,4 +7132,74 @@ mod views {
         assert!(c.component_event(ROOT_ID, EventKind::BackPress, &EventPayload::None));
         assert_eq!(texts(&c.commit().unwrap()), ["caught 1"]);
     }
+
+    /// Its view panics as it is made.
+    #[derive(Default)]
+    struct Broken;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct BrokenProps {}
+
+    impl Component for Broken {
+        type Props = BrokenProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: BrokenProps, _: Scope<NoEvent>) -> impl IntoElement {
+            panic!("no view");
+            #[allow(unreachable_code)]
+            view()
+        }
+    }
+
+    /// A counter whose text panics past 1, and a broken component, each
+    /// under an error boundary.
+    #[derive(Default)]
+    struct Guarded;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct GuardedProps {}
+
+    impl Component for Guarded {
+        type Props = GuardedProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: GuardedProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let n = signal(0);
+            view()
+                .on_press(move |_: &()| n.update(|n| *n += 1))
+                .child(catch_error(
+                    move || {
+                        text(move || {
+                            assert!(n.get() < 2, "too many");
+                            format!("n {}", n.get())
+                        })
+                    },
+                    |e| text(format!("failed: {}", e.message)),
+                ))
+                .child(catch_error(
+                    || Broken::element(BrokenProps {}),
+                    |e| text(format!("{} failed", e.component)),
+                ))
+        }
+    }
+
+    #[test]
+    fn error_boundaries_show_their_fallback() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Guarded>(|| GuardedProps {}));
+        let batch = c.commit().unwrap();
+        let shown = texts(&batch);
+        assert!(shown.contains(&"n 0".to_owned()), "{shown:?}");
+        assert!(
+            shown.iter().any(|t| t.ends_with("Broken failed")),
+            "{shown:?}"
+        );
+        let host = root_host(&batch);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["n 1"]);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["failed: too many"]);
+    }
 }

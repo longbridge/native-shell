@@ -34,6 +34,11 @@ pub(crate) enum Region {
     },
     /// A row per item, by key.
     Each(Rc<dyn EachRows>),
+    /// A view, or its fallback once something under it failed.
+    Catch {
+        view: Rc<dyn Fn() -> Vec<AnyElement>>,
+        fallback: Rc<dyn Fn(super::ComponentError) -> Vec<AnyElement>>,
+    },
 }
 
 /// An element of a region's new run: one made in this run (with the owner
@@ -61,6 +66,8 @@ impl Region {
                 }
             }
             Region::Each(rows) => rows.once(),
+            // A component that renders again catches with `catch_error`.
+            Region::Catch { view, .. } => view(),
         })
     }
 
@@ -109,6 +116,30 @@ impl Region {
                 });
             }
             Region::Each(rows) => rows.clone().bind(show),
+            Region::Catch { view, fallback } => {
+                let (view, fallback) = (view.clone(), fallback.clone());
+                let failed = signal_with(None::<super::ComponentError>, SignalEquals::Never);
+                super::reactive::render_effect(move || {
+                    let error = failed.get();
+                    // The view is under the boundary, the fallback is not
+                    // (what fails in it goes to the boundary above).
+                    if error.is_none() {
+                        super::reactive::register_boundary(failed);
+                    }
+                    let owner = Owner::current();
+                    let elements = untracked(|| match error {
+                        Some(error) => fallback(error),
+                        None => view(),
+                    })
+                    .into_iter()
+                    .map(|element| RegionElement {
+                        owner: Some(owner),
+                        element,
+                    })
+                    .collect();
+                    show(elements);
+                });
+            }
         }
     }
 }
@@ -155,6 +186,20 @@ fn region(region: Region) -> AnyElement {
 /// list: they keep what did not change.
 pub fn dynamic<E: IntoElements>(f: impl Fn() -> E + 'static) -> AnyElement {
     region(Region::Dynamic(Rc::new(move || f().into_elements())))
+}
+
+/// `view`'s elements, or `fallback`'s once something under them failed (a
+/// panic in a binding, a listener, an effect or a component's view, TS:
+/// `<ErrorBoundary>`): the failed part goes, and the fallback shows the
+/// error. What fails in the fallback goes to the boundary above.
+pub fn catch_error<E: IntoElements, F: IntoElements>(
+    view: impl Fn() -> E + 'static,
+    fallback: impl Fn(super::ComponentError) -> F + 'static,
+) -> AnyElement {
+    region(Region::Catch {
+        view: Rc::new(move || view().into_elements()),
+        fallback: Rc::new(move |error| fallback(error).into_elements()),
+    })
 }
 
 /// `then`'s elements while `when` holds, else `otherwise`'s (TS: `<If

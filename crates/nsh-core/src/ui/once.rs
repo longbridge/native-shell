@@ -185,6 +185,10 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
         super::reactive::call_api(self.host, name, args)
     }
 
+    fn failure_owner(&self) -> Option<Owner> {
+        Some(self.owner.unwrap_or(self.parent))
+    }
+
     fn runs_once(&self) -> Option<Owner> {
         Some(self.owner.unwrap_or_else(Owner::detached))
     }

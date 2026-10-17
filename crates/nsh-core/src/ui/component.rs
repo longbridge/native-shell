@@ -492,6 +492,11 @@ pub(crate) trait AnyInstance {
     fn runs_once(&self) -> Option<super::Owner> {
         None
     }
+    /// Where a failure of its code goes first: its owner, or where it is
+    /// made before it has one (none: a component that renders again).
+    fn failure_owner(&self) -> Option<super::Owner> {
+        None
+    }
     /// It is the component of `host`, made where `parent` owns.
     fn place(&mut self, host: crate::NodeId, parent: super::Owner) {
         let _ = (host, parent);

@@ -48,6 +48,31 @@ pub(crate) struct RustData {
     pub(crate) held: rustc_hash::FxHashMap<Node, Box<dyn Any>>,
     /// The APIs views registered, by host ([`super::Scope::methods`]).
     apis: rustc_hash::FxHashMap<crate::NodeId, ApiEntry>,
+    /// The error boundaries ([`super::catch_error`]): what fails under the
+    /// owner sets its signal.
+    boundaries: rustc_hash::FxHashMap<Owner, Signal<Option<super::ComponentError>>>,
+}
+
+/// Makes the current owner an error boundary: what fails under it sets
+/// `failed`, for as long as it lives.
+pub(crate) fn register_boundary(failed: Signal<Option<super::ComponentError>>) {
+    let owner = Owner::current();
+    with_data(|d| d.boundaries.insert(owner, failed));
+    cleanup(move || {
+        with_data(|d| d.boundaries.remove(&owner));
+    });
+}
+
+/// The nearest error boundary at or above `owner`.
+pub(crate) fn boundary_of(owner: Owner) -> Option<Signal<Option<super::ComponentError>>> {
+    let mut at = Some(owner);
+    while let Some(owner) = at.filter(Owner::is_live) {
+        if let Some(signal) = with_data(|d| d.boundaries.get(&owner).copied()) {
+            return Some(signal);
+        }
+        at = owner.parent();
+    }
+    None
 }
 
 /// A registered [`super::Api`], its type erased: the API and what calls a
@@ -695,12 +720,25 @@ pub fn cleanup(f: impl FnOnce() + 'static) {
 
 /// Runs `f`; its writes notify together at its end (TS: `batch(fn)`).
 pub fn batch<R>(f: impl FnOnce() -> R) -> R {
-    r::batch(Rust, f)
+    rethrow(r::batch(Rust, shielded(f)))
 }
 
 /// Runs `f` without subscribing to what it reads (TS: `untracked(fn)`).
 pub fn untracked<R>(f: impl FnOnce() -> R) -> R {
-    r::untracked(Rust, f)
+    rethrow(r::untracked(Rust, shielded(f)))
+}
+
+/// `f`, made to catch its panic: the graph functions that run app code
+/// change the graph's state (the owner, the listener, the round of
+/// updates) around it and restore it when it returns, so a panic must not
+/// unwind through them ([`rethrow`] goes on once they returned).
+fn shielded<R>(f: impl FnOnce() -> R) -> impl FnOnce() -> std::thread::Result<R> {
+    move || std::panic::catch_unwind(AssertUnwindSafe(f))
+}
+
+/// `f`'s result, or its panic, going on now that the graph is consistent.
+fn rethrow<R>(result: std::thread::Result<R>) -> R {
+    result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
 /// Provides `value` to what the current owner makes from now on, however
@@ -777,7 +815,7 @@ impl Owner {
             Some(h) if self.is_live() => h.id,
             _ => NONE,
         };
-        r::with_owner(Rust, id, f)
+        rethrow(r::with_owner(Rust, id, shielded(f)))
     }
 
     /// Disposes it: what was made under it, its cleanups first.
@@ -794,8 +832,16 @@ impl Owner {
 /// current owner does not dispose it): the owner, to dispose, and `f`'s
 /// result.
 pub fn create_root<R>(f: impl FnOnce() -> R) -> (Owner, R) {
-    let (id, r) = r::with_root(Rust, f);
-    (Owner::of(graph(), id), r)
+    let (id, result) = r::with_root(Rust, shielded(f));
+    let owner = Owner::of(graph(), id);
+    match result {
+        Ok(r) => (owner, r),
+        // What it made so far goes with it.
+        Err(panic) => {
+            owner.dispose();
+            std::panic::resume_unwind(panic)
+        }
+    }
 }
 
 /// A value that is set once or bound: what element setters and props take
