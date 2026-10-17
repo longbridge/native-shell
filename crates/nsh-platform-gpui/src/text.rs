@@ -1754,7 +1754,18 @@ type Painted = (
 );
 
 /// Paints `glyphs`.
-fn paint_glyphs(cx: &mut DrawCx<'_>, glyphs: Vec<Painted>) {
+fn paint_glyphs(cx: &mut DrawCx<'_>, mut glyphs: Vec<Painted>) {
+    // GPUI clips glyphs to rectangles only: under a rounded or rotated
+    // clip, a glyph shows when its middle (above the baseline) does.
+    if cx.has_clip_polygon() {
+        glyphs.retain(|(origin, _, _, size, _)| {
+            let s = f32::from(*size);
+            cx.shows(
+                f32::from(origin.x) + 0.3 * s,
+                f32::from(origin.y) - 0.35 * s,
+            )
+        });
+    }
     if glyphs.is_empty() {
         return;
     }

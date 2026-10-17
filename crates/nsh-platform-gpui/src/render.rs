@@ -298,6 +298,21 @@ impl<'a> DrawCx<'a> {
         self.clip_polygon = Some(polygon.into());
     }
 
+    /// True when the clip is rounded or not axis-aligned (kept as a
+    /// polygon, [`DrawCx::shows`]).
+    pub(crate) fn has_clip_polygon(&self) -> bool {
+        self.clip_polygon.is_some()
+    }
+
+    /// True if the window point `(x, y)` lies inside the clip polygon (or
+    /// there is none): what GPUI cannot cut to it (glyphs) is shown or not
+    /// whole by such a point.
+    pub(crate) fn shows(&self, x: f32, y: f32) -> bool {
+        self.clip_polygon
+            .as_ref()
+            .is_none_or(|p| p.len() < 3 || shape::contains(p, (x, y)))
+    }
+
     /// `bounds` with corner `radii` (window coordinates) as the innermost
     /// rounded clip shows them: where they reach past one of its rounded
     /// corners, cut to its rectangle with that corner's radius. Quads and
