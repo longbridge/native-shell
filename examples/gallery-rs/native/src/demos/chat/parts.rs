@@ -1,0 +1,500 @@
+//! The chat's pieces (as the TSX gallery's `demos/chat/parts.tsx`):
+//! loaders, the caret, the buttons under a reply, attachments, tool
+//! cards, the error row and the avatar. Builders, so a list row can make
+//! them without a render of its own.
+
+use nsh_core::ui::{AnyElement, prelude::*};
+
+use super::{
+    glyphs::{GlyphName, glyph},
+    scripts::{FileRef, Source, Tool, ToolKind, ToolState},
+};
+use crate::ui::{
+    Badge, Finish, Finished, IconName, MONO, PressProps, Tone, colors, icon, press_with, radius,
+};
+
+/// A ring that spins natively.
+pub(crate) fn spinner(size: f32, tint: AdaptiveColor) -> View {
+    view()
+        .size(px(size))
+        .rounded(px(size / 2.0))
+        .border_2()
+        .border_color(colors::BORDER)
+        .border_t_color(tint)
+        .animation(KeyframeAnimation::new(Keyframes::Spin).duration(800.0))
+}
+
+/// The streaming caret: an inline block that pulses natively.
+pub(crate) fn caret() -> View {
+    view()
+        .w(px(8.0))
+        .h(px(16.0))
+        .ml(px(2.0))
+        .rounded(px(2.0))
+        .bg(colors::ACCENT)
+        .animation(KeyframeAnimation::new(Keyframes::Pulse).duration(900.0))
+}
+
+/// A small icon button under a reply (44 pt touch target).
+pub(crate) fn action_button(
+    name: GlyphName,
+    label: &'static str,
+    active: bool,
+    tone: Tone,
+    on_press: Listener<()>,
+) -> AnyElement {
+    press_with(
+        PressProps {
+            scale: 0.86,
+            label: Some(label.into()),
+            selected: active,
+            ..PressProps::default()
+        },
+        on_press,
+    )
+    .child(
+        view()
+            .size(px(36.0))
+            .rounded(px(18.0))
+            .items_center()
+            .justify_center()
+            .m_1()
+            .child(
+                view()
+                    .absolute()
+                    .size(px(32.0))
+                    .rounded(px(16.0))
+                    .bg(if active {
+                        tone.tint()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    })
+                    .transition_colors()
+                    .duration(180.0),
+            )
+            .child(glyph(
+                name,
+                17.0,
+                if active { tone.color() } else { colors::MUTED },
+            )),
+    )
+    .into_element()
+}
+
+/// A row between days.
+pub(crate) fn date_separator(label: &str) -> View {
+    let rule = || view().flex_1().h(px(1.0)).bg(colors::LINE);
+    view()
+        .flex_row()
+        .items_center()
+        .gap_3()
+        .px_4()
+        .py_3()
+        .child(rule())
+        .child(
+            text(label.to_owned())
+                .text_size(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(colors::FAINT),
+        )
+        .child(rule())
+}
+
+/// A file as a chip: an icon, the name and the size; with `on_remove`, a
+/// button that takes it away.
+pub(crate) fn file_chip(file: &FileRef, on_remove: Option<Listener<()>>) -> View {
+    let removable = on_remove.is_some();
+    view()
+        .flex_row()
+        .items_center()
+        .gap(px(10.0))
+        .h(px(48.0))
+        .pl(px(10.0))
+        .pr(px(if removable { 4.0 } else { 14.0 }))
+        .rounded(px(radius::CONTROL))
+        .border_curve(BorderCurve::Continuous)
+        .bg(colors::RAISED)
+        .finish(Finish::Raised)
+        .border_1()
+        .border_color(colors::BORDER)
+        .child(
+            view()
+                .size(px(30.0))
+                .rounded(px(8.0))
+                .bg(Tone::Danger.tint())
+                .items_center()
+                .justify_center()
+                .child(glyph(GlyphName::File, 16.0, colors::DANGER)),
+        )
+        .child(
+            view()
+                .gap(px(1.0))
+                .child(
+                    text(file.name)
+                        .number_of_lines(1)
+                        .text_size(px(14.0))
+                        .text_color(colors::TEXT)
+                        .max_w(px(170.0)),
+                )
+                .child(
+                    text(format!("PDF · {}", file.size))
+                        .text_size(px(12.0))
+                        .text_color(colors::MUTED)
+                        .tabular_nums(),
+                ),
+        )
+        .children(on_remove.map(|remove| {
+            press_with(
+                PressProps {
+                    scale: 0.85,
+                    label: Some("Remove file".into()),
+                    ..PressProps::default()
+                },
+                remove,
+            )
+            .child(
+                view()
+                    .w(px(40.0))
+                    .h(px(44.0))
+                    .items_center()
+                    .justify_center()
+                    .child(glyph(GlyphName::Close, 14.0, colors::MUTED)),
+            )
+        }))
+}
+
+/// An attached image, rounded.
+pub(crate) fn photo(src: &'static str, width: f32, height: f32) -> View {
+    view()
+        .w(px(width))
+        .h(px(height))
+        .rounded(px(radius::INSET))
+        .border_curve(BorderCurve::Continuous)
+        .overflow_hidden()
+        .bg(colors::RAISED)
+        .border_1()
+        .border_color(colors::BORDER)
+        .child(image(src).w(px(width)).h(px(height)))
+}
+
+/// A tool call: a header with its state, then its result once done.
+pub(crate) fn tool_card(tool: &Tool) -> View {
+    let (name, title, detail) = match &tool.kind {
+        ToolKind::Search { query, .. } => (GlyphName::Globe, "Web search", query.to_string()),
+        ToolKind::Weather { city, .. } => (GlyphName::Sun, "Weather", city.to_string()),
+        ToolKind::Code { lang, .. } => (
+            GlyphName::Terminal,
+            "Run code",
+            format!("{lang}, sandboxed"),
+        ),
+    };
+    let state = tool.state;
+    let busy = matches!(state, ToolState::Running | ToolState::Pending);
+    view()
+        .bg(colors::SURFACE)
+        .finish(Finish::Card)
+        .rounded(px(radius::INSET))
+        .border_curve(BorderCurve::Continuous)
+        .border_1()
+        .border_color(if state == ToolState::Running {
+            AdaptiveColor::new(colors::INFO.opacity(0.4).light, rgb(0x33405a))
+        } else {
+            colors::BORDER
+        })
+        .transition_colors()
+        .duration(250.0)
+        .overflow_hidden()
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap_3()
+                .p_3()
+                .child(
+                    view()
+                        .size(px(32.0))
+                        .rounded(px(9.0))
+                        .items_center()
+                        .justify_center()
+                        .bg(colors::RAISED)
+                        .finish(Finish::Raised)
+                        .border_1()
+                        .border_color(colors::BORDER)
+                        .child(glyph(name, 16.0, colors::TEXT)),
+                )
+                .child(
+                    view()
+                        .flex_1()
+                        .gap(px(1.0))
+                        .child(
+                            text(title)
+                                .text_size(px(14.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(colors::TEXT),
+                        )
+                        .child(
+                            text(detail)
+                                .number_of_lines(1)
+                                .text_size(px(13.0))
+                                .text_color(colors::MUTED),
+                        ),
+                )
+                .child(if busy {
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap_2()
+                        .child(spinner(
+                            14.0,
+                            if state == ToolState::Pending {
+                                colors::FAINT
+                            } else {
+                                colors::INFO
+                            },
+                        ))
+                        .child(
+                            text(state.label())
+                                .text_size(px(13.0))
+                                .text_color(colors::MUTED),
+                        )
+                        .into_element()
+                } else {
+                    Badge::new(state.label()).tone(state.tone()).into_element()
+                }),
+        )
+        .children(tool_body(tool))
+}
+
+fn tool_body(tool: &Tool) -> Option<View> {
+    let done = tool.state == ToolState::Done;
+    let rule = || view().border_t_1().border_t_color(colors::LINE);
+    match &tool.kind {
+        ToolKind::Search { sources, .. } => done.then(|| {
+            rule().py_1().children(
+                sources
+                    .iter()
+                    .enumerate()
+                    .map(|(i, source)| source_row(source, i)),
+            )
+        }),
+        ToolKind::Weather {
+            temp,
+            condition,
+            high,
+            low,
+            hours,
+            ..
+        } => done.then(|| {
+            rule()
+                .p_3()
+                .gap_3()
+                .child(
+                    view()
+                        .flex_row()
+                        .items_end()
+                        .gap_3()
+                        .child(
+                            text(format!("{temp}°"))
+                                .text_size(px(40.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(colors::TEXT)
+                                .tabular_nums()
+                                .letter_spacing(-1.0),
+                        )
+                        .child(
+                            view()
+                                .flex_1()
+                                .pb(px(7.0))
+                                .gap(px(2.0))
+                                .child(
+                                    text(*condition)
+                                        .text_size(px(15.0))
+                                        .text_color(colors::TEXT),
+                                )
+                                .child(
+                                    text(format!("H {high}°  L {low}°"))
+                                        .text_size(px(13.0))
+                                        .text_color(colors::MUTED)
+                                        .tabular_nums(),
+                                ),
+                        ),
+                )
+                .child(
+                    view()
+                        .flex_row()
+                        .items_end()
+                        .gap(px(6.0))
+                        .h(px(44.0))
+                        .children(hours.iter().enumerate().map(|(i, t)| {
+                            view()
+                                .flex_1()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    view()
+                                        .w_full()
+                                        .h(px(6.0 + (t - low) as f32 * 3.0))
+                                        .rounded(px(3.0))
+                                        .bg(if i == 0 { colors::WARN } else { colors::RAISED }),
+                                )
+                                .child(
+                                    text(format!("{}h", (17 + i) % 24))
+                                        .text_size(px(11.0))
+                                        .text_color(colors::FAINT)
+                                        .tabular_nums(),
+                                )
+                        })),
+                )
+        }),
+        ToolKind::Code {
+            code, output, ms, ..
+        } => Some(
+            rule()
+                .child(
+                    view().p_3().bg(colors::INSET).child(
+                        text(*code)
+                            .selectable(true)
+                            .font_family(MONO)
+                            .text_size(px(12.0))
+                            .line_height(px(18.0))
+                            .text_color(AdaptiveColor::new(colors::CODE.light, rgb(0xc9cdd3))),
+                    ),
+                )
+                .when(done, |v| {
+                    v.child(
+                        view()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(10.0))
+                            .px_3()
+                            .h(px(44.0))
+                            .border_t_1()
+                            .border_t_color(colors::LINE)
+                            .child(text("Output").text_size(px(13.0)).text_color(colors::MUTED))
+                            .child(
+                                text(*output)
+                                    .selectable(true)
+                                    .flex_1()
+                                    .font_family(MONO)
+                                    .text_size(px(14.0))
+                                    .text_color(colors::UP),
+                            )
+                            .child(
+                                text(format!("exit 0 · {ms} ms"))
+                                    .text_size(px(12.0))
+                                    .text_color(colors::FAINT)
+                                    .tabular_nums(),
+                            ),
+                    )
+                }),
+        ),
+    }
+}
+
+fn source_row(source: &Source, index: usize) -> View {
+    view()
+        .flex_row()
+        .items_center()
+        .gap_3()
+        .h(px(48.0))
+        .px_3()
+        .child(
+            view()
+                .size(px(24.0))
+                .rounded(px(6.0))
+                .bg(source.tone.tint())
+                .items_center()
+                .justify_center()
+                .child(
+                    text(source.site[..1].to_uppercase())
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(source.tone.color()),
+                ),
+        )
+        .child(
+            view()
+                .flex_1()
+                .gap(px(1.0))
+                .child(
+                    text(source.title)
+                        .number_of_lines(1)
+                        .text_size(px(14.0))
+                        .text_color(colors::TEXT),
+                )
+                .child(
+                    text(source.site)
+                        .text_size(px(12.0))
+                        .text_color(colors::FAINT),
+                ),
+        )
+        .child(
+            text((index + 1).to_string())
+                .text_size(px(12.0))
+                .text_color(colors::FAINT)
+                .tabular_nums(),
+        )
+}
+
+/// The reply's error: what went wrong and a Retry button.
+pub(crate) fn error_row(message: &str, on_retry: Listener<()>) -> View {
+    view()
+        .flex_row()
+        .items_center()
+        .gap_3()
+        .p_3()
+        .rounded(px(radius::INSET))
+        .border_curve(BorderCurve::Continuous)
+        .bg(Tone::Danger.tint())
+        .border_1()
+        .border_color(colors::DANGER.opacity(0.32))
+        .child(glyph(GlyphName::Alert, 18.0, colors::DANGER))
+        .child(
+            text(message.to_owned())
+                .flex_1()
+                .text_size(px(14.0))
+                .line_height(px(19.0))
+                .text_color(colors::TEXT),
+        )
+        .child(
+            press_with(
+                PressProps {
+                    label: Some("Retry".into()),
+                    ..PressProps::default()
+                },
+                on_retry,
+            )
+            .child(
+                view()
+                    .h(px(36.0))
+                    .px(px(14.0))
+                    .rounded(px(18.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .bg(colors::LIGHT)
+                    .finish(Finish::Light)
+                    .child(glyph(GlyphName::Regenerate, 14.0, colors::ON_LIGHT))
+                    .child(
+                        text("Retry")
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(colors::ON_LIGHT),
+                    ),
+            ),
+        )
+}
+
+/// The assistant's avatar: a small tile with the spark.
+pub(crate) fn avatar() -> View {
+    view()
+        .size(px(26.0))
+        .rounded(px(8.0))
+        .items_center()
+        .justify_center()
+        .bg(colors::RAISED)
+        .finish(Finish::Raised)
+        .border_1()
+        .border_color(colors::BORDER)
+        .child(icon(IconName::Spark, 14.0, colors::ACCENT))
+}

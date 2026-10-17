@@ -5,6 +5,7 @@ mod common;
 
 mod animations;
 mod canvas;
+mod chat;
 mod components;
 mod form;
 mod gestures;

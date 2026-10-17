@@ -34,7 +34,7 @@ fn every_demo_opens_from_the_index() {
         }
         if name == "AI Chat" {
             assert!(
-                crate::common::shows(&screen, "Being ported to Rust"),
+                crate::common::shows(&screen, "How can I help?"),
                 "{name}: {:?}",
                 screen.texts
             );

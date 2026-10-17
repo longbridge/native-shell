@@ -25,10 +25,7 @@ use nsh_core::ui::{AnyElement, Screen, prelude::*};
 pub(crate) use self::navigation::BackIntercept;
 use crate::{
     Gallery, nav,
-    ui::{
-        Card, IconName, IconTile, MONO, PressProps, appear, colors, header, icon, press_with,
-        radius,
-    },
+    ui::{IconName, IconTile, MONO, PressProps, appear, colors, header, icon, press_with, radius},
 };
 
 /// A demo of the index: its name, what it shows, its icon and its
@@ -306,23 +303,6 @@ pub(crate) fn index(cx: &mut RenderCx<'_, Gallery>) -> Screen {
                     )
                 })
                 .children(groups),
-        ),
-    )
-}
-
-/// The page of a demo still to be ported to Rust: its icon and name.
-fn placeholder(icon: IconName, name: &'static str) -> impl IntoElement {
-    view().flex_1().p_4().child(
-        appear(0).child(
-            Card::new()
-                .icon(icon)
-                .title(name)
-                .subtitle("Being ported to Rust")
-                .child(
-                    text("The TSX gallery shows this demo; the Rust one follows.")
-                        .text_size(px(15.0))
-                        .text_color(colors::MUTED),
-                ),
         ),
     )
 }
