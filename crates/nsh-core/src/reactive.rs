@@ -268,6 +268,23 @@ impl<H: Host> Graph<H> {
         id
     }
 
+    /// A new signal holding `value` (owned), compared by `equals`, owned by
+    /// the current owner: disposed with it (with no owner, it lives as long
+    /// as the graph).
+    pub fn owned_signal(&mut self, value: H::Value, equals: Equals<H::Equals>) -> u32 {
+        let id = self.alloc(Kind::Signal);
+        let owner = self.owner;
+        let n = &mut self.nodes[id as usize];
+        let old = std::mem::replace(&mut n.value, value);
+        n.equals = equals;
+        n.owner = owner;
+        drop(old);
+        if owner != NONE && owner != UNOWNED {
+            self.nodes[owner as usize].owned.push(id);
+        }
+        id
+    }
+
     /// Makes a computation running `func` under the current owner, with
     /// first value `value`; it has not run yet ([`update_computation`]).
     pub fn computation(&mut self, kind: Kind, func: H::Func, value: H::Value) -> u32 {
@@ -341,6 +358,11 @@ impl<H: Host> Graph<H> {
     /// Node `id`'s generation (for a handle).
     pub fn generation(&self, id: u32) -> u32 {
         self.nodes[id as usize].generation
+    }
+
+    /// The owner of node `id` (for a root, the one it was made under).
+    pub fn parent(&self, id: u32) -> u32 {
+        self.nodes[id as usize].owner
     }
 
     /// Node `id`'s kind.
@@ -889,14 +911,22 @@ pub fn dispose<H: Host>(h: H, id: u32) {
     }
 }
 
-/// Makes a memo of `func` under the current owner, named by a handle, and
-/// runs it at once (inside a round too: what is made while rendering reads
-/// it right away, as in Solid without transitions).
-pub fn memo<H: Host>(h: H, func: H::Func, value: H::Value, equals: Equals<H::Equals>) -> u32 {
+/// Makes a memo of `func` under the current owner and runs it at once
+/// (inside a round too: what is made while rendering reads it right away,
+/// as in Solid without transitions). With `handle`, something outside the
+/// graph names it and it keeps its value after it is disposed, until
+/// [`Graph::drop_handle`]; without, it is freed when disposed.
+pub fn memo<H: Host>(
+    h: H,
+    func: H::Func,
+    value: H::Value,
+    equals: Equals<H::Equals>,
+    handle: bool,
+) -> u32 {
     let graph = g(h);
     let id = graph.computation(Kind::Memo, func, value);
     graph.nodes[id as usize].equals = equals;
-    graph.nodes[id as usize].handle = true;
+    graph.nodes[id as usize].handle = handle;
     update_computation(h, id);
     id
 }

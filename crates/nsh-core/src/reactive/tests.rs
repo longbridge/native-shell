@@ -94,7 +94,7 @@ fn func(f: impl Fn(i64) -> i64 + 'static) -> Func {
 }
 
 fn computed(f: impl Fn() -> i64 + 'static) -> u32 {
-    memo(Test, func(move |_| f()), 0, Equals::Default)
+    memo(Test, func(move |_| f()), 0, Equals::Default, false)
 }
 
 fn render_effect(f: impl Fn() + 'static) -> u32 {

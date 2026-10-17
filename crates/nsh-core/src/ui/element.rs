@@ -15,7 +15,8 @@ use std::{
 use rustc_hash::FxHashMap;
 
 use super::{
-    Component, ComponentSpec, Event, JsValue, PropError, SharedString, Theme,
+    Component, ComponentSpec, Event, IntoReactive, JsValue, PropError, Reactive, SharedString,
+    Theme,
     component::AnyInstance,
     env::{self, Environment},
     events::{self, GestureEvent, PanEvent},
@@ -54,6 +55,14 @@ impl<E: 'static> Listener<E> {
         Listener(Rc::new(move |state, props, event: &F, cx| {
             inner(state, props, &f(event), cx);
         }))
+    }
+}
+
+/// A plain closure as a listener (a component that runs once: it captures
+/// the signals it changes).
+impl<E: ?Sized + 'static, F: Fn(&E) + 'static> From<F> for Listener<E> {
+    fn from(f: F) -> Self {
+        Listener(Rc::new(move |_, _, event, _| f(event)))
     }
 }
 
@@ -890,6 +899,13 @@ pub(crate) enum ElKind {
     /// JS's strings in a `<text>`).
     Raw,
     Component(ComponentEl),
+    /// Elements that change ([`super::dynamic`], [`super::If`],
+    /// [`super::Each`]): a region of its parent's children, reconciled on
+    /// its own.
+    Region(super::flow::Region),
+    /// In a region: the element of this key stays as it is (an `Each` row
+    /// that was there before).
+    Keep,
 }
 
 /// An element as the core expands it (opaque).
@@ -907,9 +923,66 @@ pub struct ElNode {
     pub(crate) responder: Option<Rc<super::responder::ResponderEl>>,
     pub(crate) children: Vec<ElNode>,
     pub(crate) kind: ElKind,
+    /// A text's content when it is bound (read in a binding).
+    pub(crate) bound_text: Option<Rc<dyn Fn() -> SharedString>>,
+    /// Bound props: each sets the fields it binds on the static ones.
+    pub(crate) bound_attrs: Vec<BoundAttrs>,
 }
 
+crate::static_reactive!(AccessibilityState: AccessibilityState);
+
+/// A bound part of an element's props.
+pub(crate) type BoundAttrs = Rc<dyn Fn(&mut Attrs)>;
+
 impl ElNode {
+    /// Applies `value` to the props with `apply`: now when it is static,
+    /// else as a bound part.
+    pub(crate) fn bind_attr<T: 'static>(
+        &mut self,
+        value: impl IntoReactive<T>,
+        apply: impl Fn(&mut Attrs, T) + 'static,
+    ) {
+        match value.into_reactive() {
+            Reactive::Static(v) => apply(&mut self.attrs, v),
+            Reactive::Bound(f) => self.bound_attrs.push(Rc::new(move |a| apply(a, f()))),
+        }
+    }
+
+    /// Whether it has bound parts (text, props or styles).
+    pub(crate) fn is_bound(&self) -> bool {
+        self.bound_text.is_some() || !self.bound_attrs.is_empty() || self.style.is_bound()
+    }
+
+    /// The props now: the static ones with the bound parts applied (read in
+    /// the running computation, which subscribes to them).
+    pub(crate) fn resolved_attrs(&self) -> Attrs {
+        let mut attrs = self.attrs.clone();
+        for part in &self.bound_attrs {
+            part(&mut attrs);
+        }
+        attrs
+    }
+
+    /// Turns the bound parts into static ones, read once, untracked: how a
+    /// component that renders again takes them.
+    pub(crate) fn resolve_once(&mut self) {
+        if !self.is_bound() {
+            return;
+        }
+        super::untracked(|| {
+            if let Some(text) = self.bound_text.take() {
+                self.text = Some(text());
+            }
+            if !self.bound_attrs.is_empty() {
+                self.attrs = self.resolved_attrs();
+                self.bound_attrs.clear();
+            }
+            if self.style.is_bound() {
+                self.style = self.style.resolved();
+            }
+        });
+    }
+
     /// What a component that is not registered renders.
     pub(crate) fn empty_view() -> Self {
         Self::new(Tag::View)
@@ -926,6 +999,8 @@ impl ElNode {
             responder: None,
             children: Vec::new(),
             kind: ElKind::Plain,
+            bound_text: None,
+            bound_attrs: Vec::new(),
         }
     }
 }
@@ -1201,20 +1276,22 @@ pub trait ParentElement: Element {
 /// Elements with an accessibility description.
 pub trait Accessible: Element {
     /// Whether assistive technologies see it as one element.
-    fn accessible(mut self, accessible: bool) -> Self {
-        self.node().attrs.accessible = Some(accessible);
+    fn accessible(mut self, accessible: impl IntoReactive<bool>) -> Self {
+        self.node()
+            .bind_attr(accessible, |a, accessible| a.accessible = Some(accessible));
         self
     }
 
     /// What screen readers say.
-    fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.node().attrs.label = Some(label.into());
+    fn label(mut self, label: impl IntoReactive<SharedString>) -> Self {
+        self.node()
+            .bind_attr(label, |a, label| a.label = Some(label));
         self
     }
 
     /// What happens when activated, for screen readers.
-    fn hint(mut self, hint: impl Into<SharedString>) -> Self {
-        self.node().attrs.hint = Some(hint.into());
+    fn hint(mut self, hint: impl IntoReactive<SharedString>) -> Self {
+        self.node().bind_attr(hint, |a, hint| a.hint = Some(hint));
         self
     }
 
@@ -1226,12 +1303,13 @@ pub trait Accessible: Element {
 
     /// Its state for screen readers (`disabled` follows
     /// [`Interactive::disabled`]).
-    fn accessibility_state(mut self, state: AccessibilityState) -> Self {
-        let attrs = &mut self.node().attrs;
-        attrs.state = AccessibilityState {
-            disabled: attrs.state.disabled,
-            ..state
-        };
+    fn accessibility_state(mut self, state: impl IntoReactive<AccessibilityState>) -> Self {
+        self.node().bind_attr(state, |a, state| {
+            a.state = AccessibilityState {
+                disabled: a.state.disabled,
+                ..state
+            };
+        });
         self
     }
 }
@@ -1239,35 +1317,53 @@ pub trait Accessible: Element {
 /// Elements that take touches.
 pub trait Interactive: Element {
     /// Handles presses.
-    fn on_press(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::Press, events::typed(listener, events::unit))
+    fn on_press(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::Press,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// Handles presses held for about half a second.
-    fn on_long_press(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::LongPress, events::typed(listener, events::unit))
+    fn on_long_press(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::LongPress,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// A finger went down on the element.
-    fn on_press_in(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::PressIn, events::typed(listener, events::unit))
+    fn on_press_in(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::PressIn,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// The press ended, inside or outside the element.
-    fn on_press_out(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::PressOut, events::typed(listener, events::unit))
+    fn on_press_out(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::PressOut,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// Its frame changed (relative to its parent).
-    fn on_layout(self, listener: Listener<Rect>) -> Self {
-        self.on(EventKind::Layout, events::typed(listener, events::layout))
+    fn on_layout(self, listener: impl Into<Listener<Rect>>) -> Self {
+        self.on(
+            EventKind::Layout,
+            events::typed(listener.into(), events::layout),
+        )
     }
 
     /// Touches on it or inside it, every phase (custom gestures): the
     /// elements around the finger hear them from it outwards. To have them
     /// alone, claim them ([`Interactive::claim_touches`]).
-    fn on_touch(self, listener: Listener<TouchEvent>) -> Self {
-        self.on(EventKind::Touch, events::typed(listener, events::touch))
+    fn on_touch(self, listener: impl Into<Listener<TouchEvent>>) -> Self {
+        self.on(
+            EventKind::Touch,
+            events::typed(listener.into(), events::touch),
+        )
     }
 
     /// Claims the touches of a gesture as `claim` says (TS:
@@ -1292,48 +1388,54 @@ pub trait Interactive: Element {
     }
 
     /// It became the responder (TS: `onResponderGrant`).
-    fn on_responder_grant(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).grant = Some(listener);
+    fn on_responder_grant(mut self, listener: impl Into<Listener<super::ResponderEvent>>) -> Self {
+        super::responder::of(self.node()).grant = Some(listener.into());
         self
     }
 
     /// It claimed the touches, but the responder kept them (TS:
     /// `onResponderReject`).
-    fn on_responder_reject(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).reject = Some(listener);
+    fn on_responder_reject(mut self, listener: impl Into<Listener<super::ResponderEvent>>) -> Self {
+        super::responder::of(self.node()).reject = Some(listener.into());
         self
     }
 
     /// As the responder, a finger went down (the first one too, after the
     /// grant; TS: `onResponderStart`).
-    fn on_responder_start(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).start = Some(listener);
+    fn on_responder_start(mut self, listener: impl Into<Listener<super::ResponderEvent>>) -> Self {
+        super::responder::of(self.node()).start = Some(listener.into());
         self
     }
 
     /// As the responder, the fingers moved (TS: `onResponderMove`).
-    fn on_responder_move(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).moved = Some(listener);
+    fn on_responder_move(mut self, listener: impl Into<Listener<super::ResponderEvent>>) -> Self {
+        super::responder::of(self.node()).moved = Some(listener.into());
         self
     }
 
     /// As the responder, a finger lifted (TS: `onResponderEnd`).
-    fn on_responder_end(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).end = Some(listener);
+    fn on_responder_end(mut self, listener: impl Into<Listener<super::ResponderEvent>>) -> Self {
+        super::responder::of(self.node()).end = Some(listener.into());
         self
     }
 
     /// The last finger lifted: it is no longer the responder (TS:
     /// `onResponderRelease`).
-    fn on_responder_release(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).release = Some(listener);
+    fn on_responder_release(
+        mut self,
+        listener: impl Into<Listener<super::ResponderEvent>>,
+    ) -> Self {
+        super::responder::of(self.node()).release = Some(listener.into());
         self
     }
 
     /// Another element or a native gesture took the touches over, or the
     /// system cancelled them (TS: `onResponderTerminate`).
-    fn on_responder_terminate(mut self, listener: Listener<super::ResponderEvent>) -> Self {
-        super::responder::of(self.node()).terminate = Some(listener);
+    fn on_responder_terminate(
+        mut self,
+        listener: impl Into<Listener<super::ResponderEvent>>,
+    ) -> Self {
+        super::responder::of(self.node()).terminate = Some(listener.into());
         self
     }
 
@@ -1378,56 +1480,65 @@ pub trait Interactive: Element {
     }
 
     /// A drag started on it (the platform recognizes it).
-    fn on_pan_start(self, listener: Listener<PanEvent>) -> Self {
-        self.on(EventKind::PanStart, events::typed(listener, events::pan))
+    fn on_pan_start(self, listener: impl Into<Listener<PanEvent>>) -> Self {
+        self.on(
+            EventKind::PanStart,
+            events::typed(listener.into(), events::pan),
+        )
     }
 
     /// The drag ended, with its velocity.
-    fn on_pan_end(self, listener: Listener<PanEvent>) -> Self {
-        self.on(EventKind::PanEnd, events::typed(listener, events::pan))
+    fn on_pan_end(self, listener: impl Into<Listener<PanEvent>>) -> Self {
+        self.on(
+            EventKind::PanEnd,
+            events::typed(listener.into(), events::pan),
+        )
     }
 
     /// A pinch started (its scale).
-    fn on_pinch_start(self, listener: Listener<GestureEvent>) -> Self {
+    fn on_pinch_start(self, listener: impl Into<Listener<GestureEvent>>) -> Self {
         self.on(
             EventKind::PinchStart,
-            events::typed(listener, events::pinch),
+            events::typed(listener.into(), events::pinch),
         )
     }
 
     /// The pinch ended.
-    fn on_pinch_end(self, listener: Listener<GestureEvent>) -> Self {
-        self.on(EventKind::PinchEnd, events::typed(listener, events::pinch))
+    fn on_pinch_end(self, listener: impl Into<Listener<GestureEvent>>) -> Self {
+        self.on(
+            EventKind::PinchEnd,
+            events::typed(listener.into(), events::pinch),
+        )
     }
 
     /// A two-finger rotation started (radians).
-    fn on_rotation_start(self, listener: Listener<GestureEvent>) -> Self {
+    fn on_rotation_start(self, listener: impl Into<Listener<GestureEvent>>) -> Self {
         self.on(
             EventKind::RotationStart,
-            events::typed(listener, events::rotation),
+            events::typed(listener.into(), events::rotation),
         )
     }
 
     /// The rotation ended.
-    fn on_rotation_end(self, listener: Listener<GestureEvent>) -> Self {
+    fn on_rotation_end(self, listener: impl Into<Listener<GestureEvent>>) -> Self {
         self.on(
             EventKind::RotationEnd,
-            events::typed(listener, events::rotation),
+            events::typed(listener.into(), events::rotation),
         )
     }
 
     /// An assistive technology performed an action (its name).
-    fn on_accessibility_action(self, listener: Listener<str>) -> Self {
+    fn on_accessibility_action(self, listener: impl Into<Listener<str>>) -> Self {
         self.on(
             EventKind::AccessibilityAction,
-            events::typed(listener, events::action),
+            events::typed(listener.into(), events::action),
         )
     }
 
     /// Handles native event `kind` with its raw payload (the element
     /// listens to it).
-    fn on(mut self, kind: EventKind, listener: Listener<EventPayload>) -> Self {
-        self.node().handlers.push((kind, listener));
+    fn on(mut self, kind: EventKind, listener: impl Into<Listener<EventPayload>>) -> Self {
+        self.node().handlers.push((kind, listener.into()));
         self
     }
 
@@ -1504,10 +1615,11 @@ pub trait Interactive: Element {
     }
 
     /// No presses nor press feedback; screen readers say it is disabled.
-    fn disabled(mut self, disabled: bool) -> Self {
-        let attrs = &mut self.node().attrs;
-        attrs.disabled = disabled;
-        attrs.state.disabled = disabled;
+    fn disabled(mut self, disabled: impl IntoReactive<bool>) -> Self {
+        self.node().bind_attr(disabled, |a, disabled| {
+            a.disabled = disabled;
+            a.state.disabled = disabled;
+        });
         self
     }
 
@@ -1606,6 +1718,7 @@ fn span(mut el: ElNode) -> ElNode {
         && el.handlers.is_empty()
         && el.style.is_empty()
         && el.attrs == Attrs::default()
+        && !el.is_bound()
     {
         el.kind = ElKind::Raw;
     }
@@ -1706,31 +1819,43 @@ impl Image {
     }
 
     /// It loaded: its size in pixels.
-    pub fn on_load(self, listener: Listener<Size>) -> Self {
-        self.on(EventKind::Load, events::typed(listener, events::size))
+    pub fn on_load(self, listener: impl Into<Listener<Size>>) -> Self {
+        self.on(
+            EventKind::Load,
+            events::typed(listener.into(), events::size),
+        )
     }
 
     /// It failed to load (the message).
-    pub fn on_error(self, listener: Listener<str>) -> Self {
-        self.on(EventKind::Error, events::typed(listener, events::message))
+    pub fn on_error(self, listener: impl Into<Listener<str>>) -> Self {
+        self.on(
+            EventKind::Error,
+            events::typed(listener.into(), events::message),
+        )
     }
 
     /// It started loading.
-    pub fn on_load_start(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::LoadStart, events::typed(listener, events::unit))
+    pub fn on_load_start(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::LoadStart,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// It finished loading, or failed.
-    pub fn on_load_end(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::LoadEnd, events::typed(listener, events::unit))
+    pub fn on_load_end(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::LoadEnd,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// Its download went on: bytes so far and in all (at most every 100
     /// ms; none for images already in memory).
-    pub fn on_progress(self, listener: Listener<events::ImageProgress>) -> Self {
+    pub fn on_progress(self, listener: impl Into<Listener<events::ImageProgress>>) -> Self {
         self.on(
             EventKind::Progress,
-            events::typed(listener, events::image_progress),
+            events::typed(listener.into(), events::image_progress),
         )
     }
 }
@@ -1819,9 +1944,15 @@ pub fn view() -> View {
 
 /// A text block showing `content`, then its children (spans:
 /// [`ParentElement`] for [`Text`]).
-pub fn text(content: impl Into<SharedString>) -> Text {
+pub fn text(content: impl IntoReactive<SharedString>) -> Text {
     let mut node = ElNode::new(Tag::Text);
-    node.text = Some(content.into());
+    match content.into_reactive() {
+        Reactive::Static(content) => node.text = Some(content),
+        Reactive::Bound(content) => {
+            node.text = Some(SharedString::default());
+            node.bound_text = Some(content);
+        }
+    }
     Text(node)
 }
 
@@ -1920,8 +2051,8 @@ impl<C: Component> ComponentElement<C> {
     }
 
     /// Handles its events (they then do not reach the app).
-    pub fn on_event(mut self, listener: Listener<C::Event>) -> Self {
-        let inner = listener.0;
+    pub fn on_event(mut self, listener: impl Into<Listener<C::Event>>) -> Self {
+        let inner = listener.into().0;
         if let ElKind::Component(c) = &mut self.node.kind {
             c.on_event = Some(Listener(Rc::new(
                 move |this, props, event: &dyn Any, cx| {

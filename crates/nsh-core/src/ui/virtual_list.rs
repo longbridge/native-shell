@@ -266,16 +266,19 @@ impl VirtualList {
     }
 
     /// The viewable rows changed (TS: `onViewableItemsChanged`).
-    pub fn on_viewable_items_changed(self, listener: Listener<ViewableItems>) -> Self {
+    pub fn on_viewable_items_changed(self, listener: impl Into<Listener<ViewableItems>>) -> Self {
         self.on(
             EventKind::ViewableItemsChanged,
-            events::typed(listener, viewable),
+            events::typed(listener.into(), viewable),
         )
     }
 
     /// Scrolled close to the end (load more).
-    pub fn on_end_reached(self, listener: Listener<()>) -> Self {
-        self.on(EventKind::EndReached, events::typed(listener, events::unit))
+    pub fn on_end_reached(self, listener: impl Into<Listener<()>>) -> Self {
+        self.on(
+            EventKind::EndReached,
+            events::typed(listener.into(), events::unit),
+        )
     }
 
     /// How close to the end [`Self::on_end_reached`] fires, in viewports

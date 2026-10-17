@@ -86,7 +86,22 @@ pub trait Component: Default + 'static {
     /// Its element tree. Runs again when a prop changes, a listener or a
     /// timer calls [`Context::notify`], or what it read of the environment
     /// changes; keep it cheap and free of side effects.
-    fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement;
+    fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let _ = (props, cx);
+        super::view()
+    }
+
+    /// Whether it runs once ([`Self::view`]) rather than rendering again.
+    const RUNS_ONCE: bool = false;
+
+    /// What a component that runs once ([`Self::RUNS_ONCE`]) shows: its
+    /// elements, with bindings where values change (TS: a component's
+    /// body). Runs once, under an owner of its own: what it makes (signals,
+    /// effects, timers) goes with the component.
+    fn view(props: Self::Props, cx: super::Scope<Self::Event>) -> impl IntoElement {
+        let _ = (props, cx);
+        super::view()
+    }
 
     /// A component below this one failed (its code panicked: a render, a
     /// listener, a task): return true to handle it (an error
@@ -122,15 +137,18 @@ impl fmt::Display for ComponentError {
 
 /// Runs component code, catching a panic as its message.
 pub(crate) fn caught<R>(f: impl FnOnce() -> R) -> Result<R, String> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|payload| {
-        match payload.downcast::<String>() {
-            Ok(s) => *s,
-            Err(payload) => match payload.downcast::<&'static str>() {
-                Ok(s) => (*s).to_owned(),
-                Err(_) => "a panic".to_owned(),
-            },
-        }
-    })
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(panic_message)
+}
+
+/// The message of a panic's payload.
+pub(crate) fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    match payload.downcast::<String>() {
+        Ok(s) => *s,
+        Err(payload) => match payload.downcast::<&'static str>() {
+            Ok(s) => (*s).to_owned(),
+            Err(_) => "a panic".to_owned(),
+        },
+    }
 }
 
 /// A method JS calls on a component's ref (`#[methods]` makes them).
@@ -234,6 +252,25 @@ pub trait Props: Clone + PartialEq + 'static {
 
     /// Whether the app passed children; returns whether it changed.
     fn set_children(&mut self, children: Children) -> bool;
+
+    /// The props an instance keeps: each [`super::Prop`] field held in a
+    /// signal of the current owner, so new values reach only what read it.
+    #[doc(hidden)]
+    fn held(&self) -> Self {
+        self.clone()
+    }
+
+    /// An instance's props take `new`'s (a parent that renders again):
+    /// held props update their readers; returns whether another field
+    /// changed.
+    #[doc(hidden)]
+    fn update_from(&mut self, new: &Self) -> bool {
+        if self == new {
+            return false;
+        }
+        *self = new.clone();
+        true
+    }
 }
 
 /// The props of a component that has none (an app's root, say).
@@ -421,6 +458,14 @@ pub(crate) trait AnyInstance {
         args: Vec<JsonValue>,
         cx: &mut ErasedCx,
     ) -> Option<Result<JsonValue, PropError>>;
+    /// A component that runs once: its owner (none until its view is made).
+    fn runs_once(&self) -> Option<super::Owner> {
+        None
+    }
+    /// It is the component of `host`, made where `parent` owns.
+    fn place(&mut self, host: crate::NodeId, parent: super::Owner) {
+        let _ = (host, parent);
+    }
 }
 
 struct Instance<C: Component> {
@@ -588,6 +633,9 @@ impl fmt::Debug for Root {
 
 /// A new instance of `C`, its props not set yet.
 pub(crate) fn make_instance<C: Component>() -> Box<dyn AnyInstance> {
+    if C::RUNS_ONCE {
+        return Box::new(super::once::OnceInstance::<C>::new());
+    }
     Box::new(Instance::<C> {
         state: C::default(),
         props: C::Props::initial(),

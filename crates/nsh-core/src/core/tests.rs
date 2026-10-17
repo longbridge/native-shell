@@ -3387,8 +3387,9 @@ mod components {
     use serde_json::json;
 
     use super::*;
-    use crate::ui::{
-        Children, Component, Event, NoEvent, Props, Registry, RenderCx, Slot, prelude::*,
+    use crate::{
+        Prop,
+        ui::{Children, Component, Event, NoEvent, Props, Registry, RenderCx, Slot, prelude::*},
     };
 
     /// Counts taps; shows `label` and the count; holds its JSX children.
@@ -6265,4 +6266,323 @@ fn window_drag_is_a_view_prop() {
     assert!(batch.items.iter().any(
         |i| matches!(i, MountItem::ViewProps { id: 2, props } if props.window_drag.is_none())
     ));
+}
+
+/// Components that run once: their views mounted with bindings.
+mod views {
+    use std::{cell::Cell, rc::Rc};
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        Prop,
+        ui::{Component, Each, If, Props, Registry, Root, Scope, prelude::*},
+    };
+
+    fn texts(batch: &MountBatch) -> Vec<String> {
+        batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Text { text, .. } => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn root_host(batch: &MountBatch) -> NodeId {
+        batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Insert {
+                    parent: ROOT_ID,
+                    child,
+                    ..
+                } => Some(*child),
+                _ => None,
+            })
+            .expect("the root's host is in the root view")
+    }
+
+    /// The node showing text `content`.
+    fn text_node(batch: &MountBatch, content: &str) -> NodeId {
+        batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Text { id, text, .. } if text.text == content => Some(*id),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no text {content:?}"))
+    }
+
+    /// Counts presses: the text is a binding, nothing renders again.
+    #[derive(Default)]
+    struct Counter;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct CounterProps {
+        #[prop(default = "Taps".into())]
+        label: crate::ui::Prop<SharedString>,
+    }
+
+    #[derive(Event)]
+    enum CounterEvent {
+        Tap(u32),
+    }
+
+    impl Component for Counter {
+        type Props = CounterProps;
+        type Event = CounterEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(props: CounterProps, cx: Scope<CounterEvent>) -> impl IntoElement {
+            let count = signal(0);
+            view()
+                .p_2()
+                .on_press(move |_: &()| {
+                    count.update(|n| *n += 1);
+                    cx.emit(CounterEvent::Tap(count.get_untracked()));
+                })
+                .child(text(move || {
+                    format!("{} {}", props.label.get(), count.get())
+                }))
+                .child(text("static"))
+        }
+    }
+
+    #[test]
+    fn a_view_runs_once_and_its_bindings_send_only_what_changed() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Counter>(|| CounterProps {
+            label: "Hits".into(),
+        }));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Hits 0", "static"]);
+        let host = root_host(&batch);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Hits 1"], "one text changed");
+        assert!(
+            !batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Create { .. } | MountItem::Delete { .. })),
+            "no node made or freed: {:?}",
+            batch.items
+        );
+    }
+
+    #[test]
+    fn a_prop_from_js_reaches_only_what_reads_it() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Counter>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component(std::any::type_name::<Counter>().into()),
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::ComponentProp("label".into(), Some(json!("Hits"))),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        assert_eq!(texts(&c.commit().unwrap()), ["Hits 0", "static"]);
+        c.apply(Op::SetProp {
+            id: 2,
+            prop: Prop::ComponentProp("label".into(), Some(json!("Runs"))),
+        })
+        .unwrap();
+        assert_eq!(texts(&c.commit().unwrap()), ["Runs 0"]);
+        // Its events reach JS.
+        assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
+        let mut events = Vec::new();
+        c.commit();
+        c.take_events(&mut events);
+        assert!(events.iter().any(|(id, kind, payload)| *id == 2
+            && *kind == EventKind::NativeEvent
+            && matches!(payload, EventPayload::Native { name, data } if &**name == "tap" && *data == json!(1))));
+    }
+
+    /// Shows one branch or the other.
+    #[derive(Default)]
+    struct Toggle;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct ToggleProps {}
+
+    thread_local! {
+        static CLEANED: Cell<u32> = const { Cell::new(0) };
+    }
+
+    impl Component for Toggle {
+        type Props = ToggleProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: ToggleProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let on = signal(false);
+            view()
+                .on_press(move |_: &()| on.update(|v| *v = !*v))
+                .child(text("before"))
+                .child(
+                    If::new(on, || {
+                        cleanup(|| CLEANED.with(|c| c.set(c.get() + 1)));
+                        text("on")
+                    })
+                    .otherwise(|| text("off")),
+                )
+                .child(text("after"))
+        }
+    }
+
+    /// The texts under `parent`, in order (by the inserts of `batch` and
+    /// those before).
+    fn order(c: &Core<FakeEngine>, parent: NodeId) -> Vec<String> {
+        let key = c.key(parent).unwrap();
+        c.nodes[key as usize]
+            .children
+            .iter()
+            .filter_map(|&k| {
+                let node = &c.nodes[k as usize];
+                node.children
+                    .first()
+                    .map(|&raw| c.nodes[raw as usize].text.clone())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn if_makes_the_branch_it_flips_to_in_place_and_drops_the_other() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Toggle>(|| ToggleProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        assert_eq!(order(&c, host), ["before", "off", "after"]);
+        c.component_event(host, EventKind::Press, &EventPayload::None);
+        c.commit();
+        assert_eq!(order(&c, host), ["before", "on", "after"]);
+        c.component_event(host, EventKind::Press, &EventPayload::None);
+        c.commit();
+        assert_eq!(order(&c, host), ["before", "off", "after"]);
+        assert_eq!(CLEANED.with(Cell::get), 1, "the branch's cleanup ran");
+    }
+
+    /// A list of rows by key.
+    #[derive(Default)]
+    struct Rows;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct RowsProps {}
+
+    thread_local! {
+        static MADE: Cell<u32> = const { Cell::new(0) };
+        static ITEMS: Cell<Option<Signal<Vec<u32>>>> = const { Cell::new(None) };
+    }
+
+    impl Component for Rows {
+        type Props = RowsProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: RowsProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let items = signal(vec![1, 2, 3]);
+            ITEMS.with(|i| i.set(Some(items)));
+            view().child(Each::new(
+                items,
+                |n| *n,
+                |item, index| {
+                    MADE.with(|m| m.set(m.get() + 1));
+                    text(move || format!("{}@{}", item.get(), index.get()))
+                },
+            ))
+        }
+    }
+
+    #[test]
+    fn each_keeps_the_rows_that_stay_and_makes_only_new_ones() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Rows>(|| RowsProps {}));
+        let batch = c.commit().unwrap();
+        // The rows are the root view's children: the host's.
+        let list = root_host(&batch);
+        assert_eq!(order(&c, list), ["1@0", "2@1", "3@2"]);
+        let one = text_node(&batch, "1@0");
+        let items = ITEMS.with(Cell::get).unwrap();
+        {
+            let _entered = c.components.runtime.enter();
+            items.set(vec![3, 1, 4]);
+        }
+        let batch = c.commit().unwrap();
+        assert_eq!(order(&c, list), ["3@0", "1@1", "4@2"]);
+        assert_eq!(MADE.with(Cell::get), 4, "one new row");
+        assert!(
+            !batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Create { id, .. } if *id == one)),
+            "row 1 kept its node"
+        );
+    }
+
+    /// A style bound to a signal.
+    #[derive(Default)]
+    struct Lamp;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct LampProps {}
+
+    impl Component for Lamp {
+        type Props = LampProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: LampProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let on = signal(false);
+            view()
+                .on_press(move |_: &()| on.update(|v| *v = !*v))
+                .w(px(10.0))
+                .bg(move || {
+                    if on.get() {
+                        rgb(0xff0000)
+                    } else {
+                        rgb(0x0000ff)
+                    }
+                })
+                .style_when(on, |s| s.opacity(0.5))
+        }
+    }
+
+    #[test]
+    fn bound_styles_change_alone() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Lamp>(|| LampProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        let style = view_style_of(&batch, host).unwrap();
+        assert_eq!(style.background_color, crate::style::Color(0x0000_ffff));
+        assert_eq!(style.opacity, 1.0);
+        c.component_event(host, EventKind::Press, &EventPayload::None);
+        let batch = c.commit().unwrap();
+        let style = view_style_of(&batch, host).unwrap();
+        assert_eq!(style.background_color, crate::style::Color(0xff00_00ff));
+        assert_eq!(style.opacity, 0.5);
+        let _ = Rc::new(());
+    }
 }

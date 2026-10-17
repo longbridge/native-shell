@@ -159,8 +159,8 @@ fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
 }
 
 /// Whether field `ident` is not the `Children` field found so far.
-fn kind_is_not_children(children: &Option<Ident>, ident: &Ident) -> bool {
-    children.as_ref() != Some(ident)
+fn kind_is_not_children(children: Option<&Ident>, ident: &Ident) -> bool {
+    children != Some(ident)
 }
 
 /// The last segment of a type path (`Slot`, `Option`) and its first
@@ -232,9 +232,30 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     let mut lazy_children = false;
     let mut items: Option<Ident> = None;
     let mut items_js: Option<String> = None;
+    // Fields of type `Prop<T>`: held in signals by an instance.
+    let mut held = Vec::new();
+    let mut updates = Vec::new();
+    let mut any_held = false;
     for field in &fields.named {
         let ident = field.ident.as_ref().expect("named");
-        let ty = &field.ty;
+        // A `Prop<T>` is a prop of type `T`, held in a signal.
+        let (ty, is_held) = match last_segment(&field.ty) {
+            Some((id, Some(inner))) if id == "Prop" => (inner, true),
+            _ => (&field.ty, false),
+        };
+        any_held |= is_held;
+        if is_held {
+            held.push(quote!(#ident: self.#ident.__hold()));
+            updates.push(quote!(self.#ident.__update_from(&new.#ident);));
+        } else {
+            held.push(quote!(#ident: ::core::clone::Clone::clone(&self.#ident)));
+            updates.push(quote! {
+                if self.#ident != new.#ident {
+                    self.#ident = ::core::clone::Clone::clone(&new.#ident);
+                    changed = true;
+                }
+            });
+        }
         let attr = prop_attr(&field.attrs)?;
         let js = attr
             .rename
@@ -256,7 +277,30 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
             (Some(Some(expr)), _) => quote!(#expr),
             _ => quote!(::core::default::Default::default()),
         };
-        initial.push(quote!(#ident: #init));
+        if is_held && matches!(kind, Kind::Items) {
+            return Err(syn::Error::new(
+                field.span(),
+                "`Items` is not a `Prop`: the rows change, not the field",
+            ));
+        }
+        // How a field takes a new value (`value`): a held one writes its
+        // signal.
+        let assign = |value: TokenStream2| {
+            if is_held {
+                quote!(self.#ident.__set(#ui::Reactive::Static(#value)))
+            } else {
+                quote! {{
+                    let changed = self.#ident != #value;
+                    self.#ident = #value;
+                    changed
+                }}
+            }
+        };
+        if is_held {
+            initial.push(quote!(#ident: #ui::Prop::new(#init)));
+        } else {
+            initial.push(quote!(#ident: #init));
+        }
         match kind {
             Kind::Value => {
                 let optional = is_option || attr.default.is_some();
@@ -269,6 +313,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                         kind: #ui::PropKind::Value,
                     }
                 });
+                let take = assign(quote!(value));
                 set_arms.push(quote! {
                     #js => {
                         let value: #ty = match value {
@@ -276,12 +321,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                                 .map_err(|e| #ui::PropError(::std::format!("`{}`: {}", #js, e)))?,
                             ::core::option::Option::None => #init,
                         };
-                        if self.#ident == value {
-                            ::core::result::Result::Ok(false)
-                        } else {
-                            self.#ident = value;
-                            ::core::result::Result::Ok(true)
-                        }
+                        ::core::result::Result::Ok(#take)
                     }
                 });
             }
@@ -295,12 +335,9 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                         kind: #ui::PropKind::Slot,
                     }
                 });
+                let take = assign(quote!(slot));
                 slot_arms.push(quote! {
-                    #js => {
-                        let changed = self.#ident != slot;
-                        self.#ident = slot;
-                        changed
-                    }
+                    #js => #take,
                 });
             }
             Kind::Items => {
@@ -338,11 +375,11 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                         kind: #ui::PropKind::Children,
                     }
                 });
-                children = Some(ident.clone());
+                children = Some((ident.clone(), assign(quote!(children))));
                 lazy_children = attr.lazy;
             }
         }
-        if attr.lazy && kind_is_not_children(&children, ident) {
+        if attr.lazy && kind_is_not_children(children.as_ref().map(|c| &c.0), ident) {
             return Err(syn::Error::new(
                 field.span(),
                 "`#[prop(lazy)]` is for the `Children` field",
@@ -350,15 +387,26 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
     }
     let set_children = match &children {
-        Some(ident) => quote! {
-            let changed = self.#ident != children;
-            self.#ident = children;
-            changed
-        },
+        Some((_, take)) => quote!(#take),
         None => quote!({
             let _ = children;
             false
         }),
+    };
+    let held_fns = if any_held {
+        quote! {
+            fn held(&self) -> Self {
+                Self { #(#held),* }
+            }
+
+            fn update_from(&mut self, new: &Self) -> bool {
+                let mut changed = false;
+                #(#updates)*
+                changed
+            }
+        }
+    } else {
+        quote!()
     };
     let items_const = match &items_js {
         Some(js) => quote!(::core::option::Option::Some(#js)),
@@ -418,6 +466,8 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
             fn set_children(&mut self, children: #ui::Children) -> bool {
                 #set_children
             }
+
+            #held_fns
         }
     })
 }

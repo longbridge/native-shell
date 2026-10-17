@@ -113,7 +113,7 @@ pub(super) struct Instance {
     class_list: Vec<Box<str>>,
     /// The app's classes, or the styles of the component rendering this
     /// one: applied after the root's own.
-    user: Option<Arc<ClassList>>,
+    pub(super) user: Option<Arc<ClassList>>,
     /// Events JS listens to on the host.
     js_events: EventMask,
     /// The last render, expanded (its root is the host).
@@ -127,17 +127,22 @@ pub(super) struct Instance {
     slots: Vec<(&'static str, NodeId)>,
     /// The last render's handlers: native events by node, and the events of
     /// nested components by their host (a handful: lists beat maps).
-    handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
-    event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
+    pub(super) handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
+    pub(super) event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
     /// The last render's parts in the touch responder, by node.
-    responders: Vec<(NodeId, Rc<ResponderEl>)>,
+    pub(super) responders: Vec<(NodeId, Rc<ResponderEl>)>,
     /// What the last render read of the environment.
     reads: RenderReads,
     /// The app's `style` on the host, applied after the root's own inline
     /// style and native values.
-    app_style: Option<crate::StylePatch>,
+    pub(super) app_style: Option<crate::StylePatch>,
     dirty: bool,
     renders: u32,
+    /// A component that runs once: its view is bound, not rendered again
+    /// ([`super::views`]).
+    pub(super) binding: bool,
+    /// The nodes of its view with bindings: what was applied last.
+    pub(super) bound: FxHashMap<NodeId, super::views::BoundNode>,
 }
 
 impl Instance {
@@ -166,12 +171,14 @@ impl Instance {
             app_style,
             dirty: false,
             renders: 0,
+            binding: false,
+            bound: FxHashMap::default(),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Part {
+pub(super) enum Part {
     Node,
     /// A slot's node: JS's, never released by the core.
     Slot,
@@ -185,16 +192,19 @@ enum Part {
     JsChild,
     /// A piece of a text's content: a raw text node.
     Raw,
+    /// A region of a view's children (no node of its own:
+    /// [`super::views`]).
+    Region(u32),
 }
 
 /// The node's classes: its styles lowered, and what was merged after them.
-type Classes = (Option<Arc<ClassList>>, Option<Arc<ClassList>>);
+pub(super) type Classes = (Option<Arc<ClassList>>, Option<Arc<ClassList>>);
 
 /// An element of a render, as it was applied.
-struct Expanded {
-    id: NodeId,
-    tag: Tag,
-    key: Option<SharedString>,
+pub(super) struct Expanded {
+    pub(super) id: NodeId,
+    pub(super) tag: Tag,
+    pub(super) key: Option<SharedString>,
     /// A text's content and its raw text node.
     text: Option<(SharedString, NodeId)>,
     attrs: Attrs,
@@ -203,13 +213,13 @@ struct Expanded {
     events: EventMask,
     /// A list's layout.
     list: ListConfig,
-    part: Part,
+    pub(super) part: Part,
     children: Vec<Expanded>,
 }
 
 impl Expanded {
     /// A node of JS's in the render (`id` 0: the place of the children).
-    fn js(id: NodeId, part: Part) -> Self {
+    pub(super) fn js(id: NodeId, part: Part) -> Self {
         Self {
             id,
             tag: Tag::View,
@@ -244,7 +254,7 @@ pub(super) struct Components {
     /// Boxed: a render takes its instance out of the map and back.
     pub(super) instances: FxHashMap<NodeId, Box<Instance>>,
     /// Expanded node -> the host of the component that rendered it.
-    owners: FxHashMap<NodeId, NodeId>,
+    pub(super) owners: FxHashMap<NodeId, NodeId>,
     /// Slot nodes (`componentSlot`) -> their slot's name.
     slot_names: FxHashMap<NodeId, Arc<str>>,
     /// Slot nodes in a host -> the host.
@@ -291,6 +301,16 @@ pub(super) struct Components {
     /// Reused buffers.
     rendered: Vec<NodeId>,
     props: Vec<Prop>,
+    /// The reactive graph of the components that run once.
+    pub(super) runtime: crate::ui::Runtime,
+    /// What their bindings queued.
+    pub(super) patches: super::views::Patches,
+    /// Their views' regions, by id.
+    pub(super) regions: FxHashMap<u32, super::views::RegionState>,
+    pub(super) next_region: u32,
+    /// Owners of what renders made once (regions of components that render
+    /// again), disposed after the renders.
+    pub(super) transient: Vec<crate::ui::Owner>,
 }
 
 impl Default for Components {
@@ -326,6 +346,11 @@ impl Default for Components {
             dirty: Vec::new(),
             rendered: Vec::new(),
             props: Vec::new(),
+            runtime: crate::ui::Runtime::default(),
+            patches: super::views::Patches::default(),
+            regions: FxHashMap::default(),
+            next_region: 1,
+            transient: Vec::new(),
         }
     }
 }
@@ -352,8 +377,12 @@ impl Components {
         }
     }
 
-    /// `style` as rules, shared between the elements that have it.
+    /// `style` as rules, shared between the elements that have it (its
+    /// static declarations: bound parts are applied by bindings).
     fn lowered(&mut self, style: &StyleRefinement) -> Arc<ClassList> {
+        if style.is_bound() {
+            return self.lowered(&style.static_part());
+        }
         if let Some(list) = self.styles.get(style) {
             return list.clone();
         }
@@ -437,6 +466,7 @@ impl<M: TextEngine> Core<M> {
 
     /// The theme components render with; every component renders again.
     pub fn set_theme(&mut self, theme: Theme) {
+        let _entered = self.components.runtime.enter();
         self.components.theme = Arc::new(theme);
         let hosts: Vec<NodeId> = self.components.instances.keys().copied().collect();
         for host in hosts {
@@ -447,6 +477,7 @@ impl<M: TextEngine> Core<M> {
     /// Mounts a Rust app's root component as the content of the root view;
     /// it renders in the next commit.
     pub fn mount_root(&mut self, root: &Root) {
+        let _entered = self.components.runtime.enter();
         let mut el = root.element().0;
         let ElKind::Component(c) = std::mem::replace(&mut el.kind, ElKind::Plain) else {
             return log::error!("the root is not a component");
@@ -472,6 +503,7 @@ impl<M: TextEngine> Core<M> {
     /// what changed render again. `dark` is the system's: the app's
     /// appearance wins over it ([`Core::set_appearance`]).
     pub fn set_environment(&mut self, mut environment: Environment) {
+        let _entered = self.components.runtime.enter();
         environment.rtl = self.surface_rtl(environment.rtl);
         self.system_dark = environment.dark;
         environment.dark = self.shown_dark();
@@ -480,6 +512,7 @@ impl<M: TextEngine> Core<M> {
 
     /// The environment components read is now `environment`.
     pub(super) fn apply_environment(&mut self, environment: Environment) {
+        let _entered = self.components.runtime.enter();
         let old = self.components.environment;
         let changed = environment.changes(&old);
         self.components.environment = environment;
@@ -533,6 +566,7 @@ impl<M: TextEngine> Core<M> {
     /// Runs the components' woken tasks, with the state changes they ask
     /// for, until they all wait.
     pub fn run_component_tasks(&mut self) {
+        let _entered = self.components.runtime.enter();
         let executor = self.components.executor.clone();
         // A task that keeps waking itself cannot hold the engine.
         for _ in 0..MAX_TASK_ROUNDS {
@@ -1054,17 +1088,30 @@ impl<M: TextEngine> Core<M> {
         self.insert_instance(host, Some(spec), Inner::Component(make()));
     }
 
-    fn insert_instance(&mut self, host: NodeId, spec: Option<Arc<ComponentSpec>>, inner: Inner) {
+    fn insert_instance(
+        &mut self,
+        host: NodeId,
+        spec: Option<Arc<ComponentSpec>>,
+        mut inner: Inner,
+    ) {
         // A style JS set before the component prop.
         let app_style = self
             .key(host)
             .ok()
             .map(|k| self.nodes[k as usize].inline_style.clone())
             .filter(|p| !p.is_empty());
-        self.components.instances.insert(
-            host,
-            Box::new(Instance::new(inner, spec, Vec::new(), app_style)),
-        );
+        // A component that runs once is made where it is (its context comes
+        // from there).
+        let binding = match &mut inner {
+            Inner::Component(c) if c.runs_once().is_some() => {
+                c.place(host, crate::ui::Owner::current());
+                true
+            }
+            _ => false,
+        };
+        let mut instance = Instance::new(inner, spec, Vec::new(), app_style);
+        instance.binding = binding;
+        self.components.instances.insert(host, Box::new(instance));
         self.components.mark(host);
     }
 
@@ -1094,12 +1141,44 @@ impl<M: TextEngine> Core<M> {
 
     /// Renders the components whose props or state changed.
     pub(super) fn render_components(&mut self) {
+        let _entered = self.components.runtime.enter();
+        // Views' changes, then renders, until neither is left (a change may
+        // render a component again, a render bind a view).
+        loop {
+            let changed = self.drain_views();
+            let rendered = self.render_dirty();
+            if !changed && !rendered {
+                break;
+            }
+        }
+        let mut rendered = std::mem::take(&mut self.components.rendered);
+        for host in rendered.drain(..) {
+            if let Some(inst) = self.components.instances.get_mut(&host) {
+                inst.renders = 0;
+            }
+        }
+        self.components.rendered = rendered;
+        // What renders made once goes.
+        for owner in std::mem::take(&mut self.components.transient) {
+            owner.dispose();
+        }
+        for (owner, message) in self.components.runtime.take_failures() {
+            let host = self.host_of_owner(owner);
+            match host {
+                Some(host) => self.component_failed(host, message),
+                None => log::error!(target: "js", "a binding failed: {message}"),
+            }
+        }
+    }
+
+    /// Renders the components marked dirty; whether there were any.
+    fn render_dirty(&mut self) -> bool {
         // What handles asked for since (native values released, ...).
         for action in self.components.executor.take_actions() {
             self.apply_action(action);
         }
         if self.components.dirty.is_empty() {
-            return;
+            return false;
         }
         let mut rendered = std::mem::take(&mut self.components.rendered);
         while let Some(host) = self.components.dirty.pop() {
@@ -1120,18 +1199,35 @@ impl<M: TextEngine> Core<M> {
                 self.component_failed(host, message);
             }
         }
-        for host in rendered.drain(..) {
-            if let Some(inst) = self.components.instances.get_mut(&host) {
-                inst.renders = 0;
-            }
-        }
         self.components.rendered = rendered;
+        true
+    }
+
+    /// The host of the component that runs once whose owner is `owner`, or
+    /// whose view made it (a binding's own owner is under the component's).
+    fn host_of_owner(&self, owner: crate::ui::Owner) -> Option<NodeId> {
+        let mut at = Some(owner);
+        while let Some(owner) = at {
+            let host =
+                self.components
+                    .instances
+                    .iter()
+                    .find_map(|(&host, inst)| match &inst.inner {
+                        Inner::Component(inner) if inner.runs_once() == Some(owner) => Some(host),
+                        _ => None,
+                    });
+            if host.is_some() {
+                return host;
+            }
+            at = owner.parent();
+        }
+        None
     }
 
     /// Renders `inst` on `host`; what its code panicked with, if it did.
     fn render(&mut self, host: NodeId, inst: &mut Instance) -> Option<String> {
         let mut failure = None;
-        let mut el = match &mut inst.inner {
+        let el = match &mut inst.inner {
             Inner::Component(inner) => {
                 // What the app passed, as props.
                 if let Some(spec) = &inst.spec {
@@ -1146,6 +1242,11 @@ impl<M: TextEngine> Core<M> {
                     }
                 }
                 inner.set_children(!inst.js_children.is_empty());
+                // A component that runs once made its view: its props now
+                // reach what read them.
+                if inst.binding && inst.root.is_some() {
+                    return None;
+                }
                 // The setup the first time, else what changed in the props.
                 let mut cx = self.erased_cx(host);
                 let mut failed = caught(|| inner.update(&mut cx)).err();
@@ -1235,6 +1336,27 @@ impl<M: TextEngine> Core<M> {
             }
             Inner::Missing => ElNode::empty_view(),
         };
+        // A component that runs once binds its view under its owner.
+        let owner = match &inst.inner {
+            Inner::Component(inner) if inst.binding => inner.runs_once(),
+            _ => None,
+        };
+        match owner {
+            Some(owner) => owner.run(|| self.expand_root(host, inst, el)),
+            None => self.expand_root(host, inst, el),
+        }
+        failure
+    }
+
+    /// Applies a render's root `el` to `host` itself and expands its
+    /// children.
+    fn expand_root(&mut self, host: NodeId, inst: &mut Instance, mut el: ElNode) {
+        let bound = if inst.binding {
+            super::views::Bound::take(&mut el)
+        } else {
+            el.resolve_once();
+            None
+        };
         if el.tag != Tag::View || !matches!(el.kind, ElKind::Plain) {
             log::error!(target: "js", "a component's root must be a view; it is rendered as one");
             el.tag = Tag::View;
@@ -1260,6 +1382,18 @@ impl<M: TextEngine> Core<M> {
         self.apply_attrs_over(host, &el.attrs, &old_attrs, inst.app_style.as_ref());
         let user = inst.user.clone();
         let classes = self.apply_styles(host, &el.style, &old_style, old_classes, user);
+        if let Some(bound) = bound {
+            self.bind_node(
+                host,
+                host,
+                bound,
+                &el.attrs,
+                &el.style,
+                classes.clone(),
+                None,
+                inst,
+            );
+        }
         // The host listens to its component's events and to JS's.
         let js = inst.js_events;
         self.apply_handlers(host, &el, old_events | js, js, inst);
@@ -1310,7 +1444,6 @@ impl<M: TextEngine> Core<M> {
                 )),
             }
         }
-        failure
     }
 
     /// Whether the component hosted by `nested` takes its children now:
@@ -1336,7 +1469,7 @@ impl<M: TextEngine> Core<M> {
 
     /// [`Self::apply_attrs`] for a host: the app's style goes after the
     /// root's (and is sent again with it).
-    fn apply_attrs_over(
+    pub(super) fn apply_attrs_over(
         &mut self,
         id: NodeId,
         new: &Attrs,
@@ -1371,7 +1504,7 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// Sets node `id`'s classes: `style` lowered, then `user` (a host's).
-    fn apply_styles(
+    pub(super) fn apply_styles(
         &mut self,
         id: NodeId,
         style: &StyleRefinement,
@@ -1469,6 +1602,19 @@ impl<M: TextEngine> Core<M> {
         } else {
             new
         };
+        // A component that renders again makes its regions' elements once.
+        let new = if !inst.binding && new.iter().any(|e| matches!(e.kind, ElKind::Region(_))) {
+            let mut flat = Vec::with_capacity(new.len());
+            for el in new {
+                match &el.kind {
+                    ElKind::Region(region) => flat.extend(self.region_once(region)),
+                    _ => flat.push(el),
+                }
+            }
+            flat
+        } else {
+            new
+        };
         let mut old: Vec<Option<Expanded>> = old.into_iter().map(Some).collect();
         let mut out = Vec::with_capacity(new.len());
         let mut placeholder = None;
@@ -1518,6 +1664,12 @@ impl<M: TextEngine> Core<M> {
                 }
                 // Expanded above.
                 ElKind::EachChild(_) => {}
+                // A view's region: bound, its nodes come with its patches.
+                ElKind::Region(region) => {
+                    let id = self.bind_region(host, parent, region);
+                    out.push(super::views::region_placeholder(id));
+                }
+                ElKind::Keep => log::error!("a kept element outside a region"),
                 ElKind::List(list) => {
                     // The glue's list: placed and laid out like a slot,
                     // its rows wrapped by this render's row function.
@@ -1609,16 +1761,35 @@ impl<M: TextEngine> Core<M> {
         }
         // Order the native children as rendered, the JS children in the
         // placeholder's place (moves only when it changed).
-        let js = &inst.js_children;
-        let wanted = || {
-            out.iter().flat_map(move |e| {
-                if e.part == Part::Children {
-                    js.as_slice()
-                } else {
-                    std::slice::from_ref(&e.id)
-                }
+        // A region's nodes go before what follows it.
+        for (i, e) in out.iter().enumerate() {
+            if let Part::Region(region) = e.part {
+                let anchor = out[i + 1..]
+                    .iter()
+                    .find_map(|n| match n.part {
+                        Part::Region(r) => Some(super::views::Anchor::Region(r)),
+                        Part::Children => inst
+                            .js_children
+                            .first()
+                            .map(|&c| super::views::Anchor::Node(c)),
+                        _ if n.id != 0 => Some(super::views::Anchor::Node(n.id)),
+                        _ => None,
+                    })
+                    .unwrap_or(super::views::Anchor::End);
+                self.set_region_anchor(region, anchor);
+            }
+        }
+        // The native children as rendered: the JS children in the
+        // placeholder's place, a region's nodes in its.
+        let wanted_ids: Vec<NodeId> = out
+            .iter()
+            .flat_map(|e| match e.part {
+                Part::Children => inst.js_children.clone(),
+                Part::Region(region) => self.region_nodes(region),
+                _ => vec![e.id],
             })
-        };
+            .collect();
+        let wanted = || wanted_ids.iter();
         // A list positions its cells itself: their order does not matter
         // (and the cells it binds are not the render's), new ones join it.
         if self.is_list(parent) {
@@ -1717,7 +1888,7 @@ impl<M: TextEngine> Core<M> {
 
     /// Whether `child` is a child of `parent` right before `next` (the last
     /// one when `next` is `None`).
-    fn precedes(&self, parent: NodeId, child: NodeId, next: Option<NodeId>) -> bool {
+    pub(super) fn precedes(&self, parent: NodeId, child: NodeId, next: Option<NodeId>) -> bool {
         let Ok(k) = self.key(parent) else {
             return false;
         };
@@ -1737,9 +1908,10 @@ impl<M: TextEngine> Core<M> {
         &mut self,
         prev: Option<Expanded>,
         node: NodeId,
-        el: ElNode,
+        mut el: ElNode,
         inst: &mut Instance,
     ) -> Expanded {
+        el.resolve_once();
         let (old_attrs, old_style, old_classes, old_events) = match prev {
             Some(p) => (p.attrs, p.style, p.classes, p.events),
             None => (
@@ -1769,7 +1941,7 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    fn reconcile_node(
+    pub(super) fn reconcile_node(
         &mut self,
         prev: Option<Expanded>,
         mut el: ElNode,
@@ -1777,6 +1949,26 @@ impl<M: TextEngine> Core<M> {
         host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
+        // A text whose content is bound, with spans: the content is its
+        // first span.
+        if inst.binding
+            && !el.children.is_empty()
+            && let Some(content) = el.bound_text.take()
+        {
+            let mut first = ElNode::new(Tag::Text);
+            first.text = Some(SharedString::default());
+            first.bound_text = Some(content);
+            el.text = None;
+            el.children.insert(0, first);
+        }
+        // A view binds its bound parts after the static ones; a component
+        // rendered again reads them once.
+        let bound = if inst.binding && !matches!(el.kind, ElKind::Component(_)) {
+            super::views::Bound::take(&mut el)
+        } else {
+            el.resolve_once();
+            None
+        };
         if matches!(el.kind, ElKind::Raw) {
             return self.reconcile_raw(prev, el, host);
         }
@@ -1910,6 +2102,18 @@ impl<M: TextEngine> Core<M> {
             }
             (None, None) => None,
         };
+        if let Some(bound) = bound {
+            self.bind_node(
+                host,
+                id,
+                bound,
+                &el.attrs,
+                &el.style,
+                classes.clone(),
+                text.clone(),
+                inst,
+            );
+        }
         let events = self.apply_handlers(id, &el, old_events, EventMask::default(), inst);
         let new_children = std::mem::take(&mut el.children);
         let children = self.reconcile_children(id, old_children, new_children, host, inst);
@@ -2210,7 +2414,7 @@ impl<M: TextEngine> Core<M> {
 
     /// Frees an expanded element and what it rendered (a slot's node is
     /// JS's: it only leaves the tree).
-    fn release_expanded(&mut self, e: Expanded) {
+    pub(super) fn release_expanded(&mut self, e: Expanded) {
         match e.part {
             Part::Slot => {
                 self.detach_id(e.id);
@@ -2228,6 +2432,11 @@ impl<M: TextEngine> Core<M> {
                 return;
             }
             Part::Component(_) => self.release_instance(e.id),
+            // Its nodes are the region's.
+            Part::Region(region) => {
+                self.release_region(region);
+                return;
+            }
             Part::VirtualList => {
                 if let Some(state) = self.components.virtual_lists.remove(&e.id) {
                     let parts = state.contents.into_iter().chain(state.cells);
@@ -2269,6 +2478,7 @@ impl<M: TextEngine> Core<M> {
             }
             self.finish_event(host, cx);
         }
+        self.release_regions(host);
         // Its tasks and timers end with it.
         self.components.executor.cancel_host(host);
         let listeners = self.components.executor.back.borrow_mut().remove_host(host);
@@ -2293,6 +2503,7 @@ impl<M: TextEngine> Core<M> {
     /// A native event on node `id`: true when a component handled it (its
     /// own parts' events never reach JS, which does not know them).
     pub fn component_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
+        let _entered = self.components.runtime.enter();
         // Touches come on the root with the listening nodes around each
         // finger: the components hear theirs, JS its own.
         if kind == EventKind::Touch && id == ROOT_ID {
@@ -2414,7 +2625,7 @@ impl<M: TextEngine> Core<M> {
 
     /// The component whose state `host`'s handlers change: its own, or for
     /// a list row the component's whose list it is.
-    fn state_owner(&self, host: NodeId) -> Option<NodeId> {
+    pub(super) fn state_owner(&self, host: NodeId) -> Option<NodeId> {
         match &self.components.instances.get(&host)?.inner {
             Inner::Component(_) => Some(host),
             Inner::VirtualRow { list, .. } => {
@@ -2431,7 +2642,7 @@ impl<M: TextEngine> Core<M> {
     /// The code of `host`'s component panicked: the nearest component above
     /// that handles the error does ([`Component::catch_error`]); else it is
     /// reported.
-    fn component_failed(&mut self, host: NodeId, message: String) {
+    pub(super) fn component_failed(&mut self, host: NodeId, message: String) {
         let component = match self.components.instances.get(&host).map(|i| &i.inner) {
             Some(Inner::Component(inner)) => inner.name(),
             _ => "a list row",
@@ -2832,47 +3043,54 @@ impl<M: TextEngine> Core<M> {
             self.apply_action(action);
         }
         for event in cx.emits {
-            match self.components.owners.get(&host).copied() {
-                // A nested component: the component that rendered it gets
-                // the event, if it handles it (a list row's handlers run
-                // with the component whose list it is).
-                Some(parent) => {
-                    let Some(listener) = self
-                        .components
-                        .instances
-                        .get(&parent)
-                        .and_then(|inst| inst.event_handlers.iter().find(|(n, _)| *n == host))
-                        .map(|(_, l)| l.clone())
-                    else {
-                        continue;
-                    };
-                    let Some(parent) = self.state_owner(parent) else {
-                        continue;
-                    };
-                    let mut cx = self.erased_cx(parent);
-                    let Some(inst) = self.components.instances.get_mut(&parent) else {
-                        continue;
-                    };
-                    let mut failed = None;
-                    if let Inner::Component(inner) = &mut inst.inner {
-                        let (state, props) = inner.parts();
-                        failed =
-                            caught(|| (listener.0)(state, props, event.as_any(), &mut cx)).err();
-                    }
-                    self.finish_event(parent, cx);
-                    if let Some(message) = failed {
-                        self.component_failed(parent, message);
-                    }
+            self.route_emit(host, event);
+        }
+    }
+
+    /// An event the component on `host` emitted: to the component that
+    /// rendered it, if it handles it (a list row's handlers run with the
+    /// component whose list it is), else to JS.
+    pub(super) fn route_emit(
+        &mut self,
+        host: NodeId,
+        event: Box<dyn crate::ui::element::AnyEvent>,
+    ) {
+        match self.components.owners.get(&host).copied() {
+            Some(parent) => {
+                let Some(listener) = self
+                    .components
+                    .instances
+                    .get(&parent)
+                    .and_then(|inst| inst.event_handlers.iter().find(|(n, _)| *n == host))
+                    .map(|(_, l)| l.clone())
+                else {
+                    return;
+                };
+                let Some(parent) = self.state_owner(parent) else {
+                    return;
+                };
+                let mut cx = self.erased_cx(parent);
+                let Some(inst) = self.components.instances.get_mut(&parent) else {
+                    return;
+                };
+                let mut failed = None;
+                if let Inner::Component(inner) = &mut inst.inner {
+                    let (state, props) = inner.parts();
+                    failed = caught(|| (listener.0)(state, props, event.as_any(), &mut cx)).err();
                 }
-                None => self.events.push((
-                    host,
-                    EventKind::NativeEvent,
-                    EventPayload::Native {
-                        name: event.name().into(),
-                        data: event.data(),
-                    },
-                )),
+                self.finish_event(parent, cx);
+                if let Some(message) = failed {
+                    self.component_failed(parent, message);
+                }
             }
+            None => self.events.push((
+                host,
+                EventKind::NativeEvent,
+                EventPayload::Native {
+                    name: event.name().into(),
+                    data: event.data(),
+                },
+            )),
         }
     }
 }

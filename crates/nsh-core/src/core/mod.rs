@@ -6,6 +6,7 @@ mod services;
 #[cfg(test)]
 mod tests;
 mod touch;
+mod views;
 
 use std::sync::Arc;
 
@@ -901,6 +902,7 @@ impl<M: TextEngine> Core<M> {
 
     /// Applies one op from JS.
     pub fn apply(&mut self, op: Op) -> Result<(), ApplyError> {
+        let _entered = self.components.runtime.enter();
         // Ops on a component's host go to its component, calls of a UI
         // set's modules to the module; the components learn whether JS
         // listens to the back button.

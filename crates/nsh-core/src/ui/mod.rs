@@ -29,13 +29,17 @@ pub(crate) mod animated;
 mod asset;
 mod back;
 mod component;
-mod element;
+pub(crate) mod element;
 mod element_ref;
 pub(crate) mod env;
 mod events;
+pub(crate) mod flow;
 pub(crate) mod host;
 mod module;
+mod once;
 pub mod palette;
+mod prop;
+pub mod reactive;
 pub(crate) mod responder;
 mod scrollable;
 pub(crate) mod services;
@@ -75,6 +79,7 @@ pub use self::{
         GestureEvent, ImageProgress, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection,
         VideoInfo, VideoProgress, WebNavigation,
     },
+    flow::{Each, If, IntoElements, dynamic},
     host::{
         CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, Modal, NativeView,
         Orientation, Painter, Screen, Scroll, Stack, Video, WebView, canvas, input,
@@ -83,6 +88,13 @@ pub use self::{
     module::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
         ModuleSpec,
+    },
+    once::Scope,
+    prop::Prop,
+    reactive::{
+        IntoReactive, Memo, Owner, Reactive, ReadSignal, Runtime, Signal, SignalEquals, batch,
+        cleanup, computed, create_root, effect, provide_context, signal, signal_with, untracked,
+        use_context,
     },
     responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
     scrollable::Scrollable,
@@ -117,6 +129,7 @@ pub use crate::{
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
 pub mod prelude {
+    // Components that run once: signals, bindings, control flow.
     pub use super::{
         AccessibilityRole,
         AccessibilityState,
@@ -262,6 +275,11 @@ pub mod prelude {
         virtual_list,
         web_view,
         web_view_html,
+    };
+    pub use super::{
+        Each, If, IntoElements, IntoReactive, Memo, Owner, Prop, Reactive, ReadSignal, Scope,
+        Signal, SignalEquals, batch, cleanup, computed, dynamic, effect, provide_context, signal,
+        signal_with, untracked, use_context,
     };
 }
 

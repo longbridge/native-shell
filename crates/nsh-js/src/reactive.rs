@@ -489,7 +489,7 @@ unsafe extern "C" fn create_memo(
         )
     };
     let equals = equals_option(ctx, arg(argc, argv, 2));
-    let id = r::memo(Js(ctx), func, value, equals);
+    let id = r::memo(Js(ctx), func, value, equals, true);
     let class = unsafe { graph(ctx) }.data.classes.memo;
     let obj = object(ctx, class, id);
     finish(ctx, obj)
@@ -1013,7 +1013,7 @@ pub(crate) fn memo(ctx: *mut JsContext, func: JsValue, equals_truthy: bool) -> J
     } else {
         Equals::Default
     };
-    let id = r::memo(Js(ctx), func, UNDEFINED, equals);
+    let id = r::memo(Js(ctx), func, UNDEFINED, equals, true);
     let class = unsafe { graph(ctx) }.data.classes.memo;
     object(ctx, class, id)
 }
