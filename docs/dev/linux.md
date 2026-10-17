@@ -3,7 +3,7 @@
 `crates/nsh-platform-linux` renders nsh apps with GTK 4 widgets and lays text out with Pango. `crates/nsh-linux-host`
 is its development host (`nsh run --target linux`, the default on Linux), `crates/nsh-linux-app` the release runner of
 `nsh package --target linux`. Like the macOS and Windows backends, it follows the mobile backends' design (one native
-view per node, the core lays everything out); the planned GPUI desktop backend is a separate effort. User-facing page: `website/docs/linux.md`.
+view per node, the core lays everything out); the GPUI backend (`gpui.md`) is a separate effort. User-facing page: `website/docs/linux.md`.
 
 ## Building and checking
 

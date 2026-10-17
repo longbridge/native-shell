@@ -55,7 +55,6 @@ const BAR_HEIGHT: f32 = 28.0;
 const BAR_ITEM_PADDING: f32 = 10.0;
 
 /// An item of a menu of the platform's own ([`popup_actions`]).
-#[allow(dead_code, reason = "text fields' context menus are being ported")]
 pub(crate) enum LocalItem {
     /// A line between groups.
     Separator,
@@ -80,7 +79,6 @@ pub(super) enum Kind {
     /// The app's context menu (`Menu.popup`): told when it closes.
     App,
     /// A menu of the platform's own: what its items do, by id - 1.
-    #[allow(dead_code, reason = "text fields' context menus are being ported")]
     Local(Vec<Action>),
 }
 
@@ -435,7 +433,6 @@ pub(super) fn menu_changed(surface: &Surface) {
 
 /// Shows a context menu of the platform's own (a text field's) at the
 /// pointer.
-#[allow(dead_code, reason = "text fields' context menus are being ported")]
 pub(crate) fn popup_actions(surface: &Surface, items: Vec<LocalItem>) {
     let mut actions = Vec::new();
     let items: Vec<MenuItem> = items

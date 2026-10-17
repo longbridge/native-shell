@@ -59,7 +59,6 @@ use gpui::{
 };
 // Text fields' and selectable text's context menus (`text_input.rs`,
 // `text.rs`) show their items with these.
-#[allow(unused_imports)]
 pub(crate) use menus::{LocalItem, popup_actions};
 use nsh_core::{
     EventKind, EventPayload, PayloadValue, ROOT_ID,

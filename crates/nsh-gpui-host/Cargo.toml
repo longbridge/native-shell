@@ -16,3 +16,7 @@ log.workspace = true
 nsh-platform-gpui = { workspace = true, features = ["dev"] }
 nsh-dev.workspace = true
 nsh-engine = { workspace = true, features = ["js"] }
+
+# Offscreen `shot` script steps (Linux reads the window from the X server).
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+nsh-platform-gpui = { workspace = true, features = ["dev", "shot"] }

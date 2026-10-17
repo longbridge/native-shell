@@ -42,6 +42,9 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # the published crates under GPUI's library names, as GPUI Kit apps use them.
 gpui = { package = "gpui-fast", version = "0.1.7", default-features = false, features = ["font-kit", "wayland", "x11"] }
 gpui_platform = { package = "gpui-fast-platform", version = "0.1.7", default-features = false, features = ["font-kit", "wayland", "x11"] }
+# The GPUI backend's script shots on Linux: the window read from the X server.
+raw-window-handle = "0.6"
+x11rb = { version = "0.13", default-features = false, features = ["dri3", "present"] }
 notify = "8.2"
 log = "0.4"
 libc = "0.2"
@@ -118,6 +121,8 @@ windows = { version = "0.62", features = [
 ] }
 windows-core = "0.62"
 windows-numerics = "0.3"
+# D-Bus (the GPUI backend's desktop settings on Linux); the features gpui-fast already enables.
+zbus = { version = "5.19", default-features = false, features = ["async-io", "blocking-api"] }
 # WebView2 (the Windows backend's web views): bindings and the static loader.
 webview2-com = "0.39"
 # The Linux backend (GTK 4.14+: Ubuntu 24.04, Debian 13, Fedora 40).
