@@ -44,6 +44,8 @@ pub(crate) struct RustData {
     emits: Vec<super::once::Emitted>,
     /// What components read of the core ([`super::ambient`]).
     pub(crate) ambient: super::ambient::Ambient,
+    /// The props instances hold, by their memo ([`super::Prop`]).
+    pub(crate) held: rustc_hash::FxHashMap<Node, Box<dyn Any>>,
 }
 
 /// Runs `f` on the entered runtime's data.
@@ -251,7 +253,7 @@ impl Drop for Runtime {
 }
 
 /// A handle of a node: its index and generation.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct Handle {
     id: u32,
     generation: u32,
@@ -277,6 +279,19 @@ impl Handle {
             "{what} read or written after its owner was disposed"
         );
         self.id
+    }
+}
+
+/// A node of the graph, whatever it is (a signal, a memo), by handle.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct Node(Handle);
+
+impl Node {
+    /// `f` of its value, subscribing the running computation (`what` names
+    /// it if it is gone).
+    #[track_caller]
+    pub(crate) fn with<T: 'static, R>(self, what: &str, f: impl FnOnce(&T) -> R) -> R {
+        read_value(self.0.expect(what), true, f)
     }
 }
 
@@ -420,6 +435,11 @@ impl<T: 'static> Signal<T> {
         self.set(value);
     }
 
+    /// Its node.
+    pub(crate) fn node(&self) -> Node {
+        Node(self.handle)
+    }
+
     /// A read-only view of the signal.
     pub fn read_only(&self) -> ReadSignal<T> {
         ReadSignal {
@@ -533,6 +553,11 @@ macro_rules! readable {
                 T: Clone,
             {
                 self.handle.live().then(|| self.get())
+            }
+
+            /// Its node.
+            pub(crate) fn node(&self) -> Node {
+                Node(self.handle)
             }
         }
     };

@@ -48,8 +48,8 @@ fn mobile_button(
     variant: ButtonVariant,
 ) -> ComponentElement<Button> {
     Button::element(ButtonProps {
-        title: title.into(),
-        variant,
+        title: Prop::new(title.into()),
+        variant: variant.into(),
         ..ButtonProps::default()
     })
 }

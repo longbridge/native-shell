@@ -93,7 +93,7 @@ struct VirtualListState {
 
 /// Where a host's JS children are.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Placement {
+pub(super) enum Placement {
     /// Out of the tree (the render has no place for them).
     None,
     /// In this node, before the rendered node after the render's
@@ -119,8 +119,8 @@ pub(super) struct Instance {
     /// The last render, expanded (its root is the host).
     root: Option<Expanded>,
     /// The host's JS children, in order.
-    js_children: Vec<NodeId>,
-    children_at: Placement,
+    pub(super) js_children: Vec<NodeId>,
+    pub(super) children_at: Placement,
     /// Lazy children (`#[prop(lazy)]`): whether JS was told to make them.
     children_wanted: bool,
     /// The glue's node of each slot the app passes.
@@ -143,6 +143,10 @@ pub(super) struct Instance {
     pub(super) binding: bool,
     /// The nodes of its view with bindings: what was applied last.
     pub(super) bound: FxHashMap<NodeId, super::views::BoundNode>,
+    /// In a view placing its JS children one by one: them, as a signal.
+    pub(super) js_kids: Option<crate::ui::Signal<Vec<NodeId>>>,
+    /// A cell of a view's list: the owner of the row it shows.
+    cell_owner: Option<crate::ui::Owner>,
 }
 
 impl Instance {
@@ -173,6 +177,8 @@ impl Instance {
             renders: 0,
             binding: false,
             bound: FxHashMap::default(),
+            js_kids: None,
+            cell_owner: None,
         }
     }
 }
@@ -763,6 +769,9 @@ impl<M: TextEngine> Core<M> {
                 inst.js_children
                     .insert(at.unwrap_or(inst.js_children.len()), child);
                 let place = inst.children_at;
+                if let Some(children) = inst.js_kids {
+                    children.set(inst.js_children.clone());
+                }
                 if was_empty || place == Placement::Each {
                     self.components.mark(parent);
                 }
@@ -783,6 +792,9 @@ impl<M: TextEngine> Core<M> {
             Op::Remove { parent, child } if self.is_host(parent) => {
                 let inst = self.components.instances.get_mut(&parent).expect("host");
                 inst.js_children.retain(|&c| c != child);
+                if let Some(children) = inst.js_kids {
+                    children.set(inst.js_children.clone());
+                }
                 if inst.js_children.is_empty() || inst.children_at == Placement::Each {
                     self.components.mark(parent);
                 }
@@ -908,15 +920,9 @@ impl<M: TextEngine> Core<M> {
             .iter()
             .map(|&c| self.nodes[c as usize].id)
             .collect();
-        self.components.instances.insert(
-            cell,
-            Box::new(Instance::new(
-                Inner::Row { place, index: 0 },
-                None,
-                js_children,
-                None,
-            )),
-        );
+        let mut instance = Instance::new(Inner::Row { place, index: 0 }, None, js_children, None);
+        instance.binding = self.list_of(cell).is_some_and(|list| self.list_binds(list));
+        self.components.instances.insert(cell, Box::new(instance));
         self.components.mark(cell);
     }
 
@@ -1273,13 +1279,22 @@ impl<M: TextEngine> Core<M> {
                     measure: &measure,
                 };
                 // A render that fails renders nothing.
-                let (el, reads) = match failed {
-                    Some(_) => (ElNode::empty_view(), RenderReads::default()),
-                    None => caught(|| inner.render(&scope)).unwrap_or_else(|message| {
-                        failed = Some(message);
-                        (ElNode::empty_view(), RenderReads::default())
-                    }),
+                // What a render that runs again makes (its children's
+                // props) lives until the renders of this commit are done.
+                let rendered = match failed {
+                    Some(_) => Ok((ElNode::empty_view(), RenderReads::default())),
+                    None if inner.runs_once().is_some() => caught(|| inner.render(&scope)),
+                    None => {
+                        let (owner, rendered) =
+                            crate::ui::create_root(|| caught(|| inner.render(&scope)));
+                        self.components.transient.push(owner);
+                        rendered
+                    }
                 };
+                let (el, reads) = rendered.unwrap_or_else(|message| {
+                    failed = Some(message);
+                    (ElNode::empty_view(), RenderReads::default())
+                });
                 let old = std::mem::replace(&mut inst.reads, reads);
                 self.provided_changed(host, &old.provided, &inst.reads.provided);
                 self.finish_event(host, cx);
@@ -1292,7 +1307,9 @@ impl<M: TextEngine> Core<M> {
                     index: *index,
                     count: self.rows_of_cell(host),
                 };
-                match caught(|| view().child(place(Child::row(), at)).into_element().0) {
+                let place = place.clone();
+                let build = move || view().child(place(Child::row(), at)).into_element().0;
+                match self.build_cell(host, inst, build) {
                     Ok(el) => el,
                     Err(message) => {
                         failure = Some(message);
@@ -1333,7 +1350,7 @@ impl<M: TextEngine> Core<M> {
                             .into_element()
                             .0
                         };
-                        match caught(build) {
+                        match self.build_cell(host, inst, build) {
                             Ok(el) => el,
                             Err(message) => {
                                 failure = Some(message);
@@ -1349,6 +1366,7 @@ impl<M: TextEngine> Core<M> {
         // A component that runs once binds its view under its owner.
         let owner = match &inst.inner {
             Inner::Component(inner) if inst.binding => inner.runs_once(),
+            _ if inst.binding => inst.cell_owner,
             _ => None,
         };
         match owner {
@@ -1356,6 +1374,61 @@ impl<M: TextEngine> Core<M> {
             None => self.expand_root(host, inst, el),
         }
         failure
+    }
+
+    /// Builds a list cell's row with `build`: in a view's list, under an owner
+    /// of the cell's own (the previous row's goes), made under the list
+    /// component's so the row sees its context.
+    fn build_cell(
+        &mut self,
+        cell: NodeId,
+        inst: &mut Instance,
+        build: impl FnOnce() -> ElNode,
+    ) -> Result<ElNode, String> {
+        if !inst.binding {
+            // What it makes (its children's props) lives until the renders
+            // of this commit are done.
+            let (owner, el) = crate::ui::create_root(|| caught(build));
+            self.components.transient.push(owner);
+            return el;
+        }
+        if let Some(owner) = inst.cell_owner.take() {
+            owner.dispose();
+        }
+        let parent = self.cell_parent_owner(cell);
+        let (owner, el) = parent.run(|| crate::ui::create_root(|| caught(build)));
+        inst.cell_owner = Some(owner);
+        el
+    }
+
+    /// The owner of the component whose list cell `cell` is in.
+    fn cell_parent_owner(&self, cell: NodeId) -> crate::ui::Owner {
+        let component = self
+            .list_of(cell)
+            .and_then(|list| {
+                self.components
+                    .virtual_lists
+                    .get(&list)
+                    .map(|s| s.owner)
+                    .or_else(|| self.components.slot_hosts.get(&list).copied())
+            })
+            .and_then(|host| self.components.instances.get(&host))
+            .and_then(|inst| match &inst.inner {
+                Inner::Component(inner) => inner.runs_once(),
+                _ => None,
+            });
+        component.unwrap_or_else(crate::ui::Owner::detached)
+    }
+
+    /// Whether the cells of list `list` show rows of a view (they bind).
+    fn list_binds(&self, list: NodeId) -> bool {
+        self.components
+            .virtual_lists
+            .get(&list)
+            .map(|s| s.owner)
+            .or_else(|| self.components.slot_hosts.get(&list).copied())
+            .and_then(|host| self.components.instances.get(&host))
+            .is_some_and(|inst| inst.binding)
     }
 
     /// Applies a render's root `el` to `host` itself and expands its
@@ -1430,6 +1503,18 @@ impl<M: TextEngine> Core<M> {
             part: Part::Node,
             children,
         });
+        self.children_placed(host, inst, old_place);
+    }
+
+    /// Where the JS children of `host` go changed from `old_place`: they
+    /// leave the tree when nothing places them, and lazy ones are asked for
+    /// or dropped.
+    pub(super) fn children_placed(
+        &mut self,
+        host: NodeId,
+        inst: &mut Instance,
+        old_place: Placement,
+    ) {
         // No `Children` any more: the JS children leave the tree.
         if inst.children_at == Placement::None && old_place != Placement::None {
             for &child in &inst.js_children {
@@ -1588,180 +1673,9 @@ impl<M: TextEngine> Core<M> {
         if new.is_empty() && old.is_empty() {
             return Vec::new();
         }
-        // `children_each`: one wrapper per JS child, keyed by it.
-        let new = if new.iter().any(|e| matches!(e.kind, ElKind::EachChild(_))) {
-            let mut each = Vec::with_capacity(new.len() + inst.js_children.len());
-            for el in new {
-                let ElKind::EachChild(place) = &el.kind else {
-                    each.push(el);
-                    continue;
-                };
-                if inst.children_at != Placement::None {
-                    log::error!(target: "js", "a render places its children once");
-                    continue;
-                }
-                inst.children_at = Placement::Each;
-                let count = inst.js_children.len();
-                for (index, &child) in inst.js_children.iter().enumerate() {
-                    let mut wrapper = place(Child::js(child), Position { index, count }).0;
-                    wrapper.key = Some(format!("\u{0}{child}").into());
-                    each.push(wrapper);
-                }
-            }
-            each
-        } else {
-            new
-        };
-        // A component that renders again makes its regions' elements once.
-        let new = if !inst.binding && new.iter().any(|e| matches!(e.kind, ElKind::Region(_))) {
-            let mut flat = Vec::with_capacity(new.len());
-            for el in new {
-                match &el.kind {
-                    ElKind::Region(region) => flat.extend(self.region_once(region)),
-                    _ => flat.push(el),
-                }
-            }
-            flat
-        } else {
-            new
-        };
-        let mut old: Vec<Option<Expanded>> = old.into_iter().map(Some).collect();
-        let mut out = Vec::with_capacity(new.len());
-        let mut placeholder = None;
-        // Unkeyed elements take the next unused old element of their kind,
-        // in order: an element that comes or goes (`.children(option)`)
-        // does not shift its siblings onto new nodes.
-        let mut cursor = 0;
-        for mut el in new {
-            match std::mem::replace(&mut el.kind, ElKind::Plain) {
-                ElKind::Slot(name) => {
-                    // The slot's own node, while the app passes one.
-                    let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == name) else {
-                        continue;
-                    };
-                    let at = old.iter().position(|o| {
-                        o.as_ref()
-                            .is_some_and(|o| o.part == Part::Slot && o.id == node)
-                    });
-                    let prev = at.and_then(|j| old[j].take());
-                    out.push(self.reconcile_slot(prev, node, el, inst));
-                }
-                ElKind::Children => {
-                    if placeholder.is_some() || inst.children_at != Placement::None {
-                        log::error!(target: "js", "a render places its children once");
-                        continue;
-                    }
-                    if let Some(j) = old
-                        .iter()
-                        .position(|o| o.as_ref().is_some_and(|o| o.part == Part::Children))
-                    {
-                        old[j] = None;
-                    }
-                    placeholder = Some(out.len());
-                    out.push(Expanded::js(0, Part::Children));
-                }
-                ElKind::JsChild(id) => {
-                    // Taken over, not released (that would detach it).
-                    if let Some(j) = old.iter().position(|o| {
-                        o.as_ref()
-                            .is_some_and(|o| o.part == Part::JsChild && o.id == id)
-                    }) {
-                        old[j] = None;
-                    }
-                    if inst.js_children.contains(&id) {
-                        out.push(Expanded::js(id, Part::JsChild));
-                    }
-                }
-                // Expanded above.
-                ElKind::EachChild(_) => {}
-                // A view's region: bound, its nodes come with its patches.
-                ElKind::Region(region) => {
-                    let id = self.bind_region(host, parent, region);
-                    out.push(super::views::region_placeholder(id));
-                }
-                ElKind::Keep => log::error!("a kept element outside a region"),
-                ElKind::List(list) => {
-                    // The glue's list: placed and laid out like a slot,
-                    // its rows wrapped by this render's row function.
-                    let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == list.name) else {
-                        continue;
-                    };
-                    let at = old.iter().position(|o| {
-                        o.as_ref()
-                            .is_some_and(|o| o.part == Part::Slot && o.id == node)
-                    });
-                    let prev = at.and_then(|j| old[j].take());
-                    let old_config = prev.as_ref().map(|p| p.list).unwrap_or_default();
-                    let mut props = std::mem::take(&mut self.components.props);
-                    list.config.changes(&old_config, &mut props);
-                    for prop in props.drain(..) {
-                        let _ = self.apply_op(Op::SetProp { id: node, prop });
-                    }
-                    self.components.props = props;
-                    let mut e = self.reconcile_slot(prev, node, el, inst);
-                    e.list = list.config;
-                    let rows = self.rows_of_list(node);
-                    self.components.lists.insert(node, (list.row.clone(), rows));
-                    // Rows of the component that rendered this one: its
-                    // cells to come are wrapped too.
-                    if let Some(state) = self.components.virtual_lists.get_mut(&node) {
-                        state.place = Some(list.row.clone());
-                    }
-                    let cells: Vec<NodeId> = match self.key(node) {
-                        Ok(k) => self.nodes[k as usize]
-                            .children
-                            .iter()
-                            .map(|&c| self.nodes[c as usize].id)
-                            .collect(),
-                        Err(_) => Vec::new(),
-                    };
-                    for cell in cells {
-                        self.wrap_row(cell, list.row.clone());
-                    }
-                    out.push(e);
-                }
-                kind => {
-                    el.kind = kind;
-                    let part = match &el.kind {
-                        ElKind::Component(c) => Part::Component(c.name),
-                        ElKind::VirtualList(_) => Part::VirtualList,
-                        ElKind::Raw => Part::Raw,
-                        _ => Part::Node,
-                    };
-                    let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
-                    let at = match &el.key {
-                        Some(k) => old.iter().position(|o| {
-                            o.as_ref()
-                                .is_some_and(|o| o.key.as_ref() == Some(k) && matches(o))
-                        }),
-                        None => {
-                            let at = old[cursor.min(old.len())..]
-                                .iter()
-                                .position(|o| {
-                                    o.as_ref().is_some_and(|o| o.key.is_none() && matches(o))
-                                })
-                                .map(|j| j + cursor);
-                            if let Some(j) = at {
-                                cursor = j + 1;
-                            }
-                            at
-                        }
-                    };
-                    let prev = at.and_then(|j| old[j].take());
-                    out.push(self.reconcile_node(prev, el, part, host, inst));
-                }
-            }
-        }
-        // Content of a nested component (`.child`, `.fill`): it leaves and
-        // joins the nested host as JS children and slots do, so the nested
-        // render places it.
+        let new = new.into_iter().map(|el| (None, el)).collect();
+        let (out, placeholder) = self.match_children(parent, old, new, host, inst);
         let nested = parent != host && self.is_host(parent);
-        for o in old.into_iter().flatten() {
-            if nested {
-                self.leave_nested(parent, o.id);
-            }
-            self.release_expanded(o);
-        }
         if nested {
             self.join_nested(parent, &out);
             return out;
@@ -1845,6 +1759,268 @@ impl<M: TextEngine> Core<M> {
             }
         }
         out
+    }
+
+    /// Matches `new` (each made under its owner, when it has one) with the
+    /// `old` elements of `parent` and applies them; releases the old ones
+    /// left. The elements as applied, and where the JS children go among
+    /// them.
+    pub(super) fn match_children(
+        &mut self,
+        parent: NodeId,
+        old: Vec<Expanded>,
+        new: Vec<(Option<crate::ui::Owner>, ElNode)>,
+        host: NodeId,
+        inst: &mut Instance,
+    ) -> (Vec<Expanded>, Option<usize>) {
+        // `children_each`: one wrapper per JS child, keyed by it; in a view,
+        // a region following them.
+        let new = if new
+            .iter()
+            .any(|(_, e)| matches!(e.kind, ElKind::EachChild(_)))
+        {
+            let mut each = Vec::with_capacity(new.len() + inst.js_children.len());
+            for (owner, el) in new {
+                let ElKind::EachChild(place) = &el.kind else {
+                    each.push((owner, el));
+                    continue;
+                };
+                if inst.children_at != Placement::None {
+                    log::error!(target: "js", "a render places its children once");
+                    continue;
+                }
+                inst.children_at = Placement::Each;
+                if inst.binding {
+                    let children = *inst.js_kids.get_or_insert_with(|| {
+                        crate::ui::signal_with(
+                            inst.js_children.clone(),
+                            crate::ui::SignalEquals::Never,
+                        )
+                    });
+                    let place = place.clone();
+                    let mut region = ElNode::new(Tag::View);
+                    region.kind =
+                        ElKind::Region(crate::ui::flow::Region::Dynamic(Rc::new(move || {
+                            let children = children.get();
+                            let count = children.len();
+                            children
+                                .iter()
+                                .enumerate()
+                                .map(|(index, &child)| {
+                                    let mut wrapper =
+                                        place(Child::js(child), Position { index, count });
+                                    wrapper.0.key = Some(format!("\u{0}{child}").into());
+                                    wrapper
+                                })
+                                .collect()
+                        })));
+                    each.push((owner, region));
+                    continue;
+                }
+                let count = inst.js_children.len();
+                for (index, &child) in inst.js_children.iter().enumerate() {
+                    let mut wrapper = place(Child::js(child), Position { index, count }).0;
+                    wrapper.key = Some(format!("\u{0}{child}").into());
+                    each.push((owner, wrapper));
+                }
+            }
+            each
+        } else {
+            new
+        };
+        // A component that renders again makes its regions' elements once.
+        let new = if !inst.binding && new.iter().any(|(_, e)| matches!(e.kind, ElKind::Region(_))) {
+            let mut flat = Vec::with_capacity(new.len());
+            for (owner, el) in new {
+                match &el.kind {
+                    ElKind::Region(region) => {
+                        flat.extend(self.region_once(region).into_iter().map(|e| (owner, e)));
+                    }
+                    _ => flat.push((owner, el)),
+                }
+            }
+            flat
+        } else {
+            new
+        };
+        let mut old: Vec<Option<Expanded>> = old.into_iter().map(Some).collect();
+        let mut out = Vec::with_capacity(new.len());
+        let mut placeholder = None;
+        // Unkeyed elements take the next unused old element of their kind,
+        // in order: an element that comes or goes (`.children(option)`)
+        // does not shift its siblings onto new nodes.
+        let mut cursor = 0;
+        for (owner, el) in new {
+            let child = |core: &mut Self| {
+                core.match_child(
+                    parent,
+                    el,
+                    host,
+                    inst,
+                    &mut old,
+                    &mut out,
+                    &mut placeholder,
+                    &mut cursor,
+                );
+            };
+            match owner {
+                Some(owner) => owner.run(|| child(self)),
+                None => child(self),
+            }
+        }
+        // Content of a nested component (`.child`, `.fill`): it leaves and
+        // joins the nested host as JS children and slots do, so the nested
+        // render places it.
+        let nested = parent != host && self.is_host(parent);
+        for o in old.into_iter().flatten() {
+            if nested {
+                self.leave_nested(parent, o.id);
+            }
+            self.release_expanded(o);
+        }
+        (out, placeholder)
+    }
+
+    /// Matches element `el` with one of the `old` elements of `parent` and
+    /// applies it (see [`Self::match_children`]).
+    #[allow(clippy::too_many_arguments, reason = "the matching's state")]
+    fn match_child(
+        &mut self,
+        parent: NodeId,
+        mut el: ElNode,
+        host: NodeId,
+        inst: &mut Instance,
+        old: &mut [Option<Expanded>],
+        out: &mut Vec<Expanded>,
+        placeholder: &mut Option<usize>,
+        cursor: &mut usize,
+    ) {
+        match std::mem::replace(&mut el.kind, ElKind::Plain) {
+            ElKind::Slot(name) => {
+                // The slot's own node, while the app passes one.
+                let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == name) else {
+                    return;
+                };
+                let at = old.iter().position(|o| {
+                    o.as_ref()
+                        .is_some_and(|o| o.part == Part::Slot && o.id == node)
+                });
+                let prev = at.and_then(|j| old[j].take());
+                out.push(self.reconcile_slot(prev, node, el, inst));
+            }
+            ElKind::Children => {
+                if placeholder.is_some() || inst.children_at != Placement::None {
+                    log::error!(target: "js", "a render places its children once");
+                    return;
+                }
+                if let Some(j) = old
+                    .iter()
+                    .position(|o| o.as_ref().is_some_and(|o| o.part == Part::Children))
+                {
+                    old[j] = None;
+                }
+                *placeholder = Some(out.len());
+                out.push(Expanded::js(0, Part::Children));
+            }
+            ElKind::JsChild(id) => {
+                // Taken over, not released (that would detach it).
+                if let Some(j) = old.iter().position(|o| {
+                    o.as_ref()
+                        .is_some_and(|o| o.part == Part::JsChild && o.id == id)
+                }) {
+                    old[j] = None;
+                }
+                if inst.js_children.contains(&id) {
+                    out.push(Expanded::js(id, Part::JsChild));
+                }
+            }
+            // Expanded above.
+            ElKind::EachChild(_) => {}
+            // A view's region: bound, its nodes come with its patches.
+            ElKind::Region(region) => {
+                let id = self.bind_region(host, parent, region);
+                out.push(super::views::region_placeholder(id));
+            }
+            // An `Each` row that stays: as it was.
+            ElKind::Keep => {
+                let kept = old.iter().position(|o| {
+                    o.as_ref()
+                        .is_some_and(|o| o.key.is_some() && o.key == el.key)
+                });
+                match kept.and_then(|at| old[at].take()) {
+                    Some(e) => out.push(e),
+                    None => log::error!("a kept row is gone"),
+                }
+            }
+            ElKind::List(list) => {
+                // The glue's list: placed and laid out like a slot,
+                // its rows wrapped by this render's row function.
+                let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == list.name) else {
+                    return;
+                };
+                let at = old.iter().position(|o| {
+                    o.as_ref()
+                        .is_some_and(|o| o.part == Part::Slot && o.id == node)
+                });
+                let prev = at.and_then(|j| old[j].take());
+                let old_config = prev.as_ref().map(|p| p.list).unwrap_or_default();
+                let mut props = std::mem::take(&mut self.components.props);
+                list.config.changes(&old_config, &mut props);
+                for prop in props.drain(..) {
+                    let _ = self.apply_op(Op::SetProp { id: node, prop });
+                }
+                self.components.props = props;
+                let mut e = self.reconcile_slot(prev, node, el, inst);
+                e.list = list.config;
+                let rows = self.rows_of_list(node);
+                self.components.lists.insert(node, (list.row.clone(), rows));
+                // Rows of the component that rendered this one: its
+                // cells to come are wrapped too.
+                if let Some(state) = self.components.virtual_lists.get_mut(&node) {
+                    state.place = Some(list.row.clone());
+                }
+                let cells: Vec<NodeId> = match self.key(node) {
+                    Ok(k) => self.nodes[k as usize]
+                        .children
+                        .iter()
+                        .map(|&c| self.nodes[c as usize].id)
+                        .collect(),
+                    Err(_) => Vec::new(),
+                };
+                for cell in cells {
+                    self.wrap_row(cell, list.row.clone());
+                }
+                out.push(e);
+            }
+            kind => {
+                el.kind = kind;
+                let part = match &el.kind {
+                    ElKind::Component(c) => Part::Component(c.name),
+                    ElKind::VirtualList(_) => Part::VirtualList,
+                    ElKind::Raw => Part::Raw,
+                    _ => Part::Node,
+                };
+                let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
+                let at = match &el.key {
+                    Some(k) => old.iter().position(|o| {
+                        o.as_ref()
+                            .is_some_and(|o| o.key.as_ref() == Some(k) && matches(o))
+                    }),
+                    None => {
+                        let at = old[(*cursor).min(old.len())..]
+                            .iter()
+                            .position(|o| o.as_ref().is_some_and(|o| o.key.is_none() && matches(o)))
+                            .map(|j| j + *cursor);
+                        if let Some(j) = at {
+                            *cursor = j + 1;
+                        }
+                        at
+                    }
+                };
+                let prev = at.and_then(|j| old[j].take());
+                out.push(self.reconcile_node(prev, el, part, host, inst));
+            }
+        }
     }
 
     /// Node `child` of this render is no longer content of the nested
@@ -2340,26 +2516,26 @@ impl<M: TextEngine> Core<M> {
                         child: content,
                         before: None,
                     });
-                    self.components.instances.insert(
-                        content,
-                        Box::new(Instance::new(row, None, Vec::new(), None)),
-                    );
+                    let mut instance = Instance::new(row, None, Vec::new(), None);
+                    instance.binding = self.list_binds(list);
+                    self.components.instances.insert(content, Box::new(instance));
                     self.components.mark(content);
                     let place = place.unwrap_or_else(|| Rc::new(|row, _| row.into_element()));
-                    self.components.instances.insert(
-                        cell,
-                        Box::new(Instance::new(
-                            Inner::Row { place, index },
-                            None,
-                            vec![content],
-                            None,
-                        )),
-                    );
+                    let mut wrapper =
+                        Instance::new(Inner::Row { place, index }, None, vec![content], None);
+                    // The wrapper is the placing component's.
+                    wrapper.binding = self
+                        .components
+                        .slot_hosts
+                        .get(&list)
+                        .and_then(|host| self.components.instances.get(host))
+                        .is_some_and(|inst| inst.binding);
+                    self.components.instances.insert(cell, Box::new(wrapper));
                     content
                 } else {
-                    self.components
-                        .instances
-                        .insert(cell, Box::new(Instance::new(row, None, Vec::new(), None)));
+                    let mut instance = Instance::new(row, None, Vec::new(), None);
+                    instance.binding = self.list_binds(list);
+                    self.components.instances.insert(cell, Box::new(instance));
                     0
                 };
                 let state = self.components.virtual_lists.get_mut(&list).expect("list");
@@ -2490,6 +2666,9 @@ impl<M: TextEngine> Core<M> {
         }
         self.release_regions(host);
         self.components.runtime.forget_host(host);
+        if let Some(owner) = inst.cell_owner.take() {
+            owner.dispose();
+        }
         // Its tasks and timers end with it.
         self.components.executor.cancel_host(host);
         let listeners = self.components.executor.back.borrow_mut().remove_host(host);

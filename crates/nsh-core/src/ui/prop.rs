@@ -1,229 +1,253 @@
-//! A component's prop as the component reads it ([`Prop`]): what the app or
-//! a Rust parent gave, a value or a binding.
+//! A component's prop as the component reads it ([`Prop`]): a `Copy` handle
+//! of a value or a binding in the reactive graph.
 
-use std::{fmt, rc::Rc};
+use std::{any::Any, fmt, marker::PhantomData, rc::Rc};
 
-use super::{IntoReactive, Memo, Reactive, ReadSignal, Signal, SignalEquals, signal_with};
+use super::{
+    IntoReactive, Memo, ReadSignal, Reactive, Signal, computed,
+    reactive::{Node, with_data},
+    signal,
+};
 
 /// A prop of a component that runs once (a field of its `#[derive(Props)]`
 /// struct): read it in a binding, `props.max.get()`, and the binding runs
-/// again when it changes.
+/// again when it changes. `Copy`, like a signal: closures capture it as it
+/// is.
 ///
-/// A Rust parent passes a value, a signal, a memo or a closure (`busy.into()`,
-/// `(move || count.get() > 9).into()`); JS passes values, one prop at a time.
-/// In the component's instance each prop is held in a signal of its own, so
-/// a new value from JS or from a parent that renders again reaches only what
-/// read that prop.
-pub struct Prop<T: 'static>(Inner<T>);
-
-enum Inner<T: 'static> {
-    /// What a parent gave.
-    Given(Reactive<T>),
-    /// The instance's: what it was given, held to be replaced.
-    Held(Signal<Held<T>>),
+/// A Rust parent passes a value, a signal, a memo or a closure (`.into()`,
+/// [`Prop::bind`]); JS passes values, one prop at a time. In the
+/// component's instance each prop is a memo of its own, so a new value from
+/// JS or from a parent that renders again reaches only what read it.
+pub struct Prop<T: 'static> {
+    node: Node,
+    /// Made from a value (its own signal): a parent that renders again
+    /// passes its value on, not the binding.
+    given_value: bool,
+    _t: PhantomData<fn() -> T>,
 }
 
-/// What a held prop holds.
-struct Held<T>(Reactive<T>);
-
-impl<T: 'static> Clone for Prop<T>
-where
-    T: Clone,
-{
+impl<T> Clone for Prop<T> {
     fn clone(&self) -> Self {
-        Self(match &self.0 {
-            Inner::Given(r) => Inner::Given(r.clone()),
-            Inner::Held(s) => Inner::Held(*s),
-        })
+        *self
     }
 }
 
-impl<T: fmt::Debug + 'static> fmt::Debug for Prop<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            Inner::Given(r) => f.debug_tuple("Prop").field(r).finish(),
-            Inner::Held(s) => f.debug_tuple("Prop").field(s).finish(),
-        }
-    }
-}
+impl<T> Copy for Prop<T> {}
 
-/// The same value given (a static one equal, a binding the same one), or the
-/// same held signal.
-impl<T: PartialEq + 'static> PartialEq for Prop<T> {
+/// The same node.
+impl<T> PartialEq for Prop<T> {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.0, &other.0) {
-            (Inner::Given(a), Inner::Given(b)) => same(a, b),
-            (Inner::Held(a), Inner::Held(b)) => a == b,
-            _ => false,
-        }
+        self.node == other.node
     }
 }
 
-fn same<T: PartialEq>(a: &Reactive<T>, b: &Reactive<T>) -> bool {
-    match (a, b) {
-        (Reactive::Static(a), Reactive::Static(b)) => a == b,
-        (Reactive::Bound(a), Reactive::Bound(b)) => Rc::ptr_eq(a, b),
-        _ => false,
+impl<T> fmt::Debug for Prop<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Prop({:?})", self.node)
     }
 }
 
-impl<T: Default + 'static> Default for Prop<T> {
+impl<T: Clone + PartialEq + Default + 'static> Default for Prop<T> {
     fn default() -> Self {
-        Self(Inner::Given(Reactive::Static(T::default())))
+        Self::new(T::default())
     }
 }
 
-impl<T: 'static> From<T> for Prop<T> {
+impl<T: Clone + PartialEq + 'static> From<T> for Prop<T> {
     fn from(value: T) -> Self {
-        Self(Inner::Given(Reactive::Static(value)))
+        Self::new(value)
     }
 }
-
-impl<T: 'static> From<Reactive<T>> for Prop<T> {
-    fn from(value: Reactive<T>) -> Self {
-        Self(Inner::Given(value))
-    }
-}
-
-macro_rules! from_handles {
-    ($($handle:ident),*) => {$(
-        impl<T: Clone + 'static> From<$handle<T>> for Prop<T> {
-            fn from(value: $handle<T>) -> Self {
-                Self(Inner::Given(value.into_reactive()))
-            }
-        }
-    )*};
-}
-
-from_handles!(Signal, Memo, ReadSignal);
 
 impl From<&'static str> for Prop<super::SharedString> {
     fn from(value: &'static str) -> Self {
-        Self(Inner::Given(Reactive::Static(value.into())))
+        Self::new(value.into())
     }
 }
 
 impl From<String> for Prop<super::SharedString> {
     fn from(value: String) -> Self {
-        Self(Inner::Given(Reactive::Static(value.into())))
+        Self::new(value.into())
     }
 }
 
-/// A parent's prop passed on to a child.
-impl<T: Clone + 'static> From<&Prop<T>> for Prop<T> {
-    fn from(value: &Prop<T>) -> Self {
-        Self(Inner::Given(value.reactive()))
+macro_rules! from_handles {
+    ($($handle:ident),*) => {$(
+        impl<T: Clone + PartialEq + 'static> From<$handle<T>> for Prop<T> {
+            fn from(value: $handle<T>) -> Self {
+                Self::of(value.node(), false)
+            }
+        }
+    )*};
+}
+
+from_handles!(Signal, ReadSignal, Memo);
+
+impl<T: Clone + PartialEq + 'static> From<Reactive<T>> for Prop<T> {
+    fn from(value: Reactive<T>) -> Self {
+        match value {
+            Reactive::Static(v) => Self::new(v),
+            Reactive::Bound(f) => Self::bind(move || f()),
+        }
     }
 }
 
-impl<T: Clone + 'static> Prop<T> {
-    /// A prop given `value`.
+impl<T: Clone + PartialEq + 'static> Prop<T> {
+    /// A prop given `value` (a signal of the current owner).
     pub fn new(value: T) -> Self {
-        Self(Inner::Given(Reactive::Static(value)))
+        Self::of(signal(value).node(), true)
     }
 
-    /// A prop bound to `f`, run again when what it reads changes (a value
-    /// read in several places is better a [`super::computed`] memo).
+    /// A prop bound to `f` (a memo of the current owner): run again when
+    /// what it reads changes.
     pub fn bind(f: impl Fn() -> T + 'static) -> Self {
-        Self(Inner::Given(Reactive::Bound(Rc::new(f))))
+        Self::of(computed(f).node(), false)
+    }
+
+    fn of(node: Node, given_value: bool) -> Self {
+        Self {
+            node,
+            given_value,
+            _t: PhantomData,
+        }
     }
 
     /// The value, subscribing the running computation.
+    #[track_caller]
     pub fn get(&self) -> T {
-        match &self.0 {
-            Inner::Given(r) => r.get(),
-            Inner::Held(s) => {
-                let r = s.with(|h| h.0.clone());
-                r.get()
-            }
-        }
+        self.with(T::clone)
     }
 
     /// `f` of the value, subscribing the running computation.
+    #[track_caller]
     pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        match &self.0 {
-            Inner::Given(Reactive::Static(v)) => f(v),
-            _ => f(&self.get()),
-        }
+        self.node.with::<T, R>("a prop", f)
     }
 
     /// The value, without subscribing.
+    #[track_caller]
     pub fn get_untracked(&self) -> T {
         super::untracked(|| self.get())
     }
 
-    /// As a [`Reactive`] (to pass on to a child, or to bind an element's
-    /// setter to it).
-    pub fn reactive(&self) -> Reactive<T> {
-        match &self.0 {
-            Inner::Given(r) => r.clone(),
-            Inner::Held(s) => {
-                let s = *s;
-                Reactive::Bound(Rc::new(move || {
-                    let r = s.with(|h| h.0.clone());
-                    r.get()
-                }))
-            }
-        }
-    }
-
-    /// The prop held in a signal of the current owner (an instance's).
+    /// The prop of an instance: a memo of its own, of a value that JS or a
+    /// parent rendering again replaces, or of a binding a parent passed.
+    /// Made under the current owner (the instance's).
     #[doc(hidden)]
     pub fn __hold(&self) -> Self {
-        Self(Inner::Held(signal_with(
-            Held(self.reactive_given()),
-            SignalEquals::Never,
-        )))
+        let value = signal(self.get_untracked());
+        let binding: Signal<Option<Prop<T>>> = signal((!self.given_value).then_some(*self));
+        let held = computed(move || match binding.get() {
+            Some(prop) => prop.get(),
+            None => value.get(),
+        });
+        let node = held.node();
+        with_data(|d| {
+            d.held.insert(
+                node,
+                Box::new(Held { value, binding }) as Box<dyn Any>,
+            );
+        });
+        // The registration goes with the instance.
+        super::cleanup(move || {
+            with_data(|d| d.held.remove(&node));
+        });
+        Self::of(node, false)
     }
 
-    /// What it was given (a held one: what it holds).
-    fn reactive_given(&self) -> Reactive<T> {
-        match &self.0 {
-            Inner::Given(r) => r.clone(),
-            Inner::Held(s) => s.with_untracked(|h| h.0.clone()),
+    /// Takes `value` (a static one, or a binding): an instance's held prop
+    /// replaces what it reads, updating its readers; a prop not held yet (an
+    /// instance's before its view is made) becomes it. Whether it changed.
+    #[doc(hidden)]
+    pub fn __set(&mut self, value: Reactive<T>) -> bool {
+        match Held::<T>::of(self.node) {
+            Some(held) => match value {
+                Reactive::Static(v) => {
+                    let changed = held.binding.with_untracked(Option::is_some)
+                        || held.value.with_untracked(|old| *old != v);
+                    super::batch(|| {
+                        held.binding.set(None);
+                        held.value.set(v);
+                    });
+                    changed
+                }
+                Reactive::Bound(f) => {
+                    held.binding.set(Some(Self::bind(move || f())));
+                    true
+                }
+            },
+            None => {
+                let new = Self::from(value);
+                let changed = !new.given_value || self.get_untracked() != new.get_untracked();
+                *self = new;
+                changed
+            }
         }
     }
 
-    /// Takes `value` (unless it is the same): a held prop replaces what it
-    /// holds, updating its readers; one not held yet (an instance's before
-    /// its view is made) is given it. Whether it changed.
+    /// An instance's held prop takes what `new` gives: its value when it
+    /// was given a value (a parent that renders again makes new props each
+    /// time), else its binding.
     #[doc(hidden)]
-    pub fn __set(&mut self, value: Reactive<T>) -> bool
-    where
-        T: PartialEq,
-    {
-        match &mut self.0 {
-            Inner::Held(s) => {
-                if s.with_untracked(|h| same(&h.0, &value)) {
-                    return false;
-                }
-                s.set(Held(value));
+    pub fn __update_from(&mut self, new: &Self) -> bool {
+        if new.given_value {
+            return self.__set(Reactive::Static(new.get_untracked()));
+        }
+        let same = Held::<T>::of(self.node)
+            .is_some_and(|h| h.binding.with_untracked(|b| *b == Some(*new)));
+        if same {
+            return false;
+        }
+        let new = *new;
+        match Held::<T>::of(self.node) {
+            Some(held) => {
+                held.binding.set(Some(new));
                 true
             }
-            Inner::Given(given) => {
-                if same(given, &value) {
-                    return false;
-                }
-                *given = value;
+            None => {
+                *self = new;
                 true
             }
         }
     }
+}
 
-    /// Replaces what a held prop holds with what `new` was given.
-    #[doc(hidden)]
-    pub fn __update_from(&mut self, new: &Self) -> bool
-    where
-        T: PartialEq,
-    {
-        self.__set(new.reactive_given())
+impl Prop<Option<super::Slot>> {
+    /// The slot where the app fills it, styled by `style`: it comes and
+    /// goes as the app fills and empties it.
+    pub fn place(
+        self,
+        style: impl Fn(super::SlotElement) -> super::SlotElement + 'static,
+    ) -> super::AnyElement {
+        super::dynamic(move || self.get().map(|slot| style(slot.element())))
+    }
+}
+
+/// What a held prop's memo reads: a value and, when a parent passed one, a
+/// binding.
+struct Held<T: 'static> {
+    value: Signal<T>,
+    binding: Signal<Option<Prop<T>>>,
+}
+
+impl<T: 'static> Held<T> {
+    fn of(node: Node) -> Option<Self> {
+        with_data(|d| {
+            d.held
+                .get(&node)
+                .and_then(|h| h.downcast_ref::<Held<T>>())
+                .map(|h| Held {
+                    value: h.value,
+                    binding: h.binding,
+                })
+        })
     }
 }
 
 /// A prop passed on, to an element's setter or a child's prop: bound to it
-/// (`text(&props.title)`).
-impl<T: Clone + 'static> IntoReactive<T> for &Prop<T> {
+/// (`text(props.title)`).
+impl<T: Clone + PartialEq + 'static> IntoReactive<T> for Prop<T> {
     fn into_reactive(self) -> Reactive<T> {
-        self.reactive()
+        Reactive::Bound(Rc::new(move || self.get()))
     }
 }

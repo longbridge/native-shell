@@ -16,13 +16,13 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::{
     Core,
-    components::{Classes, Expanded, Instance, Part},
+    components::{Classes, Expanded, Instance, Part, Placement},
 };
 use crate::{
     NodeId, Op, Tag, TextEngine,
     ui::{
-        AnyElement, Attrs, ElNode, Owner, SharedString, StyleRefinement,
-        element::{BoundAttrs, ElKind},
+        Attrs, ElNode, SharedString, StyleRefinement,
+        element::BoundAttrs,
         flow::{Region, RegionElement},
         reactive::render_effect,
     },
@@ -321,10 +321,10 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// Region `region`'s new elements: kept ones stay as they are, the
-    /// others are matched with the old ones (by key, else by kind in order)
-    /// and applied under their owners; the rest is released, and the nodes
-    /// are put in place among the parent's.
+    /// Region `region`'s new elements, matched with the old ones as a
+    /// render's children are (kept rows stay as they are; each element is
+    /// applied under its owner), then put in place among the parent's other
+    /// children, before the region's anchor.
     fn reconcile_region(&mut self, region: u32, elements: Vec<RegionElement>) {
         let Some(state) = self.components.regions.remove(&region) else {
             return;
@@ -333,58 +333,37 @@ impl<M: TextEngine> Core<M> {
         let Some(mut inst) = self.components.instances.remove(&host) else {
             return;
         };
-        let mut old: Vec<Option<Expanded>> = state.children.into_iter().map(Some).collect();
-        let mut out = Vec::with_capacity(elements.len());
-        let mut cursor = 0;
-        for RegionElement { owner, element } in elements {
-            let AnyElement(el) = element;
-            if matches!(el.kind, ElKind::Keep) {
-                let kept = old.iter().position(|o| {
-                    o.as_ref()
-                        .is_some_and(|o| o.key.is_some() && o.key == el.key)
-                });
-                match kept.and_then(|at| old[at].take()) {
-                    Some(e) => out.push(e),
-                    None => log::error!("a kept row is gone"),
-                }
-                continue;
-            }
-            let part = match &el.kind {
-                ElKind::Component(c) => Part::Component(c.name),
-                ElKind::VirtualList(_) => Part::VirtualList,
-                ElKind::Raw => Part::Raw,
-                _ => Part::Node,
-            };
-            let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
-            let at = match &el.key {
-                Some(k) => old.iter().position(|o| {
-                    o.as_ref()
-                        .is_some_and(|o| o.key.as_ref() == Some(k) && matches(o))
-                }),
-                None => {
-                    let at = old[cursor.min(old.len())..]
-                        .iter()
-                        .position(|o| o.as_ref().is_some_and(|o| o.key.is_none() && matches(o)))
-                        .map(|j| j + cursor);
-                    if let Some(j) = at {
-                        cursor = j + 1;
-                    }
-                    at
-                }
-            };
-            let prev = at.and_then(|j| old[j].take());
-            let owner = owner.unwrap_or_else(Owner::detached);
-            let e = owner.run(|| self.reconcile_node(prev, el, part, host, &mut inst));
-            out.push(e);
-        }
-        for o in old.into_iter().flatten() {
-            self.release_expanded(o);
-        }
-        self.forget_released(host, &mut inst);
-        self.components.instances.insert(host, inst);
-        // In place: from the last, each before the next, from the anchor.
         let parent = state.parent;
-        let nodes: Vec<NodeId> = out.iter().flat_map(|e| self.placed(e)).collect();
+        // The JS children were placed by this region: placed again below.
+        let old_place = inst.children_at;
+        if state.children.iter().any(|e| e.part == Part::Children) {
+            inst.children_at = Placement::None;
+        }
+        let new = elements
+            .into_iter()
+            .map(|e| (e.owner, e.element.0))
+            .collect();
+        let (out, placeholder) = self.match_children(parent, state.children, new, host, &mut inst);
+        self.forget_released(host, &mut inst);
+        let anchor = self.anchor_node(state.anchor);
+        if let Some(at) = placeholder {
+            let after = out[at + 1..]
+                .iter()
+                .find(|e| e.id != 0)
+                .map(|e| e.id)
+                .or(anchor);
+            inst.children_at = Placement::At(parent, after);
+        }
+        // In place: from the last, each before the next, from the anchor.
+        let nodes: Vec<NodeId> = out
+            .iter()
+            .flat_map(|e| match e.part {
+                Part::Children => inst.js_children.clone(),
+                _ => self.placed(e),
+            })
+            .collect();
+        self.children_placed(host, &mut inst, old_place);
+        self.components.instances.insert(host, inst);
         self.components.regions.insert(
             region,
             RegionState {
@@ -394,7 +373,7 @@ impl<M: TextEngine> Core<M> {
                 children: out,
             },
         );
-        let mut before = self.anchor_node(state.anchor);
+        let mut before = anchor;
         for &child in nodes.iter().rev() {
             if !self.precedes(parent, child, before) {
                 let _ = self.apply_op(Op::Insert {

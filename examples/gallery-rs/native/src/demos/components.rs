@@ -102,11 +102,11 @@ impl Component for MobileComponents {
                 cx.notify();
             })
         };
-        let mobile_button = |title: &str, variant, disabled| {
+        let mobile_button = |title: &str, variant: ButtonVariant, disabled: bool| {
             Button::element(ButtonProps {
                 title: title.to_owned().into(),
-                variant,
-                disabled,
+                variant: variant.into(),
+                disabled: disabled.into(),
                 ..ButtonProps::default()
             })
         };

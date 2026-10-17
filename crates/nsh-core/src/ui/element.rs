@@ -1887,6 +1887,13 @@ impl Slot {
     pub fn name(&self) -> &'static str {
         self.name
     }
+
+    /// The slot's node, to style and place (its children are the app's).
+    pub fn element(self) -> SlotElement {
+        let mut node = ElNode::new(Tag::View);
+        node.kind = ElKind::Slot(self.name);
+        SlotElement(node)
+    }
 }
 
 /// The app's virtualized rows (an `Items` prop): in JS the component takes

@@ -55,6 +55,9 @@ impl<E: Event> Scope<E> {
 pub(crate) struct OnceInstance<C: Component> {
     /// The props: as set before the view is made, held afterwards.
     props: C::Props,
+    /// What owns the props set before the view is made (they go once the
+    /// view holds their values).
+    initial: Option<Owner>,
     /// The component's owner, once its view is made.
     owner: Option<Owner>,
     /// Where it was made (its context comes from there).
@@ -65,8 +68,10 @@ pub(crate) struct OnceInstance<C: Component> {
 
 impl<C: Component> OnceInstance<C> {
     pub(crate) fn new() -> Self {
+        let (initial, props) = super::create_root(C::Props::initial);
         Self {
-            props: C::Props::initial(),
+            props,
+            initial: Some(initial),
             owner: None,
             parent: Owner::detached(),
             host: 0,
@@ -77,7 +82,10 @@ impl<C: Component> OnceInstance<C> {
 
 impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
     fn set_prop(&mut self, name: &str, value: Option<JsonValue>) -> Result<bool, PropError> {
-        self.props.set(name, value)
+        match self.initial {
+            Some(initial) => initial.run(|| self.props.set(name, value)),
+            None => self.props.set(name, value),
+        }
     }
 
     fn set_props(&mut self, props: &dyn Any) -> bool {
@@ -115,7 +123,7 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
     fn update(&mut self, _: &mut ErasedCx) {}
 
     fn cleanup(&mut self, _: &mut ErasedCx) {
-        if let Some(owner) = self.owner.take() {
+        for owner in [self.owner.take(), self.initial.take()].into_iter().flatten() {
             owner.dispose();
         }
     }
@@ -140,6 +148,9 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
             })
         });
         self.owner = Some(owner);
+        if let Some(initial) = self.initial.take() {
+            initial.dispose();
+        }
         (node, RenderReads::default())
     }
 
