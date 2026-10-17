@@ -207,7 +207,7 @@ impl Component for Header {
             )
             .child(
                 Sheet::element(SheetProps {
-                    open: self.sheet,
+                    open: self.sheet.into(),
                     ..SheetProps::default()
                 })
                 .on_event(cx.listener(|this: &mut Self, _: &SheetEvent, cx| {

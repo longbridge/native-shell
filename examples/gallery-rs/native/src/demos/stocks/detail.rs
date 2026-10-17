@@ -276,7 +276,7 @@ impl Component for Detail {
                     ),
             );
         let sheet = Sheet::element(SheetProps {
-            open: self.ticket,
+            open: self.ticket.into(),
             ..SheetProps::default()
         })
         .on_event(cx.listener(|this: &mut Self, _: &SheetEvent, cx| {
@@ -285,7 +285,7 @@ impl Component for Detail {
         }))
         .child(
             Ticket::element(TicketProps {
-                open: self.ticket,
+                open: self.ticket.into(),
                 code: stock.code.into(),
                 tick: stock.tick,
                 last: q.last,

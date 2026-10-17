@@ -394,6 +394,13 @@ impl<M: TextEngine> Core<M> {
             .collect();
         let (out, placeholder) = self.match_children(parent, state.children, new, host, &mut inst);
         self.forget_released(host, &mut inst);
+        // The JS children's place went with what the region released.
+        if let Placement::At(at, _) = inst.children_at
+            && at != host
+            && !self.components.owners.contains_key(&at)
+        {
+            inst.children_at = Placement::None;
+        }
         let anchor = self.anchor_node(state.anchor);
         if let Some(at) = placeholder {
             let after = out[at + 1..]
@@ -422,9 +429,15 @@ impl<M: TextEngine> Core<M> {
                 children: out,
             },
         );
+        // A nested component's content joins it as JS children do.
+        let nested = parent != host && self.is_host(parent);
         let mut before = anchor;
         for &child in nodes.iter().rev() {
-            if !self.precedes(parent, child, before) {
+            if nested {
+                if !self.nested_precedes(parent, child, before) {
+                    self.join_nested_at(parent, child, before);
+                }
+            } else if !self.precedes(parent, child, before) {
                 let _ = self.apply_op(Op::Insert {
                     parent,
                     child,

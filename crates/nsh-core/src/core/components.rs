@@ -161,6 +161,9 @@ pub(super) struct Instance {
     /// ... and the index its content reads (its [`Position`]): a cell
     /// that shows another row sets it instead of being built again.
     row_index: Option<crate::ui::Signal<usize>>,
+    /// Lazy children a view passes: whether it places them, which what
+    /// passes them reads.
+    lazy_wanted: Option<crate::ui::Signal<bool>>,
 }
 
 impl Instance {
@@ -194,6 +197,7 @@ impl Instance {
             js_kids: None,
             cell_owner: None,
             row_index: None,
+            lazy_wanted: None,
         }
     }
 }
@@ -654,7 +658,7 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// Whether `id` is a component's host.
-    fn is_host(&self, id: NodeId) -> bool {
+    pub(super) fn is_host(&self, id: NodeId) -> bool {
         self.components.instances.contains_key(&id)
     }
 
@@ -1605,6 +1609,12 @@ impl<M: TextEngine> Core<M> {
         if inst.children_wanted != wanted && inst.spec.as_ref().is_some_and(|s| s.lazy_children) {
             inst.children_wanted = wanted;
             match self.components.owners.get(&host).copied() {
+                // A view's: what passes them follows.
+                Some(_) if inst.lazy_wanted.is_some() => {
+                    if let Some(signal) = inst.lazy_wanted {
+                        signal.set(wanted);
+                    }
+                }
                 Some(owner) => self.components.mark(owner),
                 None => self.events.push((
                     host,
@@ -1616,6 +1626,18 @@ impl<M: TextEngine> Core<M> {
                 )),
             }
         }
+    }
+
+    /// The signal of whether the component hosted by `nested` places its
+    /// lazy children, made under the current owner (the view passing them)
+    /// the first time.
+    fn children_wanted_signal(&mut self, nested: NodeId) -> crate::ui::Signal<bool> {
+        let Some(inst) = self.components.instances.get_mut(&nested) else {
+            return crate::ui::signal(false);
+        };
+        *inst
+            .lazy_wanted
+            .get_or_insert_with(|| crate::ui::signal(inst.children_wanted))
     }
 
     /// Whether the component hosted by `nested` takes its children now:
@@ -1752,16 +1774,6 @@ impl<M: TextEngine> Core<M> {
         }
         let new = new.into_iter().map(|el| (None, el)).collect();
         let (out, placeholder) = self.match_children(parent, old, new, host, inst);
-        let nested = parent != host && self.is_host(parent);
-        if nested {
-            self.join_nested(parent, &out);
-            return out;
-        }
-        if let Some(at) = placeholder {
-            inst.children_at = Placement::At(parent, out.get(at + 1).map(|e| e.id));
-        }
-        // Order the native children as rendered, the JS children in the
-        // placeholder's place (moves only when it changed).
         // A region's nodes go before what follows it.
         for (i, e) in out.iter().enumerate() {
             if let Part::Region(region) = e.part {
@@ -1780,6 +1792,16 @@ impl<M: TextEngine> Core<M> {
                 self.set_region_anchor(region, anchor);
             }
         }
+        let nested = parent != host && self.is_host(parent);
+        if nested {
+            self.join_nested(parent, &out);
+            return out;
+        }
+        if let Some(at) = placeholder {
+            inst.children_at = Placement::At(parent, out.get(at + 1).map(|e| e.id));
+        }
+        // Order the native children as rendered, the JS children in the
+        // placeholder's place (moves only when it changed).
         // The native children as rendered: the JS children in the
         // placeholder's place, a region's nodes in its.
         let wanted_ids: Vec<NodeId> = out
@@ -1794,7 +1816,8 @@ impl<M: TextEngine> Core<M> {
         // A list positions its cells itself: their order does not matter
         // (and the cells it binds are not the render's), new ones join it.
         if self.is_list(parent) {
-            for e in &out {
+            // (A region's nodes join it as they come.)
+            for e in out.iter().filter(|e| e.id != 0) {
                 let joined = self
                     .key(e.id)
                     .is_ok_and(|k| self.nodes[k as usize].parent != NO_KEY);
@@ -1946,7 +1969,9 @@ impl<M: TextEngine> Core<M> {
         let nested = parent != host && self.is_host(parent);
         for o in old.into_iter().flatten() {
             if nested {
-                self.leave_nested(parent, o.id);
+                for node in self.placed(&o) {
+                    self.leave_nested(parent, node);
+                }
             }
             self.release_expanded(o);
         }
@@ -2104,6 +2129,35 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// Whether `child` is content of the nested component hosted by
+    /// `nested` right before `next` (the last when `next` is `None`).
+    pub(super) fn nested_precedes(
+        &self,
+        nested: NodeId,
+        child: NodeId,
+        next: Option<NodeId>,
+    ) -> bool {
+        let Some(inst) = self.components.instances.get(&nested) else {
+            return false;
+        };
+        let kids = &inst.js_children;
+        kids.iter()
+            .position(|&c| c == child)
+            .is_some_and(|i| kids.get(i + 1).copied() == next)
+    }
+
+    /// Inserts `child` into the content of the nested component hosted by
+    /// `nested`, before `before`, as JS inserts its children.
+    pub(super) fn join_nested_at(&mut self, nested: NodeId, child: NodeId, before: Option<NodeId>) {
+        if let Ok(Some(op)) = self.intercept(Op::Insert {
+            parent: nested,
+            child,
+            before,
+        }) {
+            let _ = self.apply_op(op);
+        }
+    }
+
     /// Node `child` of this render is no longer content of the nested
     /// component hosted by `nested`.
     fn leave_nested(&mut self, nested: NodeId, child: NodeId) {
@@ -2132,7 +2186,7 @@ impl<M: TextEngine> Core<M> {
         };
         let (slots, children): (Vec<NodeId>, Vec<NodeId>) = out
             .iter()
-            .map(|e| e.id)
+            .flat_map(|e| self.placed(e))
             .partition(|id| self.components.slot_names.contains_key(id));
         for slot in slots {
             if self.components.slot_hosts.get(&slot) != Some(&nested) {
@@ -2311,13 +2365,35 @@ impl<M: TextEngine> Core<M> {
             // Lazy children are passed only while it places them, as JS
             // makes the app's (`$children`); slots and rows always are.
             let mut content = std::mem::take(&mut el.children);
-            if !self.wants_children(id) {
-                content.retain(|c| {
-                    c.attrs
-                        .props
-                        .iter()
-                        .any(|p| matches!(p, Prop::ComponentSlot(_)))
-                });
+            let is_slot = |c: &ElNode| {
+                c.attrs
+                    .props
+                    .iter()
+                    .any(|p| matches!(p, Prop::ComponentSlot(_)))
+            };
+            let lazy = self
+                .components
+                .instances
+                .get(&id)
+                .is_some_and(|i| i.spec.as_ref().is_some_and(|s| s.lazy_children));
+            if lazy && inst.binding {
+                // A view passes them while a signal of the nested
+                // component's says it places them: a region of its own.
+                let (slots, kids): (Vec<ElNode>, Vec<ElNode>) =
+                    content.into_iter().partition(|c| is_slot(c));
+                content = slots;
+                if !kids.is_empty() {
+                    let wanted = self.children_wanted_signal(id);
+                    let shown = crate::ui::If::new(wanted, move || {
+                        kids.iter()
+                            .cloned()
+                            .map(crate::ui::AnyElement)
+                            .collect::<Vec<_>>()
+                    });
+                    content.push(shown.into_element().0);
+                }
+            } else if !self.wants_children(id) {
+                content.retain(is_slot);
             }
             let children = self.reconcile_children(id, old_children, content, host, inst);
             return Expanded {

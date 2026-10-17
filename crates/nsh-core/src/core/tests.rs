@@ -6838,4 +6838,143 @@ mod views {
             .collect();
         assert!(moved.contains(&10.0), "{:?}", batch.items);
     }
+
+    thread_local! {
+        /// How many times `Fresh` was made on this thread.
+        static FRESH: Cell<u32> = const { Cell::new(0) };
+    }
+
+    /// Content with a state of its own: the how-manieth it was made.
+    #[derive(Default)]
+    struct Fresh;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct FreshProps {}
+
+    impl Component for Fresh {
+        type Props = FreshProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: FreshProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let n = FRESH.with(|f| {
+                f.set(f.get() + 1);
+                f.get()
+            });
+            view().child(text(format!("fresh {n}")))
+        }
+    }
+
+    /// Places its (lazy) children while open.
+    #[derive(Default)]
+    struct Pocket;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct PocketProps {
+        #[prop(default)]
+        open: crate::ui::Prop<bool>,
+        #[prop(lazy)]
+        children: Children,
+    }
+
+    impl Component for Pocket {
+        type Props = PocketProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(props: PocketProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let children = props.children;
+            view().child(If::new(props.open, move || view().p_2().child(children)))
+        }
+    }
+
+    /// Places its children.
+    #[derive(Default)]
+    struct Holder;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct HolderProps {
+        children: Children,
+    }
+
+    impl Component for Holder {
+        type Props = HolderProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(props: HolderProps, _: Scope<NoEvent>) -> impl IntoElement {
+            view().child(props.children)
+        }
+    }
+
+    /// A view passing content to nested components: a pocket's lazy
+    /// children and a region in a holder's; a press opens and closes.
+    #[derive(Default)]
+    struct Wardrobe;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct WardrobeProps {}
+
+    impl Component for Wardrobe {
+        type Props = WardrobeProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: WardrobeProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let open = signal(false);
+            view()
+                .on_press(move |_: &()| open.update(|o| *o = !*o))
+                .child(
+                    Pocket::element(PocketProps {
+                        open: open.into(),
+                        children: Children::default(),
+                    })
+                    .child(Fresh::element(FreshProps {})),
+                )
+                .child(
+                    Holder::element(HolderProps {
+                        children: Children::default(),
+                    })
+                    .child(text("before"))
+                    .child(If::new(open, || text("open")))
+                    .child(text("after")),
+                )
+        }
+    }
+
+    #[test]
+    fn a_view_passes_lazy_children_and_regions_to_nested_components() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Wardrobe>(|| WardrobeProps {}));
+        let batch = c.commit().unwrap();
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["after", "before"]);
+        assert_eq!(FRESH.with(Cell::get), 0, "closed: not made");
+        let host = root_host(&batch);
+        // Opened: the content is made, the region's text placed between.
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["fresh 1", "open"]);
+        // The region's text is the holder's middle child.
+        let holder = c
+            .components
+            .instances
+            .values()
+            .find(|i| i.js_children.len() == 3)
+            .expect("the holder has three children");
+        assert_eq!(holder.js_children[1], text_node(&batch, "open"));
+        // Closed, then opened again: made afresh.
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        c.commit();
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let mut shown = texts(&c.commit().unwrap());
+        shown.sort();
+        assert_eq!(shown, ["fresh 2", "open"]);
+        let mut events = Vec::new();
+        c.take_events(&mut events);
+        assert!(events.is_empty(), "nothing for JS: {events:?}");
+    }
 }

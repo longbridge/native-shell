@@ -571,7 +571,7 @@ impl Component for WithSheet {
             })))
             .child(
                 nsh_ui_mobile::Sheet::element(nsh_ui_mobile::SheetProps {
-                    open: self.open,
+                    open: self.open.into(),
                     ..Default::default()
                 })
                 .child(text("sheet body")),
