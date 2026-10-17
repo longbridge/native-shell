@@ -508,7 +508,7 @@ mod tests {
         // Chunks read before the pause took effect are already queued: drain
         // them, then nothing more may arrive while paused.
         let mut total = first.len();
-        let mut drain = |total: &mut usize| {
+        let drain = |total: &mut usize| {
             while let Ok(e) = rx.try_recv() {
                 let FetchEvent::Data(d) = e else {
                     panic!("unexpected {e:?}")
