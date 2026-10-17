@@ -70,7 +70,7 @@ pub enum HostPlatform {
     MacOs,
     /// The Windows host.
     Windows,
-    /// The GPUI host (macOS, Windows or Linux).
+    /// The GPUI host (macOS, Windows, Linux).
     Gpui,
     /// A platform this version does not know.
     #[serde(other)]
