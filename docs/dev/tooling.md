@@ -123,7 +123,7 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   their UI sets (older ones) get every bundle.
 - The host's `log` output (including JS `console.*`, target `js`) is forwarded to the CLI terminal with the device name while connected, and goes
   to stderr when disconnected (see "Output" for what the CLI shows of it).
-- Build failures, bundle evaluation failures and uncaught exceptions show a red overlay on the host (tap to dismiss); it disappears on the next
+- Build failures, bundle evaluation failures and uncaught exceptions show an overlay on the host (dark, the title in red; tap to dismiss; its Copy button copies the error, to paste into an AI chat or a report); it disappears on the next
   successful reload.
 - **Hot module replacement** (`nsh dev` / `nsh run` without `--release`): development bundles keep one CommonJS chunk per
   module (rolldown `preserveModules`, tree shaking off), each registered with the native hot runtime

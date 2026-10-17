@@ -63,8 +63,12 @@ const KEYFRAMES = `
 .nsh-dialog button { display: block; width: 100%; border: 0; border-top: 0.5px solid rgba(0,0,0,.2); background: none;
   font: 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #007aff; padding: 11px; cursor: pointer; }
 .nsh-error { position: absolute; left: 8px; right: 8px; bottom: 8px; max-height: 45%; overflow: auto; z-index: 2000;
-  background: #b42318; color: #fff; font: 12px/1.4 ui-monospace, Menlo, monospace; padding: 10px 12px;
-  border-radius: 10px; white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
+  background: #1e1f22; color: #fff; font: 12px/1.4 ui-monospace, Menlo, monospace; padding: 10px 12px;
+  border-left: 3px solid #ff6b6b; border-radius: 10px; white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
+.nsh-error-copy { float: right; position: sticky; top: 0; margin: 0 0 6px 10px; border: 0; border-radius: 6px;
+  background: rgba(255,255,255,.12); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 12px; cursor: pointer; }
+.nsh-error-copy:hover { background: rgba(255,255,255,.2); }
 `;
 
 const encoder = new TextEncoder();
@@ -319,7 +323,15 @@ class Player {
       box.addEventListener("click", () => box.remove());
       this.root.append(box);
     }
-    box.textContent = message;
+    // The Copy button copies the whole error (for pasting into a report or an AI chat).
+    const copy = document.createElement("button");
+    copy.className = "nsh-error-copy";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", (event) => {
+      event.stopPropagation();
+      navigator.clipboard?.writeText(message).then(() => { copy.textContent = "Copied"; }, () => {});
+    });
+    box.replaceChildren(copy, message);
   }
 
   asset(uri) {
