@@ -130,13 +130,25 @@ type MenuItem =
 |---|---|
 | `label` | What the item shows. A role's item has a label of its own without it. |
 | `onSelect` | Called when the item is chosen, by a click or its shortcut. |
-| `shortcut` | Its keyboard shortcut, written in lowercase: modifiers and one key joined by `+`, such as `"mod+n"`, `"mod+shift+z"`, `"alt+f4"` or `"f11"`. `mod` is Command on macOS and Control elsewhere; the other modifiers are `cmd` (also `super` or `win`: Command, the Windows key, Super), `ctrl`, `alt` (also `option`) and `shift`. Keys are letters, digits, punctuation (the US layout's unshifted character, such as `,` or `/`), `enter`, `escape`, `tab`, `backspace`, `delete`, `space`, the arrows (`up`, `down`, `left`, `right`), `home`, `end`, `pageup`, `pagedown`, `f1`–`f24` and `plus`. Menus show it in the platform's own style (`⇧⌘N` on macOS, `Ctrl+Shift+N` on Windows). |
+| `shortcut` | Its keyboard shortcut, written in lowercase: modifiers and one key joined by `+`, such as `"mod+n"`, `"mod+shift+z"`, `"alt+f4"` or `"f11"`. The modifiers are in the table below. Keys are letters, digits, punctuation (the US layout's unshifted character, such as `,` or `/`), `enter`, `escape`, `tab`, `backspace`, `delete`, `space`, the arrows (`up`, `down`, `left`, `right`), `home`, `end`, `pageup`, `pagedown`, `f1`–`f24` and `plus`. Menus show it in the platform's own style (`⇧⌘N` on macOS, `Ctrl+Shift+N` on Windows). |
 | `enabled` | `false` grays the item out (default `true`). |
 | `checked` | Set (to `true` or `false`) for an item with a check mark. |
 | `submenu` | Makes the item a submenu (it needs a `label`). |
 | `role` | A standard item the platform carries out (below). |
 
 `null`, `undefined` and `false` items are left out, so `cond && { … }` works in a list.
+
+Modifiers:
+
+| Modifier | macOS | Windows | Linux |
+|---|---|---|---|
+| `mod` | Command (⌘) | Ctrl | Ctrl |
+| `cmd` (also `super`, `win`) | Command (⌘) | Windows key | Super |
+| `ctrl` | Control (⌃) | Ctrl | Ctrl |
+| `alt` (also `option`) | Option (⌥) | Alt | Alt |
+| `shift` | Shift (⇧) | Shift | Shift |
+
+Use `mod` for an app's own shortcuts: it is the key each platform's apps use for them (⌘N on macOS, Ctrl+N on Windows and Linux), so one spelling fits everywhere. The Windows key and Super mostly belong to the system (Win+E, the GNOME overview), so `cmd` is rarely right outside macOS.
 
 Roles:
 

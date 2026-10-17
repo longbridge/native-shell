@@ -130,13 +130,25 @@ type MenuItem =
 |---|---|
 | `label` | 菜单项显示的文字。带 role 的菜单项省略时使用自己的默认文字。 |
 | `onSelect` | 菜单项被选中时调用，无论是点击还是快捷键。 |
-| `shortcut` | 快捷键，全部小写：修饰键和一个按键用 `+` 连接，例如 `"mod+n"`、`"mod+shift+z"`、`"alt+f4"` 或 `"f11"`。`mod` 在 macOS 上是 Command，其他平台是 Control；其他修饰键有 `cmd`（也可写 `super` 或 `win`：Command、Windows 键、Super）、`ctrl`、`alt`（也可写 `option`）和 `shift`。按键可以是字母、数字、标点（美式键盘布局上不按 Shift 时的字符，如 `,`、`/`）、`enter`、`escape`、`tab`、`backspace`、`delete`、`space`、方向键（`up`、`down`、`left`、`right`）、`home`、`end`、`pageup`、`pagedown`、`f1`–`f24` 和 `plus`。菜单按各平台自己的样式显示快捷键（macOS 上是 `⇧⌘N`，Windows 上是 `Ctrl+Shift+N`）。 |
+| `shortcut` | 快捷键，全部小写：修饰键和一个按键用 `+` 连接，例如 `"mod+n"`、`"mod+shift+z"`、`"alt+f4"` 或 `"f11"`。修饰键见下表。按键可以是字母、数字、标点（美式键盘布局上不按 Shift 时的字符，如 `,`、`/`）、`enter`、`escape`、`tab`、`backspace`、`delete`、`space`、方向键（`up`、`down`、`left`、`right`）、`home`、`end`、`pageup`、`pagedown`、`f1`–`f24` 和 `plus`。菜单按各平台自己的样式显示快捷键（macOS 上是 `⇧⌘N`，Windows 上是 `Ctrl+Shift+N`）。 |
 | `enabled` | `false` 时菜单项变灰（默认 `true`）。 |
 | `checked` | 设置（为 `true` 或 `false`）后菜单项带勾选标记。 |
 | `submenu` | 让菜单项成为子菜单（需要 `label`）。 |
 | `role` | 由平台执行的标准菜单项（见下）。 |
 
 `null`、`undefined` 和 `false` 项会被忽略，因此可以在列表中写 `cond && { … }`。
+
+修饰键：
+
+| 修饰键 | macOS | Windows | Linux |
+|---|---|---|---|
+| `mod` | Command（⌘） | Ctrl | Ctrl |
+| `cmd`（也可写 `super`、`win`） | Command（⌘） | Windows 键 | Super |
+| `ctrl` | Control（⌃） | Ctrl | Ctrl |
+| `alt`（也可写 `option`） | Option（⌥） | Alt | Alt |
+| `shift` | Shift（⇧） | Shift | Shift |
+
+应用自己的快捷键请用 `mod`：它就是各平台应用习惯使用的那个键（macOS 上是 ⌘N，Windows 和 Linux 上是 Ctrl+N），一种写法到处适用。Windows 键和 Super 基本归系统使用（Win+E、GNOME 的活动视图），所以在 macOS 以外很少该用 `cmd`。
 
 Role：
 
