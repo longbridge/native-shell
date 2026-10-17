@@ -2775,7 +2775,29 @@ mod tests {
     use super::*;
 
     /// The platform's text system, without a window (one per process).
+    /// Prints the log to stderr (shown with a failing test's output): GPUI
+    /// reports why it could not select a font there only.
+    struct TestLogger;
+
+    impl log::Log for TestLogger {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() <= log::Level::Info
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata()) {
+                eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
     fn system() -> Arc<TextSystem> {
+        static LOGGER: TestLogger = TestLogger;
+        if log::set_logger(&LOGGER).is_ok() {
+            log::set_max_level(log::LevelFilter::Info);
+        }
         static SYSTEM: OnceLock<Arc<TextSystem>> = OnceLock::new();
         // The platform first: on Windows it puts its thread in an OLE
         // apartment, which COM set up beforehand would refuse.
@@ -3151,15 +3173,19 @@ mod tests {
             font_weight: 700,
             ..plain(20.0)
         });
+        let names = system().all_font_names();
         assert!(
             w(700) > w(400),
-            "{} {}; {:?} {:?} -> {:?} {:?}",
+            "{} {}; {:?} {:?} -> {:?} {:?}; {} fonts, Segoe UI listed: {}; first: {:?}",
             w(700),
             w(400),
             regular,
             bold,
             system().resolve_font(&regular),
             system().resolve_font(&bold),
+            names.len(),
+            names.iter().any(|n| n == "Segoe UI"),
+            &names[..names.len().min(8)],
         );
     }
 
