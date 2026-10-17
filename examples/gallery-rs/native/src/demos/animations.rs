@@ -1199,10 +1199,9 @@ fn Layout() -> impl IntoElement {
             view()
                 .flex_row()
                 .gap_2()
-                // The button's label follows the direction.
-                .child(dynamic(move || {
-                    Button::new(if column.get() { "Row" } else { "Column" }, flip).flex_1()
-                }))
+                .child(
+                    Button::new(move || if column.get() { "Row" } else { "Column" }, flip).flex_1(),
+                )
                 .child(
                     Button::new("Shuffle", move |_: &()| {
                         animate();

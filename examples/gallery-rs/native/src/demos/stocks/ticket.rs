@@ -288,15 +288,14 @@ pub(crate) fn Ticket(props: TicketProps, cx: Scope<TicketEvent>) -> impl IntoEle
                                 .variant(ButtonVariant::Secondary)
                                 .flex_1(),
                         )
-                        // The button's label is fixed: one per side.
-                        .child(dynamic(move || {
+                        .child(
                             Button::new(
-                                format!("Place {} order", verb().to_lowercase()),
-                                place.clone(),
+                                move || format!("Place {} order", verb().to_lowercase()),
+                                place,
                             )
                             .flex_1()
-                            .flex_grow(2.0)
-                        })),
+                            .flex_grow(2.0),
+                        ),
                 )
         }
     };
@@ -442,12 +441,9 @@ pub(crate) fn Ticket(props: TicketProps, cx: Scope<TicketEvent>) -> impl IntoEle
         )
         // Reviewing expands the ticket (its layout springs).
         .child(If::new(review, reviewing).otherwise(move || {
-            // The button's label is fixed: one per side.
-            dynamic(move || {
-                Button::new(
-                    format!("Review {}", verb().to_lowercase()),
-                    move |_: &()| expand(true),
-                )
-            })
+            Button::new(
+                move || format!("Review {}", verb().to_lowercase()),
+                move |_: &()| expand(true),
+            )
         }))
 }

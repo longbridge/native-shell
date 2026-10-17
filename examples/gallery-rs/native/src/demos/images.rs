@@ -185,25 +185,24 @@ fn animated() -> AnyElement {
 /// Network images behind a placeholder, fading in; "Reload" asks for
 /// images that are not cached yet (`seed` counts the loads).
 fn placeholders(seed: Signal<u32>) -> AnyElement {
-    // A new size per reload: a URL not in the cache yet. The images are
-    // made again with it.
-    let images = dynamic(move || {
-        let side = 600 + seed.get();
-        Vec::from([(1043, 0u32), (1080, 300), (1069, 1000)].map(|(id, ms)| {
-            view()
-                .flex_1()
-                .gap_2()
-                .child(
-                    frame(
-                        image(photo(id, side, side))
-                            .placeholder(LOGO)
-                            .fade_duration(ms as f32)
-                            .resize_mode(ResizeMode::Cover),
-                    )
-                    .h(px(100.0)),
+    // A new size per reload: a URL not in the cache yet.
+    let images = [(1043, 0u32), (1080, 300), (1069, 1000)].map(|(id, ms)| {
+        view()
+            .flex_1()
+            .gap_2()
+            .child(
+                frame(
+                    image(move || {
+                        let side = 600 + seed.get();
+                        photo(id, side, side)
+                    })
+                    .placeholder(LOGO)
+                    .fade_duration(ms as f32)
+                    .resize_mode(ResizeMode::Cover),
                 )
-                .child(note(format!("{ms} ms"), false))
-        }))
+                .h(px(100.0)),
+            )
+            .child(note(format!("{ms} ms"), false))
     });
     let reload = move |_: &()| seed.update(|s| *s += 1);
     Card::new()
@@ -211,7 +210,7 @@ fn placeholders(seed: Signal<u32>) -> AnyElement {
         .title("Placeholder and fade")
         .subtitle("defaultSource, then a fade")
         .right(Button::new("Reload", reload).variant(ButtonVariant::Secondary))
-        .child(view().flex_row().gap_3().child(images))
+        .child(view().flex_row().gap_3().children(images))
         .child(caption("Loads", Some(move || seed.get().to_string())))
         .into_element()
 }
@@ -315,16 +314,17 @@ fn info() -> AnyElement {
                         .flex_1(),
                 )
                 // The button's label and look follow `show`.
-                .child(dynamic(move || {
-                    let show = show.get();
-                    Button::new(if show { "Hide" } else { "Show" }, toggle)
-                        .variant(if show {
-                            ButtonVariant::Secondary
-                        } else {
-                            ButtonVariant::Accent
+                .child(
+                    Button::new(move || if show.get() { "Hide" } else { "Show" }, toggle)
+                        .variant(move || {
+                            if show.get() {
+                                ButtonVariant::Secondary
+                            } else {
+                                ButtonVariant::Accent
+                            }
                         })
-                        .flex_1()
-                })),
+                        .flex_1(),
+                ),
         )
         .child(
             view()
@@ -337,13 +337,12 @@ fn info() -> AnyElement {
                         format!("{}% · {}", (progress.get() * 100.0).round(), status.get())
                     }),
                 ))
-                .child(dynamic(move || {
-                    let progress = progress.get();
-                    Meter::new(progress as f32).tone(if progress >= 1.0 {
+                .child(Meter::new(move || progress.get() as f32).tone(move || {
+                    if progress.get() >= 1.0 {
                         Tone::Up
                     } else {
                         Tone::Accent
-                    })
+                    }
                 })),
         )
         .child(shown)

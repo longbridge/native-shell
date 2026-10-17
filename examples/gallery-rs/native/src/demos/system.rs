@@ -640,36 +640,37 @@ fn FramesAndTimers() -> impl IntoElement {
                         }
                     }),
                 ))
-                // The meter takes a value: made again when the rate does.
-                .child(dynamic(move || {
-                    let share = if running.get() {
-                        fps.get() as f32 / 120.0
-                    } else {
-                        0.0
-                    };
-                    Meter::new(share).tone(Tone::Up).marker(0.5)
-                })),
+                .child(
+                    Meter::new(move || {
+                        if running.get() {
+                            fps.get() as f32 / 120.0
+                        } else {
+                            0.0
+                        }
+                    })
+                    .tone(Tone::Up)
+                    .marker(0.5),
+                ),
         )
-        // The button's label is a value: made again when counting starts or
-        // stops.
-        .child(dynamic(move || {
-            let running = running.get();
-            untracked(|| {
-                Button::new(
-                    if running {
+        .child(
+            Button::new(
+                move || {
+                    if running.get() {
                         "Stop counting frames"
                     } else {
                         "Count frames"
-                    },
-                    toggle_frames,
-                )
-                .icon(if running {
+                    }
+                },
+                toggle_frames,
+            )
+            .icon(move || {
+                if running.get() {
                     IconName::Pause
                 } else {
                     IconName::Play
-                })
-            })
-        }))
+                }
+            }),
+        )
 }
 
 /// Three posts loaded over HTTP, and a log line.
@@ -808,16 +809,21 @@ fn Network() -> impl IntoElement {
             view()
                 .flex_row()
                 .gap_2()
-                // The button's label is a value: made again while loading.
-                .child(dynamic(move || {
-                    let busy = loading.get();
-                    untracked(|| {
-                        Button::new(if busy { "Loading…" } else { "ureq::get()" }, load)
-                            .icon(IconName::ArrowDown)
-                            .disabled(busy)
-                            .flex_1()
-                    })
-                }))
+                .child(
+                    Button::new(
+                        move || {
+                            if loading.get() {
+                                "Loading…"
+                            } else {
+                                "ureq::get()"
+                            }
+                        },
+                        load,
+                    )
+                    .icon(IconName::ArrowDown)
+                    .disabled(loading)
+                    .flex_1(),
+                )
                 .child(
                     Button::new("log::info!", |_: &()| {
                         log::info!(target: "gallery", "hello from the gallery");

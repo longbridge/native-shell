@@ -200,31 +200,24 @@ fn Player() -> impl IntoElement {
             .flex_row()
             .items_center()
             .gap_3()
-            // A round button's icon and label are values: made again when
-            // it plays or pauses.
-            .child(dynamic(move || {
-                let paused = !playing.get();
-                untracked(|| {
-                    RoundButton::new(
-                        if paused {
-                            IconName::Play
-                        } else {
-                            IconName::Pause
-                        },
-                        if paused { "Play" } else { "Pause" },
-                        move |_: &()| playing.update(|p| *p = !*p),
-                    )
-                })
-            }))
+            .child(RoundButton::new(
+                move || {
+                    if playing.get() {
+                        IconName::Pause
+                    } else {
+                        IconName::Play
+                    }
+                },
+                move || if playing.get() { "Pause" } else { "Play" },
+                move |_: &()| playing.update(|p| *p = !*p),
+            ))
             .child(
                 view()
                     .flex_1()
                     .gap_2()
-                    // The meter takes a value: made again as the video
-                    // plays.
-                    .child(dynamic(move || {
+                    .child(Meter::new(move || {
                         let (time, duration) = (time.get(), duration.get());
-                        Meter::new(if duration > 0.0 { time / duration } else { 0.0 })
+                        if duration > 0.0 { time / duration } else { 0.0 }
                     }))
                     .child(
                         view()

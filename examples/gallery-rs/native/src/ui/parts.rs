@@ -635,9 +635,9 @@ pub(crate) enum ButtonVariant {
 /// that color instead.
 pub(crate) struct Button {
     label: Label,
-    variant: ButtonVariant,
+    variant: Reactive<ButtonVariant>,
     color: Option<AdaptiveColor>,
-    icon: Option<IconName>,
+    icon: Option<Reactive<IconName>>,
     disabled: Prop<bool>,
     on_press: Listener<()>,
     root: View,
@@ -651,7 +651,7 @@ impl Button {
     ) -> Self {
         Self {
             label: label.into_reactive(),
-            variant: ButtonVariant::Primary,
+            variant: Reactive::Static(ButtonVariant::Primary),
             color: None,
             icon: None,
             disabled: false.into(),
@@ -660,15 +660,15 @@ impl Button {
         }
     }
 
-    /// Its look.
-    pub(crate) fn variant(mut self, variant: ButtonVariant) -> Self {
-        self.variant = variant;
+    /// Its look (a variant, or a signal or closure of one).
+    pub(crate) fn variant(mut self, variant: impl IntoReactive<ButtonVariant>) -> Self {
+        self.variant = variant.into_reactive();
         self
     }
 
-    /// An icon before the label.
-    pub(crate) fn icon(mut self, icon: IconName) -> Self {
-        self.icon = Some(icon);
+    /// An icon before the label (a glyph, or a signal or closure of one).
+    pub(crate) fn icon(mut self, icon: impl IntoReactive<IconName>) -> Self {
+        self.icon = Some(icon.into_reactive());
         self
     }
 
@@ -679,10 +679,22 @@ impl Button {
     }
 }
 
-impl IntoElement for Button {
-    fn into_element(self) -> AnyElement {
-        let variant = self.variant;
-        let (bg, fg) = match (self.color, variant) {
+nsh_core::static_reactive!(ButtonVariant: ButtonVariant);
+
+/// A [`Button`]'s look: its fill and content colors, its finish, whether
+/// it has a rim.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ButtonLook {
+    bg: AdaptiveColor,
+    fg: AdaptiveColor,
+    finish: Option<Finish>,
+    rim: bool,
+}
+
+impl ButtonLook {
+    /// The look of `variant`, filled with `color` if given.
+    fn of(variant: ButtonVariant, color: Option<AdaptiveColor>) -> Self {
+        let (bg, fg) = match (color, variant) {
             (Some(color), _) => (color, AdaptiveColor::from(rgb(0xffffff))),
             (None, ButtonVariant::Primary) => (colors::LIGHT, colors::ON_LIGHT),
             (None, ButtonVariant::Accent) => (colors::ACCENT_FILL, colors::ON_ACCENT),
@@ -690,13 +702,56 @@ impl IntoElement for Button {
             (None, ButtonVariant::Secondary) => (colors::RAISED, colors::TEXT),
         };
         let finish = match variant {
-            _ if self.color.is_some() => None,
+            _ if color.is_some() => None,
             ButtonVariant::Primary => Some(Finish::Light),
             ButtonVariant::Accent => Some(Finish::Accent),
             ButtonVariant::Secondary => Some(Finish::Raised),
             ButtonVariant::Ghost => None,
         };
         let rim = matches!(variant, ButtonVariant::Secondary | ButtonVariant::Ghost);
+        Self {
+            bg,
+            fg,
+            finish,
+            rim,
+        }
+    }
+}
+
+/// `surface` in `look`: set once for a fixed variant, bound (colors, and
+/// a layer per finish) for one that changes.
+fn button_surface(surface: View, look: &Reactive<ButtonLook>) -> View {
+    match look {
+        Reactive::Static(look) => surface
+            .bg(look.bg)
+            .when_some(look.finish, |v, f| v.finish(f))
+            .when(look.rim, |v| v.border_1().border_color(colors::BORDER)),
+        Reactive::Bound(_) => {
+            let finished = |f: Finish| look.clone().map(move |l| l.finish == Some(f));
+            surface
+                .bg(look.clone().map(|l| l.bg))
+                .style_when(finished(Finish::Light), |v| v.finish(Finish::Light))
+                .style_when(finished(Finish::Accent), |v| v.finish(Finish::Accent))
+                .style_when(finished(Finish::Raised), |v| v.finish(Finish::Raised))
+                .style_when(look.clone().map(|l| l.rim), |v| {
+                    v.border_1().border_color(colors::BORDER)
+                })
+        }
+    }
+}
+
+impl IntoElement for Button {
+    fn into_element(self) -> AnyElement {
+        let color = self.color;
+        let look = match self.variant {
+            Reactive::Static(variant) => Reactive::Static(ButtonLook::of(variant, color)),
+            // One memo of the look: its parts' bindings read it.
+            Reactive::Bound(variant) => {
+                let look = computed(move || ButtonLook::of(variant(), color));
+                look.into_reactive()
+            }
+        };
+        let fg = look.clone().map(|l| l.fg);
         // The root (the press target) takes the caller's styles: `flex_1`
         // shares a row.
         press_with(
@@ -709,25 +764,28 @@ impl IntoElement for Button {
         )
         .map(|p| apply_root(p, self.root))
         .child(
-            view()
-                .h(px(44.0))
-                .px(px(18.0))
-                .rounded(px(radius::CONTROL))
-                .border_curve(BorderCurve::Continuous)
-                .flex_row()
-                .items_center()
-                .justify_center()
-                .gap_2()
-                .bg(bg)
-                .when_some(finish, |v, f| v.finish(f))
-                .when(rim, |v| v.border_1().border_color(colors::BORDER))
-                .children(self.icon.map(|name| icon(name, 16.0, fg)))
-                .child(
-                    text(self.label)
-                        .text_size(px(15.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(fg),
-                ),
+            button_surface(
+                view()
+                    .h(px(44.0))
+                    .px(px(18.0))
+                    .rounded(px(radius::CONTROL))
+                    .border_curve(BorderCurve::Continuous)
+                    .flex_row()
+                    .items_center()
+                    .justify_center()
+                    .gap_2(),
+                &look,
+            )
+            .children(
+                self.icon
+                    .map(|name| icon(Prop::from(name), 16.0, fg.clone())),
+            )
+            .child(
+                text(self.label)
+                    .text_size(px(15.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(fg),
+            ),
         )
         .into_element()
     }
@@ -736,8 +794,8 @@ impl IntoElement for Button {
 /// A round icon button (44 pt): light by default, [`RoundButton::secondary`]
 /// dark.
 pub(crate) struct RoundButton {
-    icon: IconName,
-    label: SharedString,
+    icon: Reactive<IconName>,
+    label: Label,
     secondary: bool,
     size: f32,
     disabled: bool,
@@ -747,15 +805,15 @@ pub(crate) struct RoundButton {
 
 impl RoundButton {
     /// A button of `icon`, labelled `label` for assistive technologies,
-    /// calling `on_press`.
+    /// calling `on_press` (the glyph and the label can be bound).
     pub(crate) fn new(
-        icon: IconName,
-        label: impl Into<SharedString>,
+        icon: impl IntoReactive<IconName>,
+        label: impl IntoReactive<SharedString>,
         on_press: impl Into<Listener<()>>,
     ) -> Self {
         Self {
-            icon,
-            label: label.into(),
+            icon: icon.into_reactive(),
+            label: label.into_reactive(),
             secondary: false,
             size: 44.0,
             disabled: false,
@@ -779,7 +837,7 @@ impl IntoElement for RoundButton {
             PressProps {
                 scale: 0.92.into(),
                 disabled: self.disabled.into(),
-                label: Some(self.label).into(),
+                label: Prop::from(self.label.map(Some)),
                 ..PressProps::default()
             },
             self.on_press,
@@ -799,7 +857,7 @@ impl IntoElement for RoundButton {
                     }
                 })
                 .child(icon(
-                    self.icon,
+                    Prop::from(self.icon),
                     size * 0.42,
                     if primary {
                         colors::ON_LIGHT

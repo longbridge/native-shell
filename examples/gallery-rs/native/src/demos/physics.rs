@@ -391,17 +391,12 @@ pub(crate) fn Physics() -> impl IntoElement {
                         .flex_row()
                         .px_1()
                         .child(Stat::new("Releases", move || releases.get().to_string()).width(0.3))
-                        // Fast releases are toned: the stat is made again
-                        // when the speed crosses the line, not per release.
-                        .child(dynamic(move || {
-                            let stat = Stat::new("Speed", move || format!("{} pt/s", speed.get()))
-                                .width(0.34);
-                            if fast.get() {
-                                stat.tone(Tone::Warn).into_element()
-                            } else {
-                                stat.into_element()
-                            }
-                        }))
+                        // Fast releases are toned.
+                        .child(
+                            Stat::new("Speed", move || format!("{} pt/s", speed.get()))
+                                .width(0.34)
+                                .tone_when(fast, Tone::Warn),
+                        )
                         .child(
                             Stat::new(
                                 move || {

@@ -76,6 +76,8 @@ pub(crate) enum IconName {
     Spark,
 }
 
+nsh_core::static_reactive!(IconName: IconName);
+
 fn line(p: Painter, points: &[f32]) -> Painter {
     let mut p = p.begin_path().move_to(points[0], points[1]);
     for xy in points[2..].chunks(2) {

@@ -144,9 +144,7 @@ fn grid_header(visible: Signal<Option<(usize, usize)>>, list: &ElementRef) -> im
                         .pb(px(6.0)),
                 ),
         )
-        // The meter takes a fixed value: made again as the rows shown
-        // change.
-        .child(dynamic(move || Meter::new(progress.get())))
+        .child(Meter::new(progress))
         .child(
             view()
                 .flex_row()

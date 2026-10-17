@@ -260,22 +260,25 @@ impl Field {
                             .bind_opacity(&self.fx.focus),
                     ),
             )
+            // The error's row comes and goes; while it shows, its text
+            // follows the error.
             .children(error.map(|error| {
-                dynamic(move || {
-                    error.get().map(|error| {
+                If::new(
+                    move || error.with(Option::is_some),
+                    move || {
                         view()
                             .flex_row()
                             .items_center()
                             .gap(px(7.0))
                             .child(view().size(px(6.0)).rounded(px(3.0)).bg(colors::DANGER))
                             .child(
-                                text(error)
+                                text(move || error.get().unwrap_or_default())
                                     .flex_1()
                                     .text_size(px(13.0))
                                     .text_color(colors::DANGER),
                             )
-                    })
-                })
+                    },
+                )
             }))
     }
 }
@@ -581,12 +584,12 @@ pub(crate) fn Form() -> impl IntoElement {
                         .flex_row()
                         .items_center()
                         .gap(px(10.0))
-                        // The meter takes a value: made again when the
-                        // score changes.
-                        .child(view().flex_1().child(dynamic(move || {
-                            let score = score.get();
-                            Meter::new(score as f32 / 4.0).tone(STRENGTH_TONE[score])
-                        })))
+                        .child(
+                            view().flex_1().child(
+                                Meter::new(move || score.get() as f32 / 4.0)
+                                    .tone(move || STRENGTH_TONE[score.get()]),
+                            ),
+                        )
                         .child(
                             text(move || STRENGTH_LABEL[score.get()])
                                 .w(px(52.0))
@@ -730,15 +733,15 @@ pub(crate) fn Form() -> impl IntoElement {
                                 .min_h(px(100.0))
                         }),
                 )
-                // The meter takes a value: made again as the notes grow.
-                .child(dynamic(move || {
-                    let count = note_count.get();
-                    Meter::new(count as f32 / 280.0).tone(if count > 250 {
-                        Tone::Warn
-                    } else {
-                        Tone::Accent
-                    })
-                })),
+                .child(
+                    Meter::new(move || note_count.get() as f32 / 280.0).tone(move || {
+                        if note_count.get() > 250 {
+                            Tone::Warn
+                        } else {
+                            Tone::Accent
+                        }
+                    }),
+                ),
         )
         .child(AutoGrow::element(()))
         .child(
