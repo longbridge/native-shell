@@ -434,6 +434,7 @@ enum Message {
     Wake,
     Environment(Environment),
     RootSize(NodeId, Size, EdgeInsets),
+    ScreenHeader(NodeId, f32),
     Frame,
     States(NodeId, u8),
     /// An event of a request (by the hop it is for: events of a hop the
@@ -516,6 +517,13 @@ impl EngineControl {
     /// of it covered by system UI.
     pub fn set_root_size(&self, id: NodeId, size: Size, insets: EdgeInsets) {
         let _ = self.tx.send(Message::RootSize(id, size, insets));
+    }
+
+    /// The platform measured the header area (status bar and bar) of
+    /// screen `id`: its content goes below `height`
+    /// ([`nsh_core::Core::set_screen_header`]).
+    pub fn set_screen_header(&self, id: NodeId, height: f32) {
+        let _ = self.tx.send(Message::ScreenHeader(id, height));
     }
 
     /// Applies a development update in place. When it cannot be applied,
@@ -1392,6 +1400,7 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
             }
         }
         Message::RootSize(id, size, insets) => state.core.set_root_size(id, size, insets),
+        Message::ScreenHeader(id, height) => state.core.set_screen_header(id, height),
         Message::Frame => {
             state.frame_requested = false;
             state.core.run_frame(Instant::now());

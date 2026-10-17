@@ -73,6 +73,11 @@ Things that were found the hard way. Read the section of the area you change bef
 
 ## iOS, UIKit and Mac Catalyst
 
+- **A navigation bar does not end at the safe area's top plus 44pt**: on iPhones with a Dynamic Island the safe area (59pt) is
+  taller than the status bar (54pt), so the bar ends 5pt higher; on Mac Catalyst the bar may merge into the window's title bar.
+  Content laid out below that estimate showed a band of the screen controller's own (white) view. Screens report where the bar
+  really ends, their view's `safeAreaInsets.top` (`EngineControl::set_screen_header`), and the core lays plain bars' content out
+  below it; it estimates only before the first report (`navigation.rs`, `Core::set_screen_header`).
 - **UIFont and CTFont are toll-free bridged**: the text engine gets system fonts with `UIFont::systemFontOfSize_weight` and uses them as
   CTFonts (verified by rendering). CoreText attributes must use CT keys (colors are CGColors), not UIKit's NSForegroundColor.
 - **Catalyst's Mac idiom does not support `UIRefreshControl`** (attaching one throws `_UICatalystUnsupportedMacIdiomBehavior`): in the Mac

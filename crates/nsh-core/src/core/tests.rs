@@ -1773,6 +1773,88 @@ fn view_props_and_gestures_reach_the_platform() {
     );
 }
 
+/// Pushes screen `id` (with a content view `id + 1`) on stack 2.
+fn push_screen(c: &mut Core<FakeEngine>, id: u32) {
+    apply(
+        c,
+        vec![
+            Op::Create {
+                id,
+                tag: Tag::Screen,
+            },
+            Op::Create {
+                id: id + 1,
+                tag: Tag::View,
+            },
+            style_op(id + 1, &[("flex", StyleValue::Number(1.0))]),
+            Op::Insert {
+                parent: id,
+                child: id + 1,
+                before: None,
+            },
+            Op::Insert {
+                parent: 2,
+                child: id,
+                before: None,
+            },
+        ],
+    );
+}
+
+#[test]
+fn screens_lay_out_below_the_header_the_platform_measured() {
+    let mut c = core();
+    // A safe area taller than the status bar (a Dynamic Island): the
+    // estimate (20 + 44) is off; the platform measures the bar's bottom.
+    c.set_safe_area(crate::EdgeInsets {
+        top: 20.0,
+        ..Default::default()
+    });
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::Stack,
+            },
+            style_op(2, &[("flex", StyleValue::Number(1.0))]),
+            Op::Insert {
+                parent: 1,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    push_screen(&mut c, 3);
+    let batch = c.commit().unwrap();
+    assert_eq!(frame_of(&batch, 4).map(|f| f.y), Some(64.0), "the estimate");
+    c.set_screen_header(3, 59.0);
+    let batch = c.commit().unwrap();
+    assert_eq!(frame_of(&batch, 4).map(|f| f.y), Some(59.0));
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ScreenConfig { id: 3, config } if config.header_height == 59.0)
+    ));
+    // A screen pushed later starts at the latest measurement.
+    push_screen(&mut c, 5);
+    let batch = c.commit().unwrap();
+    assert_eq!(frame_of(&batch, 6).map(|f| f.y), Some(59.0));
+    // A screen without a header measures the status bar only: that is no
+    // bar for the others.
+    apply(
+        &mut c,
+        vec![Op::SetProp {
+            id: 5,
+            prop: Prop::Screen(crate::ScreenProp::HeaderShown(false)),
+        }],
+    );
+    c.set_screen_header(5, 20.0);
+    let batch = c.commit().unwrap();
+    assert_eq!(frame_of(&batch, 6).map(|f| f.y), Some(0.0));
+    push_screen(&mut c, 7);
+    let batch = c.commit().unwrap();
+    assert_eq!(frame_of(&batch, 8).map(|f| f.y), Some(59.0));
+}
+
 #[test]
 fn screens_fill_their_stack_below_the_header() {
     let mut c = core();

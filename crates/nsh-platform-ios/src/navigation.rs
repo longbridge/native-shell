@@ -55,6 +55,9 @@ pub(crate) struct ScreenIvars {
     /// Height of the header area the core laid the content out below.
     padded: Cell<f32>,
     insets: Cell<Option<EdgeInsets>>,
+    /// The header area last reported to the core (the view's safe area
+    /// top: the status bar and the bar, as UIKit lays them out).
+    header: Cell<Option<f32>>,
 }
 
 define_class!(
@@ -81,6 +84,7 @@ impl ScreenController {
             control,
             padded: Cell::new(0.0),
             insets: Cell::new(None),
+            header: Cell::new(None),
         });
         // SAFETY: UIViewController's designated initializer.
         unsafe {
@@ -97,6 +101,15 @@ impl ScreenController {
     pub(crate) fn report_insets(&self) {
         let Some(view) = self.view() else { return };
         let s = view.safeAreaInsets();
+        // Where the bar really ends: the core lays the content out below
+        // it (its own estimate is off on iPhones with a Dynamic Island and
+        // on Mac Catalyst, where the bar merges into the title bar).
+        let header = s.top as f32;
+        if self.ivars().header.replace(Some(header)) != Some(header) {
+            self.ivars()
+                .control
+                .set_screen_header(self.ivars().id, header);
+        }
         let insets = EdgeInsets {
             top: (s.top as f32 - self.ivars().padded.get()).max(0.0),
             right: s.right as f32,

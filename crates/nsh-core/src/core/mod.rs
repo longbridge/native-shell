@@ -89,6 +89,9 @@ struct RootState {
     insets: EdgeInsets,
     /// The size and header height the root was last laid out with.
     laid_out: Option<(Size, f32)>,
+    /// The height of its header area (status bar and bar) the platform
+    /// measured (screens with a plain bar).
+    measured_header: Option<f32>,
     /// Screen options (screens).
     screen: ScreenConfig,
     /// Modal options (modals).
@@ -556,6 +559,9 @@ pub struct Core<M: TextEngine> {
     accessories: rustc_hash::FxHashMap<Box<str>, NodeId>,
     /// Height of the native header bar of screens: normal and large title.
     header_heights: (f32, f32),
+    /// The latest header area the platform measured
+    /// ([`Core::set_screen_header`]), for screens not measured yet.
+    measured_header: Option<f32>,
     /// Natural sizes of the platform's controls.
     /// The surface's safe-area insets (stacks at the top extend their
     /// headers under the status bar).
@@ -618,6 +624,7 @@ impl<M: TextEngine> Core<M> {
             roots: Vec::new(),
             accessories: Default::default(),
             header_heights: (44.0, 96.0),
+            measured_header: None,
             safe_area: EdgeInsets::default(),
             list_binds: Vec::new(),
             events: Vec::new(),
@@ -648,6 +655,33 @@ impl<M: TextEngine> Core<M> {
     pub fn set_safe_area(&mut self, insets: EdgeInsets) {
         if self.safe_area != insets {
             self.safe_area = insets;
+            self.needs_layout = true;
+        }
+    }
+
+    /// The platform measured the header area (status bar and bar) of screen
+    /// `id`: `height` from its top. A screen with a plain bar lays its
+    /// content out below it (rather than below the estimate of the bar's
+    /// height plus the safe area, which is off where the safe area is
+    /// taller than the status bar, as on iPhones with a Dynamic Island, or
+    /// where the bar merges into a window's title bar, as on Mac Catalyst);
+    /// screens not measured yet use the latest measurement.
+    pub fn set_screen_header(&mut self, id: NodeId, height: f32) {
+        let Ok(key) = self.key(id) else { return };
+        if !height.is_finite() || height < 0.0 {
+            return;
+        }
+        let Some(root) = self.nodes[key as usize].root.as_mut() else {
+            return;
+        };
+        let c = &root.screen;
+        // Only a plain bar's measures the bar (a hidden one measures the
+        // status bar).
+        if c.header_shown && !c.header_transparent && !c.large_title {
+            self.measured_header = Some(height);
+        }
+        if root.measured_header != Some(height) {
+            root.measured_header = Some(height);
             self.needs_layout = true;
         }
     }
@@ -3245,15 +3279,20 @@ impl<M: TextEngine> Core<M> {
                 };
                 let s = self.layout.layout(stack_layout).expect("taffy layout").size;
                 let c = &root.screen;
-                let header = if c.header_shown {
-                    let bar = if c.large_title {
-                        self.header_heights.1
-                    } else {
-                        self.header_heights.0
-                    };
-                    bar + self.top_overlap(parent)
-                } else {
+                let header = if !c.header_shown {
                     0.0
+                } else if c.large_title {
+                    self.header_heights.1 + self.top_overlap(parent)
+                } else {
+                    let plain = !c.header_transparent;
+                    match root
+                        .measured_header
+                        .or(self.measured_header)
+                        .filter(|_| plain)
+                    {
+                        Some(measured) => measured,
+                        None => self.header_heights.0 + self.top_overlap(parent),
+                    }
                 };
                 let size = Size::new(s.width, s.height);
                 (size, header, definite(size))
