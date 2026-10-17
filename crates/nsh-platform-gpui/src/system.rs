@@ -142,7 +142,6 @@ struct Settings {
 }
 
 /// Makes the system look dark (or light) from now on (`--script`).
-#[allow(dead_code, reason = "for the `--script` steps `dark` / `light`")]
 pub(crate) fn simulate_system_scheme(dark: bool) {
     SIMULATED.with(|s| s.set(Some(dark)));
     let surfaces: Vec<Rc<Surface>> = WATCHED.with(|w| {
@@ -295,10 +294,20 @@ pub(crate) fn set_appearance(surface: &Rc<Surface>, appearance: Appearance) {
     }
 }
 
+/// The embedding app set its appearance ([`crate::AppView::set_appearance`]).
+pub(crate) fn host_appearance_changed(surface: &Surface) {
+    update(surface);
+    surface.invalidate();
+}
+
 /// Writes the system's settings and the surface's own values into its
 /// environment.
 fn update(surface: &Surface) {
-    let system_dark = with_watched(surface.key(), |w| w.system_dark).unwrap_or(false);
+    // An embedding app's appearance stands in for the system's.
+    let system_dark = surface
+        .host_dark
+        .get()
+        .unwrap_or_else(|| with_watched(surface.key(), |w| w.system_dark).unwrap_or(false));
     let settings = os::settings();
     let mut env: Environment = surface.environment.get();
     let system = if system_dark {

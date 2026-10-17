@@ -891,7 +891,9 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
 /// Tab and Shift + Tab move the keyboard focus between the text fields, in
 /// tree order (GTK's focus chain does this on Linux), within the newest
 /// modal: the views under it never get the focus. The field reached has
-/// its text selected, as in Windows' dialogs.
+/// its text selected, as in Windows' dialogs. Past the last field (the
+/// first with Shift) the key is not taken: the window's focus moves on to
+/// the embedding app's next tab stop ([`crate::app`]).
 fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     let m = event.modifiers;
     if event.vk != VK_TAB || m.ctrl || m.alt || m.meta {
@@ -906,8 +908,10 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     let current =
         crate::text_input::focused(surface).and_then(|f| fields.iter().position(|v| *v == f));
     let next = match (current, m.shift) {
-        (Some(i), false) => (i + 1) % n,
-        (Some(i), true) => (i + n - 1) % n,
+        (Some(i), false) if i + 1 == n => return false,
+        (Some(0), true) => return false,
+        (Some(i), false) => i + 1,
+        (Some(i), true) => i - 1,
         (None, false) => 0,
         (None, true) => n - 1,
     };
