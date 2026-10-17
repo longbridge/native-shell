@@ -922,6 +922,39 @@ impl Painter {
         self.op(CanvasOp::Path(op))
     }
 
+    /// Whether point (`x`, `y`) (canvas points, as a touch's `location_x` /
+    /// `location_y`) is inside the current path by `rule`, with the
+    /// transform, as recorded so far (TS: `ctx.isPointInPath(x, y, rule)`).
+    /// Answered from the geometry here, with no platform round trip; a
+    /// number given as a native value counts as 0, as in TS. To find what
+    /// is under a tap, build the render's painter in a method the press
+    /// handler calls too.
+    pub fn is_point_in_path(&self, x: f32, y: f32, rule: FillRule) -> bool {
+        crate::canvas::point_in_path(&self.drawing.ops, None, rule, x, y, |_| 0.0)
+    }
+
+    /// Whether point (`x`, `y`) is on the stroke of the current path with
+    /// the line width and cap recorded so far (TS: `ctx.isPointInStroke(x,
+    /// y)`; round joins, no dashes). See [`Self::is_point_in_path`].
+    pub fn is_point_in_stroke(&self, x: f32, y: f32) -> bool {
+        crate::canvas::point_in_stroke(&self.drawing.ops, None, x, y, |_| 0.0)
+    }
+
+    /// Whether point (`x`, `y`) is inside `path` by `rule`, with the
+    /// transform recorded so far (TS: `ctx.isPointInPath(path2d, x, y,
+    /// rule)`): the shape [`Self::fill_path`] drew under a tap. See
+    /// [`Self::is_point_in_path`].
+    pub fn path_contains(&self, path: &Path, x: f32, y: f32, rule: FillRule) -> bool {
+        crate::canvas::point_in_path(&self.drawing.ops, Some(path), rule, x, y, |_| 0.0)
+    }
+
+    /// Whether point (`x`, `y`) is on the stroke of `path` with the
+    /// transform, line width and cap recorded so far (TS:
+    /// `ctx.isPointInStroke(path2d, x, y)`). See [`Self::is_point_in_path`].
+    pub fn stroke_contains(&self, path: &Path, x: f32, y: f32) -> bool {
+        crate::canvas::point_in_stroke(&self.drawing.ops, Some(path), x, y, |_| 0.0)
+    }
+
     /// Saves the state (styles, transform, clip).
     pub fn save(self) -> Self {
         self.op(CanvasOp::Save)

@@ -31,7 +31,9 @@
   into the `drawRect:` context, keeping its own transform and path in view space; Android `CanvasBox.java` interprets an `int[]` (`encode.rs`). Not
   supported: `getImageData` / `putImageData`, filters, SVG images.
 
-Rust components record drawings with `ui::Painter` (the same operations; `docs/dev/components.md`) and measure text
-with `RenderCx::measure_text`, on the core's text engine.
+Rust components record drawings with `ui::Painter` (the same operations; `docs/dev/components.md`), measure text
+with `RenderCx::measure_text`, on the core's text engine, and hit-test what a painter recorded with the same
+`point_in_path` / `point_in_stroke` (`Painter::is_point_in_path` / `is_point_in_stroke` for the current path,
+`path_contains` / `stroke_contains` for a `Path`; native values count as 0 there too).
 
 The drawing format is documented in `crates/nsh-core/src/canvas.rs`.

@@ -5180,6 +5180,38 @@ mod painter {
         ui::prelude::*,
     };
 
+    #[test]
+    fn painters_hit_test_what_they_drew() {
+        // A slice drawn moved by 10, a line along the top, a rectangle as
+        // the current path.
+        let slice = svg_path("M0 0 L40 0 L0 40 Z");
+        let p = Painter::new()
+            .save()
+            .translate(10.0, 10.0)
+            .fill_path(&slice, FillRule::NonZero)
+            .restore()
+            .line_width(4.0)
+            .stroke_svg("M0 2 L100 2")
+            .begin_path()
+            .rect(60.0, 60.0, 20.0, 20.0);
+        // Paths given are tested with the transform at the end: drawn
+        // translated, the slice is hit where it shows only with the same
+        // transform recorded.
+        assert!(p.path_contains(&slice, 5.0, 5.0, FillRule::NonZero));
+        assert!(!p.path_contains(&slice, 45.0, 45.0, FillRule::NonZero));
+        let moved = Painter::new().translate(10.0, 10.0);
+        assert!(moved.path_contains(&slice, 15.0, 15.0, FillRule::NonZero));
+        assert!(!moved.path_contains(&slice, 5.0, 5.0, FillRule::NonZero));
+        // The current path, and strokes with the line width.
+        assert!(p.is_point_in_path(70.0, 70.0, FillRule::EvenOdd));
+        assert!(!p.is_point_in_path(50.0, 70.0, FillRule::NonZero));
+        assert!(p.is_point_in_stroke(60.0, 70.0));
+        assert!(!p.is_point_in_stroke(70.0, 70.0));
+        let top = svg_path("M0 2 L100 2");
+        assert!(p.stroke_contains(&top, 50.0, 3.5));
+        assert!(!p.stroke_contains(&top, 50.0, 5.0));
+    }
+
     /// A label placed by its measured width, gradients, a stroked SVG path
     /// and an operation built by hand reading a native value.
     #[derive(Default)]

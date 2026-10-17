@@ -110,8 +110,10 @@ impl Component for Button {                // JS export: `Button`, the type's na
   belong to whoever renders the stack (state they depend on goes in a global or a context; `examples/gallery-rs`). Canvases draw a `Drawing`, recorded with `Painter` (the Canvas 2D
   operations: `.fill_style(..)` / `.stroke_style(..)` take colors, `CanvasGradient::linear` / `radial` / `conic`
   and native values; `.stroke_path(&canvas::svg_path(d))`; `cx.measure_text(font, text)` in the render is
-  `measureText`; operations built by hand take `painter.num(&v)` / `.paint(..)` and go in with `.op(..)`); a new
-  drawing replaces the old one. Props that take a plain color (an input's placeholder color)
+  `measureText`; operations built by hand take `painter.num(&v)` / `.paint(..)` and go in with `.op(..)`;
+  `isPointInPath` / `isPointInStroke` are `painter.is_point_in_path(x, y, rule)` / `.is_point_in_stroke(x, y)` and,
+  with a `Path2D`, `.path_contains(&path, x, y, rule)` / `.stroke_contains(&path, x, y)`, on the render's
+  painter: made by a method the render and the press handler both call, to find the shape under a tap); a new drawing replaces the old one. Props that take a plain color (an input's placeholder color)
   take `cx.color(theme.muted_foreground)`: the theme color for the appearance now.
 - **State** is `Self`, written like a TSX component where Rust allows:
 
