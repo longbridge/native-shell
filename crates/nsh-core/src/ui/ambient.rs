@@ -557,6 +557,14 @@ pub fn element_ref() -> super::ElementRef {
     super::ElementRef::new(&executor())
 }
 
+/// A handle for a component this view renders (TS: a `ref` to a
+/// component): put it on the component's element with
+/// [`super::ComponentElement::component_ref`]; [`super::ComponentRef::api`]
+/// is the API its view registered.
+pub fn component_ref<C: super::Component>() -> super::ComponentRef<C> {
+    super::ComponentRef::new(&executor())
+}
+
 /// Listens to the Android back button while the current owner lives (TS:
 /// `BackHandler.addEventListener("hardwareBackPress", f)`): when no modal is
 /// shown, `f` runs before the stack pops, newest listener first, and returns
