@@ -37,6 +37,8 @@ in a checkout; `cargo xtask dist` puts them in `dist/nsh/runtime/gpui/` on each 
 `embedding.md`). CI: `.github/workflows/gpui.yml` (Ubuntu 24.04, macOS 15 and Windows: clippy with `-D warnings` and
 tests of the GPUI crates, the CLI and `nsh-dev`).
 
+`cargo test --workspace` and clippy build these crates too, so on Linux the whole workspace needs these packages.
+
 Features:
 
 | Feature | Does | Host | Runner |
@@ -193,5 +195,9 @@ shots of macOS and Windows.
   offscreen rendering, wry's macOS / Windows web views and the chrome's macOS / Windows title bars have not run there.
 - **Packaged apps** are laid out as the native backend's of the machine they are made on (a directory and `.tar.gz`
   on Linux, an ad hoc signed `.app` on macOS, a directory and `.zip` on Windows; `embedding.md`), with
-  `nsh-gpui-app` as the executable (features `js` and `webview`, plus `video` on Linux: GStreamer must be installed
-  where a Linux package runs).
+  `nsh-gpui-app` as the executable (features `js` and `webview`, plus `video` on Linux). The Linux runner links
+  WebKitGTK 4.1 (with GTK 3) and GStreamer dynamically: every machine a Linux package runs on needs them installed
+  (`libwebkit2gtk-4.1-0`, `libgstreamer1.0-0`, `libgstreamer-plugins-base1.0-0`, and `gstreamer1.0-plugins-good` for
+  common formats), besides a Vulkan driver and xkbcommon.
+- **Dev logs** (feature `dev`): the log forwarder is per process (`dev.rs`' `CLIENT` / `CONNECTED`), so with several
+  `AppView`s connected to dev servers every view's logs go to the most recent session.

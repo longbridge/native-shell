@@ -173,6 +173,8 @@ nsh package App.tsx --target gpui --run
 写出的内容与本机上 `--target macos`、`--target windows` 或 `--target linux` 相同，只是可执行文件换成 GPUI 的发布版运行器
 （`nsh-gpui-app`），而不是原生后端的。请在应用面向的操作系统上打包：运行器是为构建它的机器构建的。见 [GPUI](./gpui.md#打包)。
 
+Linux 上的 GPUI 包动态链接 WebKitGTK 4.1（Web 视图）和 GStreamer（视频），因此运行它的机器需要安装它们，以及 GTK 3 和 GStreamer 的 base、good 插件（Debian / Ubuntu：`libwebkit2gtk-4.1-0`、`libgstreamer1.0-0`、`libgstreamer-plugins-base1.0-0`、`gstreamer1.0-plugins-good`），此外还需要 Vulkan 驱动和 `libxkbcommon`。
+
 ## 图标
 
 在 `nsh.json` 中（`"icon": "icon.png"`）或通过 `--icon` 提供一张正方形 PNG，最好是 1024×1024：
