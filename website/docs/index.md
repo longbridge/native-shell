@@ -1,12 +1,12 @@
 ---
 title: Introduction
-description: "What Native Shell is: a shell for native iOS, Android and Linux apps to load UI modules after they ship, with macOS and Windows support in development."
+description: "What Native Shell is: a shell for native iOS, Android and Linux apps to load UI modules after they ship, with AppKit for macOS and Win32/Direct2D for Windows in development."
 order: 1
 ---
 
 # Introduction
 
-Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS, Android or Linux app loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; Linux is supported through GTK 4, while macOS support is underway and Windows is also in development.
+Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native iOS, Android or Linux app loads it at run time and shows it with the platform's own views, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release. Mobile clients are the first target; Linux is supported through GTK 4, while native macOS (AppKit) and Windows (Win32 / Direct2D) backends are in development.
 
 > [!IMPORTANT]
 > nsh is not a framework for writing your whole app in TypeScript. The app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships.
@@ -41,9 +41,9 @@ Native Shell (nsh for short) is designed for **AI-generated, dynamically deliver
 - **System behavior would have to be rebuilt.** A self-drawn surface inside a native screen has none of the platform's text selection, nor the selection menu that comes with it (Copy, Share, Translate, Look Up, Select All), nor the system's input methods, accessibility and new visual materials each iOS release brings. Recreating them in a GPU renderer is a large, never-finished job, and the copies drift from the real thing.
 - **Mobile teams would have to adopt a new UI stack.** Running a self-drawn layer at scale in an existing mobile client means its iOS and Android teams take on an unfamiliar renderer, its compatibility issues across OS versions and devices, and its bugs.
 
-nsh therefore renders modules with the host platform's own views: UIKit and Android views on mobile, GTK 4 on Linux, with macOS support underway and Windows also in development. The same module format and runtime can run in all these hosts.
+nsh therefore renders modules with the host platform's own views: UIKit and Android views on mobile, GTK 4 on Linux, AppKit on macOS, and Win32 / Direct2D on Windows. The Linux backend is supported; the macOS and Windows backends are in development. The same module format and runtime can run in all these hosts.
 
-The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps and is expanding to desktop. Linux is supported today; macOS support is underway, and Windows support is in development.
+The two are positioned differently. GPUI Shell is for extending GPUI desktop applications; Native Shell is for extending native mobile apps and is expanding to desktop with native backends. Linux is supported today; the AppKit macOS backend and Win32 / Direct2D Windows backend are in development.
 
 ## A module
 
@@ -115,14 +115,14 @@ Because JavaScript only describes the UI and handles events, the work done in th
 | iOS | Supported (iOS 15.0+) | Devices and the simulator; embedded with `NativeShell.xcframework` |
 | Android | Supported (API 28, Android 9+) | `arm64-v8a` and `x86_64`; embedded with `nsh.aar` |
 | Linux | Supported | GTK 4 widgets; standalone apps and embedded with `AppView` ([Linux](./linux.md)) |
-| macOS | In development | Desktop support is underway |
-| Windows | In development | Desktop support is in development |
+| macOS | In development | Native AppKit backend |
+| Windows | In development | Native Win32 / Direct2D backend |
 | Mac Catalyst | Development only | The iPhone-sized window `nsh run` opens on a Mac |
 | Web (WebAssembly) | Demos only | Runs the examples on this site, drawn with the DOM rather than native views ([Web](./web.md)); not a target to ship to |
 
 <div class="diagram-scroll">
-<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android and Linux (supported), macOS (support underway), Windows (in development) and the web (WebAssembly to the DOM, for this site's demos only).">
-<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android and Linux (supported), macOS (support underway), Windows (in development) and the web (WebAssembly to the DOM, for this site's demos only).">
+<img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android and Linux (supported), macOS with AppKit (in development), Windows with Win32 / Direct2D (in development), and the web (WebAssembly to the DOM, for this site's demos only).">
+<img class="diagram diagram-dark" src="/diagrams/platforms-dark.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android and Linux (supported), macOS with AppKit (in development), Windows with Win32 / Direct2D (in development), and the web (WebAssembly to the DOM, for this site's demos only).">
 </div>
 
 ## How it compares
