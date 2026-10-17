@@ -45,7 +45,7 @@ pub(crate) fn init(cx: &mut App) {
             while let Ok(job) = rx.try_recv() {
                 jobs.push(job);
             }
-            let _ = cx.update(|cx| {
+            cx.update(|cx| {
                 for job in jobs {
                     job();
                 }
@@ -76,7 +76,7 @@ pub(crate) fn after_ms(ms: u64, f: impl FnOnce() + 'static) {
     let timer = app.background_executor().timer(Duration::from_millis(ms));
     app.spawn(async move |cx| {
         timer.await;
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             f();
             flush(cx);
         });

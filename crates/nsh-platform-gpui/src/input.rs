@@ -41,13 +41,17 @@
 //! (`TouchEvent::activated`), where the view becomes the responder.
 //!
 //! A scroll stays on the scroll view it began in (a touchpad gesture until
-//! it pauses, mouse wheel notches while they come within 200 ms), as in
+//! it ends, mouse wheel notches while they come within 200 ms), as in
 //! browsers: inner views passing under the pointer do not take it over, and
 //! its view reaching an edge does not hand the rest to an outer one.
-//! Windows has no touchpad gesture phases for wheel messages: a precise
-//! scroll ends once its deltas pause, and the system's own inertia comes as
-//! more deltas. Precision touchpads pinch as Ctrl + wheel, which pinches
-//! the view under the pointer like a mouse's Ctrl + wheel.
+//! Touchpad gestures end by GPUI's phases where the platform has them
+//! (macOS, Windows' DirectManipulation; [`touchpad`]): fingers resting stop
+//! a glide, lifting them glides on with the gesture's velocity (and the
+//! system's momentum that follows is swallowed), as the macOS and Linux
+//! backends do. Without phases (Wayland; X11 reports touchpads as wheel
+//! lines) a precise scroll ends once its deltas pause. Touchpad pinches
+//! (GPUI's `PinchEvent`, [`touchpad_pinch`]) and Ctrl + wheel pinch the
+//! view under the pointer.
 
 use std::{
     cell::{Cell, RefCell},
@@ -234,13 +238,20 @@ pub(crate) struct Input {
     pointers: RefCell<Vec<Pointer>>,
     /// Two fingers pinching / rotating on the touchscreen.
     two: RefCell<Option<TwoFinger>>,
-    /// A pinch by Ctrl + wheel (or a precision touchpad's pinch), with the
-    /// generation of its end timer.
+    /// A pinch by Ctrl + wheel, with the generation of its end timer.
     zoom: RefCell<Option<(Transform, u64)>>,
+    /// A touchpad pinch ([`touchpad_pinch`]), with its absolute scale.
+    pinch: RefCell<Option<(Transform, f32)>>,
     /// A precise (touchpad) scroll.
     wheel: RefCell<Option<Wheel>>,
     /// A timer watches the precise scroll for its pause.
     wheel_watch: Cell<bool>,
+    /// When the system's momentum after a touchpad gesture last came (ms):
+    /// it is swallowed, as the gesture's view glides by itself.
+    momentum: Cell<Option<f64>>,
+    /// The cursor the surface was last drawn with: GPUI takes cursors from
+    /// frames, so a move that changes it draws again.
+    pub(crate) cursor: Cell<Cursor>,
     /// The scroll view mouse wheel notches go to while they keep coming,
     /// whether they scroll horizontally, and when the last one came (ms).
     latch: RefCell<Option<(NshView, bool, f64)>>,
@@ -266,6 +277,13 @@ pub(crate) struct Input {
     next_id: Cell<u32>,
     /// Next press / fade generation (invalidates callbacks of earlier ones).
     next_gen: Cell<u64>,
+}
+
+impl Input {
+    /// A touchpad pinch is going on ([`touchpad_pinch`]).
+    pub(crate) fn pinching(&self) -> bool {
+        self.pinch.borrow().is_some()
+    }
 }
 
 /// What a drag on a view may start.
@@ -475,6 +493,30 @@ struct Wheel {
     view: NshView,
     /// When its last delta came (ms).
     last: f64,
+    /// Accumulated deltas, for the velocity.
+    total: (f32, f32),
+    velocity: VelocityTracker,
+    /// Began with the touchpad's phases ([`touchpad`]): it ends when they
+    /// say so, not when its deltas pause.
+    phased: bool,
+    /// Began with fingers resting (a phase with no delta) and has not
+    /// scrolled yet.
+    held: bool,
+}
+
+impl Wheel {
+    fn new(view: NshView, time: f64, phased: bool) -> Wheel {
+        let mut velocity = VelocityTracker::default();
+        velocity.add(time, 0.0, 0.0);
+        Wheel {
+            view,
+            last: time,
+            total: (0.0, 0.0),
+            velocity,
+            phased,
+            held: false,
+        }
+    }
 }
 
 /// An `activeOpacity` fade.
@@ -543,7 +585,9 @@ pub(crate) fn reset(surface: &Surface) {
     input.pointers.borrow_mut().clear();
     input.two.borrow_mut().take();
     input.zoom.borrow_mut().take();
+    input.pinch.borrow_mut().take();
     input.wheel.borrow_mut().take();
+    input.momentum.set(None);
     input.latch.borrow_mut().take();
     input.hover_tracked.borrow_mut().clear();
     input.hovered.borrow_mut().clear();
@@ -863,7 +907,7 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
         return;
     }
     let kind = if event.precise {
-        WheelInput::Touchpad
+        WheelInput::Touchpad { phased: false }
     } else {
         WheelInput::Step
     };
@@ -2062,10 +2106,12 @@ fn set_hover_item(surface: &Rc<Surface>, item: Option<Item>, at: (f32, f32), mod
 enum WheelInput {
     /// A mouse wheel notch (points).
     Step,
-    /// A precise (touchpad) scroll moved by points.
-    Touchpad,
-    /// The precise scroll paused: it ended.
-    Stop,
+    /// A precise (touchpad) scroll moved by points; `phased` when its
+    /// gesture has phases (it ends by them rather than a pause).
+    Touchpad { phased: bool },
+    /// The precise scroll ended: by its phase (`fling`: it glides on with
+    /// its velocity) or a pause.
+    Stop { fling: bool },
 }
 
 /// The innermost scroll view at `(x, y)` that can move by `(dx, dy)`
@@ -2148,20 +2194,33 @@ fn wheel_input(
             crate::scroll::wheel(surface, &view, dx, dy);
             true
         }
-        WheelInput::Touchpad => {
+        WheelInput::Touchpad { phased } => {
             if dx == 0.0 && dy == 0.0 {
                 return input.wheel.borrow().is_some();
+            }
+            if input.wheel.borrow().is_none() && swallow_momentum(input, time) {
+                return true;
+            }
+            // After a hold the scroll goes where it points: the held view
+            // keeps it only if it scrolls that way.
+            let held = match &*input.wheel.borrow() {
+                Some(w) if w.held => Some(w.view.clone()),
+                _ => None,
+            };
+            if let Some(held) = held {
+                if scroll_target(surface, x, y, dx, dy).as_ref() == Some(&held) {
+                    *input.wheel.borrow_mut() = Some(Wheel::new(held, time, phased));
+                } else {
+                    input.wheel.borrow_mut().take();
+                    crate::scroll::wheel_end(surface, &held, 0.0, 0.0);
+                }
             }
             if input.wheel.borrow().is_none() {
                 let Some(view) = scroll_target(surface, x, y, dx, dy) else {
                     return false;
                 };
-                *input.wheel.borrow_mut() = Some(Wheel {
-                    view: view.clone(),
-                    last: time,
-                });
+                *input.wheel.borrow_mut() = Some(Wheel::new(view.clone(), time, phased));
                 crate::scroll::wheel_begin(surface, &view);
-                watch_touchpad(surface);
             }
             let view = {
                 let mut wheel = input.wheel.borrow_mut();
@@ -2169,21 +2228,207 @@ fn wheel_input(
                     return false;
                 };
                 w.last = time;
+                w.total.0 += dx;
+                w.total.1 += dy;
+                w.velocity.add(time, w.total.0, w.total.1);
                 w.view.clone()
             };
+            if !phased {
+                watch_touchpad(surface);
+            }
             crate::scroll::wheel(surface, &view, dx, dy);
             true
         }
-        WheelInput::Stop => {
-            let Some(w) = input.wheel.borrow_mut().take() else {
+        WheelInput::Stop { fling } => {
+            let Some(mut w) = input.wheel.borrow_mut().take() else {
                 return false;
             };
-            // The system glides on by itself (its inertia comes as more
-            // deltas, which this scroll took): no velocity to add.
-            crate::scroll::wheel_end(surface, &w.view, 0.0, 0.0);
+            // A gesture that ended by its phase (fingers lifted) glides on
+            // with its velocity, and the system's momentum that follows is
+            // swallowed; one that ended by a pause glides no more (Windows'
+            // own inertia comes as more deltas, which it took).
+            let (vx, vy) = if fling && !w.held {
+                w.velocity.add(time, w.total.0, w.total.1);
+                input.momentum.set(Some(time));
+                w.velocity.velocity()
+            } else {
+                (0.0, 0.0)
+            };
+            crate::scroll::wheel_end(surface, &w.view, vx, vy);
             true
         }
     }
+}
+
+/// Whether a precise scroll delta at `time` (ms), with no gesture going
+/// on, is the system's momentum after a gesture that ended by its phase
+/// (which glides by itself): deltas that keep coming after it are.
+fn swallow_momentum(input: &Input, time: f64) -> bool {
+    match input.momentum.get() {
+        Some(last) if time - last < TOUCHPAD_IDLE => {
+            input.momentum.set(Some(time));
+            true
+        }
+        _ => {
+            input.momentum.set(None);
+            false
+        }
+    }
+}
+
+/// The phase of a touchpad gesture (GPUI's `TouchPhase`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GesturePhase {
+    /// Fingers touched (the event may have no delta yet).
+    Began,
+    /// They moved (or the system's momentum moved, with no phase).
+    Moved,
+    /// They lifted.
+    Ended,
+    /// The system took the gesture.
+    Cancelled,
+}
+
+/// A touchpad scroll event in `phase`: [`wheel`] with the gesture's begin
+/// and end. Fingers resting on the touchpad stop a glide; lifting them
+/// glides on with the gesture's velocity. Touchpads whose events have no
+/// phases (every event [`GesturePhase::Moved`]) end once they pause.
+pub(crate) fn touchpad(surface: &Rc<Surface>, event: WheelEvent, phase: GesturePhase) {
+    let input = &surface.input;
+    let time = event.time * 1000.0;
+    let (x, y) = (event.x, event.y);
+    match phase {
+        GesturePhase::Began => {
+            input.momentum.set(None);
+            wheel_input(
+                surface,
+                x,
+                y,
+                0.0,
+                0.0,
+                time,
+                WheelInput::Stop { fling: false },
+            );
+            if event.dx == 0.0 && event.dy == 0.0 {
+                touchpad_hold(surface, x, y, time);
+                return;
+            }
+        }
+        GesturePhase::Moved => {
+            // A held gesture whose fingers lifted without scrolling (the
+            // system cancelled it: GPUI sends a phaseless empty event).
+            let held = input.wheel.borrow().as_ref().is_some_and(|w| w.held);
+            if held && event.dx == 0.0 && event.dy == 0.0 {
+                wheel_input(
+                    surface,
+                    x,
+                    y,
+                    0.0,
+                    0.0,
+                    time,
+                    WheelInput::Stop { fling: false },
+                );
+                return;
+            }
+        }
+        GesturePhase::Ended | GesturePhase::Cancelled => {}
+    }
+    let phased =
+        phase != GesturePhase::Moved || input.wheel.borrow().as_ref().is_some_and(|w| w.phased);
+    if event.modifiers.ctrl && event.dy != 0.0 && wheel_zoom(surface, x, y, event.dy) {
+        return;
+    }
+    wheel_input(
+        surface,
+        x,
+        y,
+        event.dx,
+        event.dy,
+        time,
+        WheelInput::Touchpad { phased },
+    );
+    if matches!(phase, GesturePhase::Ended | GesturePhase::Cancelled) {
+        let fling = phase == GesturePhase::Ended;
+        wheel_input(surface, x, y, 0.0, 0.0, time, WheelInput::Stop { fling });
+    }
+}
+
+/// A touchpad pinch event in `phase` at `(x, y)`: `delta` is GPUI's (the
+/// change of the scale: relative to the last one on macOS and Windows, of
+/// the gesture's absolute scale on Linux). Pinches the view under the
+/// pointer that pinches, from the gesture's begin to its end.
+pub(crate) fn touchpad_pinch(
+    surface: &Rc<Surface>,
+    x: f32,
+    y: f32,
+    delta: f32,
+    phase: GesturePhase,
+) {
+    let input = &surface.input;
+    if phase == GesturePhase::Began {
+        if let Some((old, _)) = input.pinch.borrow_mut().take() {
+            transform_end(surface, &old);
+        }
+        let Some(hit) = pick(&surface.root, x, y, true) else {
+            return;
+        };
+        let view = chain(&hit.view).into_iter().find(|v| {
+            let s = v.state();
+            transforms(&gesture_values(surface, v, s.id), s.events).0
+        });
+        let Some(view) = view else { return };
+        let mut t = transform_view(surface, &view);
+        t.rotation = false;
+        transform_begin(surface, &t);
+        *input.pinch.borrow_mut() = Some((t, 1.0));
+    }
+    if delta != 0.0 {
+        let t = {
+            let mut pinch = input.pinch.borrow_mut();
+            let Some((t, absolute)) = pinch.as_mut() else {
+                return;
+            };
+            *absolute = pinch_scale(t.scale, *absolute, delta);
+            t.scale = *absolute;
+            t.clone()
+        };
+        transform_move(surface, &t);
+    }
+    if matches!(phase, GesturePhase::Ended | GesturePhase::Cancelled)
+        && let Some((t, _)) = input.pinch.borrow_mut().take()
+    {
+        transform_end(surface, &t);
+    }
+}
+
+/// The scale of a touchpad pinch at `scale` (its absolute scale so far
+/// `absolute`) after GPUI's `delta`.
+fn pinch_scale(scale: f32, absolute: f32, delta: f32) -> f32 {
+    let next = if cfg!(target_os = "linux") {
+        // The platform's absolute scale changed by `delta`.
+        absolute + delta
+    } else {
+        scale * (1.0 + delta)
+    };
+    next.max(0.01)
+}
+
+/// Fingers rest on the touchpad at `(x, y)`: the scroll view under them
+/// stops gliding, until they scroll or lift.
+fn touchpad_hold(surface: &Rc<Surface>, x: f32, y: f32, time: f64) {
+    let Some(hit) = pick(&surface.root, x, y, true) else {
+        return;
+    };
+    let Some(view) = chain(&hit.view)
+        .into_iter()
+        .find(|v| v.kind() == ViewKind::Scroll)
+    else {
+        return;
+    };
+    let mut wheel = Wheel::new(view.clone(), time, true);
+    wheel.held = true;
+    *surface.input.wheel.borrow_mut() = Some(wheel);
+    crate::scroll::wheel_begin(surface, &view);
 }
 
 /// Whether wheel notches latched to a view at `last` (ms) along
@@ -2207,13 +2452,21 @@ fn check_touchpad(surface: &Rc<Surface>, ms: f64) {
             return;
         };
         let now = surface.clock() * 1000.0;
-        let last = surface.input.wheel.borrow().as_ref().map(|w| w.last);
+        // Phased gestures end by their phases (fingers may rest a while).
+        let last = surface
+            .input
+            .wheel
+            .borrow()
+            .as_ref()
+            .filter(|w| !w.phased)
+            .map(|w| w.last);
         match touchpad_wait(last, now) {
             Some(wait) => check_touchpad(&surface, wait),
             None => {
                 surface.input.wheel_watch.set(false);
                 if last.is_some() {
-                    wheel_input(&surface, 0.0, 0.0, 0.0, 0.0, now, WheelInput::Stop);
+                    let stop = WheelInput::Stop { fling: false };
+                    wheel_input(&surface, 0.0, 0.0, 0.0, 0.0, now, stop);
                 }
             }
         }
@@ -2506,5 +2759,123 @@ mod tests {
         assert!(!has_press(events));
         events.set(EventKind::LongPress, true);
         assert!(has_press(events));
+    }
+
+    /// A surface with a 300 × 400 vertical scroll view over 2000 points.
+    fn scrolling_surface() -> (Rc<Surface>, NshView) {
+        let surface = Surface::new(nsh_engine::Environment::default());
+        surface.root.state_mut().frame = rect(0.0, 0.0, 300.0, 400.0);
+        let scroll = view(
+            &surface.root,
+            2,
+            ViewKind::Scroll,
+            rect(0.0, 0.0, 300.0, 400.0),
+        );
+        {
+            let mut state = scroll.state_mut();
+            let s = state.scroll.as_mut().unwrap();
+            s.content = (300.0, 2000.0);
+            s.behavior.enabled = true;
+        }
+        (surface, scroll)
+    }
+
+    fn pad(surface: &Rc<Surface>, dy: f32, time: f64, phase: GesturePhase) {
+        let event = WheelEvent {
+            x: 100.0,
+            y: 100.0,
+            dx: 0.0,
+            dy,
+            precise: true,
+            modifiers: Modifiers::default(),
+            time,
+        };
+        touchpad(surface, event, phase);
+    }
+
+    fn offset(view: &NshView) -> f32 {
+        view.state().scroll.as_ref().unwrap().y
+    }
+
+    #[test]
+    fn touchpad_phases_begin_and_end_the_gesture() {
+        let (surface, scroll) = scrolling_surface();
+        pad(&surface, 10.0, 1.0, GesturePhase::Began);
+        assert!(
+            surface
+                .input
+                .wheel
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| w.phased)
+        );
+        pad(&surface, 10.0, 1.016, GesturePhase::Moved);
+        pad(&surface, 10.0, 1.032, GesturePhase::Moved);
+        assert_eq!(offset(&scroll), 30.0);
+        pad(&surface, 0.0, 1.040, GesturePhase::Ended);
+        assert!(surface.input.wheel.borrow().is_none());
+        // The system's momentum that follows is swallowed: the view glides
+        // by itself.
+        pad(&surface, 8.0, 1.056, GesturePhase::Moved);
+        pad(&surface, 6.0, 1.072, GesturePhase::Moved);
+        assert_eq!(offset(&scroll), 30.0);
+        assert!(surface.input.wheel.borrow().is_none());
+        // Deltas after a pause are a new scroll.
+        pad(&surface, 5.0, 1.5, GesturePhase::Moved);
+        assert!(
+            surface
+                .input
+                .wheel
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| !w.phased)
+        );
+        assert_eq!(offset(&scroll), 35.0);
+    }
+
+    #[test]
+    fn resting_fingers_hold_until_they_scroll_or_lift() {
+        let (surface, scroll) = scrolling_surface();
+        pad(&surface, 0.0, 1.0, GesturePhase::Began);
+        assert!(
+            surface
+                .input
+                .wheel
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| w.held)
+        );
+        // Lifted without scrolling (cancelled: a phaseless empty event).
+        pad(&surface, 0.0, 1.1, GesturePhase::Moved);
+        assert!(surface.input.wheel.borrow().is_none());
+        pad(&surface, 0.0, 2.0, GesturePhase::Began);
+        pad(&surface, 12.0, 2.016, GesturePhase::Moved);
+        let wheel = surface.input.wheel.borrow();
+        let w = wheel.as_ref().unwrap();
+        assert!(w.phased && !w.held);
+        assert_eq!(offset(&scroll), 12.0);
+    }
+
+    #[test]
+    fn a_touchpad_fling_carries_its_velocity() {
+        let mut w = Wheel::new(NshView::new(2, ViewKind::Scroll), 0.0, true);
+        for i in 1..=6 {
+            w.total.1 += 10.0;
+            w.velocity.add(i as f64 * 10.0, 0.0, w.total.1);
+        }
+        let (_, vy) = w.velocity.velocity();
+        assert!((vy - 1000.0).abs() < 1.0, "{vy}");
+    }
+
+    #[test]
+    fn touchpad_pinch_scales() {
+        if cfg!(target_os = "linux") {
+            // Deltas change the gesture's absolute scale.
+            assert!((pinch_scale(1.0, 1.0, 0.25) - 1.25).abs() < 1e-6);
+            assert!((pinch_scale(1.25, 1.25, 0.25) - 1.5).abs() < 1e-6);
+        } else {
+            assert!((pinch_scale(2.0, 2.0, 0.1) - 2.2).abs() < 1e-6);
+        }
+        assert_eq!(pinch_scale(0.02, 0.02, -5.0), 0.01);
     }
 }

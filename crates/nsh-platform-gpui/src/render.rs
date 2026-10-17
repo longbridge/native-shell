@@ -689,7 +689,6 @@ impl Element for SurfaceElement {
         crate::system::window_prepaint(surface, window, cx);
         if surface.wants_frames() {
             surface.tick();
-            window.request_animation_frame();
         }
         // Changes made by the tick are in this frame.
         surface.drawing();
@@ -737,6 +736,13 @@ impl Element for SurfaceElement {
             window,
             cx,
         );
+        // Animations tick on the window's frames while they run (and stop
+        // asking when idle); a change made while painting (a frame client
+        // added, an item placed) is drawn in the next frame, as no entry
+        // point flushes after a paint.
+        if surface.wants_frames() || surface.invalidated() {
+            window.request_animation_frame();
+        }
         crate::access::paint(&surface, window, cx);
     }
 
