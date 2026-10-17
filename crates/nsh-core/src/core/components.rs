@@ -24,7 +24,7 @@ use crate::{
     Prop, ROOT_ID, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
-        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ClipboardRead, ComponentError,
+        Action, AnswerSlot, AnyInstance, Attrs, Child, ClipboardRead, ComponentError,
         ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall,
         Globals, ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn,
         Position, PropError, Provided, Reactive, Registry, RenderReads, RenderScope, Root,
@@ -1010,7 +1010,7 @@ impl<M: TextEngine> Core<M> {
             }
             FunctionCall::Async(start) => {
                 let executor = Rc::downgrade(&self.components.executor);
-                match start(args, AsyncCx::new(executor.clone())) {
+                match start(args) {
                     Ok(future) => {
                         // A task of the root: it never goes away.
                         crate::ui::task::spawn_raw(

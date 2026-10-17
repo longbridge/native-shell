@@ -1214,24 +1214,18 @@ fn js_object(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
-/// Whether `ty` is `AsyncCx` / `&mut ModuleCx`: a module function's
-/// context.
-fn module_cx(ty: &Type) -> Option<bool> {
-    match ty {
-        Type::Reference(r) if matches!(last_segment(&r.elem), Some((id, _)) if id == "ModuleCx") => {
-            Some(false)
-        }
-        t if matches!(last_segment(t), Some((id, _)) if id == "AsyncCx") => Some(true),
-        _ => None,
-    }
+/// Whether `ty` is `&mut ModuleCx`: a module function's context.
+fn module_cx(ty: &Type) -> bool {
+    matches!(ty, Type::Reference(r) if matches!(last_segment(&r.elem), Some((id, _)) if id == "ModuleCx"))
 }
 
 /// `#[module]` on an `impl` block of a unit struct: its functions (no
 /// receiver) become functions of a JS object named after the struct
 /// (`Alert.alert(...)`), documented by their doc comments (the block's doc
 /// comment documents the object). A function takes [`JsValue`] parameters
-/// (an `Option` one is optional), then optionally `cx: &mut ModuleCx`, or
-/// for an `async fn` `cx: AsyncCx`; it returns nothing (JS calls it and
+/// (an `Option` one is optional), then optionally `cx: &mut ModuleCx` (not
+/// an `async fn`: it reaches the platform with the free functions views
+/// use, `dialog(..)`, `clipboard_string()`, ...); it returns nothing (JS calls it and
 /// moves on) or a [`JsValue`] (JS gets a `Promise`), or a `Result` of one
 /// (an `Err` rejects the `Promise` with its message). A UI set registers
 /// the module (`Registry::module::<Alert>()`); a component exported under
@@ -1298,11 +1292,12 @@ fn module_impl(item: ItemImpl, flat: bool) -> syn::Result<TokenStream2> {
         let mut call_args = Vec::new();
         for (i, arg) in typed.iter().enumerate() {
             let ty = &arg.ty;
-            if let Some(async_cx) = module_cx(ty) {
-                if i + 1 != typed.len() || async_cx != is_async {
+            if module_cx(ty) {
+                if i + 1 != typed.len() || is_async {
                     return Err(syn::Error::new(
                         arg.span(),
-                        "the last parameter: `cx: &mut ModuleCx`, or `cx: AsyncCx` for an `async fn`",
+                        "the last parameter of a function that is not `async`: `cx: &mut ModuleCx` \
+                         (an `async fn` uses the free functions: `dialog(..)`, ...)",
                     ));
                 }
                 call_args.push(quote!(cx));
@@ -1357,8 +1352,7 @@ fn module_impl(item: ItemImpl, flat: bool) -> syn::Result<TokenStream2> {
         };
         let call = if is_async {
             quote! {
-                #ui::FunctionCall::Async(|args, cx| {
-                    #unused_cx
+                #ui::FunctionCall::Async(|args| {
                     #args_iter
                     #(#decode)*
                     ::core::result::Result::Ok(::std::boxed::Box::pin(async move {

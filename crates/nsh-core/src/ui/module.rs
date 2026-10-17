@@ -7,7 +7,7 @@
 use std::{any::TypeId, future::Future, pin::Pin};
 
 use super::{
-    AsyncCx, DialogAnswer, Environment, PropError, TsType, TsTypes,
+    DialogAnswer, Environment, PropError, TsType, TsTypes,
     element::ErasedCx,
     task::{self, Action},
 };
@@ -39,8 +39,9 @@ pub type ModuleFuture = Pin<Box<dyn Future<Output = Result<JsonValue, String>>>>
 pub enum FunctionCall {
     /// At once, with a [`ModuleCx`]; an error rejects the `Promise`.
     Sync(fn(Vec<JsonValue>, &mut ModuleCx<'_>) -> Result<JsonValue, PropError>),
-    /// As a task (its arguments checked first).
-    Async(fn(Vec<JsonValue>, AsyncCx) -> Result<ModuleFuture, PropError>),
+    /// As a task (its arguments checked first): it reaches the platform with
+    /// the same free functions views use (`dialog`, `clipboard_string`, ...).
+    Async(fn(Vec<JsonValue>) -> Result<ModuleFuture, PropError>),
 }
 
 /// A function of a module (`#[module]` makes them).
