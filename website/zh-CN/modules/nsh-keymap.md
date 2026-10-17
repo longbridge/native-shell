@@ -70,15 +70,17 @@ function Editor() {
 
 按键组合由小写的修饰键和一个键用 `+` 连接而成：`"mod+k"`、`"ctrl+shift+p"`、`"alt+enter"`、`"escape"`、`"f5"`、`"cmd+-"`（Command 加减号）。
 
-| 修饰键 | 含义 |
-|---|---|
-| `mod` | 在 macOS 和 iOS 上是 Command，其他平台上是 Control：应用自己的快捷键用它 |
-| `cmd` | Command（`super`、`win`：Linux 上的 Super 键） |
-| `ctrl` | Control |
-| `alt` | macOS 上是 Option，其他平台上是 Alt（`option`） |
-| `shift` | Shift |
+| 修饰键 | macOS | Windows | Linux |
+|---|---|---|---|
+| `mod`（也可写 `cmdorctrl`） | Command（⌘） | Ctrl | Ctrl |
+| `cmd`（也可写 `command`、`meta`、`super`、`win`） | Command（⌘） | Windows 键 | Super |
+| `ctrl`（也可写 `control`） | Control（⌃） | Ctrl | Ctrl |
+| `alt`（也可写 `option`、`opt`） | Option（⌥） | Alt | Alt |
+| `shift` | Shift（⇧） | Shift | Shift |
 
-键是它在美式键盘上不按 Shift 时输入的字符：`k`、`1`、`/`、`[`、`=`；`?` 写作 `"shift+/"`，大写 K 写作 `"shift+k"`。加号键是 `=`（`"mod+="`，加 Shift 是 `"mod+shift+="`），因此 `"mod++"` 会报错并给出正确写法；减号是 `"mod+-"`。具名键：`space`、`enter`、`escape`、`tab`、`backspace`、`delete`、`up`、`down`、`left`、`right`、`home`、`end`、`pageup`、`pagedown`、`f1` 到 `f24`。一律小写：`"Mod+K"` 和 `"mod-k"` 都会报错，错误信息给出正确的写法。
+应用自己的快捷键请用 `mod`：它就是各平台应用习惯使用的那个键（macOS 上是 ⌘K，Windows 和 Linux 上是 Ctrl+K），一种写法到处适用。Windows 键和 Super 基本归系统使用，所以在 macOS 以外很少该用 `cmd`。
+
+键可以是字母、数字或标点键，写作它在美式键盘上不按 Shift 时输入的字符（`k`、`1`、`,`、`/`、`[`；`?` 写作 `"shift+/"`，大写 K 写作 `"shift+k"`），也可以是名称：`plus`（`=` / `+` 键，也可写 `=`）、`minus`（也可写 `-`）、`space`、`enter`（`return`）、`escape`（`esc`）、`tab`、`backspace`、`delete`（`del`）、`insert`、方向键 `up`、`down`、`left`、`right`（`arrowup` 等）、`home`、`end`、`pageup`、`pagedown`、`f1` 到 `f24`。一律小写：`"Mod+K"`、`"mod-k"` 和 `"mod++"` 都会报错，错误信息给出正确的写法。`nsh/desktop` 的菜单快捷键使用同样的写法。
 
 快捷键适用于任何键盘布局：在西里尔或希腊字母布局下，`mod+k` 是美式布局中输入 K 的那个键，与菜单快捷键一致。
 

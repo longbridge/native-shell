@@ -194,6 +194,7 @@ fn trigger(
         Key::Tab => "Tab".to_owned(),
         Key::Backspace => "BackSpace".to_owned(),
         Key::Delete => "Delete".to_owned(),
+        Key::Insert => "Insert".to_owned(),
         Key::Up => "Up".to_owned(),
         Key::Down => "Down".to_owned(),
         Key::Left => "Left".to_owned(),

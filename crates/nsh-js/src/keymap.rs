@@ -272,14 +272,17 @@ pub(crate) const TYPES: &str = r#"export interface KeyBindingOptions {
 /** The app's keyboard shortcuts (desktop platforms; elsewhere bindings are
  * kept but no key fires them). A keystroke is lower case modifiers and a key
  * joined by `+`: `"mod+k"`, `"ctrl+shift+p"`, `"alt+enter"`, `"escape"`,
- * `"f5"`, `"mod+-"` (minus), `"mod+="` (the plus key). Modifiers: `ctrl`, `alt` (Option), `shift`,
- * `cmd` (Command; Super elsewhere) and `mod`: Command on Apple platforms,
- * Control elsewhere. Keys: the character a key types on the US layout
- * without Shift (`k`, `1`, `/`, `[`; `"shift+/"` for `?`), `space`, `enter`,
- * `escape`, `tab`, `backspace`, `delete`, `up`, `down`, `left`, `right`,
- * `home`, `end`, `pageup`, `pagedown`, `f1` to `f24`; they match on any
- * keyboard layout. The platform consumes a key that fires a binding; when
- * several bindings have its keystroke, the newest that may fire runs. */
+ * `"f5"`, `"mod+plus"`. Modifiers: `mod` (`cmdorctrl`): Command on Apple
+ * platforms, Control elsewhere, for the app's own shortcuts; `cmd`
+ * (`command`, `meta`, `super`, `win`), `ctrl` (`control`), `alt` (`option`,
+ * `opt`), `shift`. Keys: the character a key types on the US layout without
+ * Shift (`k`, `1`, `/`, `[`; `"shift+/"` for `?`), `plus` (`=`), `minus`
+ * (`-`), `space`, `enter`, `escape`, `tab`, `backspace`, `delete`, `insert`,
+ * `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `f1` to
+ * `f24`; they match on any keyboard layout, and menu shortcuts
+ * (`nsh/desktop`) take the same. The platform consumes a key that fires a
+ * binding; when several bindings have its keystroke, the newest that may
+ * fire runs. */
 export interface Keymap {
   /** Runs `handler` when `keystroke` is pressed; returns a function that
    * removes the binding. A binding made while a component renders is removed

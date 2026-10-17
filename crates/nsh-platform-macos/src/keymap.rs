@@ -155,6 +155,8 @@ fn keystroke(event: &NSEvent) -> Option<Keystroke> {
         49 => Key::Char(' '),
         51 => Key::Backspace,
         117 => Key::Delete,
+        // Help, where PC keyboards have Insert.
+        114 => Key::Insert,
         123 => Key::Left,
         124 => Key::Right,
         125 => Key::Down,

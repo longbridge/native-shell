@@ -70,15 +70,17 @@ With the dev server, editing a module removes the bindings its top-level code ma
 
 A keystroke is lower case modifiers and a key joined by `+`: `"mod+k"`, `"ctrl+shift+p"`, `"alt+enter"`, `"escape"`, `"f5"`, `"cmd+-"` (Command and minus).
 
-| Modifier | Is |
-|---|---|
-| `mod` | Command on macOS and iOS, Control elsewhere: use it for the app's own shortcuts |
-| `cmd` | Command (`super`, `win`: the Super key on Linux) |
-| `ctrl` | Control |
-| `alt` | Option on macOS, Alt elsewhere (`option`) |
-| `shift` | Shift |
+| Modifier | macOS | Windows | Linux |
+|---|---|---|---|
+| `mod` (also `cmdorctrl`) | Command (⌘) | Ctrl | Ctrl |
+| `cmd` (also `command`, `meta`, `super`, `win`) | Command (⌘) | Windows key | Super |
+| `ctrl` (also `control`) | Control (⌃) | Ctrl | Ctrl |
+| `alt` (also `option`, `opt`) | Option (⌥) | Alt | Alt |
+| `shift` | Shift (⇧) | Shift | Shift |
 
-The key is the character it types on a US keyboard without Shift: `k`, `1`, `/`, `[`, `=`; write `"shift+/"` for `?` and `"shift+k"` for a capital K. The plus key is `=` (`"mod+="`, `"mod+shift+="` with Shift), so `"mod++"` is an error that says so; minus is `"mod+-"`. Named keys: `space`, `enter`, `escape`, `tab`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f24`. Everything is lower case: `"Mod+K"` and `"mod-k"` are errors whose messages give the right spelling.
+Use `mod` for an app's own shortcuts: it is the key each platform's apps use for them (⌘K on macOS, Ctrl+K on Windows and Linux), so one spelling fits everywhere. The Windows key and Super mostly belong to the system, so `cmd` is rarely right outside macOS.
+
+The key is a letter, digit or punctuation key, written as the character it types on a US keyboard without Shift (`k`, `1`, `,`, `/`, `[`; `"shift+/"` for `?`, `"shift+k"` for a capital K), or a name: `plus` (the `=` / `+` key, also written `=`), `minus` (also `-`), `space`, `enter` (`return`), `escape` (`esc`), `tab`, `backspace`, `delete` (`del`), `insert`, the arrows `up`, `down`, `left`, `right` (`arrowup`, …), `home`, `end`, `pageup`, `pagedown`, `f1` to `f24`. Everything is lowercase: `"Mod+K"`, `"mod-k"` and `"mod++"` are errors whose messages give the right spelling. Menu shortcuts in `nsh/desktop` take the same keystrokes.
 
 Shortcuts work with any keyboard layout: on a Cyrillic or Greek layout, `mod+k` is the key that types K on a US layout, as menu shortcuts are.
 

@@ -51,6 +51,8 @@ pub enum Key {
     Backspace,
     /// Forward delete.
     Delete,
+    /// Insert (Help on Apple keyboards).
+    Insert,
     /// Up arrow.
     Up,
     /// Down arrow.
@@ -128,14 +130,22 @@ const NAMED: &[(&str, Key)] = &[
     ("backspace", Key::Backspace),
     ("delete", Key::Delete),
     ("del", Key::Delete),
+    ("insert", Key::Insert),
     ("up", Key::Up),
+    ("arrowup", Key::Up),
     ("down", Key::Down),
+    ("arrowdown", Key::Down),
     ("left", Key::Left),
+    ("arrowleft", Key::Left),
     ("right", Key::Right),
+    ("arrowright", Key::Right),
     ("home", Key::Home),
     ("end", Key::End),
     ("pageup", Key::PageUp),
     ("pagedown", Key::PageDown),
+    // The plus key is the one typing `=`, as on the US layout.
+    ("plus", Key::Char('=')),
+    ("minus", Key::Char('-')),
 ];
 
 fn error(text: &str, reason: impl fmt::Display) -> KeystrokeError {
@@ -228,9 +238,15 @@ fn split(text: &str) -> Result<(Vec<&str>, &str), KeystrokeError> {
         ));
     }
     if text == "+" || text.ends_with("++") {
+        let mods = text.strip_suffix("++").unwrap_or("");
+        let plus = if mods.is_empty() {
+            "plus".to_owned()
+        } else {
+            format!("{mods}+plus")
+        };
         return Err(error(
             text,
-            "the plus key is \"=\" (\"mod+=\"; \"mod+shift+=\" with Shift)",
+            format_args!("write the plus key as \"plus\": {plus:?}"),
         ));
     }
     let (mods, key) = match text.rsplit_once('+') {
@@ -250,9 +266,9 @@ fn modifier<'a>(modifiers: &'a mut Modifiers, name: &str, os: Os) -> Result<&'a 
         "ctrl" | "control" => &mut modifiers.ctrl,
         "alt" | "option" | "opt" => &mut modifiers.alt,
         "shift" => &mut modifiers.shift,
-        "cmd" | "command" | "super" | "win" => &mut modifiers.cmd,
-        "mod" if apple => &mut modifiers.cmd,
-        "mod" => &mut modifiers.ctrl,
+        "cmd" | "command" | "meta" | "super" | "win" => &mut modifiers.cmd,
+        "mod" | "cmdorctrl" | "commandorcontrol" if apple => &mut modifiers.cmd,
+        "mod" | "cmdorctrl" | "commandorcontrol" => &mut modifiers.ctrl,
         "" => return Err("an empty modifier".into()),
         other if other != other.to_ascii_lowercase() => {
             return Err(format!(
@@ -521,6 +537,11 @@ mod tests {
         );
         // `mod` is Command on Apple platforms, Control elsewhere.
         assert_eq!(parse("mod+k"), parse("cmd+k"));
+        assert_eq!(parse("cmdorctrl+k"), parse("meta+k"));
+        assert_eq!(parse("mod+plus"), parse("mod+="));
+        assert_eq!(parse("ctrl+minus"), parse("ctrl+-"));
+        assert_eq!(parse("arrowup"), parse("up"));
+        assert_eq!(parse("insert").unwrap().key, Key::Insert);
         assert_eq!(
             Keystroke::parse("mod+k", Os::Linux),
             Keystroke::parse("ctrl+k", Os::Linux)
@@ -550,8 +571,8 @@ mod tests {
         assert!(err("Escape").contains("key names are lower case: \"escape\""));
         assert!(err("F5").contains("\"f5\""));
         assert!(err("cmd+?").contains("write \"shift+/\""));
-        assert!(err("mod++").contains("the plus key is \"=\""));
-        assert!(err("+").contains("the plus key"));
+        assert!(err("mod++").contains("write the plus key as \"plus\": \"mod+plus\""));
+        assert!(err("+").contains("\"plus\""));
         assert!(err("cmd+é").contains("US layout"));
         assert!(err("f25").contains("unknown key"));
         assert!(err("f05").contains("unknown key"));

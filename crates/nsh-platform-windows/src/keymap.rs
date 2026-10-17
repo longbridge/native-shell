@@ -107,6 +107,7 @@ fn key_of(vk: u16) -> Option<Key> {
         0x26 => Key::Up,
         0x27 => Key::Right,
         0x28 => Key::Down,
+        0x2D => Key::Insert,
         0x2E => Key::Delete,
         // `0`-`9`, `A`-`Z`.
         0x30..=0x39 => Key::Char(char::from(vk as u8)),
