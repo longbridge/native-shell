@@ -66,8 +66,8 @@ pub use self::{
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
     back::BackSubscription,
     component::{
-        Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
-        Param, PropKind, PropSpec, Props, Registry, Root, declarations,
+        Api, Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec,
+        Methods, NoEvent, Param, PropKind, PropSpec, Props, Registry, Root, declarations,
     },
     element::{
         Accessible, AnyElement, Attrs, BoundListConfig, Child, Children, ComponentElement, Context,
@@ -94,9 +94,9 @@ pub use self::{
     once::Scope,
     prop::Prop,
     reactive::{
-        IntoReactive, Memo, Owner, Reactive, ReadSignal, Runtime, Signal, SignalEquals, batch,
-        cleanup, computed, create_root, effect, provide_context, signal, signal_with, untracked,
-        use_context,
+        IntoReactive, Memo, Owner, Reactive, ReadSignal, Runtime, Signal, SignalEquals, Stored,
+        batch, cleanup, computed, create_root, effect, provide_context, signal, signal_with,
+        stored, untracked, use_context,
     },
     responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
     scrollable::Scrollable,
@@ -201,6 +201,7 @@ pub mod prelude {
         Listener,
         Measurement,
         Method,
+        Methods,
         Modal,
         ModalAnimation,
         ModalPresentation,
@@ -283,7 +284,7 @@ pub mod prelude {
     };
     pub use super::{
         Each, If, IntoElements, IntoReactive, Memo, Owner, Prop, Reactive, ReadSignal, Scope,
-        Signal, SignalEquals,
+        Signal, SignalEquals, Stored,
         ambient::{
             Spawned, add_status_bar, allow_rtl, animate_layout, announce_for_accessibility,
             clipboard_has_string, clipboard_string, color, dark, dialog, dismiss_keyboard,
@@ -295,7 +296,7 @@ pub mod prelude {
             window,
         },
         batch, cleanup, component, computed, dynamic, effect, provide_context, signal, signal_with,
-        untracked, use_context,
+        stored, untracked, use_context,
     };
 }
 

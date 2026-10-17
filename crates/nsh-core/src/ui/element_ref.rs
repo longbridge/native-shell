@@ -224,12 +224,17 @@ impl<C: Component> ComponentRef<C> {
         self.element.node()
     }
 
-    /// Runs `f` with the component and its [`Context`] (its `#[methods]`
-    /// are plain Rust functions: `|stepper, cx| stepper.set_value(5.0,
-    /// cx)`), right after the current listener or update, before the next
-    /// render. Await it for `f`'s result (TS: a method's promise), `None`
-    /// when no rendered component carries the ref; not awaited, it still
-    /// runs.
+    /// The API a component that runs once registered
+    /// ([`super::Scope::methods`]), while one is mounted: Rust calls its
+    /// methods directly (`stepper.api::<StepperApi>()?.set_value(5.0)`).
+    pub fn api<A: super::Api>(&self) -> Option<Rc<A>> {
+        super::reactive::api_of::<A>(self.node()?)
+    }
+
+    /// Runs `f` with the component and its [`Context`], right after the
+    /// current listener or update, before the next render. Await it for
+    /// `f`'s result (TS: a method's promise), `None` when no rendered
+    /// component carries the ref; not awaited, it still runs.
     pub fn update<R: 'static>(
         &self,
         f: impl FnOnce(&mut C, &mut Context<'_, C>) -> R + 'static,

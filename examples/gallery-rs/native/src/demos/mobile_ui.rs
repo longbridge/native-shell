@@ -12,7 +12,7 @@ use nsh_core::ui::prelude::*;
 use nsh_ui_mobile::{
     Button, ButtonEvent, ButtonProps, ButtonVariant, Group, GroupProps, ListView, ListViewProps,
     ListViewVariant, SelectList, SelectListEvent, SelectListProps, Sheet, SheetEvent, SheetProps,
-    Stepper, StepperEvent, StepperProps, TextField, TextFieldEvent, TextFieldProps,
+    Stepper, StepperApi, StepperEvent, StepperProps, TextField, TextFieldEvent, TextFieldProps,
 };
 
 use crate::ui::{
@@ -73,7 +73,6 @@ struct Header {
     city: Option<u32>,
     /// The stepper with a value of its own, asked for it (TS: its ref).
     own: Option<ComponentRef<Stepper>>,
-    ask: Option<Task<()>>,
 }
 
 impl Default for Header {
@@ -87,7 +86,6 @@ impl Default for Header {
             sheet: false,
             city: None,
             own: None,
-            ask: None,
         }
     }
 }
@@ -308,9 +306,9 @@ impl Component for Header {
                                 .child(
                                     between().child(text("Own value")).child(
                                         Stepper::element(StepperProps {
-                                            default_value: 5.0,
-                                            min: 0.0,
-                                            max: 50.0,
+                                            default_value: 5.0.into(),
+                                            min: 0.0.into(),
+                                            max: 50.0.into(),
                                             ..StepperProps::default()
                                         })
                                         .component_ref(self.own.as_ref().expect("set up")),
@@ -324,10 +322,10 @@ impl Component for Header {
                                         )
                                         .child(
                                             Stepper::element(StepperProps {
-                                                value: Some(self.quantity),
-                                                min: 0.0,
-                                                max: 10.0,
-                                                step: 0.5,
+                                                value: Some(self.quantity).into(),
+                                                min: 0.0.into(),
+                                                max: 10.0.into(),
+                                                step: 0.5.into(),
                                                 ..StepperProps::default()
                                             })
                                             .on_event(cx.listener(
@@ -361,22 +359,12 @@ impl Component for Header {
                                 |this: &mut Self, _: &ButtonEvent, cx| {
                                     // Methods of a Rust component, called from Rust.
                                     let own = this.own.clone().expect("set up");
-                                    let value = own.update(|stepper, cx| {
+                                    if let Some(stepper) = own.api::<StepperApi>() {
                                         let value = stepper.value();
-                                        stepper.set_value(5.0, cx);
-                                        value
-                                    });
-                                    this.ask = Some(cx.spawn(|this, _| async move {
-                                        if let Some(value) = value.await {
-                                            let _ = this
-                                                .update(move |this, cx| {
-                                                    this.asked =
-                                                        format!("It was {value}; reset to 5");
-                                                    cx.notify();
-                                                })
-                                                .await;
-                                        }
-                                    }));
+                                        stepper.set_value(5.0);
+                                        this.asked = format!("It was {value}; reset to 5");
+                                        cx.notify();
+                                    }
                                 },
                             )),
                         )

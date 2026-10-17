@@ -11,7 +11,7 @@ use nsh_core::{
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
-use nsh_ui_mobile::{ListView, ListViewProps, Stepper, StepperProps};
+use nsh_ui_mobile::{ListView, ListViewProps, Stepper, StepperApi, StepperProps};
 
 use crate::ChannelSink;
 
@@ -401,7 +401,6 @@ fn the_apps_handlers_on_a_list_views_rows_run() {
 struct Asker {
     asked: String,
     stepper: Option<ComponentRef<Stepper>>,
-    ask: Option<Task<()>>,
 }
 
 impl Component for Asker {
@@ -419,25 +418,18 @@ impl Component for Asker {
             .child(text(format!("asked {}", self.asked)).on_press(cx.listener(
                 |this: &mut Self, _, cx| {
                     let stepper = this.stepper.clone().expect("set up");
-                    let value = stepper.update(|s, cx| {
-                        let value = s.value();
-                        s.set_value(5.0, cx);
+                    let value = stepper.api::<StepperApi>().map(|api| {
+                        let value = api.value();
+                        api.set_value(5.0);
                         value
                     });
-                    this.ask = Some(cx.spawn(|this, _| async move {
-                        let value = value.await;
-                        let _ = this
-                            .update(move |this, cx| {
-                                this.asked = format!("{value:?}");
-                                cx.notify();
-                            })
-                            .await;
-                    }));
+                    this.asked = format!("{value:?}");
+                    cx.notify();
                 },
             )))
             .child(
                 Stepper::element(StepperProps {
-                    default_value: 3.0,
+                    default_value: 3.0.into(),
                     ..StepperProps::default()
                 })
                 .component_ref(stepper),

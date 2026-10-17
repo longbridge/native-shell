@@ -43,6 +43,13 @@ impl<E: Event> Scope<E> {
         super::reactive::emit(self.host, Box::new(event));
     }
 
+    /// Makes `api` what the component's ref does in JS (its methods) for as
+    /// long as the view lives; the component names it in its spec
+    /// (`#[component(methods = StepperApi)]`).
+    pub fn methods(&self, api: impl super::Api) {
+        super::reactive::register_api(self.host, api);
+    }
+
     /// The edges system UI or a header covers where the component is: its
     /// screen's (below the header) or modal's, else the safe area (TS:
     /// `useSafeAreaInsets()`). Reading subscribes.
@@ -171,11 +178,11 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
 
     fn call(
         &mut self,
-        _: &str,
-        _: Vec<JsonValue>,
+        name: &str,
+        args: Vec<JsonValue>,
         _: &mut ErasedCx,
     ) -> Option<Result<JsonValue, PropError>> {
-        None
+        super::reactive::call_api(self.host, name, args)
     }
 
     fn runs_once(&self) -> Option<Owner> {

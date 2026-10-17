@@ -823,20 +823,27 @@ pub fn assets(input: TokenStream) -> TokenStream {
 /// makes `pub struct Stepper;` and its `Component` impl with `RUNS_ONCE`;
 /// the body is its view, run once. Without a `Scope` parameter it emits no
 /// events (`NoEvent`); without props it has none (`()`).
+/// `#[component(methods = StepperApi)]` gives its ref in JS the methods of
+/// that [`methods`] API, which the view registers with `cx.methods(..)`.
 #[proc_macro_attribute]
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new(Span::call_site(), "`#[component]` takes no arguments")
-            .into_compile_error()
-            .into();
-    }
+    let mut methods = None;
+    let parser = syn::meta::parser(|meta| {
+        if meta.path.is_ident("methods") {
+            methods = Some(meta.value()?.parse::<syn::Path>()?);
+            Ok(())
+        } else {
+            Err(meta.error("`#[component]` takes `methods = Api`"))
+        }
+    });
+    parse_macro_input!(attr with parser);
     let item = parse_macro_input!(item as ItemFn);
-    component_fn(item)
+    component_fn(item, methods)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
 
-fn component_fn(item: ItemFn) -> syn::Result<TokenStream2> {
+fn component_fn(item: ItemFn, methods: Option<syn::Path>) -> syn::Result<TokenStream2> {
     let ui = quote!(::nsh_core::ui);
     let sig = &item.sig;
     if !sig.generics.params.is_empty() || sig.asyncness.is_some() {
@@ -895,6 +902,8 @@ fn component_fn(item: ItemFn) -> syn::Result<TokenStream2> {
         }
         ReturnType::Type(_, ty) => quote!(#ty),
     };
+    let methods =
+        methods.map(|api| quote!(const METHODS: #ui::Methods = #ui::Methods::of::<#api>();));
     Ok(quote! {
         #(#attrs)*
         #[derive(::core::default::Default)]
@@ -904,6 +913,7 @@ fn component_fn(item: ItemFn) -> syn::Result<TokenStream2> {
             type Props = #props_ty;
             type Event = #event;
             const RUNS_ONCE: bool = true;
+            #methods
 
             #[allow(unused_variables)]
             fn view(#props_pat: #props_ty, #scope_pat: #scope_ty) -> #output #body
@@ -988,26 +998,16 @@ pub fn style_helpers(input: TokenStream) -> TokenStream {
     out.into()
 }
 
-/// Whether `ty` is `&mut Context<..>` (a method's context parameter).
-fn is_context(ty: &Type) -> bool {
-    match ty {
-        Type::Reference(r) => {
-            r.mutability.is_some()
-                && matches!(last_segment(&r.elem), Some((id, _)) if id == "Context")
-        }
-        _ => false,
-    }
-}
-
-/// `#[methods]` on an `impl` block of a component: each function becomes a
-/// method of the component's ref in JS, named in camel case (`set_value`
-/// is `setValue`), documented by its doc comment. A function takes `&self`
-/// or `&mut self`, then [`JsValue`] parameters, and optionally a last
-/// `cx: &mut Context<Self>`; it returns nothing (JS calls it and moves on;
-/// the call is ordered with the props set before it) or a [`JsValue`] (JS
-/// gets a `Promise`). The block's functions are JS's: keep helpers in
-/// another `impl`. The component lists them with
-/// `const METHODS: &'static [Method<Self>] = Self::JS_METHODS;`.
+/// `#[methods]` on an `impl` block of a component's API (`Api`: a handle
+/// its view makes, holding the signals the methods read and write): each
+/// function becomes a method of the component's ref in JS, named in camel
+/// case (`set_value` is `setValue`), documented by its doc comment. A
+/// function takes `&self`, then [`JsValue`] parameters; it returns nothing
+/// (JS calls it and moves on; the call is ordered with the props set before
+/// it) or a [`JsValue`] (JS gets a `Promise`). The block's functions are
+/// JS's: keep helpers in another `impl`. The view registers the API with
+/// `cx.methods(api)`, and the component names it in its spec with
+/// `#[component(methods = StepperApi)]`.
 #[proc_macro_attribute]
 pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
@@ -1033,18 +1033,17 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
         let doc = docs(&f.attrs);
         let mut inputs = f.sig.inputs.iter();
         match inputs.next() {
-            Some(FnArg::Receiver(r)) if r.reference.is_some() => {}
+            Some(FnArg::Receiver(r)) if r.reference.is_some() && r.mutability.is_none() => {}
             _ => {
                 return Err(syn::Error::new(
                     f.sig.span(),
-                    "a JS method takes `&self` or `&mut self`",
+                    "a JS method takes `&self` (the API holds signals)",
                 ));
             }
         }
         let mut params = Vec::new();
         let mut decode = Vec::new();
         let mut call_args = Vec::new();
-        let mut takes_cx = false;
         let typed: Vec<_> = inputs
             .map(|arg| match arg {
                 FnArg::Typed(t) => Ok(t),
@@ -1053,16 +1052,6 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
             .collect::<syn::Result<_>>()?;
         for (i, arg) in typed.iter().enumerate() {
             let ty = &arg.ty;
-            if is_context(ty) {
-                if i + 1 != typed.len() {
-                    return Err(syn::Error::new(
-                        arg.span(),
-                        "the context is the last parameter",
-                    ));
-                }
-                takes_cx = true;
-                continue;
-            }
             let Pat::Ident(name) = &*arg.pat else {
                 return Err(syn::Error::new(
                     arg.pat.span(),
@@ -1080,9 +1069,6 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
             });
             call_args.push(quote!(#local));
         }
-        if takes_cx {
-            call_args.push(quote!(cx));
-        }
         let (returns, result) = match &f.sig.output {
             ReturnType::Default => (
                 quote!(::core::option::Option::None),
@@ -1099,7 +1085,6 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
                 },
             ),
         };
-        let unused_cx = (!takes_cx).then(|| quote!(let _ = cx;));
         let args_iter = if decode.is_empty() {
             quote!(let _ = args;)
         } else {
@@ -1111,8 +1096,7 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
                 doc: #doc,
                 params: &[#(#params),*],
                 returns: #returns,
-                call: |this, args, cx| {
-                    #unused_cx
+                call: |this, args| {
                     #args_iter
                     #(#decode)*
                     #result
@@ -1123,10 +1107,8 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
     Ok(quote! {
         #item
 
-        impl #impl_generics #self_ty #where_clause {
-            /// The methods JS calls on the component's ref (`#[methods]`).
-            #[doc(hidden)]
-            pub const JS_METHODS: &'static [#ui::Method<Self>] = &[#(#entries),*];
+        impl #impl_generics #ui::Api for #self_ty #where_clause {
+            const METHODS: &'static [#ui::Method<Self>] = &[#(#entries),*];
         }
     })
 }

@@ -14,7 +14,7 @@
 
 use std::{
     any::{Any, TypeId},
-    cell::{Cell, UnsafeCell},
+    cell::{Cell, RefCell, UnsafeCell},
     fmt,
     marker::PhantomData,
     panic::AssertUnwindSafe,
@@ -46,6 +46,62 @@ pub(crate) struct RustData {
     pub(crate) ambient: super::ambient::Ambient,
     /// The props instances hold, by their memo ([`super::Prop`]).
     pub(crate) held: rustc_hash::FxHashMap<Node, Box<dyn Any>>,
+    /// The APIs views registered, by host ([`super::Scope::methods`]).
+    apis: rustc_hash::FxHashMap<crate::NodeId, ApiEntry>,
+}
+
+/// A registered [`super::Api`], its type erased: the API and what calls a
+/// method of it by name.
+#[derive(Clone)]
+struct ApiEntry {
+    api: Rc<dyn Any>,
+    #[allow(clippy::type_complexity)]
+    call: fn(
+        &dyn Any,
+        &str,
+        Vec<crate::JsonValue>,
+    ) -> Option<Result<crate::JsonValue, super::PropError>>,
+}
+
+fn call_erased<A: super::Api>(
+    api: &dyn Any,
+    name: &str,
+    args: Vec<crate::JsonValue>,
+) -> Option<Result<crate::JsonValue, super::PropError>> {
+    let api = api.downcast_ref::<A>()?;
+    let method = A::METHODS.iter().find(|m| m.name == name)?;
+    Some((method.call)(api, args))
+}
+
+/// Registers `api` as the ref of the component on `host` for as long as the
+/// current owner lives.
+pub(crate) fn register_api<A: super::Api>(host: crate::NodeId, api: A) {
+    let entry = ApiEntry {
+        api: Rc::new(api),
+        call: call_erased::<A>,
+    };
+    with_data(|d| d.apis.insert(host, entry));
+    cleanup(move || {
+        with_data(|d| d.apis.remove(&host));
+    });
+}
+
+/// The API of type `A` the component on `host` registered.
+pub(crate) fn api_of<A: super::Api>(host: crate::NodeId) -> Option<Rc<A>> {
+    let entry = with_data(|d| d.apis.get(&host).cloned())?;
+    entry.api.downcast::<A>().ok()
+}
+
+/// Calls method `name` of the API of the component on `host`; `None`
+/// without one of that name.
+pub(crate) fn call_api(
+    host: crate::NodeId,
+    name: &str,
+    args: Vec<crate::JsonValue>,
+) -> Option<Result<crate::JsonValue, super::PropError>> {
+    // Out of the data first: the method writes signals.
+    let entry = with_data(|d| d.apis.get(&host).cloned())?;
+    (entry.call)(&*entry.api, name, args)
 }
 
 /// Runs `f` on the entered runtime's data.
@@ -357,6 +413,43 @@ pub fn signal_with<T: 'static>(value: T, equals: SignalEquals) -> Signal<T> {
     match equals {
         SignalEquals::Never => make_signal(value, Equals::Never),
     }
+}
+
+/// A value of the current owner that is not reactive ([`stored`]): a
+/// `Copy` handle to state closures share but nothing displays (a running
+/// task, a cache). It goes with the owner.
+pub struct Stored<T: 'static>(Signal<Rc<RefCell<T>>>);
+
+impl<T> Clone for Stored<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Stored<T> {}
+
+impl<T: 'static> Stored<T> {
+    /// `f` of the value, which it may change (`f` must not reach this
+    /// value again).
+    #[track_caller]
+    pub fn with<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        self.0.with_untracked(|cell| f(&mut cell.borrow_mut()))
+    }
+
+    /// Replaces the value, returning the old one.
+    #[track_caller]
+    pub fn replace(&self, value: T) -> T {
+        self.with(|v| std::mem::replace(v, value))
+    }
+}
+
+/// A value of the current owner that is not reactive: reading it subscribes
+/// nothing, changing it notifies nothing.
+pub fn stored<T: 'static>(value: T) -> Stored<T> {
+    Stored(signal_with(
+        Rc::new(RefCell::new(value)),
+        SignalEquals::Never,
+    ))
 }
 
 fn make_signal<T: 'static>(value: T, equals: Equals<Compare>) -> Signal<T> {

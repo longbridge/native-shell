@@ -47,9 +47,9 @@ pub trait Component: Default + 'static {
     /// Its events (`#[derive(Event)]`; [`NoEvent`] for none).
     type Event: Event;
 
-    /// The methods of its ref in JS: `Self::JS_METHODS` from `#[methods]`
-    /// on an `impl` block (none by default).
-    const METHODS: &'static [Method<Self>] = &[];
+    /// The methods of its ref in JS: those of the [`Api`] its view
+    /// registers (`Methods::of::<StepperApi>()`; none by default).
+    const METHODS: Methods = Methods::NONE;
 
     /// Runs once, before the first render, with the first props: what the
     /// body of a TS component does (state from props, timers).
@@ -151,8 +151,9 @@ pub(crate) fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// A method JS calls on a component's ref (`#[methods]` makes them).
-pub struct Method<C: Component> {
+/// A method JS calls on a component's ref: one of its API's
+/// ([`Api`]; `#[methods]` makes them).
+pub struct Method<A: 'static> {
     /// Its JS name (`setValue`).
     pub name: &'static str,
     /// Documentation.
@@ -163,8 +164,49 @@ pub struct Method<C: Component> {
     /// JS does not wait for it).
     pub returns: Option<TsType>,
     /// Calls it with JS's arguments.
-    #[allow(clippy::type_complexity)]
-    pub call: fn(&mut C, Vec<JsonValue>, &mut Context<'_, C>) -> Result<JsonValue, PropError>,
+    pub call: fn(&A, Vec<JsonValue>) -> Result<JsonValue, PropError>,
+}
+
+/// What a component's ref does in JS: a handle its view makes, holding the
+/// signals its methods read and write, registered with
+/// [`super::Scope::methods`]. `#[methods]` on its `impl` block implements
+/// it.
+pub trait Api: Sized + 'static {
+    /// Its methods.
+    const METHODS: &'static [Method<Self>];
+}
+
+/// The methods a component's ref has, for its spec and declarations:
+/// [`Methods::of`] its [`Api`] (`#[component(methods = StepperApi)]`).
+#[derive(Clone, Copy)]
+pub struct Methods {
+    specs: fn(&mut TsTypes) -> Vec<MethodSpec>,
+}
+
+impl Methods {
+    /// None.
+    pub const NONE: Self = Self {
+        specs: |_| Vec::new(),
+    };
+
+    /// Those of `A`.
+    pub const fn of<A: Api>() -> Self {
+        Self {
+            specs: specs_of::<A>,
+        }
+    }
+}
+
+fn specs_of<A: Api>(types: &mut TsTypes) -> Vec<MethodSpec> {
+    A::METHODS
+        .iter()
+        .map(|m| MethodSpec {
+            name: m.name,
+            doc: m.doc,
+            params: m.params.iter().map(|(n, ts)| (*n, ts(types))).collect(),
+            returns: m.returns.map(|ts| ts(types)),
+        })
+        .collect()
 }
 
 /// A method's parameter: its JS name, and its TypeScript type.
@@ -358,19 +400,7 @@ impl ComponentSpec {
         let mut types = TsTypes::default();
         let props = C::Props::spec(&mut types);
         let events = C::Event::spec(&mut types);
-        let methods = C::METHODS
-            .iter()
-            .map(|m| MethodSpec {
-                name: m.name,
-                doc: m.doc,
-                params: m
-                    .params
-                    .iter()
-                    .map(|(n, ts)| (*n, ts(&mut types)))
-                    .collect(),
-                returns: m.returns.map(|ts| ts(&mut types)),
-            })
-            .collect();
+        let methods = (C::METHODS.specs)(&mut types);
         let name = name_of::<C>();
         Self {
             name,
@@ -553,18 +583,14 @@ impl<C: Component> AnyInstance for Instance<C> {
         name_of::<C>()
     }
 
+    // Methods are those of a view's API.
     fn call(
         &mut self,
-        name: &str,
-        args: Vec<JsonValue>,
-        cx: &mut ErasedCx,
+        _: &str,
+        _: Vec<JsonValue>,
+        _: &mut ErasedCx,
     ) -> Option<Result<JsonValue, PropError>> {
-        let method = C::METHODS.iter().find(|m| m.name == name)?;
-        Some((method.call)(
-            &mut self.state,
-            args,
-            &mut Context::new(cx, &self.props),
-        ))
+        None
     }
 }
 
@@ -1131,11 +1157,13 @@ mod tests {
         Reset,
     }
 
+    struct StepperApi;
+
     #[methods]
-    impl Stepper {
+    impl StepperApi {
         /// Jumps to `value`.
-        fn jump_to(&mut self, value: f64, cx: &mut Context<'_, Self>) {
-            let _ = (value, cx);
+        fn jump_to(&self, value: f64) {
+            let _ = value;
         }
 
         fn value(&self) -> f64 {
@@ -1146,7 +1174,7 @@ mod tests {
     impl Component for Stepper {
         type Props = StepperProps;
         type Event = StepperEvent;
-        const METHODS: &'static [Method<Self>] = Self::JS_METHODS;
+        const METHODS: Methods = Methods::of::<StepperApi>();
 
         fn render(&self, _props: &StepperProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             view()
