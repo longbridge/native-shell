@@ -228,6 +228,18 @@ The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distributi
 `crates/nsh-ios-host`), the CLI builds what it needs with cargo first (`cargo build -p nsh-ios-host --target ...`,
 `cargo xtask android --dev`), so `nsh run` never uses a missing or stale host.
 
+## Releases
+
+`.github/workflows/release.yml` runs `cargo xtask dist` on macOS (Apple silicon: the iOS, Mac Catalyst and macOS
+runtimes and the iOS SDK), Linux and Windows (x86_64), each with the Android runtime, checks that the packaged CLI
+makes and bundles a new app, and archives `dist/nsh` as `nsh-<tag>-<platform>.tar.gz` (`.zip` on Windows), plus the
+embedding SDKs alone (`nsh-<tag>-embed-ios.zip`, `nsh-<tag>-embed-android.zip`), each with a `.sha256`. To release,
+set `version` in the root `Cargo.toml`, push the tag `v<version>` (a tag that does not match fails the run) and
+publish the draft release the run creates once every platform has built. Running the workflow by hand without a tag,
+or a pull request that changes it or xtask, builds the archives only (the run's artifacts). The binaries are not
+signed: macOS quarantines downloads from a browser (`xattr -dr com.apple.quarantine nsh-…`), and the Linux runtime
+needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later).
+
 ## Entries and `cargo run`
 
 Commands that build an app take its entry module or its directory (the current one by default), whose `App.tsx` is
