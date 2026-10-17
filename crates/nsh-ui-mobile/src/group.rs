@@ -30,15 +30,16 @@ pub fn Group(props: GroupProps) -> impl IntoElement {
                 .bg(move || theme().group_box)
                 .text_color(move || theme().group_box_foreground)
                 .overflow_hidden()
-                .children_each(props.children.get_untracked(), move |row, at| {
+                .children_each(props.children, move |row, at| {
                     view()
                         .px_4()
                         .py_3()
                         .min_h(px(44.0))
                         .justify_center()
-                        .when(!at.is_first(), |v| {
-                            v.border_t_1().border_color(move || theme().border)
-                        })
+                        .style_when(
+                            move || !at.is_first(),
+                            |s| s.border_t_1().border_color(move || theme().border),
+                        )
                         .child(row)
                 }),
         )
