@@ -132,6 +132,7 @@ impl Component for Button {                // JS export: `Button`, the type's na
   | `I18nManager.forceRTL` / `allowRTL` | `cx.force_rtl(bool)` / `cx.allow_rtl(bool)`: the root's direction at once, `cx.rtl()` readers render again |
   | `import logo from "./logo@2x.png"`, `import font from "./a.ttf"` | `const LOGO: ImageAsset = asset!("logo@2x.png");` (`image(LOGO)` lays out at its natural size), `const A: FontAsset = asset!("a.ttf");` (`.font_family(A.family)`), with `registry.assets(assets!())` (below) |
   | `Image.getSize(uri)`, `Image.prefetch(uri)` | `cx.image_size(uri)` / `cx.prefetch_image(uri)`: answers to await in a task |
+  | `Clipboard.setString(text)`, `await Clipboard.getString()` / `hasString()` (`nsh/clipboard`) | `cx.set_clipboard(text)`, `cx.clipboard_string()` / `cx.clipboard_has_string()`: answers to await in a task (the app's `capabilities.clipboard` applies as for JS) |
   | `AccessibilityInfo.announceForAccessibility`, `setAccessibilityFocus(ref)` | `cx.announce_for_accessibility(msg)`, `self.note.set_accessibility_focus()` (an `ElementRef`) |
   | `Toast.show(msg, "long")` (`nsh/android`) | `cx.toast(msg, ToastDuration::Long)` (nothing happens off Android) |
   | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
@@ -158,7 +159,8 @@ impl Component for Button {                // JS export: `Button`, the type's na
   `cx.dialog(Dialog)` shows an alert or action sheet and returns a future of the index chosen (-1: dismissed; the
   answer is the root's `Dialog` event, which the core resolves; JS never sees it);
   `dismiss_keyboard()`, `animate_layout(..)`, `announce_for_accessibility(..)`, `toast(..)`, `force_rtl` /
-  `allow_rtl`, the image information (`image_size`, `prefetch_image`: on `Context` and `AsyncCx`), display frames
+  `allow_rtl`, the clipboard (`set_clipboard`; reads `clipboard_string` / `clipboard_has_string` on `Context` and
+  `AsyncCx`), the image information (`image_size`, `prefetch_image`: on `Context` and `AsyncCx`), display frames
   (`Context::request_animation_frame`, `AsyncCx::next_frame`: the core keeps the waiting tasks' answers, the engine
   asks the platform for a frame while one waits, `MountSink::request_frame`, and delivers it at
   `EngineControl::frame`), and the status bar (below); they are actions the core applies in order with the

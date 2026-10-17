@@ -469,6 +469,23 @@ impl<'a, C: Component> Context<'a, C> {
             .push(super::services::set_clipboard(text.into()));
     }
 
+    /// The text on the system clipboard, `""` when it holds none (TS:
+    /// `Clipboard.getString`), to await in a task. On iOS, reading it may
+    /// show the system's paste notice.
+    pub fn clipboard_string(&mut self) -> task::Answer<String> {
+        let (answer, action) = super::services::clipboard_string();
+        self.inner.actions.push(action);
+        answer
+    }
+
+    /// Whether the system clipboard holds text, without reading it (TS:
+    /// `Clipboard.hasString`), to await in a task.
+    pub fn clipboard_has_string(&mut self) -> task::Answer<bool> {
+        let (answer, action) = super::services::clipboard_has_string();
+        self.inner.actions.push(action);
+        answer
+    }
+
     /// Shows `message` at the bottom of the screen (Android's toasts, TS:
     /// `Toast.show`); nothing happens elsewhere.
     pub fn toast(&mut self, message: impl Into<String>, duration: super::ToastDuration) {

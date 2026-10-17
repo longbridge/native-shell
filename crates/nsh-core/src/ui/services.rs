@@ -1,6 +1,6 @@
 //! The platform's services for components, modules and tasks beyond
-//! dialogs and the keyboard: screen reader announcements, toasts, image
-//! information, display frames and the layout direction
+//! dialogs and the keyboard: screen reader announcements, toasts, the
+//! clipboard, image information, display frames and the layout direction
 //! ([`super::Context`], [`super::AsyncCx`], [`super::ModuleCx`]). Each is an
 //! [`Action`] the core applies in order with the component's other changes.
 
@@ -12,7 +12,7 @@ use std::{
 
 use super::{
     Answer, ImageSize, PropEnum,
-    task::{Action, AnswerSlot},
+    task::{Action, AnswerSlot, ClipboardRead},
 };
 use crate::{Command, ROOT_ID, time::Instant};
 
@@ -68,6 +68,18 @@ pub(crate) fn toast(message: String, duration: ToastDuration) -> Action {
 /// Puts `text` on the system clipboard.
 pub(crate) fn set_clipboard(text: String) -> Action {
     Action::Command(ROOT_ID, Command::SetClipboard(text))
+}
+
+/// The text on the system clipboard (`""` when it holds none).
+pub(crate) fn clipboard_string() -> (Answer<String>, Action) {
+    let (answer, slot) = Answer::new();
+    (answer, Action::ReadClipboard(ClipboardRead::Text(slot)))
+}
+
+/// Whether the system clipboard holds text (without reading it).
+pub(crate) fn clipboard_has_string() -> (Answer<bool>, Action) {
+    let (answer, slot) = Answer::new();
+    (answer, Action::ReadClipboard(ClipboardRead::Has(slot)))
 }
 
 /// The size of the image at `uri`, its bytes loaded.

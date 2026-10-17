@@ -507,16 +507,16 @@ impl AsyncCx {
     /// `Clipboard.getString`). On iOS, reading it may show the system's
     /// paste notice.
     pub fn clipboard_string(&self) -> Answer<String> {
-        let (answer, slot) = Answer::new();
-        self.act(Action::ReadClipboard(ClipboardRead::Text(slot)));
+        let (answer, action) = services::clipboard_string();
+        self.act(action);
         answer
     }
 
     /// Whether the system clipboard holds text, without reading it (TS:
     /// `Clipboard.hasString`).
     pub fn clipboard_has_string(&self) -> Answer<bool> {
-        let (answer, slot) = Answer::new();
-        self.act(Action::ReadClipboard(ClipboardRead::Has(slot)));
+        let (answer, action) = services::clipboard_has_string();
+        self.act(action);
         answer
     }
 

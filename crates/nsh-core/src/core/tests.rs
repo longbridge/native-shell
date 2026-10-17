@@ -4782,6 +4782,79 @@ mod components {
         assert!(events.is_empty(), "nothing for JS: {events:?}");
     }
 
+    /// Pastes the clipboard's text when pressed, if it holds some.
+    #[derive(Default)]
+    struct Paster {
+        pasted: String,
+    }
+
+    impl Component for Paster {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(text(format!("pasted {}", self.pasted))).child(
+                view()
+                    .h(px(10.0))
+                    .on_press(cx.listener(|_: &mut Self, _, cx| {
+                        let (has, text) = (cx.clipboard_has_string(), cx.clipboard_string());
+                        cx.spawn(|this, _| async move {
+                            let pasted = if has.await { text.await } else { "-".into() };
+                            this.update(move |this: &mut Self, cx| {
+                                this.pasted = pasted;
+                                cx.notify();
+                            })
+                            .await;
+                        })
+                        .detach();
+                    })),
+            )
+        }
+    }
+
+    #[test]
+    fn components_read_the_clipboard() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Paster>(|| ()));
+        let batch = c.commit().unwrap();
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button");
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        let reads: Vec<_> = c
+            .commit()
+            .unwrap()
+            .items
+            .into_iter()
+            .filter_map(|i| match i {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::ReadClipboard { id, has_only },
+                } => Some((id, has_only)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reads, [(1, true), (2, false)]);
+        // The platform answers both on the root.
+        for (id, has_only) in reads {
+            let mut payload = vec![
+                ("id", crate::PayloadValue::Number(f64::from(id))),
+                ("has", crate::PayloadValue::Bool(true)),
+            ];
+            if !has_only {
+                payload.push(("text", crate::PayloadValue::Str("hello".into())));
+            }
+            assert!(c.component_event(ROOT_ID, EventKind::Clipboard, &EventPayload::Map(payload)));
+        }
+        let shown = run_until(&mut c, |s| s.iter().any(|t| t.starts_with("pasted h")));
+        assert_eq!(shown.last().unwrap(), "pasted hello");
+    }
+
     /// Shows a fallback while a component below it failed; a press tries
     /// again.
     #[derive(Default)]
