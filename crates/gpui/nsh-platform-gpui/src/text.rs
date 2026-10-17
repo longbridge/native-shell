@@ -2775,6 +2775,13 @@ mod tests {
         Some(GpuiTextEngine::new(system(), ui_family()))
     }
 
+    /// True when `font` is a color emoji font.
+    fn is_emoji_font(font: FontId) -> bool {
+        system()
+            .get_font_for_id(font)
+            .is_some_and(|f| f.family.to_lowercase().contains("emoji"))
+    }
+
     /// True when a color emoji font is installed (CI machines may have
     /// none).
     fn has_emoji_font() -> bool {
@@ -3112,7 +3119,21 @@ mod tests {
                 )
                 .width
         };
-        assert!(w(700) > w(400), "{} {}", w(700), w(400));
+        let regular = engine.font(&plain(20.0));
+        let bold = engine.font(&ResolvedTextStyle {
+            font_weight: 700,
+            ..plain(20.0)
+        });
+        assert!(
+            w(700) > w(400),
+            "{} {}; {:?} {:?} -> {:?} {:?}",
+            w(700),
+            w(400),
+            regular,
+            bold,
+            system().resolve_font(&regular),
+            system().resolve_font(&bold),
+        );
     }
 
     #[test]
@@ -3394,7 +3415,8 @@ mod tests {
             return;
         }
         let p = engine.prepare(&text(&[("♥\u{FE0F}", plain(13.0))]));
-        assert!(p.glyphs.iter().any(|g| g.emoji) || p.glyphs.is_empty());
+        let from_emoji_font = p.glyphs.iter().any(|g| is_emoji_font(g.font));
+        assert!(!from_emoji_font || p.glyphs.iter().any(|g| g.emoji) || p.glyphs.is_empty());
     }
 
     #[test]
@@ -3454,7 +3476,15 @@ mod tests {
         engine.register_font(data).expect("registered again");
         assert!(engine.register_font(b"not a font").is_err());
         let after = engine.measure(&engine.prepare(&t), None);
-        assert_ne!(before, after);
+        let font = engine.font(&style);
+        assert_ne!(
+            before,
+            after,
+            "{:?} -> {:?}; Pacifico listed: {}",
+            font,
+            system().resolve_font(&font),
+            system().all_font_names().iter().any(|n| n == "Pacifico"),
+        );
         assert_eq!(&*engine.face(&style).font.family, "Pacifico");
         // Pacifico is tall: its lines are more than 1.5 ems.
         assert!(after.height > 30.0, "{after:?}");
@@ -3486,7 +3516,14 @@ mod tests {
         let t = text(&[("a😀", plain(16.0))]);
         let (_, layout) = layout_of(&engine, &t, None);
         let l = layout.downcast::<GpuiLayout>().unwrap();
-        assert!(l.glyphs.iter().any(|g| g.emoji), "{:?}", l.glyphs);
+        // GPUI's fallback may set it in a font with a plain glyph for it
+        // (some CI machines): emoji are only marked from an emoji font.
+        let from_emoji_font = l.glyphs.iter().any(|g| is_emoji_font(g.font));
+        assert!(
+            !from_emoji_font || l.glyphs.iter().any(|g| g.emoji),
+            "{:?}",
+            l.glyphs
+        );
     }
 
     #[test]
