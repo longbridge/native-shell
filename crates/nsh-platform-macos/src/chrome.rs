@@ -753,3 +753,34 @@ pub(crate) fn window_changed(surface: &Surface) {
         update_area(surface);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortcuts_are_key_equivalents() {
+        let equivalent = |text: &str| key_equivalent(&Shortcut::parse(text, true).unwrap());
+        // Lowercase: an uppercase key equivalent would add Shift.
+        assert_eq!(
+            equivalent("Mod+Shift+N"),
+            (
+                "n".to_owned(),
+                NSEventModifierFlags::Command | NSEventModifierFlags::Shift
+            )
+        );
+        assert_eq!(
+            equivalent("Ctrl+Alt+Left"),
+            (
+                "\u{f702}".to_owned(),
+                NSEventModifierFlags::Control | NSEventModifierFlags::Option
+            )
+        );
+        assert_eq!(
+            equivalent("F5"),
+            ("\u{f708}".to_owned(), NSEventModifierFlags::empty())
+        );
+        assert_eq!(equivalent("Mod+Plus").0, "+");
+        assert_eq!(equivalent("Cmd+PageDown").0, "\u{f72d}");
+    }
+}
