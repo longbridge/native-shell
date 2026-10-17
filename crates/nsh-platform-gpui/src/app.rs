@@ -186,6 +186,22 @@ impl AppView {
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
         crate::system::watch_environment(&surface, window, cx);
+        // The open menu's keys come before anything focused sees them.
+        let weak = Rc::downgrade(&surface);
+        surface.shortcuts.borrow_mut().push(Box::new(move |event| {
+            weak.upgrade()
+                .is_some_and(|s| crate::chrome::window_key(&s, event))
+        }));
+        // The chrome follows the window: full screen, maximized, active.
+        cx.observe_window_bounds(window, |_, _, cx| cx.notify())
+            .detach();
+        cx.observe_window_activation(window, |view: &mut AppView, window, cx| {
+            if !window.is_window_active() {
+                crate::keymap::window_deactivated(&view.surface);
+            }
+            cx.notify();
+        })
+        .detach();
         AppView {
             surface,
             focus: cx.focus_handle().tab_stop(true),
@@ -440,7 +456,7 @@ impl gpui::EntityInputHandler for AppView {
 }
 
 impl Render for AppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let surface = SurfaceElement {
             surface: self.surface.clone(),
             focus: self.focus.clone(),
@@ -449,6 +465,8 @@ impl Render for AppView {
         // A dev session draws its status line and error overlay above.
         #[cfg(feature = "dev")]
         let surface = crate::dev::wrap(self, surface.into_any_element(), cx);
+        // The window's chrome (title bar, menu bar) goes around the surface.
+        let content = crate::chrome::render(&self.surface, surface, window, cx);
         // The div registers the view's tab stop, which only GPUI's own
         // elements can.
         gpui::div()
@@ -457,7 +475,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_prev))
             .size_full()
-            .child(surface)
+            .child(content)
     }
 }
 
@@ -491,16 +509,18 @@ pub fn open_app_window(
     let bounds = gpui::Bounds::centered(None, size, cx);
     let window_options = gpui::WindowOptions {
         window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-        titlebar: Some(gpui::TitlebarOptions {
-            title: Some(options.title.clone().into()),
-            ..Default::default()
-        }),
+        titlebar: Some(crate::chrome::titlebar_options(&options.title)),
         app_id: Some(options.app_id.clone()),
+        // Linux: the window manager's decorations until the app hides the
+        // title bar (`crate::chrome`).
+        window_decorations: Some(gpui::WindowDecorations::Server),
         ..Default::default()
     };
     let script = options.script.clone();
     let handle = cx.open_window(window_options, move |window, cx| {
+        let title = options.title.clone();
         let view: Entity<AppView> = cx.new(|cx| AppView::new(options, window, cx));
+        crate::chrome::set_standalone(view.read(cx).surface(), &title);
         match source {
             AppSource::Rust(root) => view.read(cx).load(App::Rust(root)),
             AppSource::Bundle(bundle) => view.read(cx).load(App::Js(bundle)),
