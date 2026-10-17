@@ -382,7 +382,8 @@ impl Element for SurfaceElement {
     type PrepaintState = Hitbox;
 
     fn id(&self) -> Option<ElementId> {
-        None
+        // An id gives the element a node in GPUI's accessibility tree.
+        Some("nsh-surface".into())
     }
 
     fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
@@ -429,6 +430,7 @@ impl Element for SurfaceElement {
         }
         // Changes made by the tick are in this frame.
         surface.drawing();
+        crate::access::prepaint(surface, &self.focus, window, cx);
         window.set_focus_handle(&self.focus, cx);
         window.insert_hitbox(bounds, HitboxBehavior::BlockMouse)
     }
@@ -466,5 +468,18 @@ impl Element for SurfaceElement {
             window,
             cx,
         );
+        crate::access::paint(&surface, window, cx);
+    }
+
+    fn a11y_role(&self) -> Option<gpui::accesskit::Role> {
+        Some(crate::access::ROLE)
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        _hitbox: &mut Self::PrepaintState,
+        builder: &mut gpui::A11ySubtreeBuilder,
+    ) {
+        crate::access::synthetic(&self.surface, builder);
     }
 }
