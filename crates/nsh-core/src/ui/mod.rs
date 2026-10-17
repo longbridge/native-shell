@@ -108,9 +108,10 @@ pub use crate::{
     DialogButton, DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload,
     KeyboardAppearance, KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation,
     LayoutCurve, LayoutProperty, LayoutTransition, Measurement, ModalAnimation, ModalPresentation,
-    PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation, SnapAlignment, StatusBarConfig,
-    StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, TransformOrigin, Viewability,
-    platform::{Idiom, Locale, Os},
+    PanActivation, PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation, SnapAlignment,
+    StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, TransformOrigin,
+    Viewability,
+    platform::{Appearance, Idiom, Locale, Os},
     style::{Color, OriginLen},
 };
 
@@ -125,6 +126,7 @@ pub mod prelude {
         Animation,
         AnimationOutput,
         AnyElement,
+        Appearance,
         AsyncCx,
         // Host elements and their settings.
         AutoCapitalize,
@@ -190,6 +192,7 @@ pub mod prelude {
         NoEvent,
         Orientation,
         Painter,
+        PanActivation,
         PanEvent,
         PanGesture,
         ParentElement,
