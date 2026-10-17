@@ -274,7 +274,8 @@ pub(crate) fn resized(view: &NshView) {
     let mut s = view.state_mut();
     if !matches!(
         s.kind,
-        ViewKind::Video | ViewKind::WebView | ViewKind::Native
+        // An input's one hosted view is its pad (`crate::text_input`).
+        ViewKind::Video | ViewKind::WebView | ViewKind::Native | ViewKind::Input
     ) {
         return;
     }

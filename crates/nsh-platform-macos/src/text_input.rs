@@ -1,7 +1,8 @@
 //! Text inputs: an `NSTextField` (single line; `NSSecureTextField` for
 //! `secureTextEntry`) or an `NSTextView` in an `NSScrollView`
-//! (`multiline`), hosted in the input's view at the content box the core
-//! laid out (inside padding and border).
+//! (`multiline`) at the content box the core laid out (inside padding and
+//! border), in a view that fills the input's ([`InputPad`]): a click
+//! anywhere in the input, its padding too, edits at the nearest point.
 //!
 //! The view draws the decoration (background, border, corners) from the
 //! core's style like any other view, so the editors draw only text: they
@@ -48,15 +49,16 @@ use objc2::{
     sel,
 };
 use objc2_app_kit::{
-    NSBorderType, NSColor, NSControl, NSControlTextEditingDelegate, NSFocusRingType,
-    NSFontAttributeName, NSForegroundColorAttributeName, NSLineBreakMode, NSMutableParagraphStyle,
-    NSParagraphStyleAttributeName, NSResponder, NSScrollView, NSSecureTextField, NSText,
-    NSTextAlignment, NSTextDelegate, NSTextField, NSTextFieldDelegate, NSTextView,
-    NSTextViewDelegate, NSView, NSWritingDirection,
+    NSApplication, NSBorderType, NSColor, NSControl, NSControlTextEditingDelegate, NSEvent,
+    NSEventType, NSFocusRingType, NSFontAttributeName, NSForegroundColorAttributeName,
+    NSLineBreakMode, NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSResponder,
+    NSScrollView, NSSecureTextField, NSText, NSTextAlignment, NSTextDelegate, NSTextField,
+    NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSView, NSWritingDirection,
 };
 use objc2_core_foundation::{CGFloat, CGSize};
 use objc2_foundation::{
-    NSAttributedString, NSDictionary, NSNotification, NSObject, NSObjectProtocol, NSRange, NSString,
+    NSAttributedString, NSDictionary, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRange,
+    NSString,
 };
 
 use crate::{
@@ -195,6 +197,8 @@ pub(crate) struct InputState {
     editor: RefCell<Editor>,
     /// Hears the editors (their `delegate` is weak).
     delegate: Retained<InputDelegate>,
+    /// Fills the view and holds the editor ([`InputPad`]).
+    pad: Retained<NSView>,
     /// A text view's placeholder, under it while its text is empty.
     placeholder: Retained<NSTextField>,
     config: RefCell<InputConfig>,
@@ -684,6 +688,121 @@ define_class!(
 );
 
 define_class!(
+    /// Fills an input's view and holds its editor (and placeholder), so a
+    /// click anywhere in the input edits, its padding and the space around
+    /// a field's line too, as on iOS: the click goes to the editor at the
+    /// nearest point inside it.
+    #[unsafe(super(NSView, NSResponder, NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = Cell<bool>]
+    #[name = "NshInputPad"]
+    struct InputPad;
+
+    unsafe impl NSObjectProtocol for InputPad {}
+
+    impl InputPad {
+        #[unsafe(method(isFlipped))]
+        fn is_flipped(&self) -> bool {
+            true
+        }
+
+        #[unsafe(method(acceptsFirstMouse:))]
+        fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
+            true
+        }
+
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, event: &NSEvent) {
+            // An editor that passes the press on (up the responder chain)
+            // brings it back here: it ends here then.
+            if !self.ivars().replace(true) {
+                self.forward(event);
+                self.ivars().set(false);
+            }
+        }
+    }
+);
+
+impl InputPad {
+    fn create(mtm: MainThreadMarker) -> Retained<NSView> {
+        let this = Self::alloc(mtm).set_ivars(Cell::new(false));
+        // SAFETY: NSView's designated initializer.
+        let this: Retained<Self> =
+            unsafe { msg_send![super(this), initWithFrame: ns_rect(0.0, 0.0, 0.0, 0.0)] };
+        Retained::into_super(this)
+    }
+
+    /// Sends a press beside the editor to the editor, moved to the nearest
+    /// point inside it (the caret goes there, a drag selects from there).
+    fn forward(&self, event: &NSEvent) {
+        // The editor is the topmost subview (the placeholder is below it).
+        let (Some(editor), Some(window), Some(outer)) = (
+            self.subviews().lastObject(),
+            self.window(),
+            crate::view::superview(self),
+        ) else {
+            return;
+        };
+        let p = self.convertPoint_fromView(event.locationInWindow(), None);
+        let f = editor.frame();
+        if f.size.width < 2.0 || f.size.height < 2.0 {
+            return;
+        }
+        let inside = NSPoint::new(
+            p.x.clamp(f.origin.x + 1.0, f.origin.x + f.size.width - 1.0),
+            p.y.clamp(f.origin.y + 1.0, f.origin.y + f.size.height - 1.0),
+        );
+        // `hitTest:` takes a point in the superview's coordinates.
+        let at = self.convertPoint_toView(inside, Some(&outer));
+        let me: &NSView = self;
+        let Some(target) = self.hitTest(at).filter(|t| &**t != me) else {
+            return;
+        };
+        // The window gives the focus to what a press hits before it sends
+        // the press, and a field only edits a press once it has the focus
+        // (its field editor then takes the press, so hit again).
+        if target.acceptsFirstResponder() && !window.makeFirstResponder(Some(&target)) {
+            return;
+        }
+        let Some(target) = self.hitTest(at).filter(|t| &**t != me) else {
+            return;
+        };
+        let moved = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+            event.r#type(),
+            self.convertPoint_toView(inside, None),
+            event.modifierFlags(),
+            event.timestamp(),
+            event.windowNumber(),
+            None,
+            event.eventNumber(),
+            event.clickCount(),
+            event.pressure(),
+        );
+        let Some(moved) = moved else { return };
+        target.mouseDown(&moved);
+        // The editor tracked the press to the release at its real point,
+        // beside the text, so a click selected from the caret to the
+        // text's start or end: a click without a drag puts the caret at
+        // the moved point.
+        let Some(text) = target.downcast_ref::<NSTextView>() else {
+            return;
+        };
+        let released = NSApplication::sharedApplication(self.mtm())
+            .currentEvent()
+            .filter(|e| e.r#type() == NSEventType::LeftMouseUp)
+            .map(|e| e.locationInWindow());
+        let start = event.locationInWindow();
+        if event.clickCount() == 1
+            && released.is_some_and(|r| (r.x - start.x).abs() < 3.0 && (r.y - start.y).abs() < 3.0)
+        {
+            let at = text.convertPoint_fromView(inside, Some(self));
+            let index = text.characterIndexForInsertionAtPoint(at);
+            text.setSelectedRange(NSRange::new(index, 0));
+        }
+    }
+}
+
+define_class!(
     /// The delegate of an input's editors: text changes and key binding
     /// commands.
     #[unsafe(super(NSObject))]
@@ -838,6 +957,7 @@ pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
         InputState {
             editor: RefCell::new(new_editor(mtm, &ctx, &delegate, false, false)),
             delegate,
+            pad: InputPad::create(mtm),
             placeholder,
             config: RefCell::new(InputConfig::default()),
             configured: Cell::new(false),
@@ -941,9 +1061,9 @@ pub(crate) fn config(surface: &Rc<Surface>, view: &NshView, config: &InputConfig
         if focused {
             input.ctx.unfocus();
         }
-        view.remove_native(&old.host());
+        old.host().removeFromSuperview();
         if let Editor::Area { .. } = old {
-            view.remove_native(&input.placeholder);
+            input.placeholder.removeFromSuperview();
         }
         let editor = new_editor(
             surface.mtm,
@@ -1094,20 +1214,29 @@ fn auto_focus(surface: &Rc<Surface>, input: &Rc<InputState>) {
     });
 }
 
-/// Places the editor (and a text view's placeholder) at the content box.
+/// Places the pad over the whole view and the editor (and a text view's
+/// placeholder) in it at the content box (`crate::native::resized` keeps
+/// the pad at the view's size).
 fn place(view: &NshView, input: &InputState) {
-    let content = input.content.get().unwrap_or_else(|| {
-        let f = view.state().frame;
-        Rect {
-            x: 0.0,
-            y: 0.0,
-            width: f.width,
-            height: f.height,
-        }
-    });
+    let frame = view.state().frame;
+    let bounds = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: frame.width,
+        height: frame.height,
+    };
+    let content = input.content.get().unwrap_or(bounds);
     if content.width <= 0.0 || content.height <= 0.0 {
         return;
     }
+    view.set_native(&input.pad, bounds);
+    let pad = &input.pad;
+    let host = |sub: &NSView, r: Rect| {
+        if crate::view::superview(sub).as_deref() != Some(&**pad) {
+            pad.addSubview(sub);
+        }
+        sub.setFrame(ns_rect(r.x, r.y, r.width, r.height));
+    };
     if let Some(window) = view.ns().window()
         && !window.autorecalculatesKeyViewLoop()
     {
@@ -1130,7 +1259,7 @@ fn place(view: &NshView, input: &InputState) {
                 width: content.width + 2.0 * pad,
                 height,
             };
-            view.set_native(field, rect);
+            host(field, rect);
         }
         Editor::Area { scroller, .. } => {
             // The placeholder goes first: hosted views stack in order. A
@@ -1140,8 +1269,8 @@ fn place(view: &NshView, input: &InputState) {
                 width: content.width + 2.0 * FIELD_PADDING,
                 ..content
             };
-            view.set_native(&input.placeholder, label);
-            view.set_native(scroller, content);
+            host(&input.placeholder, label);
+            host(scroller, content);
         }
     }
 }

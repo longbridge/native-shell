@@ -114,6 +114,7 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 
 输入是桌面输入：鼠标、触控板（带惯性的滚动、捏合和旋转）和键盘。`selectable` 文本通过拖动、双击和三击选择，用 Cmd+C 复制。
 Escape、Option+Left、Cmd+[ 和鼠标的后退键会在栈中返回，或请求模态视图关闭；`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗。
+点击 `Input` 的任意位置（包括内边距）都会把光标放到最近的位置。
 `Alert` 以 `NSAlert` 表单的形式显示在窗口上。
 
 不支持或有所不同：
