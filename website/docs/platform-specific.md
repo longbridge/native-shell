@@ -72,7 +72,7 @@ Cross-platform props whose effect differs slightly are not grouped: `Alert.alert
 | Export | Description |
 |---|---|
 | `Toast.show(message, duration?)` | A toast at the bottom of the screen; `"short"` (default) or `"long"`. |
-| `BackHandler.addEventListener("hardwareBackPress", listener)` | Listens to the back button after modals and stacks; return `true` when handled. Returns `{ remove() }`. |
+| `BackHandler.addEventListener("hardwareBackPress", listener)` | Listens to the back button after modals, before stacks; return `true` when handled. Returns `{ remove() }`. |
 | `BackHandler.exitApp()` | Leaves the app. |
 | `setStatusBarBackgroundColor(color, animated?)` | The status bar's color under what `StatusBar` components set (before edge-to-edge, API 35). |
 | `isAvailable` | `true` on Android. |
@@ -100,7 +100,7 @@ function Player() {
 }
 ```
 
-The back button is handled by the top modal first, then the top navigation stack, then `BackHandler` listeners (most recent first), and the app exits when nothing handled it. See [Navigation](./navigation.md#the-android-back-button).
+The back button is handled by the top modal first, then `BackHandler` listeners (most recent first), then the top navigation stack, and the app exits when nothing handled it. See [Navigation](./navigation.md#the-android-back-button).
 
 ### nsh/ios
 

@@ -372,6 +372,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
                 .setString_forType(&NSString::from_str(text), unsafe { NSPasteboardTypeString });
         }
         Command::ReadClipboard { id, has_only } => read_clipboard(surface, *id, *has_only),
+        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             if let Some(window) = surface.root.ns().window() {
                 window.close();

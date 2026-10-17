@@ -1548,11 +1548,21 @@ final class Mounter {
         updateBack();
     }
 
-    /** The back button: the newest modal asks to close, else the newest
-     * stack pops, else JS hears about it. Returns false if nothing did. */
+    /** Whether the app's back listeners hear the button before the stacks. */
+    boolean listensToBack() {
+        return wants(1, Native.BACK_PRESS);
+    }
+
+    /** The back button: the newest modal asks to close, else the app's
+     * listeners hear it (and send {@code Command::Back} when none takes it),
+     * else the innermost stack pops. Returns false if nothing did. */
     boolean handleBack() {
         if (!shownModals.isEmpty()) {
             shownModals.get(shownModals.size() - 1).backPressed();
+            return true;
+        }
+        if (listensToBack()) {
+            event(1, Native.BACK_PRESS);
             return true;
         }
         StackBox stack = backStack();
@@ -1560,11 +1570,20 @@ final class Mounter {
             stack.back();
             return true;
         }
-        if (wants(1, Native.BACK_PRESS)) {
-            event(1, Native.BACK_PRESS);
-            return true;
-        }
         return false;
+    }
+
+    /** {@code Command::Back}: the back button as without the app's
+     * listeners. The newest modal asks to close, else the innermost stack
+     * pops, else the app leaves. */
+    private void defaultBack() {
+        if (!shownModals.isEmpty()) {
+            shownModals.get(shownModals.size() - 1).backPressed();
+            return;
+        }
+        StackBox stack = backStack();
+        if (stack != null) stack.back();
+        else host.exitApp();
     }
 
     // --- Images ------------------------------------------------------------
@@ -1716,6 +1735,7 @@ final class Mounter {
                 break;
             }
             case 3: host.exitApp(); break;
+            case 24: defaultBack(); break;
             case 4: case 5: case 6: case 7:
                 if (v instanceof WebBox) ((WebBox) v).command(kind, null);
                 break;

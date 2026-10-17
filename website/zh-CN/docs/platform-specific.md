@@ -72,7 +72,7 @@ group: platforms
 | 导出 | 说明 |
 |---|---|
 | `Toast.show(message, duration?)` | 在屏幕底部显示 toast；`"short"`（默认）或 `"long"`。 |
-| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图和导航栈之后监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
+| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图之后、导航栈之前监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
 | `BackHandler.exitApp()` | 退出应用。 |
 | `setStatusBarBackgroundColor(color, animated?)` | `StatusBar` 组件所设置内容之下的状态栏颜色（全面屏之前，API 35）。 |
 | `isAvailable` | Android 上为 `true`。 |
@@ -100,7 +100,7 @@ function Player() {
 }
 ```
 
-返回键先由最上层的模态视图处理，然后是最上层的导航栈，再然后是 `BackHandler` 监听器（最近添加的最先），都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
+返回键先由最上层的模态视图处理，然后是 `BackHandler` 监听器（最近添加的最先），再然后是最上层的导航栈，都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
 
 ### nsh/ios
 

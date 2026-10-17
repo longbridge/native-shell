@@ -301,13 +301,13 @@ fn frame_of(batches: &[MountBatch], id: u32) -> Option<nsh_core::Rect> {
 }
 
 #[test]
-fn unhandled_back_presses_exit_through_rust() {
-    unhandled_back_presses_exit_through_rust_on(start(BACK));
+fn unhandled_back_presses_go_back_natively() {
+    unhandled_back_presses_go_back_natively_on(start(BACK));
 }
 
-fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<MountBatch>)) {
+fn unhandled_back_presses_go_back_natively_on((engine, rx): (Engine, Receiver<MountBatch>)) {
     until(&rx, |b| shows(b, "presses 0"));
-    let exits = |batches: &[MountBatch]| {
+    let backs = |batches: &[MountBatch]| {
         batches
             .iter()
             .flat_map(|b| &b.items)
@@ -316,7 +316,7 @@ fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<M
                     i,
                     MountItem::Command {
                         id: ROOT_ID,
-                        command: Command::ExitApp
+                        command: Command::Back
                     }
                 )
             })
@@ -325,10 +325,14 @@ fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<M
     let control = engine.control();
     control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
     let first = until(&rx, |b| shows(b, "presses 1"));
-    assert_eq!(exits(&first), 0, "handled");
+    assert_eq!(backs(&first), 0, "handled");
     control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
-    let second = until(&rx, |b| exits(std::slice::from_ref(b)) > 0);
-    assert_eq!(exits(&second), 1, "not handled: the app exits");
+    let second = until(&rx, |b| backs(std::slice::from_ref(b)) > 0);
+    assert_eq!(
+        backs(&second),
+        1,
+        "not handled: the platform goes back (a stack pops, or the app exits)"
+    );
 }
 
 #[test]

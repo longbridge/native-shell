@@ -883,6 +883,10 @@ pub enum Command {
     LayoutAnimation(LayoutAnimation),
     /// Leave the app (Android back handling; on the root).
     ExitApp,
+    /// What the back button does when none of the app's listeners took
+    /// it: the innermost stack pops (or asks, with `preventBack`); with
+    /// none, the app leaves on Android (on the root).
+    Back,
     /// Reload a web view.
     Reload,
     /// Go back in a web view's history.

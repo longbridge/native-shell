@@ -446,6 +446,7 @@ pub(crate) fn command(surface: &Rc<Surface>, _id: NodeId, command: &Command) {
                 clipboard_answer(*id, has, text),
             );
         }
+        Command::Back => crate::navigation::default_back(surface),
         Command::ExitApp => {
             // Closing destroys the window, whose handler stops the surface:
             // not while the surface is applying this batch, so the message
