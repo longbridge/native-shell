@@ -14,7 +14,7 @@ use std::{
 
 use super::{
     Accessible, AnyElement, If, Interactive, IntoReactive, Position, Reactive,
-    element::{ElKind, ElNode, Element, IntoElement, ListConfig, Listener},
+    element::{BoundListConfig, ElKind, ElNode, Element, IntoElement, ListConfig, Listener},
     events,
 };
 use crate::{
@@ -28,20 +28,31 @@ pub trait ListLayout: Sized {
     fn config(&mut self) -> &mut ListConfig;
 
     #[doc(hidden)]
-    fn content(&mut self) -> &mut ListContentStyle {
-        self.config().content.get_or_insert_default()
+    fn bound_config(&mut self) -> &mut Vec<BoundListConfig>;
+
+    /// Sets a field of the layout with `set`: once for a value, in a
+    /// binding (a component that runs once) for a signal or a closure.
+    #[doc(hidden)]
+    fn layout<T: 'static>(
+        mut self,
+        value: impl IntoReactive<T>,
+        set: impl Fn(&mut ListConfig, T) + 'static,
+    ) -> Self {
+        match value.into_reactive() {
+            Reactive::Static(v) => set(self.config(), v),
+            Reactive::Bound(f) => self.bound_config().push(Rc::new(move |c| set(c, f()))),
+        }
+        self
     }
 
     /// The size of rows not measured yet, in points (default 50).
-    fn estimated_item_size(mut self, points: f32) -> Self {
-        self.config().estimated = Some(points);
-        self
+    fn estimated_item_size(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| c.estimated = Some(points))
     }
 
     /// Rows side by side (vertical lists).
-    fn columns(mut self, columns: u32) -> Self {
-        self.config().columns = Some(columns.max(1));
-        self
+    fn columns(self, columns: impl IntoReactive<u32>) -> Self {
+        self.layout(columns, |c, columns| c.columns = Some(columns.max(1)))
     }
 
     /// Scrolls horizontally.
@@ -63,60 +74,64 @@ pub trait ListLayout: Sized {
     /// `maintainVisibleContentPosition={{ autoscrollToBottomThreshold }}`).
     /// For lists that are not [`Self::inverted`], which keep their distance
     /// from the end anyway.
-    fn follow_end(mut self, threshold: f32) -> Self {
-        self.config().follow_end = Some(threshold.max(0.0));
-        self
+    fn follow_end(self, threshold: impl IntoReactive<f32>) -> Self {
+        self.layout(threshold, |c, threshold| {
+            c.follow_end = Some(threshold.max(0.0));
+        })
     }
 
     /// Whether the scroll indicator shows (default yes).
-    fn shows_indicator(mut self, shows: bool) -> Self {
-        self.config().shows_indicator = Some(shows);
-        self
+    fn shows_indicator(self, shows: impl IntoReactive<bool>) -> Self {
+        self.layout(shows, |c, shows| c.shows_indicator = Some(shows))
     }
 
     /// Padding around the rows, in points.
-    fn content_padding(mut self, points: f32) -> Self {
-        self.content().padding = crate::EdgeInsets::all(points);
-        self
+    fn content_padding(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| {
+            content(c).padding = crate::EdgeInsets::all(points);
+        })
     }
 
     /// Horizontal padding around the rows.
-    fn content_padding_x(mut self, points: f32) -> Self {
-        let p = &mut self.content().padding;
-        (p.left, p.right) = (points, points);
-        self
+    fn content_padding_x(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| {
+            let p = &mut content(c).padding;
+            (p.left, p.right) = (points, points);
+        })
     }
 
     /// Vertical padding around the rows.
-    fn content_padding_y(mut self, points: f32) -> Self {
-        let p = &mut self.content().padding;
-        (p.top, p.bottom) = (points, points);
-        self
+    fn content_padding_y(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| {
+            let p = &mut content(c).padding;
+            (p.top, p.bottom) = (points, points);
+        })
     }
 
     /// Padding above the rows.
-    fn content_padding_top(mut self, points: f32) -> Self {
-        self.content().padding.top = points;
-        self
+    fn content_padding_top(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| content(c).padding.top = points)
     }
 
     /// Padding below the rows.
-    fn content_padding_bottom(mut self, points: f32) -> Self {
-        self.content().padding.bottom = points;
-        self
+    fn content_padding_bottom(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| content(c).padding.bottom = points)
     }
 
     /// Space between rows (columns in horizontal lists).
-    fn row_gap(mut self, points: f32) -> Self {
-        self.content().row_gap = points;
-        self
+    fn row_gap(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| content(c).row_gap = points)
     }
 
     /// Space between columns ([`Self::columns`]).
-    fn column_gap(mut self, points: f32) -> Self {
-        self.content().column_gap = points;
-        self
+    fn column_gap(self, points: impl IntoReactive<f32>) -> Self {
+        self.layout(points, |c, points| content(c).column_gap = points)
     }
+}
+
+/// The content style of a list's layout, made when first set.
+fn content(config: &mut ListConfig) -> &mut ListContentStyle {
+    config.content.get_or_insert_default()
 }
 
 /// Renders the row at a position.
@@ -409,6 +424,10 @@ fn viewable(p: &EventPayload) -> Option<Cow<'_, ViewableItems>> {
 impl ListLayout for VirtualList {
     fn config(&mut self) -> &mut ListConfig {
         &mut self.list().config
+    }
+
+    fn bound_config(&mut self) -> &mut Vec<BoundListConfig> {
+        &mut self.0.bound_list
     }
 }
 

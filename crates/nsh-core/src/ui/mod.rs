@@ -70,9 +70,10 @@ pub use self::{
         Param, PropKind, PropSpec, Props, Registry, Root, declarations,
     },
     element::{
-        Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
-        FluentBuilder, Image, Interactive, IntoElement, Items, ListConfig, ListElement, Listener,
-        ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
+        Accessible, AnyElement, Attrs, BoundListConfig, Child, Children, ComponentElement, Context,
+        ElNode, Element, FluentBuilder, Image, Interactive, IntoElement, Items, ListConfig,
+        ListElement, Listener, ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text,
+        View, image, text, view,
     },
     element_ref::{ComponentRef, ElementRef},
     env::Environment,

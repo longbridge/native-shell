@@ -515,7 +515,8 @@ impl Component for MobileUi {
                     ListViewVariant::Inset
                 } else {
                     ListViewVariant::Plain
-                },
+                }
+                .into(),
                 ..ListViewProps::default()
             })
             .items(rows),

@@ -21,7 +21,7 @@ use super::{
 use crate::{
     NodeId, Op, Tag, TextEngine,
     ui::{
-        Attrs, ElNode, SharedString, StyleRefinement,
+        Attrs, BoundListConfig, ElNode, ListConfig, SharedString, StyleRefinement,
         element::BoundAttrs,
         flow::{Region, RegionElement},
         reactive::render_effect,
@@ -53,6 +53,8 @@ pub(super) enum Patch {
         region: u32,
         elements: Vec<RegionElement>,
     },
+    /// A list's layout, its bound parts read again.
+    Layout { list: NodeId, config: ListConfig },
     /// A list's rows, its bound count or keys read again.
     Rows {
         list: NodeId,
@@ -100,6 +102,8 @@ pub(super) struct Bound {
     attrs: Vec<BoundAttrs>,
     /// The style with its bound parts (none when it has none).
     style: Option<StyleRefinement>,
+    /// A list's layout: its static part and its bound parts.
+    list: (ListConfig, Vec<BoundListConfig>),
 }
 
 impl Bound {
@@ -117,6 +121,10 @@ impl Bound {
                 el.style = el.style.static_part();
                 full
             }),
+            list: (
+                el.list_config().copied().unwrap_or_default(),
+                std::mem::take(&mut el.bound_list),
+            ),
         })
     }
 }
@@ -176,6 +184,29 @@ impl<M: TextEngine> Core<M> {
                 patches.borrow_mut().push(Patch::Style { host, id, style });
             });
         }
+        let (base, parts) = bound.list;
+        if !parts.is_empty() {
+            self.bind_list_layout(id, base, parts);
+        }
+    }
+
+    /// Binds the bound parts of list `list`'s layout over `base` (applied)
+    /// under the current owner.
+    pub(super) fn bind_list_layout(
+        &mut self,
+        list: NodeId,
+        base: ListConfig,
+        parts: Vec<BoundListConfig>,
+    ) {
+        self.components.list_layouts.insert(list, base);
+        let patches = self.components.patches.clone();
+        render_effect(move || {
+            let mut config = base;
+            for part in &parts {
+                part(&mut config);
+            }
+            patches.borrow_mut().push(Patch::Layout { list, config });
+        });
     }
 
     /// Makes region `region` of `host`'s view in `parent` a binding under
@@ -274,6 +305,17 @@ impl<M: TextEngine> Core<M> {
         match patch {
             Patch::Region { region, elements } => self.reconcile_region(region, elements),
             Patch::Rows { list, count, keys } => self.set_list_rows(list, count, keys),
+            Patch::Layout { list, config } => {
+                let Some(old) = self.components.list_layouts.get_mut(&list) else {
+                    return;
+                };
+                let old = std::mem::replace(old, config);
+                let mut props = Vec::new();
+                config.changes(&old, &mut props);
+                for prop in props {
+                    let _ = self.apply_op(Op::SetProp { id: list, prop });
+                }
+            }
             Patch::Text { host, id, text } => {
                 let Some(inst) = self.components.instances.get_mut(&host) else {
                     return;

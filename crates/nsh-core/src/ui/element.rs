@@ -961,7 +961,13 @@ pub struct ElNode {
     pub(crate) bound_text: Option<Rc<dyn Fn() -> SharedString>>,
     /// Bound props: each sets the fields it binds on the static ones.
     pub(crate) bound_attrs: Vec<BoundAttrs>,
+    /// A list's bound layout: each sets the fields it binds.
+    pub(crate) bound_list: Vec<BoundListConfig>,
 }
+
+/// A bound part of a list's layout.
+#[doc(hidden)]
+pub type BoundListConfig = Rc<dyn Fn(&mut ListConfig)>;
 
 crate::static_reactive!(AccessibilityState: AccessibilityState);
 crate::static_reactive!(EdgeInsets: EdgeInsets);
@@ -986,7 +992,10 @@ impl ElNode {
 
     /// Whether it has bound parts (text, props or styles).
     pub(crate) fn is_bound(&self) -> bool {
-        self.bound_text.is_some() || !self.bound_attrs.is_empty() || self.style.is_bound()
+        self.bound_text.is_some()
+            || !self.bound_attrs.is_empty()
+            || self.style.is_bound()
+            || !self.bound_list.is_empty()
     }
 
     /// The props now: the static ones with the bound parts applied (read in
@@ -1016,7 +1025,22 @@ impl ElNode {
             if self.style.is_bound() {
                 self.style = self.style.resolved();
             }
+            let parts = std::mem::take(&mut self.bound_list);
+            if let Some(config) = self.list_config() {
+                for part in &parts {
+                    part(config);
+                }
+            }
         });
+    }
+
+    /// A list's layout (of a list element or a virtual list).
+    pub(crate) fn list_config(&mut self) -> Option<&mut ListConfig> {
+        match &mut self.kind {
+            ElKind::List(list) => Some(&mut list.config),
+            ElKind::VirtualList(list) => Some(&mut list.config),
+            _ => None,
+        }
     }
 
     /// What a component that is not registered renders.
@@ -1037,6 +1061,7 @@ impl ElNode {
             kind: ElKind::Plain,
             bound_text: None,
             bound_attrs: Vec::new(),
+            bound_list: Vec::new(),
         }
     }
 }
@@ -1906,6 +1931,10 @@ impl super::ListLayout for ListElement {
             ElKind::List(list) => &mut list.config,
             _ => unreachable!("a ListElement is a list"),
         }
+    }
+
+    fn bound_config(&mut self) -> &mut Vec<BoundListConfig> {
+        &mut self.0.bound_list
     }
 }
 

@@ -312,6 +312,8 @@ pub(super) struct Components {
     /// The row counts the cells of views' lists read (their positions), by
     /// list, each under a root of its own that goes with the list.
     list_counts: FxHashMap<NodeId, (crate::ui::Owner, crate::ui::Signal<usize>)>,
+    /// The layouts of views' lists with bound parts, as applied last.
+    pub(super) list_layouts: FxHashMap<NodeId, ListConfig>,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
     /// JS listens to the back button (`BackHandler`) on the root.
@@ -362,6 +364,7 @@ impl Default for Components {
             measures: Vec::new(),
             virtual_lists: FxHashMap::default(),
             list_counts: FxHashMap::default(),
+            list_layouts: FxHashMap::default(),
             insets: FxHashMap::default(),
             js_back: false,
             touch: super::touch::TouchState::default(),
@@ -2033,14 +2036,23 @@ impl<M: TextEngine> Core<M> {
                 });
                 let prev = at.and_then(|j| old[j].take());
                 let old_config = prev.as_ref().map(|p| p.list).unwrap_or_default();
+                // Its bound layout: a binding in a view, read once otherwise.
+                let parts = std::mem::take(&mut el.bound_list);
+                let mut config = list.config;
+                if !inst.binding {
+                    crate::ui::untracked(|| parts.iter().for_each(|part| part(&mut config)));
+                }
                 let mut props = std::mem::take(&mut self.components.props);
-                list.config.changes(&old_config, &mut props);
+                config.changes(&old_config, &mut props);
                 for prop in props.drain(..) {
                     let _ = self.apply_op(Op::SetProp { id: node, prop });
                 }
                 self.components.props = props;
+                if inst.binding && !parts.is_empty() {
+                    self.bind_list_layout(node, config, parts);
+                }
                 let mut e = self.reconcile_slot(prev, node, el, inst);
-                e.list = list.config;
+                e.list = config;
                 let rows = self.rows_of_list(node);
                 self.components.lists.insert(node, (list.row.clone(), rows));
                 // Rows of the component that rendered this one: its
@@ -2449,6 +2461,7 @@ impl<M: TextEngine> Core<M> {
         old: &ListConfig,
         binding: bool,
     ) {
+        // The static layout (its bound parts come as patches).
         let mut props = std::mem::take(&mut self.components.props);
         list.config.changes(old, &mut props);
         for prop in props.drain(..) {
@@ -2632,11 +2645,12 @@ impl<M: TextEngine> Core<M> {
         made.1
     }
 
-    /// List `list` goes: so does the count its cells read.
+    /// List `list` goes: so do the count its cells read and its layout.
     fn forget_list_count(&mut self, list: NodeId) {
         if let Some((owner, _)) = self.components.list_counts.remove(&list) {
             owner.dispose();
         }
+        self.components.list_layouts.remove(&list);
     }
 
     /// Binds the cells of the components' own lists the last layout asked

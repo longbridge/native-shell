@@ -6792,4 +6792,50 @@ mod views {
             batch.items
         );
     }
+
+    /// A list whose top padding is a signal; a press on it flips it.
+    #[derive(Default)]
+    struct Padded;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct PaddedProps {}
+
+    impl Component for Padded {
+        type Props = PaddedProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: PaddedProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let padded = signal(false);
+            view()
+                .flex_1()
+                .on_press(move |_: &()| padded.update(|p| *p = !*p))
+                .child(
+                    virtual_list(3, |at| text(format!("row {}", at.index())).h(px(40.0)))
+                        .content_padding_top(move || if padded.get() { 10.0_f32 } else { 0.0 })
+                        .flex_1(),
+                )
+        }
+    }
+
+    #[test]
+    fn a_views_list_layout_is_a_binding() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Padded>(|| PaddedProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        // The rows move down; nothing is made again.
+        assert_eq!(creates(&batch), 0, "{:?}", batch.items);
+        let moved: Vec<f32> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Frame { frame, .. } => Some(frame.y),
+                _ => None,
+            })
+            .collect();
+        assert!(moved.contains(&10.0), "{:?}", batch.items);
+    }
 }
