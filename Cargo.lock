@@ -4559,6 +4559,7 @@ dependencies = [
  "serde_json",
  "ttf-parser",
  "ureq",
+ "zbus",
 ]
 
 [[package]]
