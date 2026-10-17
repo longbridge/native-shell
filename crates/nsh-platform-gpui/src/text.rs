@@ -957,6 +957,8 @@ impl TextEngine for GpuiTextEngine {
         let s = t.text.as_str();
         let mut utf16 = Vec::with_capacity(s.len() + 1);
         let mut u = 0u32;
+        // Every byte of a character maps to the character's offset, so the
+        // first byte at an offset is always a character boundary.
         for c in s.chars() {
             for _ in 0..c.len_utf8() {
                 utf16.push(u);
@@ -1771,76 +1773,6 @@ fn paint_glyphs(cx: &mut DrawCx<'_>, glyphs: Vec<Painted>) {
     });
 }
 
-thread_local! {
-    /// The UI font as the main thread draws labels with it.
-    static LABEL_FONT: RefCell<Option<(u64, Font)>> = const { RefCell::new(None) };
-}
-
-/// Draws `label` in the UI font at `size`, its left edge (or its right
-/// edge, `right`) at `x` and centered on `cy` (current coordinates): the
-/// labels of menus the backend draws itself.
-pub(crate) fn draw_label(
-    cx: &mut DrawCx<'_>,
-    label: &str,
-    (x, cy): (f32, f32),
-    size: f32,
-    color: Color,
-    right: bool,
-) {
-    let system = cx.window.text_system().clone();
-    let generation = FONT_GENERATION.load(Ordering::Acquire);
-    let font = LABEL_FONT.with_borrow_mut(|f| match f {
-        Some((g, font)) if *g == generation => font.clone(),
-        _ => {
-            let installed: FxHashMap<String, String> = system
-                .all_font_names()
-                .into_iter()
-                .map(|n| (n.to_lowercase(), n))
-                .collect();
-            let font = gpui::font(ui_font(&system, &installed));
-            *f = Some((generation, font.clone()));
-            font
-        }
-    });
-    let id = system.resolve_font(&font);
-    let layout = system.layout_line(
-        label,
-        px(size),
-        &[TextRun {
-            len: label.len(),
-            font,
-            color: gpui::black(),
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        }],
-        None,
-    );
-    let ascent = f32::from(system.ascent(id, px(size)));
-    let descent = f32::from(system.descent(id, px(size))).abs();
-    let baseline = cy + (ascent - descent) / 2.0;
-    let x0 = if right {
-        x - f32::from(layout.width)
-    } else {
-        x
-    };
-    let k = cx.transform_scale();
-    let c = cx.color(color);
-    let glyphs = layout
-        .runs
-        .iter()
-        .flat_map(|r| r.glyphs.iter().map(move |g| (r.font_id, g)))
-        .map(|(font, g)| {
-            let o = cx.map(
-                x0 + f32::from(g.position.x),
-                baseline + f32::from(g.position.y),
-            );
-            (o, font, g.id, px(size * k), (!g.is_emoji).then_some(c))
-        })
-        .collect();
-    paint_glyphs(cx, glyphs);
-}
-
 /// Draws a text view's text shadow (view coordinates set on `cx`): before
 /// the view's content is clipped to its bounds, as a shadow spreads past
 /// them.
@@ -2371,11 +2303,6 @@ fn dragged(key: u64, view: &NshView, s: &Selection, dx: f32, dy: f32, x: f32, y:
     select(key, view, Some(range));
 }
 
-/// Puts `text` on the clipboard.
-fn copy(text: String) {
-    crate::rt::on_app(move |cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
-}
-
 /// A finished drag sets the primary selection (Linux: middle-click
 /// pastes it).
 fn set_primary(view: &NshView) {
@@ -2390,8 +2317,32 @@ fn set_primary(view: &NshView) {
 /// A right click on selectable text `view`: Copy (its selection) and
 /// Select All.
 pub(crate) fn context_menu(surface: &Rc<crate::surface::Surface>, view: &NshView) {
+    use nsh_core::desktop::MenuRole;
+
+    use crate::chrome::LocalItem;
     let selected = selected_text(view).is_some_and(|t| !t.is_empty());
-    menu::open(surface, view, selected);
+    let (copy, all) = (view.clone(), view.clone());
+    crate::chrome::popup_actions(
+        surface,
+        vec![
+            LocalItem::Item {
+                role: Some(MenuRole::Copy),
+                label: "",
+                enabled: selected,
+                action: Rc::new(move |_| {
+                    if let Some(text) = selected_text(&copy) {
+                        crate::system::set_clipboard_text(&text);
+                    }
+                }),
+            },
+            LocalItem::Item {
+                role: Some(MenuRole::SelectAll),
+                label: "",
+                enabled: true,
+                action: Rc::new(move |s| select_all(s.key(), &all)),
+            },
+        ],
+    );
 }
 
 /// The selected text of `view`, without attachments' placeholders.
@@ -2419,9 +2370,6 @@ pub(crate) fn key(surface: &Rc<crate::surface::Surface>, event: &crate::input::K
     if !event.down {
         return false;
     }
-    if menu::key(surface, event) {
-        return true;
-    }
     let Some(view) = SELECTED.with_borrow(|s| {
         s.as_ref()
             .filter(|(key, v)| *key == surface.key() && v.attached())
@@ -2438,7 +2386,7 @@ pub(crate) fn key(surface: &Rc<crate::surface::Surface>, event: &crate::input::K
     match event.vk {
         VK_C | VK_INSERT if command => {
             if let Some(text) = selected_text(&view) {
-                copy(text);
+                crate::system::set_clipboard_text(&text);
             }
         }
         VK_A if command => select_all(surface.key(), &view),
@@ -2528,208 +2476,6 @@ fn unit_at(text: &str, index: u32, unit: Unit) -> (u32, u32) {
                 end += 1;
             }
             (chars[start].0, end_of(end))
-        }
-    }
-}
-
-/// The context menu of selectable text: Copy and Select All, drawn by the
-/// text view's surface above everything (GPUI has no platform popup menus
-/// of its own on every desktop).
-mod menu {
-    use std::{cell::RefCell, rc::Rc};
-
-    use nsh_core::Color;
-
-    use super::{NshView, copy, select_all, selected_text};
-    use crate::{render::DrawCx, surface::Surface, view::Hosted};
-
-    /// Item height and menu width (points).
-    const ROW: f32 = 26.0;
-    const WIDTH: f32 = 180.0;
-    const PAD: f32 = 4.0;
-
-    /// The open menu.
-    struct Menu {
-        surface: std::rc::Weak<Surface>,
-        view: NshView,
-        /// What the root hosts.
-        overlay: Rc<dyn Hosted>,
-        /// Top left (root coordinates).
-        at: (f32, f32),
-        copy: bool,
-        /// The item under the pointer.
-        hover: std::cell::Cell<Option<usize>>,
-    }
-
-    thread_local! {
-        static OPEN: RefCell<Option<Rc<Menu>>> = const { RefCell::new(None) };
-    }
-
-    fn labels() -> [(&'static str, &'static str); 2] {
-        if cfg!(target_os = "macos") {
-            [("Copy", "\u{2318}C"), ("Select All", "\u{2318}A")]
-        } else {
-            [("Copy", "Ctrl+C"), ("Select All", "Ctrl+A")]
-        }
-    }
-
-    /// Opens the menu at the pointer: an item the root hosts over all of
-    /// it, which takes every pointer event while the menu is open (a press
-    /// outside closes it).
-    pub(super) fn open(surface: &Rc<Surface>, view: &NshView, copy: bool) {
-        close(surface);
-        let (x, y) = surface.input.last.get().unwrap_or((0.0, 0.0));
-        let (w, h) = surface.size();
-        let height = ROW * 2.0 + PAD * 2.0;
-        let at = (
-            x.min(w - WIDTH - 4.0).max(0.0),
-            if y + height > h {
-                (y - height).max(0.0)
-            } else {
-                y
-            },
-        );
-        let overlay: Rc<dyn Hosted> = Rc::new(Overlay);
-        OPEN.with_borrow_mut(|o| {
-            *o = Some(Rc::new(Menu {
-                surface: Rc::downgrade(surface),
-                view: view.clone(),
-                overlay: overlay.clone(),
-                at,
-                copy,
-                hover: std::cell::Cell::new(None),
-            }))
-        });
-        surface
-            .root
-            .set_native(&overlay, crate::geom::rect(0.0, 0.0, w, h));
-    }
-
-    fn close(surface: &Surface) {
-        if let Some(menu) = OPEN.with_borrow_mut(|o| o.take()) {
-            surface.root.remove_native(&menu.overlay);
-        }
-    }
-
-    fn current() -> Option<Rc<Menu>> {
-        OPEN.with_borrow(|o| o.clone())
-    }
-
-    /// Escape closes the menu. True when taken.
-    pub(super) fn key(surface: &Rc<Surface>, event: &crate::input::KeyEvent) -> bool {
-        const VK_ESCAPE: u16 = 0x1B;
-        if event.vk == VK_ESCAPE && current().is_some() {
-            close(surface);
-            return true;
-        }
-        false
-    }
-
-    /// The menu as the root hosts it.
-    struct Overlay;
-
-    impl Menu {
-        fn item_at(&self, x: f32, y: f32) -> Option<usize> {
-            let (lx, ly) = (x - self.at.0, y - self.at.1 - PAD);
-            ((0.0..WIDTH).contains(&lx) && (0.0..ROW * 2.0).contains(&ly))
-                .then(|| (ly / ROW) as usize)
-        }
-    }
-
-    impl Hosted for Overlay {
-        fn draw(&self, cx: &mut DrawCx<'_>, _size: (f32, f32)) {
-            let Some(menu) = current() else { return };
-            let dark = cx.dark;
-            let (bg, fg, faint, hover, border) = if dark {
-                (
-                    Color(0x2a2a_2cff),
-                    Color(0xf2f2_f2ff),
-                    Color(0x8a8a_8eff),
-                    Color(0x3584_e4ff),
-                    Color(0xffff_ff22),
-                )
-            } else {
-                (
-                    Color(0xffff_ffff),
-                    Color(0x1c1c_1eff),
-                    Color(0x8a8a_8eff),
-                    Color(0x3584_e4ff),
-                    Color(0x0000_0022),
-                )
-            };
-            let (x, y) = menu.at;
-            let h = ROW * 2.0 + PAD * 2.0;
-            cx.fill_rounded(x - 1.0, y - 1.0, WIDTH + 2.0, h + 2.0, 7.0, border);
-            cx.fill_rounded(x, y, WIDTH, h, 6.0, bg);
-            for (i, (label, shortcut)) in labels().into_iter().enumerate() {
-                let enabled = i != 0 || menu.copy;
-                let top = y + PAD + ROW * i as f32;
-                let hovered = enabled && menu.hover.get() == Some(i);
-                if hovered {
-                    cx.fill_rounded(x + 4.0, top, WIDTH - 8.0, ROW, 4.0, hover);
-                }
-                let color = if !enabled {
-                    faint
-                } else if hovered {
-                    Color(0xffff_ffff)
-                } else {
-                    fg
-                };
-                crate::text::draw_label(cx, label, (x + 14.0, top + ROW / 2.0), 13.0, color, false);
-                let sc = if hovered { color } else { faint };
-                crate::text::draw_label(
-                    cx,
-                    shortcut,
-                    (x + WIDTH - 14.0, top + ROW / 2.0),
-                    12.0,
-                    sc,
-                    true,
-                );
-            }
-        }
-
-        fn hit(&self, _x: f32, _y: f32, _size: (f32, f32)) -> bool {
-            true
-        }
-
-        fn pointer(&self, event: &crate::view::ItemPointer) -> bool {
-            use crate::input::PointerKind;
-            let Some(menu) = current() else { return false };
-            let Some(surface) = menu.surface.upgrade() else {
-                return false;
-            };
-            let item = menu.item_at(event.x, event.y);
-            match event.kind {
-                PointerKind::Move => {
-                    if menu.hover.replace(item) != item {
-                        surface.root.changed();
-                    }
-                }
-                PointerKind::Down => {
-                    if item.is_none() {
-                        close(&surface);
-                    }
-                }
-                PointerKind::Up => {
-                    match item {
-                        Some(0) if menu.copy => {
-                            if let Some(text) = selected_text(&menu.view) {
-                                copy(text);
-                            }
-                        }
-                        Some(1) => select_all(surface.key(), &menu.view),
-                        Some(_) => return true,
-                        None => return true,
-                    }
-                    close(&surface);
-                }
-                _ => {}
-            }
-            true
-        }
-
-        fn cursor(&self, _x: f32, _y: f32) -> Option<crate::input::Cursor> {
-            Some(crate::input::Cursor::Arrow)
         }
     }
 }
@@ -3373,6 +3119,33 @@ mod tests {
         let t = text(&[("one\n", plain(14.0))]);
         let (_, layout) = layout_of(&engine, &t, None);
         assert_eq!(engine.lines(&layout).len(), 2);
+    }
+
+    /// Spans ending after multi-byte characters (UTF-16 offsets) map to
+    /// character boundaries.
+    #[test]
+    fn multi_byte_spans() {
+        let engine = engine();
+        let bold = ResolvedTextStyle {
+            font_weight: 700,
+            ..plain(15.0)
+        };
+        let t = text(&[
+            ("2×3", plain(15.0)),
+            ("×", bold),
+            ("中文", plain(15.0)),
+            ("😀", bold),
+            ("é\u{301}x", plain(15.0)),
+        ]);
+        let (size, layout) = layout_of(&engine, &t, None);
+        assert!(size.width > 0.0);
+        let shown = shown(&t, &layout);
+        for part in ["2×3×", "中文", "😀"] {
+            assert!(shown.contains(part), "{shown}");
+        }
+        // Wrapped one character a line, nothing breaks.
+        let (_, layout) = layout_of(&engine, &t, Some(1.0));
+        assert_eq!(line_texts(&t, &layout).concat(), t.text);
     }
 
     #[test]

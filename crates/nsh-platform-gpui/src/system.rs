@@ -2143,6 +2143,14 @@ fn show_toast(surface: &Rc<Surface>, text: &str, long: bool) {
     });
 }
 
+/// Puts `text` on the clipboard (soon: GPUI's app is not at hand). True
+/// when it will be.
+pub(crate) fn set_clipboard_text(text: &str) -> bool {
+    let text = text.to_owned();
+    crate::rt::on_app(move |cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

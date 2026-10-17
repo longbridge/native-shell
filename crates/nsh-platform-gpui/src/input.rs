@@ -269,7 +269,7 @@ pub(crate) struct Input {
     js_block: Cell<bool>,
     /// Where the mouse last was (root coordinates): keyboard scrolling
     /// goes to the scroll view under it.
-    pub(crate) last: Cell<Option<(f32, f32)>>,
+    last: Cell<Option<(f32, f32)>>,
     /// A key with Alt was taken: Alt's release must not open the window
     /// menu.
     alt_combo: Cell<bool>,
@@ -838,7 +838,6 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     match event.kind {
         PointerKind::Down => {
             if mouse && event.button == 1 {
-                surface.input.last.set(Some((x, y)));
                 context_menu(surface, x, y);
                 return;
             }
