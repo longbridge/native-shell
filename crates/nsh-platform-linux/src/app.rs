@@ -272,8 +272,16 @@ fn install_shortcuts(app: &gtk::Application, window: &gtk::ApplicationWindow) {
     });
     app.add_action(&quit);
     app.set_accels_for_action("app.quit", &["<Control>q"]);
-    // GtkWindow's own action.
-    app.set_accels_for_action("window.close", &["<Control>w"]);
+    // GtkWindow's own action. Not an application accelerator: those run
+    // before everything, and an app may bind Ctrl+W itself (`nsh/keymap`,
+    // e.g. to close a tab); this one comes last.
+    let close = gtk::ShortcutController::new();
+    close.set_propagation_phase(gtk::PropagationPhase::Bubble);
+    close.add_shortcut(gtk::Shortcut::new(
+        gtk::ShortcutTrigger::parse_string("<Control>w"),
+        Some(gtk::NamedAction::new("window.close")),
+    ));
+    window.add_controller(close);
     let fullscreen = gtk::gio::SimpleAction::new("fullscreen", None);
     let weak = window.downgrade();
     fullscreen.connect_activate(move |_, _| {

@@ -45,12 +45,17 @@ pub(crate) fn set(surface: &Rc<Surface>, keymap: Arc<Keymap>) {
     }
     let controller = gtk::ShortcutController::new();
     controller.set_scope(gtk::ShortcutScope::Global);
+    // The window runs global controllers in their phase: in the bubble
+    // phase the focused field (and its own capture controller) would see
+    // the key first, and `when: "always"` could not take Ctrl+A from it.
+    controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let display = surface.root.display();
     for binding in keymap.bindings().iter().rev() {
         // The dev host's Ctrl+R reloads, whatever the app binds.
         if cfg!(feature = "dev") && binding.keystroke.reloads(Os::Linux) {
             continue;
         }
-        let Some(trigger) = trigger(&binding.keystroke) else {
+        let Some(trigger) = trigger(&binding.keystroke, |key| shifted(&display, key)) else {
             continue;
         };
         let weak = Rc::downgrade(surface);
@@ -129,8 +134,31 @@ fn fires(surface: &Surface, in_text: bool) -> bool {
     in_text || !editing
 }
 
-/// The GTK trigger of `keystroke` (`<Control><Shift>p`).
-fn trigger(keystroke: &Keystroke) -> Option<String> {
+/// The keyval that `key` types with Shift on the display's layout (`slash`
+/// → `question`, `Tab` → `ISO_Left_Tab`), if it differs.
+fn shifted(display: &gtk::gdk::Display, key: gtk::gdk::Key) -> Option<gtk::gdk::Key> {
+    let keys = display.map_keyval(key)?;
+    let base = keys
+        .iter()
+        .filter(|k| k.level() == 0)
+        .min_by_key(|k| k.group())?;
+    let (shifted, ..) = display.translate_key(
+        base.keycode(),
+        gtk::gdk::ModifierType::SHIFT_MASK,
+        base.group(),
+    )?;
+    (shifted != key && shifted != gtk::gdk::Key::VoidSymbol).then_some(shifted)
+}
+
+/// The GTK trigger of `keystroke` (`<Control><Shift>p`). A key event
+/// carries the keyval Shift typed, and Shift counts as consumed: a shifted
+/// key other than a letter (`shift+/`, `mod+shift+=`, `shift+tab`) is
+/// matched by the keyval `shifted` gives (`question`, `plus`,
+/// `ISO_Left_Tab`), as GTK's own bindings name it.
+fn trigger(
+    keystroke: &Keystroke,
+    shifted: impl Fn(gtk::gdk::Key) -> Option<gtk::gdk::Key>,
+) -> Option<String> {
     let m = keystroke.modifiers;
     let mut out = String::new();
     for (on, name) in [
@@ -176,6 +204,13 @@ fn trigger(keystroke: &Keystroke) -> Option<String> {
         Key::PageDown => "Page_Down".to_owned(),
         Key::F(n) => format!("F{n}"),
     };
+    let letter = matches!(keystroke.key, Key::Char(c) if c.is_ascii_alphabetic());
+    let name = match gtk::gdk::Key::from_name(&name) {
+        Some(key) if m.shift && !letter => shifted(key)
+            .and_then(|k| k.name())
+            .map_or(name, |n| n.to_string()),
+        _ => name,
+    };
     out.push_str(&name);
     Some(out)
 }
@@ -186,10 +221,24 @@ mod tests {
 
     #[test]
     fn triggers() {
-        let t = |s| super::trigger(&Keystroke::parse(s, Os::Linux).unwrap()).unwrap();
+        use gtk4::gdk::Key;
+        // The US layout's shifted keys.
+        let us = |key| match key {
+            Key::slash => Some(Key::question),
+            Key::equal => Some(Key::plus),
+            Key::_1 => Some(Key::exclam),
+            Key::Tab => Some(Key::ISO_Left_Tab),
+            _ => None,
+        };
+        let t = |s| super::trigger(&Keystroke::parse(s, Os::Linux).unwrap(), us).unwrap();
         assert_eq!(t("mod+shift+p"), "<Control><Shift>p");
         assert_eq!(t("alt+enter"), "<Alt>Return");
         assert_eq!(t("cmd+["), "<Super>bracketleft");
         assert_eq!(t("f5"), "F5");
+        assert_eq!(t("shift+/"), "<Shift>question");
+        assert_eq!(t("mod+shift+="), "<Control><Shift>plus");
+        assert_eq!(t("mod+shift+1"), "<Control><Shift>exclam");
+        assert_eq!(t("shift+tab"), "<Shift>ISO_Left_Tab");
+        assert_eq!(t("mod+="), "<Control>equal");
     }
 }

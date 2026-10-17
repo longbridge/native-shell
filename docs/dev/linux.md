@@ -77,7 +77,8 @@ A key goes through the window's controllers in GTK's order: capture from the win
 bubble back up. What nsh adds:
 
 - **Window shortcuts** (`app.rs`, standalone apps only, not an embedded `AppView`): Ctrl+Q quits, Ctrl+W closes the
-  window (GtkWindow's `window.close`), F11 toggles full screen, as GNOME apps do; the dev host's Ctrl+R (`dev.rs`) is a
+  window (GtkWindow's `window.close`, a bubble-phase shortcut of the window rather than an application accelerator,
+  which would run before everything: the app may bind Ctrl+W), F11 toggles full screen, as GNOME apps do; the dev host's Ctrl+R (`dev.rs`) is a
   global-scope `gtk::ShortcutController`. Application accelerators and shortcut triggers also match the key of the
   layout's Latin group, so they work under Cyrillic or Greek layouts.
 - **In a field** (`text_input.rs`), GTK's own bindings edit: Ctrl+arrows, Ctrl+Backspace / Delete, Home / End and their
@@ -91,14 +92,16 @@ bubble back up. What nsh adds:
   field instead; Alt+Left and the Back key, also from a field, which does not use them), scrolling (`scroll.rs`, not
   while a field has the focus) and the mouse's back button. A `selectable` text with a selection takes Ctrl+A / Ctrl+C
   / Escape (`text.rs`); without one Escape goes on.
-- **The app's shortcuts** (`nsh/keymap`, `keymap.rs`): the mounted table becomes a global-scope
-  `gtk::ShortcutController` on the root, one `gtk::Shortcut` per binding (newest first, a `<Control><Shift>p`
-  trigger, which GTK also matches on the Latin group's keys); its action fires only where the binding may (the
+- **The app's shortcuts** (`nsh/keymap`, `keymap.rs`): the mounted table becomes a global-scope, capture-phase
+  `gtk::ShortcutController` on the root, which the window runs before the focus widget and its own capture
+  controllers (in the bubble phase a field would take Ctrl+A or Ctrl+Return first); one `gtk::Shortcut` per binding
+  (newest first, a `<Control><Shift>p` trigger, which GTK also matches on the Latin group's keys; a shifted key other
+  than a letter is named by the keyval Shift types on the display's layout, `shift+/` as `<Shift>question`, since
+  GTK compares the event's keyval); its action fires only where the binding may (the
   focus in another surface: never; in a text widget or hosted widget: only bindings `in_text`), reports the root's
   `KeyCommand` and stops the key, else lets GTK go on. Ctrl+Q, Alt+F4 and F11 cannot be bound; built with `dev`,
   Ctrl+R gets no shortcut (the dev host reloads). GDK does not mark auto-repeats: a binding without `repeat` fires
-  once until the window's capture-phase key controller sees a release. Not yet run on Linux:
-  the order against the application's accelerators and the editors' capture-phase controllers is to be checked.
+  once until the window's capture-phase key controller sees a release.
 - **Focus**: Tab / Shift+Tab is GTK's, in screen order (GTK sorts a container's children by position); hidden screens
   are not child visible, and the views under the newest modal cannot take the focus. Dialogs (`system.rs`) move it
   between their own buttons.
