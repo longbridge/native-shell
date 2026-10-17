@@ -107,7 +107,13 @@ fn main() {
             self.focus.clone()
         }
 
-        fn set_prop(&mut self, name: &str, value: Option<&Value>) {
+        fn set_prop(
+            &mut self,
+            name: &str,
+            value: Option<&Value>,
+            _window: &mut Window,
+            _cx: &mut gpui::App,
+        ) {
             match name {
                 "text" => self.text = value.and_then(Value::as_str).unwrap_or("").to_owned(),
                 "color" => {
@@ -119,10 +125,10 @@ fn main() {
             }
         }
 
-        fn command(&mut self, name: &str, _args: &Value) {
+        fn command(&mut self, name: &str, _args: &Value, window: &mut Window, _cx: &mut gpui::App) {
             if name == "pulse" {
                 self.pulsed = Some(Instant::now());
-                self.cx.redraw();
+                window.refresh();
             }
         }
     }
