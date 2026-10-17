@@ -108,6 +108,22 @@ const TEXT_FALLBACKS: &[&str] = &["DejaVu Sans", "Noto Sans Symbols 2", "Noto Sa
 #[cfg(not(target_os = "linux"))]
 const TEXT_FALLBACKS: &[&str] = &[];
 
+/// Fonts with text glyphs for symbols that are text by default (♥, ✓,
+/// ★) but that a fallback may take from an emoji font, which ignores the
+/// text's color. Fonts without Latin letters do not load as fonts in
+/// GPUI on Linux, so symbol-only fonts are not among them.
+const TEXT_SYMBOLS: &[&str] = &[
+    "DejaVu Sans",
+    "Segoe UI Symbol",
+    "Apple Symbols",
+    "Menlo",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK JP",
+    "Noto Sans Mono",
+    "Liberation Sans",
+    "Adwaita Mono",
+];
+
 /// Monospace families, in order of preference (the first installed one
 /// stands for `monospace`; static fonts before variable ones, which GPUI
 /// draws at one weight).
@@ -295,6 +311,12 @@ struct Fonts {
     ui: SharedString,
     /// The installed ones of [`TEXT_FALLBACKS`].
     fallbacks: Option<gpui::FontFallbacks>,
+    /// The ascent and descent (ems) of the desktop's own UI font when the
+    /// UI font is another (GPUI cannot set it in bold): lines in the UI
+    /// font keep the desktop's line heights.
+    ui_lines: Option<(f32, f32)>,
+    /// The installed fonts of [`TEXT_SYMBOLS`].
+    symbols: Vec<SharedString>,
     faces: FxHashMap<FaceKey, Rc<Face>>,
 }
 
@@ -325,6 +347,8 @@ impl GpuiTextEngine {
                 installed: FxHashMap::default(),
                 ui: SharedString::default(),
                 fallbacks: None,
+                ui_lines: None,
+                symbols: Vec::new(),
                 faces: FxHashMap::default(),
             }),
         }
@@ -354,6 +378,26 @@ impl GpuiTextEngine {
             } else {
                 self.ui.to_string()
             };
+            let desktop = UI_FAMILIES
+                .iter()
+                .find_map(|f| installed.get(&f.to_lowercase()));
+            fonts.ui_lines = match desktop {
+                // Only for a UI font this engine chose (one of the list).
+                Some(d) if *d != ui && UI_FAMILIES.iter().any(|f| f.eq_ignore_ascii_case(&ui)) => {
+                    let id = self.system.resolve_font(&gpui::font(d.clone()));
+                    let em = px(1.0);
+                    Some((
+                        f32::from(self.system.ascent(id, em)),
+                        f32::from(self.system.descent(id, em)).abs(),
+                    ))
+                }
+                _ => None,
+            };
+            fonts.symbols = TEXT_SYMBOLS
+                .iter()
+                .filter_map(|f| installed.get(&f.to_lowercase()))
+                .map(|f| SharedString::from(f.clone()))
+                .collect();
             fonts.ui = SharedString::from(ui);
             let fallbacks: Vec<String> = TEXT_FALLBACKS
                 .iter()
@@ -425,9 +469,16 @@ impl GpuiTextEngine {
         let id = self.system.resolve_font(&font);
         let em = px(1.0);
         let or = |v: f32, default: f32| if v > 0.0 { v } else { default };
+        let lines = match fonts.ui_lines {
+            Some(lines) if font.family == fonts.ui => lines,
+            _ => (
+                f32::from(self.system.ascent(id, em)),
+                f32::from(self.system.descent(id, em)).abs(),
+            ),
+        };
         let metrics = Metrics {
-            ascent: f32::from(self.system.ascent(id, em)),
-            descent: f32::from(self.system.descent(id, em)).abs(),
+            ascent: lines.0,
+            descent: lines.1,
             cap: or(f32::from(self.system.cap_height(id, em)), CAP_HEIGHT),
             x: or(f32::from(self.system.x_height(id, em)), X_HEIGHT),
         };
@@ -448,6 +499,54 @@ impl GpuiTextEngine {
         self.shaper
             .borrow()
             .layout_line(text, px(size.max(0.1)), runs, None)
+    }
+
+    /// The glyphs and advance of symbol `c` in a text font (the first of
+    /// [`TEXT_SYMBOLS`] that has it), in `font`'s weight and style.
+    fn text_symbol(&self, c: char, font: &Font, size: f32) -> Option<(Vec<PGlyph>, f32)> {
+        let families = self.fonts().symbols.clone();
+        let mut buf = [0u8; 4];
+        let s = c.encode_utf8(&mut buf);
+        for family in families {
+            let font = Font {
+                family,
+                fallbacks: None,
+                ..font.clone()
+            };
+            let id = self.system.resolve_font(&font);
+            if self.system.advance(id, px(size), c).is_err() {
+                continue;
+            }
+            let layout = self.shape(
+                s,
+                size,
+                &[TextRun {
+                    len: s.len(),
+                    font,
+                    color: gpui::black(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                }],
+            );
+            let glyphs: Vec<PGlyph> = layout
+                .runs
+                .iter()
+                .flat_map(|r| {
+                    r.glyphs.iter().map(|g| PGlyph {
+                        dx: f32::from(g.position.x),
+                        dy: f32::from(g.position.y),
+                        font: r.font_id,
+                        id: g.id,
+                        emoji: g.is_emoji,
+                    })
+                })
+                .collect();
+            if !glyphs.is_empty() && glyphs.iter().all(|g| !g.emoji && g.id.0 != 0) {
+                return Some((glyphs, f32::from(layout.width)));
+            }
+        }
+        None
     }
 
     /// The ellipsis in span `span`'s font: its glyphs and advance.
@@ -556,6 +655,26 @@ fn mirrored(c: char) -> Option<char> {
             None
         }
     })
+}
+
+/// True for the symbols that are text by default (`Emoji_Presentation`
+/// is no), which a font fallback may still take from an emoji font:
+/// dingbats, arrows, card suits, ©, ®, ™.
+fn text_symbol(c: char) -> bool {
+    let u = c as u32;
+    let symbol = matches!(
+        u,
+        0xA9 | 0xAE | 0x2000..=0x2BFF | 0x3030 | 0x303D | 0x3297 | 0x3299
+    );
+    // The ones that are emoji by default.
+    let emoji = matches!(u,
+        0x231A | 0x231B | 0x23E9..=0x23EC | 0x23F0 | 0x23F3 | 0x25FD | 0x25FE
+        | 0x2614 | 0x2615 | 0x2648..=0x2653 | 0x267F | 0x2693 | 0x26A1 | 0x26AA
+        | 0x26AB | 0x26BD | 0x26BE | 0x26C4 | 0x26C5 | 0x26CE | 0x26D4 | 0x26EA
+        | 0x26F2 | 0x26F3 | 0x26F5 | 0x26FA | 0x26FD | 0x2705 | 0x270A | 0x270B
+        | 0x2728 | 0x274C | 0x274E | 0x2753..=0x2755 | 0x2757 | 0x2795..=0x2797
+        | 0x27B0 | 0x27BF | 0x2B1B | 0x2B1C | 0x2B50 | 0x2B55);
+    symbol && !emoji
 }
 
 /// True for the characters that end a paragraph.
@@ -1027,6 +1146,31 @@ impl Builder<'_> {
                 flags |= BREAK;
             }
             let first = self.glyphs.len() as u32;
+            let cluster = &text[index..next];
+            let mut cluster_chars = cluster.chars();
+            let emoji = glyphs.iter().any(|r| flat[r.clone()].iter().any(|g| g.4));
+            let symbol = match (cluster_chars.next(), cluster_chars.next()) {
+                (Some(c), None | Some('\u{FE0E}')) if emoji && text_symbol(c) => self
+                    .engine
+                    .text_symbol(c, &self.fonts[span as usize].0, size),
+                _ => None,
+            };
+            let advance = match symbol {
+                Some((glyphs, width)) => {
+                    self.glyphs.extend(glyphs);
+                    let spacing = self.styles[span as usize].letter_spacing;
+                    self.clusters.push(Cluster {
+                        utf16: self.utf16[byte],
+                        advance: width + spacing,
+                        glyphs: (first, self.glyphs.len() as u32),
+                        span,
+                        level: pieces[0].level,
+                        flags,
+                    });
+                    continue;
+                }
+                None => advance,
+            };
             for range in glyphs {
                 for &(x, y, font, id, emoji, _) in &flat[range.clone()] {
                     self.glyphs.push(PGlyph {
@@ -1921,7 +2065,9 @@ pub(crate) fn draw_shadow(cx: &mut DrawCx<'_>, state: &ViewState) {
     }
     let mut color = cx.color(shadow.color);
     if offsets.len() > 1 {
-        color.a *= (3.0 / offsets.len() as f32).min(1.0);
+        // Where all copies overlap the shadow has its own alpha, and it
+        // fades out to the radius, as a blur's falloff.
+        color.a = 1.0 - (1.0 - color.a.min(0.999)).powf(1.0 / offsets.len() as f32);
     }
     let mut glyphs = Vec::with_capacity(layout.glyphs.len() * offsets.len());
     for &(dx, dy) in &offsets {
@@ -3168,6 +3314,22 @@ mod tests {
                 t.text
             );
         }
+    }
+
+    #[test]
+    fn text_symbols_take_a_text_font() {
+        assert!(text_symbol('♥') && text_symbol('✓') && text_symbol('©'));
+        assert!(!text_symbol('⭐') && !text_symbol('⚡') && !text_symbol('a'));
+        let engine = engine();
+        if engine.fonts().symbols.is_empty() {
+            return;
+        }
+        // In the text's color, not an emoji font's.
+        let p = engine.prepare(&text(&[("♥ 3", plain(13.0))]));
+        assert!(p.glyphs.iter().all(|g| !g.emoji), "{:?}", p.glyphs);
+        // With VS16 it asks for the emoji.
+        let p = engine.prepare(&text(&[("♥\u{FE0F}", plain(13.0))]));
+        assert!(p.glyphs.iter().any(|g| g.emoji) || p.glyphs.is_empty());
     }
 
     #[test]
