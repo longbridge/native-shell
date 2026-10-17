@@ -91,6 +91,14 @@ bubble back up. What nsh adds:
   field instead; Alt+Left and the Back key, also from a field, which does not use them), scrolling (`scroll.rs`, not
   while a field has the focus) and the mouse's back button. A `selectable` text with a selection takes Ctrl+A / Ctrl+C
   / Escape (`text.rs`); without one Escape goes on.
+- **The app's shortcuts** (`nsh/keymap`, `keymap.rs`): the mounted table becomes a global-scope
+  `gtk::ShortcutController` on the root, one `gtk::Shortcut` per binding (newest first, a `<Control><Shift>p`
+  trigger, which GTK also matches on the Latin group's keys); its action fires only where the binding may (the
+  focus in another surface: never; in a text widget or hosted widget: only bindings `in_text`), reports the root's
+  `KeyCommand` and stops the key, else lets GTK go on. Ctrl+Q, Alt+F4 and F11 cannot be bound; built with `dev`,
+  Ctrl+R gets no shortcut (the dev host reloads). GDK does not mark auto-repeats: a binding without `repeat` fires
+  once until the window's capture-phase key controller sees a release. Not yet run on Linux:
+  the order against the application's accelerators and the editors' capture-phase controllers is to be checked.
 - **Focus**: Tab / Shift+Tab is GTK's, in screen order (GTK sorts a container's children by position); hidden screens
   are not child visible, and the views under the newest modal cannot take the focus. Dialogs (`system.rs`) move it
   between their own buttons.

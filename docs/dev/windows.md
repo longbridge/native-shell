@@ -130,6 +130,14 @@ under non-Latin layouts (Cyrillic, Greek), so Ctrl+C is the same key on all of t
 `"Backspace"` for a deletion (in an empty field too) and `"Escape"`. Pasted text (Ctrl+V, UI Automation's
 `SetValue`) and undone edits report nothing.
 
+**App shortcuts** (`nsh/keymap`, `keymap.rs`): `input::key` matches every key down against the mounted table
+(`Keymap::find`) right after the window's shortcuts (`Surface::shortcuts`: full screen, the dev host's reload) and
+the dialogs (`system::key`), and before the focused field, selectable text, navigation
+and scroll views. A match is consumed, its queued `WM_CHAR` / `WM_SYSCHAR` removed (`PeekMessageW`), and reported as
+the root's `KeyCommand`; an auto-repeat (`KeyEvent::repeat`) of a binding without `repeat` is consumed silently.
+Keys are matched by virtual key code (letters and digits on every layout, punctuation by the US `VK_OEM_*` keys); a
+focused text field counts as editing (`when`). With feature `dev`, Ctrl+R is never matched (the dev host reloads).
+
 ## Checking a change: `--script`
 
 `nsh-windows-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or

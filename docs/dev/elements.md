@@ -150,6 +150,10 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
 - **Back button** (`nsh/android`): `BackHandler.addEventListener("hardwareBackPress", ...)`, after modals and stacks; the app exits
   when nothing handles it. Rust components listen with `cx.on_back_press(..)`, before JS's listeners; the root wants
   the button while either side listens (`docs/dev/components.md`).
+- **Keyboard shortcuts** (`nsh/keymap`): the root's `Prop::Keymap` mounts the surface's whole table
+  (`MountItem::Keymap`); the platform matches a key against it on the spot, consumes it and reports the root's
+  `KeyCommand` (the binding's id), so the main thread never waits for JS (`docs/dev/js-modules.md`, the macOS and
+  Linux pages' "Keyboard").
 - **System UI**: `StatusBar` (component and static functions; the last mounted wins, prop by prop, over what the
   functions set: the core layers them, `docs/dev/components.md`), `Alert.alert` and `ActionSheet.show` (promises of
   the index chosen, -1 when dismissed; a list dialog on Android), `Toast` (`nsh/android`). Answers come back as the
