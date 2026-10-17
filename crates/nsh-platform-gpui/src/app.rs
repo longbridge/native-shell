@@ -465,6 +465,8 @@ impl Render for AppView {
         // A dev session draws its status line and error overlay above.
         #[cfg(feature = "dev")]
         let surface = crate::dev::wrap(self, surface.into_any_element(), cx);
+        // The window's chrome (title bar, menu bar) goes around the surface.
+        let content = crate::chrome::render(&self.surface, surface, window, cx);
         // The div registers the view's tab stop, which only GPUI's own
         // elements can.
         gpui::div()
@@ -473,7 +475,7 @@ impl Render for AppView {
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_prev))
             .size_full()
-            .child(crate::chrome::render(&self.surface, surface, window, cx))
+            .child(content)
     }
 }
 
