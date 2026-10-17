@@ -602,6 +602,10 @@ pub fn open_app_window(
         // Linux: the window manager's decorations until the app hides the
         // title bar (`crate::chrome`).
         window_decorations: Some(gpui::WindowDecorations::Server),
+        // GPUI draws unfocused windows at 30 fps by default: animations
+        // run at the display's rate wherever the keyboard is, as in the
+        // other backends.
+        inactive_frame_interval: None,
         ..Default::default()
     };
     let script = options.script.clone();

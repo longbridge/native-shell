@@ -5367,6 +5367,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "crossbeam-channel",
+ "fontdb",
  "futures-channel",
  "futures-util",
  "gpui-fast",

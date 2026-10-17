@@ -198,8 +198,9 @@ check them on Linux, with the GTK 4 (≥ 4.14) development packages installed. `
 empty off macOS (`target_os = "macos"`, not Catalyst). `nsh-platform-windows` and its hosts are empty off Windows:
 check them on Windows, with the MSVC Build Tools, the Windows SDK and LLVM (libclang for QuickJS' bindings);
 `RUST_MIN_STACK=268435456` if rustc overflows its stack on the `windows` crate. `nsh-platform-gpui` and its hosts
-build on all three desktops (on Linux with GPUI's X11 / Wayland / xkbcommon / fontconfig packages, `docs/dev/gpui.md`)
-and are empty elsewhere. `.cargo/config.toml` sets
+build on all three desktops and are empty elsewhere; on Linux they need GPUI's X11 / Wayland / xkbcommon / fontconfig
+packages plus GTK 3, WebKitGTK 4.1 (feature `webview`, on by default) and GStreamer 1.20+ with its base plug-ins
+(feature `video`, the host's and the runner's): `cargo test --workspace` and clippy need them too (`docs/dev/gpui.md`). `.cargo/config.toml` sets
 `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.
 
 ## Rules
