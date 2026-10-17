@@ -55,6 +55,12 @@ pub(super) enum Patch {
     },
     /// A list's layout, its bound parts read again.
     Layout { list: NodeId, config: ListConfig },
+    /// The styles a view gives a nested component (its host), the bound
+    /// parts read again.
+    Nested {
+        host: NodeId,
+        style: StyleRefinement,
+    },
     /// A list's rows, its bound count or keys read again.
     Rows {
         list: NodeId,
@@ -69,8 +75,8 @@ pub(super) type Patches = Rc<RefCell<Vec<Patch>>>;
 /// What was last applied to a node with bindings.
 pub(super) struct BoundNode {
     attrs: Attrs,
-    style: StyleRefinement,
-    classes: Classes,
+    pub(super) style: StyleRefinement,
+    pub(super) classes: Classes,
     /// Its text's content and raw text node.
     text: Option<(SharedString, NodeId)>,
 }
@@ -305,6 +311,12 @@ impl<M: TextEngine> Core<M> {
         match patch {
             Patch::Region { region, elements } => self.reconcile_region(region, elements),
             Patch::Rows { list, count, keys } => self.set_list_rows(list, count, keys),
+            Patch::Nested { host, style } => {
+                if self.is_host(host) {
+                    let user = (!style.is_empty()).then(|| self.components.lowered(&style));
+                    self.set_user(host, user);
+                }
+            }
             Patch::Layout { list, config } => {
                 let Some(old) = self.components.list_layouts.get_mut(&list) else {
                     return;

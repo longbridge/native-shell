@@ -7054,4 +7054,51 @@ mod views {
         );
         assert_eq!(texts(&batch), ["inside"]);
     }
+
+    /// Dims a nested component (its host) with a bound style; a press
+    /// flips it.
+    #[derive(Default)]
+    struct Dimmer;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct DimmerProps {}
+
+    impl Component for Dimmer {
+        type Props = DimmerProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: DimmerProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let dim = signal(false);
+            view()
+                .on_press(move |_: &()| dim.update(|d| *d = !*d))
+                .child(
+                    Holder::element(HolderProps {
+                        children: Children::default(),
+                    })
+                    .w(px(10.0))
+                    .opacity(move || if dim.get() { 0.5_f32 } else { 1.0 }),
+                )
+        }
+    }
+
+    #[test]
+    fn a_views_bound_styles_on_a_nested_component_are_a_binding() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Dimmer>(|| DimmerProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        let dimmed = batch.items.iter().find_map(|i| match i {
+            MountItem::ViewStyle { id, style } if style.opacity == 0.5 => Some(*id),
+            _ => None,
+        });
+        let nested = dimmed.expect("the nested host is dimmed");
+        assert_ne!(nested, host);
+        assert_eq!(creates(&batch), 0);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(view_style_of(&batch, nested).map(|s| s.opacity), Some(1.0));
+    }
 }

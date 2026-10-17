@@ -417,7 +417,7 @@ impl Components {
 
     /// `style` as rules, shared between the elements that have it (its
     /// static declarations: bound parts are applied by bindings).
-    fn lowered(&mut self, style: &StyleRefinement) -> Arc<ClassList> {
+    pub(super) fn lowered(&mut self, style: &StyleRefinement) -> Arc<ClassList> {
         if style.is_bound() {
             return self.lowered(&style.static_part());
         }
@@ -1085,7 +1085,7 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// What goes after `host`'s own styles.
-    fn set_user(&mut self, host: NodeId, user: Option<Arc<ClassList>>) {
+    pub(super) fn set_user(&mut self, host: NodeId, user: Option<Arc<ClassList>>) {
         let inst = self.components.instances.get_mut(&host).expect("host");
         if !same(&inst.user, &user) {
             inst.user = user;
@@ -1261,6 +1261,22 @@ impl<M: TextEngine> Core<M> {
         true
     }
 
+    /// Applies the root styles of the view on `host` again over the app's
+    /// (or its parent's) styles, which may have changed.
+    fn restyle_view(&mut self, host: NodeId, inst: &mut Instance) {
+        let user = inst.user.clone();
+        if let Some(node) = inst.bound.get_mut(&host) {
+            let (style, classes) = (node.style.clone(), node.classes.clone());
+            let classes = self.apply_styles(host, &style, &style, classes, user);
+            if let Some(node) = inst.bound.get_mut(&host) {
+                node.classes = classes;
+            }
+        } else if let Some(root) = inst.root.as_mut() {
+            let (style, classes) = (root.style.clone(), root.classes.clone());
+            root.classes = self.apply_styles(host, &style, &style, classes, user);
+        }
+    }
+
     /// The host of the component that runs once whose owner is `owner`, or
     /// whose view made it (a binding's own owner is under the component's).
     fn host_of_owner(&self, owner: crate::ui::Owner) -> Option<NodeId> {
@@ -1303,6 +1319,7 @@ impl<M: TextEngine> Core<M> {
                 // A component that runs once made its view: its props now
                 // reach what read them.
                 if inst.binding && inst.root.is_some() {
+                    self.restyle_view(host, inst);
                     return None;
                 }
                 // The setup the first time, else what changed in the props.
@@ -2359,7 +2376,11 @@ impl<M: TextEngine> Core<M> {
             el.children.insert(0, first);
         }
         // A view binds its bound parts after the static ones; a component
-        // rendered again reads them once.
+        // rendered again reads them once. The styles a view gives a nested
+        // component are a binding of their own.
+        let nested_style =
+            (inst.binding && matches!(el.kind, ElKind::Component(_)) && el.style.is_bound())
+                .then(|| el.style.clone());
         let bound = if inst.binding && !matches!(el.kind, ElKind::Component(_)) {
             super::views::Bound::take(&mut el)
         } else {
@@ -2421,6 +2442,15 @@ impl<M: TextEngine> Core<M> {
             if self.is_host(id) {
                 let user = (!el.style.is_empty()).then(|| self.components.lowered(&el.style));
                 self.set_user(id, user);
+                if let Some(style) = nested_style {
+                    let patches = self.components.patches.clone();
+                    crate::ui::reactive::render_effect(move || {
+                        let style = style.resolved();
+                        patches
+                            .borrow_mut()
+                            .push(super::views::Patch::Nested { host: id, style });
+                    });
+                }
             }
             if let Some(listener) = c.on_event {
                 inst.event_handlers.push((id, listener));
