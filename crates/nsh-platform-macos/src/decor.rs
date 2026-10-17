@@ -365,8 +365,12 @@ impl Decor {
         let stroke = border && (shared.is_none() || border_behind || dashed);
         // Core Animation's continuous corners differ slightly from the
         // shared outline (`nsh_core::shape`): a stroke drawn along the
-        // latter gets its background from the same outline.
-        let fill = (shared.is_none() || (raw.continuous && stroke)) && kind != Kind::Text;
+        // latter gets its background from the same outline. A backdrop
+        // blur is a subview, above the layer's own background: the
+        // background moves to a fill layer above the blur.
+        let fill =
+            (shared.is_none() || (raw.continuous && stroke) || crate::visual::has_backdrop(style))
+                && kind != Kind::Text;
 
         // Corners of the layer itself. Core Animation draws nothing for a
         // radius over half the short side (`rounded-full` is 9999).

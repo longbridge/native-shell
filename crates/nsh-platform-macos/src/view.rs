@@ -639,7 +639,9 @@ define_class!(
 /// Whether `view` is an app's view (or a container of one), as opposed to
 /// a hosted AppKit view.
 pub(crate) fn is_ours(view: &NSView) -> bool {
-    view.downcast_ref::<ViewObj>().is_some() || view.downcast_ref::<Container>().is_some()
+    view.downcast_ref::<ViewObj>().is_some()
+        || view.downcast_ref::<Container>().is_some()
+        || crate::visual::is_backdrop(view)
 }
 
 /// Whether the event AppKit handles is a mouse press.

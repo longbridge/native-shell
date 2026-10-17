@@ -57,7 +57,7 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 | Area | Module | AppKit |
 |---|---|---|
 | Text | `text.rs` | CoreText on the engine thread, `CTLine`s drawn in `drawRect:`; decorations CoreText lacks drawn by hand (iOS); `selectable` text's range selection, desktop style: drag, double-click word, triple-click paragraph, Shift extends, Cmd+A / Cmd+C (the root's `selectAll:` / `copy:`), Escape clears |
-| Decoration | `decor.rs`, `visual.rs` | The view's layer for one radius (circular or continuous), shape layers for differing radii and borders whose sides differ or are dashed / dotted; box and inset shadows, gradients, outlines, filters (iOS's `visual.rs`); `apply` caches what it set, so per-frame calls are cheap |
+| Decoration | `decor.rs`, `visual.rs` | The view's layer for one radius (circular or continuous), shape layers for differing radii and borders whose sides differ or are dashed / dotted; box and inset shadows, gradients, outlines, filters (iOS's `visual.rs`); backdrop blur as an `NSVisualEffectView` subview, with the background moved to a fill layer above it; `apply` caches what it set, so per-frame calls are cheap |
 | Images | `image.rs`, `blur.rs` | ImageIO decoding off the main thread, downsampled to the view; an LRU cache (128 MB); `asset:/`, http(s) (`NSURLSession`), `file:`, `data:`; tint as a colored layer masked by the image; animated GIF / APNG / WebP as a keyframe animation of `contents` |
 | Canvas | `canvas.rs` | The recorded drawing replayed with Core Graphics (iOS); drawings that clear or composite go into a transparency layer, so they only touch the canvas's own pixels |
 | Scroll views | `scroll.rs` | Offsets of their own, shown by the container's bounds origin; trackpad scrolls follow the system's phases and momentum (rubber banding while the fingers are down, a spring back after), notched wheels move 10 points per line and stay on their view for 200 ms; mouse drags scroll as on Catalyst; snapping and paging glide from where the fingers lift; sticky cells; the indicator and refresh spinner in an overlay view that lets the mouse through; the keyboard scrolls as on Linux; a field that gets the focus is scrolled into view |
@@ -100,8 +100,9 @@ shadows), so screenshots match the window closely, except that spread rings of b
 ## Not implemented, or different
 
 - **Zooming scroll views**: `zoomTo` and the zoom props are ignored (as on Linux).
-- **`mixBlendMode`**, `brightness()` above 1. Backdrop blur is a Core Image filter on a sublayer; screenshots cannot
-  show it.
+- **`mixBlendMode`**, `brightness()` above 1. **`backdropFilter: blur()`** is an `NSVisualEffectView` (within-window
+  blending, the popover material) below the view's background: AppKit picks the blur radius and adds the material's
+  light tint; in-process screenshots cannot show it.
 - **Inputs**: content types / autofill, keyboard types, autocapitalization, letter spacing; input accessory views are
   never shown (there is no software keyboard); `keyboardShouldPersistTaps` is ignored.
 - **Accessibility**: `accessibilityActions`.

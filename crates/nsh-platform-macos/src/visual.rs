@@ -1,7 +1,8 @@
 //! Effects beyond classic view styles, as Core Animation layers of a view:
 //! layered and inset box shadows, gradient backgrounds, outlines, a
-//! brightness veil and backdrop blur (a Core Image blur in the layer's
-//! `backgroundFilters`).
+//! brightness veil and backdrop blur (an `NSVisualEffectView` blurring
+//! what the window shows behind the view: Core Animation's
+//! `backgroundFilters` do nothing in AppKit windows).
 //!
 //! CSS draws a box shadow only outside the box, so outer shadow layers are
 //! masked to everything but the box: they can sit above the view's own
@@ -12,10 +13,14 @@ use nsh_core::{
     BorderStyle, BoxShadow, Color, CornerRadii, Filter, Gradient, GradientKind, GradientSize,
     ViewStyle,
 };
-use objc2::{msg_send, rc::Retained, runtime::AnyObject};
+use objc2::{MainThreadOnly as _, rc::Retained};
+use objc2_app_kit::{
+    NSUserInterfaceItemIdentification as _, NSView, NSVisualEffectBlendingMode,
+    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,
+};
 use objc2_core_foundation::{CFRetained, CGFloat, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGMutablePath;
-use objc2_foundation::{NSArray, NSNumber};
+use objc2_foundation::{NSArray, NSNumber, ns_string};
 use objc2_quartz_core::{
     CAGradientLayer, CALayer, CAShapeLayer, kCAFillRuleEvenOdd, kCAGradientLayerAxial,
     kCAGradientLayerConic, kCAGradientLayerRadial, kCALineCapButt, kCALineCapRound,
@@ -51,16 +56,36 @@ pub(crate) struct Visual {
     backdrop: Option<Backdrop>,
 }
 
-/// A backdrop blur: a layer that blurs what is behind it.
+/// A backdrop blur: a visual effect view, the view's first subview, that
+/// blurs what is behind it.
 struct Backdrop {
-    layer: Retained<CALayer>,
-    radius: f32,
+    view: Retained<NSVisualEffectView>,
 }
 
 impl Drop for Backdrop {
     fn drop(&mut self) {
-        self.layer.removeFromSuperlayer();
+        self.view.removeFromSuperview();
     }
+}
+
+/// Identifies backdrop views among a view's subviews.
+const BACKDROP_ID: &str = "nsh.backdrop";
+
+/// Whether `view` is a backdrop blur (nsh's, not a hosted native view).
+pub(crate) fn is_backdrop(view: &NSView) -> bool {
+    view.downcast_ref::<NSVisualEffectView>().is_some()
+        && view
+            .identifier()
+            .is_some_and(|id| id.to_string() == BACKDROP_ID)
+}
+
+/// Whether `style` blurs what is behind the view.
+pub(crate) fn has_backdrop(style: &ViewStyle) -> bool {
+    style.effects.as_ref().is_some_and(|e| {
+        e.backdrop_filters
+            .iter()
+            .any(|f| matches!(*f, Filter::Blur(r) if r > 0.0))
+    })
 }
 
 /// Whether `style` has effects that draw outside the box (they need an
@@ -145,7 +170,7 @@ impl Visual {
                 })
                 .sum::<f32>()
         });
-        self.set_backdrop(view, layer, blur, local, radii);
+        self.set_backdrop(view, blur, local, radii);
     }
 
     fn set_shadows(
@@ -369,71 +394,46 @@ impl Visual {
         mask.setPath(Some(&rounded(local, radii)));
     }
 
-    /// `backdrop-filter: blur()`: a layer whose background filter blurs
-    /// what is behind it (Core Image; AppKit must be told the view uses
-    /// it).
-    fn set_backdrop(
-        &mut self,
-        view: &NshView,
-        layer: &CALayer,
-        radius: f32,
-        local: CGRect,
-        radii: CornerRadii,
-    ) {
+    /// `backdrop-filter: blur()`: a visual effect view below everything
+    /// the view draws (the view's background moves to a fill layer above
+    /// it: `decor`). AppKit chooses the blur, not `radius`.
+    fn set_backdrop(&mut self, view: &NshView, radius: f32, local: CGRect, radii: CornerRadii) {
         if radius <= 0.0 {
             self.backdrop = None;
             return;
         }
-        if self.backdrop.as_ref().is_none_or(|b| b.radius != radius) {
-            self.backdrop = None;
-            let Some(filter) = blur_filter(radius) else {
-                return;
-            };
-            view.ns().setLayerUsesCoreImageFilters(true);
-            let l = CALayer::new();
-            l.setZPosition(BACKDROP_Z);
-            // SAFETY: an array of one Core Image filter, as
-            // `backgroundFilters` takes.
-            unsafe { l.setBackgroundFilters(Some(&NSArray::from_retained_slice(&[filter]))) };
-            layer.addSublayer(&l);
-            self.backdrop = Some(Backdrop { layer: l, radius });
-        }
-        if let Some(b) = &self.backdrop {
-            b.layer.setFrame(local);
-            match crate::decor::shared(&radii) {
-                Some(r) => {
-                    crate::decor::set_corners(&b.layer, r as CGFloat, radii.continuous);
-                    b.layer.setMasksToBounds(true);
-                    // SAFETY: clearing the mask.
-                    unsafe { b.layer.setMask(None) };
-                }
-                None => {
-                    b.layer.setMasksToBounds(false);
-                    let mask = mask_layer(&b.layer);
-                    mask.setFrame(local);
-                    mask.setPath(Some(&rounded(local, radii)));
-                }
+        let b = self.backdrop.get_or_insert_with(|| {
+            let v = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(view.mtm()), local);
+            // Its own layer now, to order and clip it below.
+            v.setWantsLayer(true);
+            v.setBlendingMode(NSVisualEffectBlendingMode::WithinWindow);
+            v.setState(NSVisualEffectState::Active);
+            v.setMaterial(NSVisualEffectMaterial::Popover);
+            v.setIdentifier(Some(ns_string!("nsh.backdrop")));
+            view.ns()
+                .addSubview_positioned_relativeTo(&v, NSWindowOrderingMode::Below, None);
+            Backdrop { view: v }
+        });
+        b.view.setFrame(local);
+        let Some(layer) = b.view.layer() else {
+            return;
+        };
+        // Below the background's fill layer and every effect.
+        layer.setZPosition(BACKDROP_Z);
+        match crate::decor::shared(&radii) {
+            Some(r) => {
+                crate::decor::set_corners(&layer, r as CGFloat, radii.continuous);
+                layer.setMasksToBounds(true);
+                // SAFETY: clearing the mask.
+                unsafe { layer.setMask(None) };
+            }
+            None => {
+                layer.setMasksToBounds(false);
+                let mask = mask_layer(&layer);
+                mask.setFrame(local);
+                mask.setPath(Some(&rounded(local, radii)));
             }
         }
-    }
-}
-
-/// A Core Image Gaussian blur of `radius` points, if Core Image is there.
-fn blur_filter(radius: f32) -> Option<Retained<AnyObject>> {
-    let class = objc2::runtime::AnyClass::get(c"CIFilter")?;
-    // SAFETY: `filterWithName:` returns an autoreleased filter or nil;
-    // `setValue:forKey:` with an NSNumber for its documented input key.
-    unsafe {
-        let filter: Option<Retained<AnyObject>> = msg_send![
-            class,
-            filterWithName: &*objc2_foundation::NSString::from_str("CIGaussianBlur")
-        ];
-        let filter = filter?;
-        let _: () = msg_send![&*filter, setDefaults];
-        let value = NSNumber::new_f64(radius as f64);
-        let key = objc2_foundation::NSString::from_str("inputRadius");
-        let _: () = msg_send![&*filter, setValue: &*value, forKey: &*key];
-        Some(filter)
     }
 }
 
