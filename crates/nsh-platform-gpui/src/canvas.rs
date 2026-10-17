@@ -10,8 +10,10 @@
 //! pixmap is made again when that transform's linear part changes, and
 //! moves along with translations (scrolling) without being made again. It
 //! is uploaded once as a GPUI image (again when the view's opacity
-//! changes, which is multiplied into it); [`draw`] only paints it. A canvas
-//! too large for one pixmap is rasterized around the part that shows.
+//! changes, which is multiplied into it), owned as a
+//! [`crate::image::Texture`] so it leaves the atlas once dropped; [`draw`]
+//! only paints it. A canvas too large for one pixmap is rasterized around
+//! the part that shows.
 //!
 //! The replay keeps canvas' model itself, as the Windows backend does: the
 //! current path is kept in pixmap coordinates as it is built (later
@@ -65,6 +67,7 @@ use rustc_hash::FxHashMap;
 use tiny_skia as sk;
 
 use crate::{
+    image::Texture,
     render::{DrawCx, bounds},
     surface::Surface,
     view::{NshView, ViewState},
@@ -80,6 +83,9 @@ const MAX_AREA: i64 = 8 << 20;
 const MARGIN: i32 = 256;
 /// Entries of a gradient's color table.
 const GRADIENT_STEPS: usize = 1024;
+/// The largest shadow blur (standard deviation, device pixels): its
+/// spread is worked out in memory, around what the shadow covers.
+const MAX_SIGMA: f64 = 256.0;
 
 /// What a canvas draws.
 #[derive(Default)]
@@ -130,25 +136,9 @@ struct Key {
 enum Layer {
     /// Pixels, and the opacity and image they were uploaded at (`None`
     /// inside: nothing drawn).
-    Pixels(sk::Pixmap, Option<(f32, Option<Uploaded>)>),
+    Pixels(sk::Pixmap, Option<(f32, Option<Texture>)>),
     /// Glyphs above the pixels below.
     Text(Vec<GlyphRun>),
-}
-
-/// An image in GPUI's sprite atlas, taken out of it once dropped.
-struct Uploaded(Arc<RenderImage>);
-
-thread_local! {
-    /// Images no longer drawn, taken out of the atlas on the next draw
-    /// (dropping them has no window at hand).
-    static GARBAGE: RefCell<Vec<Arc<RenderImage>>> = const { RefCell::new(Vec::new()) };
-}
-
-impl Drop for Uploaded {
-    fn drop(&mut self) {
-        let image = self.0.clone();
-        GARBAGE.with_borrow_mut(|g| g.push(image));
-    }
 }
 
 /// Sets up a canvas view.
@@ -262,10 +252,8 @@ fn premultiplied(width: u32, height: u32, bgra: &[u8]) -> Result<sk::Pixmap, Str
 
 /// Draws a canvas: rasterizes it first if needed.
 pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
-    let garbage = GARBAGE.with_borrow_mut(std::mem::take);
-    for image in garbage {
-        let _ = cx.window.drop_image(image);
-    }
+    // Pixmaps uploaded before and dropped since leave the atlas.
+    crate::image::release_textures(cx);
     let Some(canvas) = state.canvas.as_ref() else {
         return;
     };
@@ -335,7 +323,7 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
         match layer {
             Layer::Pixels(pixmap, uploaded) => {
                 if uploaded.as_ref().is_none_or(|(o, _)| *o != opacity) {
-                    *uploaded = Some((opacity, upload(pixmap, opacity).map(Uploaded)));
+                    *uploaded = Some((opacity, upload(pixmap, opacity).map(Texture::new)));
                 }
                 let Some((_, Some(image))) = uploaded else {
                     continue;
@@ -346,7 +334,7 @@ pub(crate) fn draw(cx: &mut DrawCx<'_>, state: &ViewState) {
                     pixmap.width() as f32 / s,
                     pixmap.height() as f32 / s,
                 );
-                let image = image.0.clone();
+                let image = image.image().clone();
                 cx.paint(|window, _| {
                     let painted =
                         window.paint_image(rect, rect, Default::default(), image, 0, false);
@@ -1128,12 +1116,7 @@ impl<'a> Replay<'a> {
         if let Some((_, clip)) = &self.state.clip {
             r = intersect(&r, clip);
         }
-        IRect::round_out(r[0], r[1], r[2], r[3])?.intersect(&IRect {
-            x0: 0,
-            y0: 0,
-            x1: w as i32,
-            y1: h as i32,
-        })
+        pixels_within(r, (w, h))
     }
 
     fn casts_shadow(&self) -> bool {
@@ -1182,7 +1165,7 @@ impl<'a> Replay<'a> {
     fn emit(&mut self, bounds: sk::Rect, draw: Draw<'_>) {
         let shadow = if self.casts_shadow() {
             let (color, blur, _, _) = self.state.shadow;
-            let sigma = (blur / 2.0 * self.base.scale_factor()).max(0.0);
+            let sigma = (blur / 2.0 * self.base.scale_factor()).clamp(0.0, MAX_SIGMA);
             Some((color, sigma, self.shadow_offset()))
         } else {
             None
@@ -1230,8 +1213,8 @@ impl<'a> Replay<'a> {
         let rect = if destructive(composite) {
             Some(all)
         } else {
-            IRect::round_out(extent.left(), extent.top(), extent.right(), extent.bottom())
-                .and_then(|r| r.intersect(&all))
+            let r = [extent.left(), extent.top(), extent.right(), extent.bottom()];
+            pixels_within(r, (w, h))
         };
         let Some(rect) = rect else {
             return;
@@ -1242,15 +1225,7 @@ impl<'a> Replay<'a> {
         let to_layer = sk::Transform::from_translate(-rect.x0 as f32, -rect.y0 as f32);
         draw(&mut layer, to_layer, None, sk::BlendMode::SourceOver);
         if let Some((color, sigma, offset)) = shadow {
-            let grow = (3.0 * sigma).ceil() as f32;
-            // The pixels of the shape whose shadow falls in the layer, in
-            // the layer's coordinates.
-            let area = IRect::round_out(
-                bounds.left() - grow - rect.x0 as f32,
-                bounds.top() - grow - rect.y0 as f32,
-                bounds.right() + grow - rect.x0 as f32,
-                bounds.bottom() + grow - rect.y0 as f32,
-            );
+            let area = shadow_area(bounds, rect, sigma);
             let shadow = area.and_then(|area| shadow_pixels(&layer, area, sigma, color));
             if let Some((shadow, x, y)) = shadow {
                 layer.draw_pixmap(
@@ -1551,6 +1526,14 @@ fn quad_bounds(m: &Affine, x: f64, y: f64, w: f64, h: f64) -> Option<sk::Rect> {
     sk::Rect::from_ltrb(x0 as f32, y0 as f32, x1 as f32, y1 as f32)
 }
 
+/// The pixels of a `size` pixmap that the rectangle `[x0, y0, x1, y1]`
+/// (which may be far larger) touches.
+fn pixels_within(r: [f32; 4], size: (u32, u32)) -> Option<IRect> {
+    let (w, h) = (size.0 as f32, size.1 as f32);
+    let c = |v: f32, max: f32| if v.is_nan() { 0.0 } else { v.clamp(0.0, max) };
+    IRect::round_out(c(r[0], w), c(r[1], h), c(r[2], w), c(r[3], h))
+}
+
 fn intersect(a: &[f32; 4], b: &[f32; 4]) -> [f32; 4] {
     [
         a[0].max(b[0]),
@@ -1630,6 +1613,34 @@ fn blend_mode(c: Composite) -> sk::BlendMode {
 }
 
 // --- Shadows -----------------------------------------------------------------
+
+/// The pixels whose shadow (blurred with standard deviation `sigma`) the
+/// layer `layer` (pixmap pixels) needs, of a shape within `bounds`, in the
+/// layer's coordinates: the shape grown by the blur's spread, inside the
+/// layer grown likewise (the shape is drawn only in the layer); `None`
+/// when that is nothing or too much to blur.
+fn shadow_area(bounds: sk::Rect, layer: IRect, sigma: f64) -> Option<IRect> {
+    let grow = (3.0 * sigma).ceil() as i32;
+    let around = IRect {
+        x0: -grow,
+        y0: -grow,
+        x1: layer.width() + grow,
+        y1: layer.height() + grow,
+    };
+    let (x, y) = (layer.x0 as f32, layer.y0 as f32);
+    let shape = [
+        (bounds.left() - x).max(around.x0 as f32) - grow as f32,
+        (bounds.top() - y).max(around.y0 as f32) - grow as f32,
+        (bounds.right() - x).min(around.x1 as f32) + grow as f32,
+        (bounds.bottom() - y).min(around.y1 as f32) + grow as f32,
+    ];
+    let area = IRect::round_out(shape[0], shape[1], shape[2], shape[3])?.intersect(&around)?;
+    if area.width() as i64 * area.height() as i64 > 2 * MAX_AREA {
+        log::debug!("canvas: a shadow too large to blur is left out");
+        return None;
+    }
+    Some(area)
+}
 
 /// The shadow of `shape` within `area`: its alpha blurred with standard
 /// deviation `sigma` and tinted `color`, as a pixmap to draw at `(x, y)`.
@@ -2579,6 +2590,52 @@ mod tests {
         assert_eq!(at(p, 25, 20), [255, 0, 0, 255]);
         assert_eq!(at(p, 35, 5)[3], 0);
         assert_eq!(at(p, 35, 20), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn huge_shapes_and_blurs_stay_bounded() {
+        for blur in [10.0, 1.0e9] {
+            let r = raster(
+                vec![
+                    CanvasOp::ShadowColor(BLUE),
+                    CanvasOp::ShadowBlur(blur),
+                    CanvasOp::ShadowOffset(3.0, 3.0),
+                    CanvasOp::FillStyle(Paint::Color(RED)),
+                    CanvasOp::FillRect(rect(0.0, 0.0, 1.0e6, 1.0e6)),
+                    CanvasOp::FillRect(rect(-1.0e12, -1.0e12, 2.0e12, 2.0e12)),
+                ],
+                2.0,
+                50.0,
+                50.0,
+            );
+            assert_eq!(at(pixels(&r), 50, 50), [255, 0, 0, 255]);
+        }
+        let layer = IRect {
+            x0: 0,
+            y0: 0,
+            x1: 100,
+            y1: 100,
+        };
+        let far = sk::Rect::from_ltrb(-1.0e9, -1.0e9, 1.0e9, 1.0e9).unwrap();
+        let area = shadow_area(far, layer, 10.0).unwrap();
+        assert_eq!(
+            area,
+            IRect {
+                x0: -30,
+                y0: -30,
+                x1: 130,
+                y1: 130
+            }
+        );
+        assert_eq!(
+            pixels_within([-1e30, 5.0, f32::INFINITY, 7.5], (10, 10)),
+            Some(IRect {
+                x0: 0,
+                y0: 5,
+                x1: 10,
+                y1: 8
+            })
+        );
     }
 
     #[test]

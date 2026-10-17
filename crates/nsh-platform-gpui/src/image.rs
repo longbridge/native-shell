@@ -582,6 +582,11 @@ thread_local! {
 pub(crate) struct Texture(Arc<RenderImage>);
 
 impl Texture {
+    /// Owns `image` (made elsewhere: canvases' pixmaps).
+    pub(crate) fn new(image: Arc<RenderImage>) -> Texture {
+        Texture(image)
+    }
+
     /// The GPUI image (to paint; not to keep).
     pub(crate) fn image(&self) -> &Arc<RenderImage> {
         &self.0
