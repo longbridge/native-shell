@@ -71,6 +71,25 @@ impl From<String> for Prop<super::SharedString> {
     }
 }
 
+/// An optional text given as text (`label: "Name".into()`).
+impl From<&'static str> for Prop<Option<super::SharedString>> {
+    fn from(value: &'static str) -> Self {
+        Self::new(Some(value.into()))
+    }
+}
+
+impl From<String> for Prop<Option<super::SharedString>> {
+    fn from(value: String) -> Self {
+        Self::new(Some(value.into()))
+    }
+}
+
+impl From<super::SharedString> for Prop<Option<super::SharedString>> {
+    fn from(value: super::SharedString) -> Self {
+        Self::new(Some(value))
+    }
+}
+
 macro_rules! from_handles {
     ($($handle:ident),*) => {$(
         impl<T: Clone + PartialEq + 'static> From<$handle<T>> for Prop<T> {
@@ -128,6 +147,12 @@ impl<T: Clone + PartialEq + 'static> Prop<T> {
     #[track_caller]
     pub fn get_untracked(&self) -> T {
         super::untracked(|| self.get())
+    }
+
+    /// `f` of the value, without subscribing.
+    #[track_caller]
+    pub fn with_untracked<R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        super::untracked(|| self.with(f))
     }
 
     /// The prop of an instance: a memo of its own, of a value that JS or a

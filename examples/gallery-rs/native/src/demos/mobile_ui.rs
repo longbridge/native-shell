@@ -157,9 +157,9 @@ impl Component for Header {
                         .subtitle("A label, a clear button, controlled or not")
                         .child(
                             TextField::element(TextFieldProps {
-                                label: Some("Name".into()),
-                                placeholder: Some("Your name".into()),
-                                value: Some(self.name.clone().into()),
+                                label: "Name".into(),
+                                placeholder: "Your name".into(),
+                                value: self.name.clone().into(),
                                 ..TextFieldProps::default()
                             })
                             .on_event(cx.listener(
@@ -172,9 +172,9 @@ impl Component for Header {
                             )),
                         )
                         .child(TextField::element(TextFieldProps {
-                            label: Some("Password".into()),
-                            placeholder: Some("At least 8 characters".into()),
-                            secure: true,
+                            label: "Password".into(),
+                            placeholder: "At least 8 characters".into(),
+                            secure: true.into(),
                             ..TextFieldProps::default()
                         }))
                         .child(caption(
