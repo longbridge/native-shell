@@ -84,6 +84,24 @@ pub(crate) fn after_ms(ms: u64, f: impl FnOnce() + 'static) {
     .detach();
 }
 
+/// Runs `f` with the app on this (main) thread, soon (after the event
+/// being handled): for what needs the `App` (the clipboard) where only a
+/// surface is at hand.
+pub(crate) fn defer(f: impl FnOnce(&mut App) + 'static) {
+    let app = APP.with(|a| a.borrow().clone());
+    let Some(app) = app else {
+        log::warn!("nsh-platform-gpui: defer before init");
+        return;
+    };
+    app.spawn(async move |cx| {
+        cx.update(|cx| {
+            f(cx);
+            flush(cx);
+        });
+    })
+    .detach();
+}
+
 /// Notifies the views of every surface of this thread that changed since
 /// they were last drawn.
 pub(crate) fn flush(cx: &mut App) {
