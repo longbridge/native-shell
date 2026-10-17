@@ -1,6 +1,6 @@
 # AGENTS.md
 
-native-shell (nsh for short: crates, the CLI, the JS module and Java package all use `nsh`) is designed for
+Native Shell (NSH for short in prose; crates, the CLI, the JS module and Java package all use `nsh`) is designed for
 AI-generated, dynamically delivered native UI: native apps embed it (`NshAppView` on iOS, `NshView` on Android,
 `AppView` on macOS, Windows and Linux) and load TSX modules at run time — signed, sandboxed by the host, rendered with
 each platform's own UI. Embedding comes first; plugins for native apps and standalone apps use the same machinery.
@@ -135,8 +135,8 @@ on any platform or JS crate.
 
 Keep them current: a change that alters documented behavior updates its page (or the module doc) in the same commit,
 including the user-facing pages in `website/` (English and `zh-CN`). User-facing pages and the README are written in
-positive terms: what a platform or feature is and does, never what it is not or lacks ("Writing documentation" in
-`website/README.md`).
+positive terms: what a platform or feature is and does, never what it is not or lacks, and name the product Native
+Shell in formal places and NSH elsewhere (`nsh` only in code) ("Writing documentation" in `website/README.md`).
 
 ## Commands
 
