@@ -2462,12 +2462,56 @@ impl<M: TextEngine> Core<M> {
                 self.layout
                     .remove_child(parent_layout, layout)
                     .expect("taffy remove");
+                self.forget_hoisted(parent);
             }
             self.needs_layout = true;
             if emit_remove && created && self.nodes[parent as usize].created {
                 self.mount.push(MountItem::Remove { id });
             }
         }
+    }
+
+    /// Taffy keeps the absolutely placed children a node laid out last
+    /// (its "hoisted" children) until it lays the node out again with
+    /// children, which a node left without any never is: an absolute child
+    /// removed from it stays listed, and once its node is freed the next
+    /// layout fails. Such a node gets a fresh layout node.
+    fn forget_hoisted(&mut self, key: Key) {
+        let Some(old) = self.nodes[key as usize].layout else {
+            return;
+        };
+        let childless = self.layout.children(old).is_ok_and(|c| c.is_empty());
+        let hoisting = self
+            .layout
+            .hoisted_children(old)
+            .is_ok_and(|h| !h.is_empty());
+        if !childless || !hoisting {
+            return;
+        }
+        let style = self.layout.style(old).expect("taffy style").clone();
+        let fresh = match self.layout.get_node_context_mut(old) {
+            Some(context) => {
+                let context = std::mem::replace(context, LeafContext::Image(None));
+                self.layout.new_leaf_with_context(style, context)
+            }
+            None => self.layout.new_leaf(style),
+        }
+        .expect("taffy leaf");
+        if let Some(parent) = self.layout.parent(old) {
+            let index = self
+                .layout
+                .children(parent)
+                .expect("taffy children")
+                .iter()
+                .position(|&c| c == old)
+                .expect("taffy child");
+            self.layout
+                .replace_child_at_index(parent, index, fresh)
+                .expect("taffy replace");
+        }
+        self.layout.remove(old).expect("taffy remove");
+        self.nodes[key as usize].layout = Some(fresh);
+        self.needs_layout = true;
     }
 
     fn release(&mut self, id: NodeId) -> Result<(), ApplyError> {

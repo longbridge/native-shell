@@ -5996,6 +5996,51 @@ fn overflowing_children_mount_their_area() {
     assert_eq!(overflow(&batch, 2), Some(None));
 }
 
+/// A view that loses its only, absolutely placed child lays out again:
+/// taffy keeps the children it hoisted out of flow while the view has no
+/// children to lay out, so the freed child must not stay listed there.
+#[test]
+fn a_view_that_loses_its_absolute_child_lays_out() {
+    let mut c = core();
+    for (id, absolute) in [(2, false), (4, true), (6, false)] {
+        c.apply(Op::Create { id, tag: Tag::View }).unwrap();
+        let mut props = vec![("height", StyleValue::Number(20.0))];
+        if absolute {
+            props.push(("position", StyleValue::Str("absolute")));
+        }
+        c.apply(style_op(id, &props)).unwrap();
+    }
+    for (parent, child) in [(2, 4), (ROOT_ID, 2), (ROOT_ID, 6)] {
+        c.apply(Op::Insert {
+            parent,
+            child,
+            before: None,
+        })
+        .unwrap();
+    }
+    c.commit().unwrap();
+    c.apply(Op::Release { id: 4 }).unwrap();
+    // A new node takes the freed one's slot.
+    c.apply(Op::Create {
+        id: 8,
+        tag: Tag::View,
+    })
+    .unwrap();
+    c.apply(Op::Insert {
+        parent: 6,
+        child: 8,
+        before: None,
+    })
+    .unwrap();
+    c.apply(style_op(2, &[("height", StyleValue::Number(30.0))]))
+        .unwrap();
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(|i| matches!(
+        i,
+        MountItem::Frame { id: 6, frame, .. } if frame.y == 30.0
+    )));
+}
+
 /// `measure` gives the frame in the parent and the position in the root
 /// view, minus the offsets of the scroll views around.
 #[test]
