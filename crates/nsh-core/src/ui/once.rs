@@ -10,8 +10,8 @@
 use std::{any::Any, marker::PhantomData};
 
 use super::{
-    Component, ComponentError, Environment, Event, IntoElement, Owner, PropError, Props,
-    element::{AnyEvent, ElNode, ErasedCx, RenderReads, RenderScope},
+    Component, Event, IntoElement, Owner, PropError, Props,
+    element::{AnyEvent, ElNode},
 };
 use crate::{JsonValue, NodeId};
 
@@ -95,41 +95,34 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
         }
     }
 
-    fn set_props(&mut self, props: &dyn Any) -> bool {
+    fn set_props(&mut self, props: &dyn Any) {
         match props.downcast_ref::<C::Props>() {
             // Before the view: the props it starts with; after: held props
             // update their readers.
-            Some(p) if self.owner.is_none() => {
-                self.props = p.clone();
-                false
-            }
+            Some(p) if self.owner.is_none() => self.props = p.clone(),
             Some(p) => {
-                let changed = self.props.update_from(p);
-                if changed {
+                if self.props.update_from(p) {
                     log::warn!(
                         target: "js",
                         "{}: a prop that is not a `Prop` changed; it runs once and keeps the first",
                         super::component::name_of::<C>()
                     );
                 }
-                false
             }
-            None => false,
+            None => {}
         }
     }
 
-    fn set_slot(&mut self, name: &'static str, filled: bool) -> bool {
+    fn set_slot(&mut self, name: &'static str, filled: bool) {
         self.props
-            .set_slot(name, filled.then(|| super::Slot::new(name)))
+            .set_slot(name, filled.then(|| super::Slot::new(name)));
     }
 
-    fn set_children(&mut self, present: bool) -> bool {
-        self.props.set_children(super::Children::new(present))
+    fn set_children(&mut self, present: bool) {
+        self.props.set_children(super::Children::new(present));
     }
 
-    fn update(&mut self, _: &mut ErasedCx) {}
-
-    fn cleanup(&mut self, _: &mut ErasedCx) {
+    fn cleanup(&mut self) {
         for owner in [self.owner.take(), self.initial.take()]
             .into_iter()
             .flatten()
@@ -138,12 +131,10 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
         }
     }
 
-    fn environment_changed(&mut self, _: &Environment, _: &Environment, _: &mut ErasedCx) {}
-
-    fn render(&mut self, _: &RenderScope<'_>) -> (ElNode, RenderReads) {
+    fn view(&mut self) -> ElNode {
         if self.owner.is_some() {
-            log::error!(target: "js", "a component that runs once was asked for its view again");
-            return (ElNode::empty_view(), RenderReads::default());
+            log::error!(target: "js", "a component's view was asked for again");
+            return ElNode::empty_view();
         }
         let scope = Scope {
             host: self.host,
@@ -161,42 +152,29 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
         if let Some(initial) = self.initial.take() {
             initial.dispose();
         }
-        (node, RenderReads::default())
-    }
-
-    fn catch_error(&mut self, _: &ComponentError, _: &mut ErasedCx) -> bool {
-        false
+        node
     }
 
     fn name(&self) -> &'static str {
         super::component::name_of::<C>()
     }
 
-    fn parts(&mut self) -> (&mut dyn Any, &dyn Any) {
-        (&mut self.host, &self.props)
+    fn call(&mut self, name: &str, args: Vec<JsonValue>) -> Option<Result<JsonValue, PropError>> {
+        super::reactive::call_api(self.host, name, args)
     }
 
-    fn call(
-        &mut self,
-        name: &str,
-        args: Vec<JsonValue>,
-        _: &mut ErasedCx,
-    ) -> Option<Result<JsonValue, PropError>> {
-        super::reactive::call_api(self.host, name, args)
+    fn owner(&self) -> Option<Owner> {
+        self.owner
+    }
+
+    fn failure_owner(&self) -> Owner {
+        self.owner.unwrap_or(self.parent)
     }
 
     fn adopt(&mut self, parent: Owner) {
         if self.owner.is_none() && !self.parent.is_live() {
             self.parent = parent;
         }
-    }
-
-    fn failure_owner(&self) -> Option<Owner> {
-        Some(self.owner.unwrap_or(self.parent))
-    }
-
-    fn runs_once(&self) -> Option<Owner> {
-        Some(self.owner.unwrap_or_else(Owner::detached))
     }
 
     fn place(&mut self, host: NodeId, parent: Owner) {

@@ -9,12 +9,7 @@
 //! its children are placed where the render's `Children` is. Renders run at
 //! the start of a commit, so props set in one JS turn render once.
 
-use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -25,19 +20,14 @@ use crate::{
     tailwind::ClassList,
     ui::{
         Action, AnswerSlot, AnyInstance, Attrs, Child, ClipboardRead, ComponentError,
-        ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall,
-        Globals, ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn,
-        Position, PropError, Provided, Reactive, Registry, RenderReads, RenderScope, Root,
-        SharedString, StyleRefinement, Task, Theme, caught,
+        ComponentSpec, ElKind, ElNode, Environment, Executor, Function, FunctionCall, ImageSize,
+        IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError,
+        Reactive, Registry, Root, SharedString, StyleRefinement, Task, Theme, caught,
         responder::ResponderEl,
         view,
         virtual_list::{self, RowFn, SeparatorFn, VirtualListEl},
     },
 };
-
-/// Renders of one component per commit, at most (a component whose render
-/// keeps asking for another one is cut off).
-const MAX_RENDERS: u32 = 16;
 
 /// Lowered styles kept for reuse (components render the same styles over
 /// and over); cleared when full.
@@ -142,16 +132,10 @@ pub(super) struct Instance {
     pub(super) event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
     /// The last render's parts in the touch responder, by node.
     pub(super) responders: Vec<(NodeId, Rc<ResponderEl>)>,
-    /// What the last render read of the environment.
-    reads: RenderReads,
     /// The app's `style` on the host, applied after the root's own inline
     /// style and native values.
     pub(super) app_style: Option<crate::StylePatch>,
     dirty: bool,
-    renders: u32,
-    /// A component that runs once: its view is bound, not rendered again
-    /// ([`super::views`]).
-    pub(super) binding: bool,
     /// The nodes of its view with bindings: what was applied last.
     pub(super) bound: FxHashMap<NodeId, super::views::BoundNode>,
     /// In a view placing its JS children one by one: them, as a signal.
@@ -191,11 +175,8 @@ impl Instance {
             handlers: Vec::new(),
             event_handlers: Vec::new(),
             responders: Vec::new(),
-            reads: RenderReads::default(),
             app_style,
             dirty: false,
-            renders: 0,
-            binding: false,
             bound: FxHashMap::default(),
             js_kids: None,
             cell_owner: None,
@@ -296,9 +277,8 @@ pub(super) struct Components {
     pub(super) environment: Environment,
     /// Runs the components' async tasks and timers.
     pub(super) executor: Rc<Executor>,
-    /// State the components, modules and tasks share, by type (also the
-    /// status bar's settings).
-    pub(super) globals: Globals,
+    /// The status bar's settings, shared by components, modules and tasks.
+    pub(super) status_bars: crate::ui::status_bar::SharedStatusBars,
     /// Dialogs components show, by id: their answers.
     dialogs: FxHashMap<u32, AnswerSlot<i32>>,
     next_dialog: u32,
@@ -334,8 +314,7 @@ pub(super) struct Components {
     pub(super) services: super::services::Services,
     next_id: NodeId,
     dirty: Vec<NodeId>,
-    /// Reused buffers.
-    rendered: Vec<NodeId>,
+    /// A reused buffer.
     props: Vec<Prop>,
     /// The reactive graph of the components that run once.
     pub(super) runtime: crate::ui::Runtime,
@@ -344,9 +323,6 @@ pub(super) struct Components {
     /// Their views' regions, by id.
     pub(super) regions: FxHashMap<u32, super::views::RegionState>,
     pub(super) next_region: u32,
-    /// Owners of what renders made once (regions of components that render
-    /// again), disposed after the renders.
-    pub(super) transient: Vec<crate::ui::Owner>,
 }
 
 impl Default for Components {
@@ -363,7 +339,7 @@ impl Default for Components {
             lists: FxHashMap::default(),
             environment: Environment::default(),
             executor: Rc::new(Executor::default()),
-            globals: Globals::default(),
+            status_bars: Default::default(),
             dialogs: FxHashMap::default(),
             next_dialog: 1,
             image_infos: FxHashMap::default(),
@@ -383,13 +359,11 @@ impl Default for Components {
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
-            rendered: Vec::new(),
             props: Vec::new(),
             runtime: crate::ui::Runtime::default(),
             patches: super::views::Patches::default(),
             regions: FxHashMap::default(),
             next_region: 1,
-            transient: Vec::new(),
         }
     }
 }
@@ -401,7 +375,7 @@ impl Components {
         // What components that run once read of the core.
         components
             .runtime
-            .set_services(components.executor.clone(), components.globals.clone());
+            .set_services(components.executor.clone(), components.status_bars.clone());
         components.runtime.set_environment(components.environment);
         components.runtime.set_theme(components.theme.clone());
         components
@@ -561,33 +535,11 @@ impl<M: TextEngine> Core<M> {
     /// The environment components read is now `environment`.
     pub(super) fn apply_environment(&mut self, environment: Environment) {
         let _entered = self.components.runtime.enter();
-        let old = self.components.environment;
-        let changed = environment.changes(&old);
+        let changed = self.components.environment != environment;
         self.components.environment = environment;
-        self.components.runtime.set_environment(environment);
-        if changed == 0 {
-            return;
-        }
-        let hosts: Vec<NodeId> = self
-            .components
-            .instances
-            .iter()
-            .filter(|(_, i)| i.reads.env & changed != 0)
-            .map(|(&h, _)| h)
-            .collect();
-        for host in hosts {
-            let mut cx = self.erased_cx(host);
-            let mut failed = None;
-            if let Some(inst) = self.components.instances.get_mut(&host)
-                && let Inner::Component(inner) = &mut inst.inner
-            {
-                failed = caught(|| inner.environment_changed(&old, &environment, &mut cx)).err();
-            }
-            self.finish_event(host, cx);
-            self.components.mark(host);
-            if let Some(message) = failed {
-                self.component_failed(host, message);
-            }
+        if changed {
+            // What reads a part that changed runs again.
+            self.components.runtime.set_environment(environment);
         }
     }
 
@@ -620,48 +572,17 @@ impl<M: TextEngine> Core<M> {
         // A task that keeps waking itself cannot hold the engine.
         for _ in 0..MAX_TASK_ROUNDS {
             let polled = executor.poll_ready();
-            let updates = executor.take_updates();
             let actions = executor.take_actions();
-            if !polled && updates.is_empty() && actions.is_empty() {
+            if !polled && actions.is_empty() {
                 return;
             }
             for action in actions {
                 self.apply_action(action);
             }
-            for update in updates {
-                let mut cx = self.erased_cx(update.host);
-                let target = match self.components.instances.get_mut(&update.host) {
-                    Some(inst) => match &mut inst.inner {
-                        Inner::Component(inner) => Some(inner),
-                        _ => None,
-                    },
-                    None => None,
-                };
-                match target {
-                    Some(inner) => {
-                        let (state, props) = inner.parts();
-                        let failed = caught(|| (update.run)(Some((state, props, &mut cx)))).err();
-                        self.finish_event(update.host, cx);
-                        if let Some(message) = failed {
-                            self.component_failed(update.host, message);
-                        }
-                    }
-                    None => (update.run)(None),
-                }
-            }
             for (host, message) in executor.take_failures() {
                 self.component_failed(host, message);
             }
         }
-    }
-
-    fn erased_cx(&self, host: NodeId) -> ErasedCx {
-        ErasedCx::new(
-            self.components.environment,
-            host,
-            self.components.executor.clone(),
-            self.components.globals.clone(),
-        )
     }
 
     /// Whether `id` is a component's host.
@@ -969,8 +890,7 @@ impl<M: TextEngine> Core<M> {
             .iter()
             .map(|&c| self.nodes[c as usize].id)
             .collect();
-        let mut instance = Instance::new(Inner::Row { place, index: 0 }, None, js_children, None);
-        instance.binding = self.list_of(cell).is_some_and(|list| self.list_binds(list));
+        let instance = Instance::new(Inner::Row { place, index: 0 }, None, js_children, None);
         self.components.instances.insert(cell, Box::new(instance));
         self.components.mark(cell);
     }
@@ -998,9 +918,12 @@ impl<M: TextEngine> Core<M> {
         let root = crate::ROOT_ID;
         match &function.call {
             FunctionCall::Sync(run) => {
-                let mut cx = self.erased_cx(root);
-                let result = run(args, &mut ModuleCx::new(&mut cx));
-                self.finish_event(root, cx);
+                let mut cx = ModuleCx::default();
+                let result = run(args, &mut cx);
+                for action in cx.actions {
+                    self.apply_action(action);
+                }
+                self.apply_actions();
                 if let Err(e) = &result {
                     log::warn!(target: "js", "{name}(): {e}");
                 }
@@ -1047,7 +970,6 @@ impl<M: TextEngine> Core<M> {
             Some(JsonValue::Array(a)) => a.clone(),
             _ => Vec::new(),
         };
-        let mut cx = self.erased_cx(host);
         let mut failed = None;
         let result = match self
             .components
@@ -1055,7 +977,7 @@ impl<M: TextEngine> Core<M> {
             .get_mut(&host)
             .map(|i| &mut i.inner)
         {
-            Some(Inner::Component(inner)) => match caught(|| inner.call(name, args, &mut cx)) {
+            Some(Inner::Component(inner)) => match caught(|| inner.call(name, args)) {
                 Ok(result) => {
                     result.unwrap_or_else(|| Err(PropError(format!("no method `{name}`"))))
                 }
@@ -1066,7 +988,7 @@ impl<M: TextEngine> Core<M> {
             },
             _ => Err(PropError(format!("no method `{name}`"))),
         };
-        self.finish_event(host, cx);
+        self.apply_actions();
         if let Some(message) = failed {
             self.component_failed(host, message);
         }
@@ -1165,17 +1087,11 @@ impl<M: TextEngine> Core<M> {
             .ok()
             .map(|k| self.nodes[k as usize].inline_style.clone())
             .filter(|p| !p.is_empty());
-        // A component that runs once is made where it is (its context comes
-        // from there).
-        let binding = match &mut inner {
-            Inner::Component(c) if c.runs_once().is_some() => {
-                c.place(host, crate::ui::Owner::current());
-                true
-            }
-            _ => false,
-        };
-        let mut instance = Instance::new(inner, spec, Vec::new(), app_style);
-        instance.binding = binding;
+        // A component is made where it is (its context comes from there).
+        if let Inner::Component(c) = &mut inner {
+            c.place(host, crate::ui::Owner::current());
+        }
+        let instance = Instance::new(inner, spec, Vec::new(), app_style);
         self.components.instances.insert(host, Box::new(instance));
         self.components.mark(host);
     }
@@ -1218,17 +1134,6 @@ impl<M: TextEngine> Core<M> {
                 break;
             }
         }
-        let mut rendered = std::mem::take(&mut self.components.rendered);
-        for host in rendered.drain(..) {
-            if let Some(inst) = self.components.instances.get_mut(&host) {
-                inst.renders = 0;
-            }
-        }
-        self.components.rendered = rendered;
-        // What renders made once goes.
-        for owner in std::mem::take(&mut self.components.transient) {
-            owner.dispose();
-        }
     }
 
     /// Sends the failures of views' code (bindings, effects, listeners) to
@@ -1266,7 +1171,6 @@ impl<M: TextEngine> Core<M> {
         if self.components.dirty.is_empty() {
             return false;
         }
-        let mut rendered = std::mem::take(&mut self.components.rendered);
         while let Some(host) = self.components.dirty.pop() {
             // A view JS made waits to be in the tree (under what places it):
             // its context comes from above it.
@@ -1283,20 +1187,12 @@ impl<M: TextEngine> Core<M> {
                 continue;
             };
             inst.dirty = false;
-            inst.renders += 1;
-            if inst.renders > MAX_RENDERS {
-                log::error!(target: "js", "component on node {host} keeps rendering again; stopped");
-                self.components.instances.insert(host, inst);
-                continue;
-            }
             let failed = self.render(host, &mut inst);
             self.components.instances.insert(host, inst);
-            rendered.push(host);
             if let Some(message) = failed {
                 self.component_failed(host, message);
             }
         }
-        self.components.rendered = rendered;
         true
     }
 
@@ -1325,10 +1221,7 @@ impl<M: TextEngine> Core<M> {
         let Inner::Component(inner) = &inst.inner else {
             return false;
         };
-        inst.binding
-            && inst.root.is_none()
-            && inner.failure_owner().is_some_and(|o| !o.is_live())
-            && !self.id_in_tree(host)
+        inst.root.is_none() && !inner.failure_owner().is_live() && !self.id_in_tree(host)
     }
 
     /// Whether node `id` is in the root's tree.
@@ -1376,7 +1269,7 @@ impl<M: TextEngine> Core<M> {
                     Inner::Component(inner) => inst
                         .children_owner
                         .filter(|o| o.is_live())
-                        .or_else(|| inner.runs_once().filter(|o| o.is_live())),
+                        .or_else(|| inner.owner().filter(|o| o.is_live())),
                     _ => inst.cell_owner,
                 });
             if let Some(owner) = owner {
@@ -1396,7 +1289,7 @@ impl<M: TextEngine> Core<M> {
                     .instances
                     .iter()
                     .find_map(|(&host, inst)| match &inst.inner {
-                        Inner::Component(inner) if inner.runs_once() == Some(owner) => Some(host),
+                        Inner::Component(inner) if inner.owner() == Some(owner) => Some(host),
                         _ => None,
                     });
             if host.is_some() {
@@ -1425,63 +1318,26 @@ impl<M: TextEngine> Core<M> {
                     }
                 }
                 inner.set_children(!inst.js_children.is_empty());
-                // A component that runs once made its view: its props now
-                // reach what read them.
-                if inst.binding && inst.root.is_some() {
+                // Its view is made: its props now reach what read them, and
+                // the app's (or its parent's) styles may have changed.
+                if inst.root.is_some() {
                     self.restyle_view(host, inst);
                     return None;
                 }
-                // The setup the first time, else what changed in the props.
-                let mut cx = self.erased_cx(host);
-                let mut failed = caught(|| inner.update(&mut cx)).err();
-                let context = |type_id| self.provided_above(host, type_id);
-                let measure = |font: &_, text: &str| {
-                    crate::canvas::measure_line(&self.text_engine, font, text)
-                };
-                let scope = RenderScope {
-                    theme: &self.components.theme,
-                    environment: &self.components.environment,
-                    insets: self.insets_of(host),
-                    globals: &self.components.globals,
-                    context: &context,
-                    measure: &measure,
-                };
-                // A render that fails renders nothing.
-                // What a render that runs again makes (its children's
-                // props) lives until the renders of this commit are done.
-                let rendered = match failed {
-                    Some(_) => Ok((ElNode::empty_view(), RenderReads::default())),
-                    None if inner.runs_once().is_some() => {
-                        inner.adopt(self.owner_above(host));
-                        caught(|| inner.render(&scope))
-                    }
-                    None => {
-                        let (owner, rendered) =
-                            crate::ui::create_root(|| caught(|| inner.render(&scope)));
-                        self.components.transient.push(owner);
-                        rendered
-                    }
-                };
-                let (el, reads) = rendered.unwrap_or_else(|message| {
-                    failed = Some(message);
-                    (ElNode::empty_view(), RenderReads::default())
-                });
-                let old = std::mem::replace(&mut inst.reads, reads);
-                self.provided_changed(host, &old.provided, &inst.reads.provided);
-                self.finish_event(host, cx);
-                failure = failed;
-                el
+                inner.adopt(self.owner_above(host));
+                // A view that fails shows nothing.
+                caught(|| inner.view()).unwrap_or_else(|message| {
+                    failure = Some(message);
+                    ElNode::empty_view()
+                })
             }
             // The cell itself stays the list's: the wrapper goes inside.
             Inner::Row { place, index } => {
                 let (place, index) = (place.clone(), *index);
                 let count = self.rows_of_cell(host);
                 let list = self.list_of(host);
-                // A view's wrapper reads its position from signals.
-                let count_signal = match list {
-                    Some(list) if inst.binding => Some(self.list_count(list, count)),
-                    _ => None,
-                };
+                // The wrapper reads its position from signals.
+                let count_signal = list.map(|list| self.list_count(list, count));
                 let made = std::cell::Cell::new(None);
                 let build = || {
                     let at = row_position(index, count, count_signal, &made);
@@ -1531,22 +1387,17 @@ impl<M: TextEngine> Core<M> {
                         ElNode::empty_view()
                     }
                     Some((count, row, separator, rows)) => {
-                        let binding = inst.binding;
-                        let count_signal = binding.then(|| self.list_count(list, count));
+                        let count_signal = Some(self.list_count(list, count));
                         let made = std::cell::Cell::new(None);
                         let build = || {
                             let at = row_position(index, count, count_signal, &made);
                             let row = row(at);
                             // Between rows: after each but the last (before
-                            // it, inverted); in a view, while it is not.
-                            let separator = match separator {
-                                Some(s) if binding => Some(
-                                    crate::ui::If::new(move || !at.is_last(), move || s())
-                                        .into_element(),
-                                ),
-                                Some(s) => (!crate::ui::untracked(|| at.is_last())).then(|| s()),
-                                None => None,
-                            };
+                            // it, inverted), while it is not.
+                            let separator = separator.map(|s| {
+                                crate::ui::If::new(move || !at.is_last(), move || s())
+                                    .into_element()
+                            });
                             match separator {
                                 Some(s) if inverted => view().child(s).child(row),
                                 Some(s) => view().child(row).child(s),
@@ -1573,11 +1424,10 @@ impl<M: TextEngine> Core<M> {
             }
             Inner::Missing => ElNode::empty_view(),
         };
-        // A component that runs once binds its view under its owner.
+        // The view binds under its owner.
         let owner = match &inst.inner {
-            Inner::Component(inner) if inst.binding => inner.runs_once(),
-            _ if inst.binding => inst.cell_owner,
-            _ => None,
+            Inner::Component(inner) => inner.owner(),
+            _ => inst.cell_owner,
         };
         match owner {
             Some(owner) => owner.run(|| self.expand_root(host, inst, el)),
@@ -1586,22 +1436,15 @@ impl<M: TextEngine> Core<M> {
         failure
     }
 
-    /// Builds a list cell's row with `build`: in a view's list, under an owner
-    /// of the cell's own (the previous row's goes), made under the list
-    /// component's so the row sees its context.
+    /// Builds a list cell's row with `build` under an owner of the cell's
+    /// own (the previous row's goes), made under the list component's so the
+    /// row sees its context.
     fn build_cell(
         &mut self,
         cell: NodeId,
         inst: &mut Instance,
         build: impl FnOnce() -> ElNode,
     ) -> Result<ElNode, String> {
-        if !inst.binding {
-            // What it makes (its children's props) lives until the renders
-            // of this commit are done.
-            let (owner, el) = crate::ui::create_root(|| caught(build));
-            self.components.transient.push(owner);
-            return el;
-        }
         if let Some(owner) = inst.cell_owner.take() {
             owner.dispose();
         }
@@ -1624,21 +1467,10 @@ impl<M: TextEngine> Core<M> {
             })
             .and_then(|host| self.components.instances.get(&host))
             .and_then(|inst| match &inst.inner {
-                Inner::Component(inner) => inner.runs_once(),
+                Inner::Component(inner) => inner.owner(),
                 _ => None,
             });
         component.unwrap_or_else(crate::ui::Owner::detached)
-    }
-
-    /// Whether the cells of list `list` show rows of a view (they bind).
-    fn list_binds(&self, list: NodeId) -> bool {
-        self.components
-            .virtual_lists
-            .get(&list)
-            .map(|s| s.owner)
-            .or_else(|| self.components.slot_hosts.get(&list).copied())
-            .and_then(|host| self.components.instances.get(&host))
-            .is_some_and(|inst| inst.binding)
     }
 
     /// The text content `new` of node `id` (of `host`'s render), its raw
@@ -1687,37 +1519,24 @@ impl<M: TextEngine> Core<M> {
     /// node (a screen, a modal, a text, a list), or holds it (a region, a
     /// component). A component that renders again renders a view.
     fn expand_root(&mut self, host: NodeId, inst: &mut Instance, mut el: ElNode) {
-        if inst.binding {
-            let node = matches!(el.kind, ElKind::Plain | ElKind::VirtualList(_));
-            if !node || (el.tag != Tag::View && !self.retag(host, el.tag)) {
-                if node {
-                    log::error!(target: "js", "a component's root takes its kind only when it is first mounted; it is placed in a view");
-                }
-                let inner = std::mem::replace(&mut el, ElNode::new(Tag::View));
-                el.children.push(inner);
+        let node = matches!(el.kind, ElKind::Plain | ElKind::VirtualList(_));
+        if !node || (el.tag != Tag::View && !self.retag(host, el.tag)) {
+            if node {
+                log::error!(target: "js", "a component's root takes its kind only when it is first mounted; it is placed in a view");
             }
-            if !el.children.is_empty()
-                && let Some(content) = el.bound_text.take()
-            {
-                let mut first = ElNode::new(Tag::Text);
-                first.text = Some(SharedString::default());
-                first.bound_text = Some(content);
-                el.text = None;
-                el.children.insert(0, first);
-            }
+            let inner = std::mem::replace(&mut el, ElNode::new(Tag::View));
+            el.children.push(inner);
         }
-        let bound = if inst.binding {
-            super::views::Bound::take(&mut el)
-        } else {
-            el.resolve_once();
-            None
-        };
-        if !inst.binding && (el.tag != Tag::View || !matches!(el.kind, ElKind::Plain)) {
-            log::error!(target: "js", "a component's root must be a view; it is rendered as one");
-            el.tag = Tag::View;
-            el.kind = ElKind::Plain;
+        if !el.children.is_empty()
+            && let Some(content) = el.bound_text.take()
+        {
+            let mut first = ElNode::new(Tag::Text);
+            first.text = Some(SharedString::default());
+            first.bound_text = Some(content);
             el.text = None;
+            el.children.insert(0, first);
         }
+        let bound = super::views::Bound::take(&mut el);
         inst.handlers.clear();
         inst.event_handlers.clear();
         inst.responders.clear();
@@ -1771,7 +1590,7 @@ impl<M: TextEngine> Core<M> {
         let (list, part) = match std::mem::replace(&mut el.kind, ElKind::Plain) {
             ElKind::VirtualList(list) => {
                 let config = list.config;
-                self.update_virtual_list(host, host, *list, &old_list, inst.binding);
+                self.update_virtual_list(host, host, *list, &old_list);
                 (config, Part::VirtualList)
             }
             _ => (ListConfig::default(), Part::Node),
@@ -1843,15 +1662,6 @@ impl<M: TextEngine> Core<M> {
         *inst
             .lazy_wanted
             .get_or_insert_with(|| crate::ui::signal(inst.children_wanted))
-    }
-
-    /// Whether the component hosted by `nested` takes its children now:
-    /// unless they are lazy and its render does not place them.
-    fn wants_children(&self, nested: NodeId) -> bool {
-        self.components
-            .instances
-            .get(&nested)
-            .is_none_or(|i| i.children_wanted || !i.spec.as_ref().is_some_and(|s| s.lazy_children))
     }
 
     fn detach_id(&mut self, id: NodeId) {
@@ -2095,7 +1905,7 @@ impl<M: TextEngine> Core<M> {
                     continue;
                 }
                 inst.children_at = Placement::Each;
-                if inst.binding {
+                {
                     let children = *inst.js_kids.get_or_insert_with(|| {
                         crate::ui::signal_with(
                             inst.js_children.clone(),
@@ -2115,31 +1925,9 @@ impl<M: TextEngine> Core<M> {
                         },
                     );
                     each.push((owner, region.0));
-                    continue;
-                }
-                let count = inst.js_children.len();
-                for (index, &child) in inst.js_children.iter().enumerate() {
-                    let mut wrapper = place(Child::js(child), Position::fixed(index, count)).0;
-                    wrapper.key = Some(format!("\u{0}{child}").into());
-                    each.push((owner, wrapper));
                 }
             }
             each
-        } else {
-            new
-        };
-        // A component that renders again makes its regions' elements once.
-        let new = if !inst.binding && new.iter().any(|(_, e)| matches!(e.kind, ElKind::Region(_))) {
-            let mut flat = Vec::with_capacity(new.len());
-            for (owner, el) in new {
-                match &el.kind {
-                    ElKind::Region(region) => {
-                        flat.extend(self.region_once(region).into_iter().map(|e| (owner, e)));
-                    }
-                    _ => flat.push((owner, el)),
-                }
-            }
-            flat
         } else {
             new
         };
@@ -2222,9 +2010,7 @@ impl<M: TextEngine> Core<M> {
                     old[j] = None;
                 }
                 *placeholder = Some(out.len());
-                if inst.binding {
-                    inst.children_owner = Some(crate::ui::Owner::current());
-                }
+                inst.children_owner = Some(crate::ui::Owner::current());
                 out.push(Expanded::js(0, Part::Children));
             }
             ElKind::JsChild(id) => {
@@ -2269,19 +2055,16 @@ impl<M: TextEngine> Core<M> {
                 });
                 let prev = at.and_then(|j| old[j].take());
                 let old_config = prev.as_ref().map(|p| p.list).unwrap_or_default();
-                // Its bound layout: a binding in a view, read once otherwise.
+                // Its bound layout is a binding.
                 let parts = std::mem::take(&mut el.bound_list);
-                let mut config = list.config;
-                if !inst.binding {
-                    crate::ui::untracked(|| parts.iter().for_each(|part| part(&mut config)));
-                }
+                let config = list.config;
                 let mut props = std::mem::take(&mut self.components.props);
                 config.changes(&old_config, &mut props);
                 for prop in props.drain(..) {
                     let _ = self.apply_op(Op::SetProp { id: node, prop });
                 }
                 self.components.props = props;
-                if inst.binding && !parts.is_empty() {
+                if !parts.is_empty() {
                     self.bind_list_layout(node, config, parts);
                 }
                 let mut e = self.reconcile_slot(prev, node, el, inst);
@@ -2480,8 +2263,7 @@ impl<M: TextEngine> Core<M> {
     ) -> Expanded {
         // A text whose content is bound, with spans: the content is its
         // first span.
-        if inst.binding
-            && !el.children.is_empty()
+        if !el.children.is_empty()
             && let Some(content) = el.bound_text.take()
         {
             let mut first = ElNode::new(Tag::Text);
@@ -2490,17 +2272,16 @@ impl<M: TextEngine> Core<M> {
             el.text = None;
             el.children.insert(0, first);
         }
-        // A view binds its bound parts after the static ones; a component
-        // rendered again reads them once. The styles a view gives a nested
-        // component are a binding of their own.
-        let nested_style =
-            (inst.binding && matches!(el.kind, ElKind::Component(_)) && el.style.is_bound())
-                .then(|| el.style.clone());
-        let bound = if inst.binding && !matches!(el.kind, ElKind::Component(_)) {
-            super::views::Bound::take(&mut el)
-        } else {
+        // Bound parts are bound after the static ones are applied. The
+        // styles given a nested component are a binding of their own (its
+        // host's styles are its own and the app's).
+        let nested_style = (matches!(el.kind, ElKind::Component(_)) && el.style.is_bound())
+            .then(|| el.style.clone());
+        let bound = if matches!(el.kind, ElKind::Component(_)) {
             el.resolve_once();
             None
+        } else {
+            super::views::Bound::take(&mut el)
         };
         if matches!(el.kind, ElKind::Raw) {
             return self.reconcile_raw(prev, el, host);
@@ -2550,9 +2331,8 @@ impl<M: TextEngine> Core<M> {
             // classes of its host.
             if let Some(nested) = self.components.instances.get_mut(&id)
                 && let Inner::Component(inner) = &mut nested.inner
-                && inner.set_props(c.props.as_any())
             {
-                self.components.mark(id);
+                inner.set_props(c.props.as_any());
             }
             if self.is_host(id) {
                 let user = (!el.style.is_empty()).then(|| self.components.lowered(&el.style));
@@ -2597,7 +2377,7 @@ impl<M: TextEngine> Core<M> {
                 .instances
                 .get(&id)
                 .is_some_and(|i| i.spec.as_ref().is_some_and(|s| s.lazy_children));
-            if lazy && inst.binding {
+            if lazy {
                 // A view passes them while a signal of the nested
                 // component's says it places them: a region of its own.
                 let (slots, kids): (Vec<ElNode>, Vec<ElNode>) =
@@ -2613,8 +2393,6 @@ impl<M: TextEngine> Core<M> {
                     });
                     content.push(shown.into_element().0);
                 }
-            } else if !self.wants_children(id) {
-                content.retain(is_slot);
             }
             let children = self.reconcile_children(id, old_children, content, host, inst);
             return Expanded {
@@ -2655,7 +2433,7 @@ impl<M: TextEngine> Core<M> {
         let list = match virtual_list {
             Some(list) => {
                 let config = list.config;
-                self.update_virtual_list(id, host, *list, &old_list, inst.binding);
+                self.update_virtual_list(id, host, *list, &old_list);
                 config
             }
             None => ListConfig::default(),
@@ -2727,7 +2505,6 @@ impl<M: TextEngine> Core<M> {
         owner: NodeId,
         list: VirtualListEl,
         old: &ListConfig,
-        binding: bool,
     ) {
         // The static layout (its bound parts come as patches).
         let mut props = std::mem::take(&mut self.components.props);
@@ -2767,7 +2544,7 @@ impl<M: TextEngine> Core<M> {
         let bound = matches!(list.count, Reactive::Bound(_)) || list.keys.is_some();
         let (count, keys) = (list.count, list.keys);
         let rows = move || (count.get(), keys.as_ref().map(|k| k()));
-        let (count, keys) = if binding && bound {
+        let (count, keys) = if bound {
             let count_signal = self.list_count(id, 0);
             let patches = self.components.patches.clone();
             let first: Rc<RefCell<Option<Rows>>> = Rc::default();
@@ -2798,7 +2575,7 @@ impl<M: TextEngine> Core<M> {
         } else {
             let (count, keys) = crate::ui::untracked(rows);
             // What the cells of a view (or a view's wrappers) read.
-            if binding || self.components.list_counts.contains_key(&id) {
+            {
                 self.list_count(id, count as usize).set(count as usize);
             }
             (count, keys)
@@ -3002,27 +2779,19 @@ impl<M: TextEngine> Core<M> {
                         child: content,
                         before: None,
                     });
-                    let mut instance = Instance::new(row, None, Vec::new(), None);
-                    instance.binding = self.list_binds(list);
+                    let instance = Instance::new(row, None, Vec::new(), None);
                     self.components
                         .instances
                         .insert(content, Box::new(instance));
                     self.components.mark(content);
                     let place = place.unwrap_or_else(|| Rc::new(|row, _| row.into_element()));
-                    let mut wrapper =
-                        Instance::new(Inner::Row { place, index }, None, vec![content], None);
                     // The wrapper is the placing component's.
-                    wrapper.binding = self
-                        .components
-                        .slot_hosts
-                        .get(&list)
-                        .and_then(|host| self.components.instances.get(host))
-                        .is_some_and(|inst| inst.binding);
+                    let wrapper =
+                        Instance::new(Inner::Row { place, index }, None, vec![content], None);
                     self.components.instances.insert(cell, Box::new(wrapper));
                     content
                 } else {
-                    let mut instance = Instance::new(row, None, Vec::new(), None);
-                    instance.binding = self.list_binds(list);
+                    let instance = Instance::new(row, None, Vec::new(), None);
                     self.components.instances.insert(cell, Box::new(instance));
                     0
                 };
@@ -3132,21 +2901,16 @@ impl<M: TextEngine> Core<M> {
             return;
         };
         if let Inner::Component(inner) = &mut inst.inner {
-            let mut cx = self.erased_cx(host);
-            if let Err(message) = caught(|| inner.cleanup(&mut cx)) {
+            if let Err(message) = caught(|| inner.cleanup()) {
                 log::error!(target: "js", "{} failed in its cleanup: {message}", inner.name());
             }
-            self.finish_event(host, cx);
+            self.apply_actions();
         }
         self.release_regions(host);
         self.components.runtime.forget_host(host);
         if let Some(owner) = inst.cell_owner.take() {
             owner.dispose();
         }
-        // Its tasks and timers end with it.
-        self.components.executor.cancel_host(host);
-        let listeners = self.components.executor.back.borrow_mut().remove_host(host);
-        drop(listeners);
         for &child in &inst.js_children {
             self.detach_id(child);
         }
@@ -3299,10 +3063,9 @@ impl<M: TextEngine> Core<M> {
             .map(|(_, r)| r.clone())
     }
 
-    /// Runs `listener` of a node `host`'s render placed with the state it
-    /// changes (its component's, or a list row's owner's); false when that
-    /// component is gone.
-    pub(super) fn run_listener<E: ?Sized>(
+    /// Runs `listener` of a node of `host`'s view (or of a list row of it);
+    /// false when that component is gone.
+    pub(super) fn run_listener<E: ?Sized + 'static>(
         &mut self,
         host: NodeId,
         listener: &Listener<E>,
@@ -3311,19 +3074,10 @@ impl<M: TextEngine> Core<M> {
         let Some(owner) = self.state_owner(host) else {
             return false;
         };
-        let mut cx = self.erased_cx(owner);
-        let Some(inst) = self.components.instances.get_mut(&owner) else {
-            return false;
-        };
-        let mut failed = None;
-        if let Inner::Component(inner) = &mut inst.inner {
-            let (state, props) = inner.parts();
-            failed = caught(|| (listener.0)(state, props, event, &mut cx)).err();
-        }
-        self.finish_event(owner, cx);
-        if let Some(message) = failed {
+        if let Err(message) = caught(|| listener.call(event)) {
             self.component_failed(owner, message);
         }
+        self.apply_actions();
         true
     }
 
@@ -3343,9 +3097,8 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// The code of `host`'s component panicked: the nearest component above
-    /// that handles the error does ([`Component::catch_error`]); else it is
-    /// reported.
+    /// The code of `host`'s component panicked: the nearest error boundary
+    /// above it shows it ([`crate::ui::catch_error`]); else it is reported.
     pub(super) fn component_failed(&mut self, host: NodeId, message: String) {
         let component = match self.components.instances.get(&host).map(|i| &i.inner) {
             Some(Inner::Component(inner)) => inner.name(),
@@ -3358,35 +3111,14 @@ impl<M: TextEngine> Core<M> {
             .instances
             .get(&host)
             .and_then(|inst| match &inst.inner {
-                Inner::Component(inner) => inner.failure_owner(),
+                Inner::Component(inner) => Some(inner.failure_owner()),
                 _ => inst.cell_owner,
             });
-        if let Some(boundary) = owner.and_then(crate::ui::reactive::boundary_of) {
-            let _entered = self.components.runtime.enter();
-            boundary.set(Some(error));
-            return;
+        let _entered = self.components.runtime.enter();
+        match owner.and_then(crate::ui::reactive::boundary_of) {
+            Some(boundary) => boundary.set(Some(error)),
+            None => log::error!(target: "js", "{error}"),
         }
-        let mut key = self.key(host).ok();
-        while let Some(k) = key {
-            let parent = self.nodes[k as usize].parent;
-            if parent == NO_KEY {
-                break;
-            }
-            key = Some(parent);
-            let id = self.nodes[parent as usize].id;
-            let mut cx = self.erased_cx(id);
-            let Some(Inner::Component(inner)) =
-                self.components.instances.get_mut(&id).map(|i| &mut i.inner)
-            else {
-                continue;
-            };
-            let handled = caught(|| inner.catch_error(&error, &mut cx)).unwrap_or(false);
-            self.finish_event(id, cx);
-            if handled {
-                return;
-            }
-        }
-        log::error!(target: "js", "{error}");
     }
 
     /// The list cell `cell` is in.
@@ -3539,8 +3271,8 @@ impl<M: TextEngine> Core<M> {
             }
             EventKind::BackPress if id == crate::ROOT_ID => {
                 let listeners = self.components.executor.back.borrow().newest_first();
-                for (host, listener) in listeners {
-                    if self.back_pressed(host, &listener) {
+                for listener in listeners {
+                    if self.back_pressed(&listener) {
                         return true;
                     }
                 }
@@ -3597,9 +3329,8 @@ impl<M: TextEngine> Core<M> {
                     bottom: number("bottom").unwrap_or(0.0) as f32,
                     left: number("left").unwrap_or(0.0) as f32,
                 };
-                if self.components.insets.insert(id, insets) != Some(insets) {
-                    self.mark_readers(crate::ui::env::INSETS);
-                }
+                // The views reading them follow (`drain_views`).
+                self.components.insets.insert(id, insets);
                 // JS's screens keep them too.
                 false
             }
@@ -3607,36 +3338,14 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// Runs a back listener of component `host`: whether it handled the
-    /// press.
-    fn back_pressed(&mut self, host: NodeId, listener: &crate::ui::BackListener) -> bool {
-        let mut cx = self.erased_cx(host);
-        // A view's (`on_back_press`): it is no component's, and reaches
-        // its signals itself.
-        if host == 0 {
-            let result = caught(|| listener(&mut (), &(), &mut cx));
-            self.finish_event(host, cx);
-            return result.unwrap_or_else(|message| {
-                log::error!(target: "js", "a back press listener failed: {message}");
-                false
-            });
-        }
-        let Some(inst) = self.components.instances.get_mut(&host) else {
-            return false;
-        };
-        let Inner::Component(inner) = &mut inst.inner else {
-            return false;
-        };
-        let (state, props) = inner.parts();
-        let result = caught(|| listener(state, props, &mut cx));
-        self.finish_event(host, cx);
-        match result {
-            Ok(handled) => handled,
-            Err(message) => {
-                self.component_failed(host, message);
-                false
-            }
-        }
+    /// Runs a back listener: whether it handled the press.
+    fn back_pressed(&mut self, listener: &crate::ui::BackListener) -> bool {
+        let result = caught(|| listener());
+        self.apply_actions();
+        result.unwrap_or_else(|message| {
+            log::error!(target: "js", "a back press listener failed: {message}");
+            false
+        })
     }
 
     /// The root listens to the back button while JS or a component does:
@@ -3654,84 +3363,6 @@ impl<M: TextEngine> Core<M> {
             event: EventKind::BackPress,
             enabled: rust || self.components.js_back,
         });
-    }
-
-    /// The nearest `type_id` provided by a component above `host` (through
-    /// the app's nodes too).
-    fn provided_above(&self, host: NodeId, type_id: TypeId) -> Option<Rc<dyn Any>> {
-        let mut key = self.key(host).ok()?;
-        loop {
-            key = self.nodes[key as usize].parent;
-            if key == NO_KEY {
-                return None;
-            }
-            let id = self.nodes[key as usize].id;
-            if let Some(p) = self
-                .components
-                .instances
-                .get(&id)
-                .and_then(|i| i.reads.provided.iter().find(|p| p.type_id == type_id))
-            {
-                return Some(p.value.clone());
-            }
-        }
-    }
-
-    /// `host` provides `new` instead of `old`: the components reading a
-    /// value that changed render again.
-    fn provided_changed(&mut self, host: NodeId, old: &[Provided], new: &[Provided]) {
-        let mut changed: Vec<TypeId> = Vec::new();
-        for p in new {
-            if !old.iter().any(|o| o.same(p)) {
-                changed.push(p.type_id);
-            }
-        }
-        for o in old {
-            if !new.iter().any(|p| p.type_id == o.type_id) {
-                changed.push(o.type_id);
-            }
-        }
-        if changed.is_empty() {
-            return;
-        }
-        let readers: Vec<NodeId> = self
-            .components
-            .instances
-            .iter()
-            .filter(|(id, i)| **id != host && i.reads.contexts.iter().any(|t| changed.contains(t)))
-            .map(|(&id, _)| id)
-            .collect();
-        for id in readers {
-            self.components.mark(id);
-        }
-    }
-
-    /// Renders again the components that read globals of these types.
-    fn mark_global_readers(&mut self, changed: &[TypeId]) {
-        let readers: Vec<NodeId> = self
-            .components
-            .instances
-            .iter()
-            .filter(|(_, i)| i.reads.globals.iter().any(|t| changed.contains(t)))
-            .map(|(&id, _)| id)
-            .collect();
-        for id in readers {
-            self.components.mark(id);
-        }
-    }
-
-    /// Renders again the components that read `what` of the environment.
-    fn mark_readers(&mut self, what: u16) {
-        let hosts: Vec<NodeId> = self
-            .components
-            .instances
-            .iter()
-            .filter(|(_, i)| i.reads.env & what != 0)
-            .map(|(&h, _)| h)
-            .collect();
-        for host in hosts {
-            self.components.mark(host);
-        }
     }
 
     /// The insets where `host` renders: its screen's or modal's, else the
@@ -3755,23 +3386,11 @@ impl<M: TextEngine> Core<M> {
         safe
     }
 
-    fn finish_event(&mut self, host: NodeId, cx: ErasedCx) {
-        if cx.notify {
-            self.components.mark(host);
-        }
-        if !cx.changed_globals.is_empty() {
-            self.mark_global_readers(&cx.changed_globals);
-        }
-        for action in cx.actions {
-            self.apply_action(action);
-        }
-        // What handles (element refs, native values) asked for meanwhile,
-        // in order with the rest.
+    /// Applies what handlers, handles (element refs, native values) and
+    /// services asked for, in order.
+    pub(super) fn apply_actions(&mut self) {
         for action in self.components.executor.take_actions() {
             self.apply_action(action);
-        }
-        for event in cx.emits {
-            self.route_emit(host, event);
         }
     }
 
@@ -3797,19 +3416,10 @@ impl<M: TextEngine> Core<M> {
                 let Some(parent) = self.state_owner(parent) else {
                     return;
                 };
-                let mut cx = self.erased_cx(parent);
-                let Some(inst) = self.components.instances.get_mut(&parent) else {
-                    return;
-                };
-                let mut failed = None;
-                if let Inner::Component(inner) = &mut inst.inner {
-                    let (state, props) = inner.parts();
-                    failed = caught(|| (listener.0)(state, props, event.as_any(), &mut cx)).err();
-                }
-                self.finish_event(parent, cx);
-                if let Some(message) = failed {
+                if let Err(message) = caught(|| listener.call(event.as_any())) {
                     self.component_failed(parent, message);
                 }
+                self.apply_actions();
             }
             None => self.events.push((
                 host,

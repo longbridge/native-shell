@@ -5851,7 +5851,6 @@ mod views {
     impl Component for Counter {
         type Props = CounterProps;
         type Event = CounterEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(props: CounterProps, cx: Scope<CounterEvent>) -> impl IntoElement {
             let count = signal(0);
@@ -5949,7 +5948,6 @@ mod views {
     impl Component for Toggle {
         type Props = ToggleProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: ToggleProps, _: Scope<NoEvent>) -> impl IntoElement {
             let on = signal(false);
@@ -6014,7 +6012,6 @@ mod views {
     impl Component for Rows {
         type Props = RowsProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: RowsProps, _: Scope<NoEvent>) -> impl IntoElement {
             let items = signal(vec![1, 2, 3]);
@@ -6101,7 +6098,6 @@ mod views {
     impl Component for Lamp {
         type Props = LampProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: LampProps, _: Scope<NoEvent>) -> impl IntoElement {
             let on = signal(false);
@@ -6150,7 +6146,6 @@ mod views {
     impl Component for Mailbox {
         type Props = MailboxProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(props: MailboxProps, _: Scope<NoEvent>) -> impl IntoElement {
             let rows = signal(
@@ -6313,7 +6308,6 @@ mod views {
     impl Component for Padded {
         type Props = PaddedProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: PaddedProps, _: Scope<NoEvent>) -> impl IntoElement {
             let padded = signal(false);
@@ -6364,7 +6358,6 @@ mod views {
     impl Component for Fresh {
         type Props = FreshProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: FreshProps, _: Scope<NoEvent>) -> impl IntoElement {
             let n = FRESH.with(|f| {
@@ -6390,7 +6383,6 @@ mod views {
     impl Component for Pocket {
         type Props = PocketProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(props: PocketProps, _: Scope<NoEvent>) -> impl IntoElement {
             let children = props.children;
@@ -6410,7 +6402,6 @@ mod views {
     impl Component for Holder {
         type Props = HolderProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(props: HolderProps, _: Scope<NoEvent>) -> impl IntoElement {
             view().child(props.children)
@@ -6428,7 +6419,6 @@ mod views {
     impl Component for Wardrobe {
         type Props = WardrobeProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: WardrobeProps, _: Scope<NoEvent>) -> impl IntoElement {
             let open = signal(false);
@@ -6498,7 +6488,6 @@ mod views {
     impl Component for Tally {
         type Props = TallyProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: TallyProps, _: Scope<NoEvent>) -> impl IntoElement {
             let n = signal(0);
@@ -6516,7 +6505,6 @@ mod views {
     impl Component for Scroller {
         type Props = ScrollerProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: ScrollerProps, _: Scope<NoEvent>) -> impl IntoElement {
             scroll().child(text("inside"))
@@ -6576,7 +6564,6 @@ mod views {
     impl Component for Dimmer {
         type Props = DimmerProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: DimmerProps, _: Scope<NoEvent>) -> impl IntoElement {
             let dim = signal(false);
@@ -6622,7 +6609,6 @@ mod views {
     impl Component for Catcher {
         type Props = CatcherProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: CatcherProps, _: Scope<NoEvent>) -> impl IntoElement {
             let caught = signal(0);
@@ -6653,7 +6639,6 @@ mod views {
     impl Component for Broken {
         type Props = BrokenProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: BrokenProps, _: Scope<NoEvent>) -> impl IntoElement {
             panic!("no view");
@@ -6673,7 +6658,6 @@ mod views {
     impl Component for Guarded {
         type Props = GuardedProps;
         type Event = NoEvent;
-        const RUNS_ONCE: bool = true;
 
         fn view(_: GuardedProps, _: Scope<NoEvent>) -> impl IntoElement {
             let n = signal(0);
@@ -6753,56 +6737,6 @@ mod views {
             "view tick: {:?} per event, {:?} per commit, {} mount items",
             event / n,
             commit / n,
-            items / n as usize
-        );
-    }
-
-    /// The same component rendering again on each tick (the model views
-    /// replace).
-    #[derive(Default)]
-    struct OldTicker {
-        tick: u32,
-    }
-
-    impl Component for OldTicker {
-        type Props = ();
-        type Event = NoEvent;
-
-        fn render(&self, _: &(), cx: &mut crate::ui::RenderCx<'_, Self>) -> impl IntoElement {
-            view()
-                .on_press(cx.listener(|this: &mut Self, _, cx| {
-                    this.tick += 1;
-                    cx.notify();
-                }))
-                .child(text(format!("tick {}", self.tick)))
-                .children((0..300).map(|i| {
-                    view()
-                        .flex_row()
-                        .p_2()
-                        .gap_2()
-                        .child(view().size(px(20.0)).bg(rgb(0x3366ff)))
-                        .child(text(format!("row {i}")).text_sm())
-                }))
-        }
-    }
-
-    /// `cargo test --release -p nsh-core bench_render_tick -- --ignored --nocapture`
-    #[test]
-    #[ignore]
-    fn bench_render_tick() {
-        let mut c = core();
-        c.mount_root(&Root::new::<OldTicker>(|| ()));
-        let host = root_host(&c.commit().unwrap());
-        let n = 2000;
-        let start = std::time::Instant::now();
-        let mut items = 0;
-        for _ in 0..n {
-            c.component_event(host, EventKind::Press, &EventPayload::None);
-            items += c.commit().map_or(0, |b| b.items.len());
-        }
-        eprintln!(
-            "render tick: {:?} per commit, {} mount items",
-            start.elapsed() / n,
             items / n as usize
         );
     }

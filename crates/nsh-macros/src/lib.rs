@@ -820,8 +820,8 @@ pub fn assets(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// makes `pub struct Stepper;` and its `Component` impl with `RUNS_ONCE`;
-/// the body is its view, run once. Without a `Scope` parameter it emits no
+/// makes `pub struct Stepper;` and its `Component` impl; the body is its
+/// view, run once. Without a `Scope` parameter it emits no
 /// events (`NoEvent`); without props it has none (`()`).
 /// `#[component(methods = StepperApi)]` gives its ref in JS the methods of
 /// that [`methods`] API, which the view registers with `cx.methods(..)`.
@@ -912,7 +912,6 @@ fn component_fn(item: ItemFn, methods: Option<syn::Path>) -> syn::Result<TokenSt
         impl #ui::Component for #name {
             type Props = #props_ty;
             type Event = #event;
-            const RUNS_ONCE: bool = true;
             #methods
 
             #[allow(unused_variables)]

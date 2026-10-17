@@ -1,69 +1,48 @@
-//! The elements a component renders ([`view`], [`text`], [`image`], other
-//! components, slots and children) and the contexts of renders and
-//! handlers.
+//! The elements a view is made of ([`view`], [`text`], [`image`], other
+//! components, slots and children).
 
-use std::{
-    any::{Any, TypeId},
-    cell::RefCell,
-    fmt,
-    future::Future,
-    marker::PhantomData,
-    rc::Rc,
-    sync::Arc,
-    time::Duration,
-};
-
-use rustc_hash::FxHashMap;
+use std::{any::Any, fmt, marker::PhantomData, rc::Rc, sync::Arc};
 
 use super::{
     Component, ComponentSpec, Event, IntoReactive, JsValue, PropError, Reactive, SharedString,
-    Theme,
     component::AnyInstance,
-    env::{self, Environment},
     events::{self, GestureEvent, PanEvent},
-    status_bar::{StatusBarEntry, StatusBars},
     style::{StyleRefinement, Styled, Variant},
-    task::{self, Action, AsyncCx, DialogAnswer, Executor, Task, WeakComponent},
 };
 use crate::{
-    AccessibilityProp, AccessibilityRole, AccessibilityState, Command, Dialog, EdgeInsets,
-    EventKind, EventPayload, ImageSource, JsonValue, LayoutAnimation, ListContentStyle, NativeProp,
-    NodeId, PointerEvents, Prop, Rect, Size, StatusBarSetting, Tag, TouchEvent, style::Color,
-    time::Instant,
+    AccessibilityProp, AccessibilityRole, AccessibilityState, EdgeInsets, EventKind, EventPayload,
+    ImageSource, JsonValue, ListContentStyle, NativeProp, NodeId, PointerEvents, Prop, Rect, Size,
+    Tag, TouchEvent, style::Color,
 };
 
-/// A handler of `E` on an element, made by [`RenderCx::listener`]: it runs
-/// with the component that rendered the element.
-pub struct Listener<E: ?Sized>(pub(crate) Rc<ErasedListener<E>>);
-
-/// A listener with the component's type erased (it downcasts the state).
-/// It gets the component's state and props.
-pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &dyn Any, &E, &mut ErasedCx);
+/// A handler of `E` on an element: a closure (`move |e: &E| ..`) that
+/// writes the signals it captured.
+pub struct Listener<E: ?Sized>(pub(crate) Rc<dyn Fn(&E)>);
 
 impl<E: ?Sized + 'static> Listener<E> {
     /// A listener that does nothing (the element still listens).
     pub(crate) fn noop() -> Self {
-        Self(Rc::new(|_, _, _, _| {}))
+        Self(Rc::new(|_| {}))
+    }
+
+    /// Calls it with `event`.
+    pub(crate) fn call(&self, event: &E) {
+        (self.0)(event);
     }
 }
 
 impl<E: 'static> Listener<E> {
-    /// This listener for events of another type, turned into `E` by `f`:
-    /// a list row hands the component its index with
-    /// `remove.map(move |_: &()| index)`.
+    /// This listener for events of another type, turned into `E` by `f`.
     pub fn map<F: ?Sized + 'static>(self, f: impl Fn(&F) -> E + 'static) -> Listener<F> {
         let inner = self.0;
-        Listener(Rc::new(move |state, props, event: &F, cx| {
-            inner(state, props, &f(event), cx);
-        }))
+        Listener(Rc::new(move |event: &F| inner(&f(event))))
     }
 }
 
-/// A plain closure as a listener (a component that runs once: it captures
-/// the signals it changes).
+/// A closure as a listener.
 impl<E: ?Sized + 'static, F: Fn(&E) + 'static> From<F> for Listener<E> {
     fn from(f: F) -> Self {
-        Listener(Rc::new(move |_, _, event, _| f(event)))
+        Listener(Rc::new(f))
     }
 }
 
@@ -73,7 +52,7 @@ impl<E: ?Sized> Clone for Listener<E> {
     }
 }
 
-/// An event a handler emitted, with its type erased.
+/// An event a component emitted, with its type erased.
 pub(crate) trait AnyEvent {
     fn name(&self) -> &'static str;
     fn data(&self) -> JsonValue;
@@ -91,581 +70,6 @@ impl<E: Event> AnyEvent for E {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-/// State shared by the components of a surface, by type
-/// ([`Context::update_global`]).
-pub(crate) type Globals = Rc<RefCell<FxHashMap<TypeId, Box<dyn Any>>>>;
-
-/// What setup, listeners, timers and tasks did, for the core.
-pub(crate) struct ErasedCx {
-    pub(crate) emits: Vec<Box<dyn AnyEvent>>,
-    pub(crate) notify: bool,
-    pub(crate) environment: Environment,
-    /// The component's host and the core's executor, for its tasks.
-    pub(crate) host: NodeId,
-    pub(crate) executor: Rc<Executor>,
-    pub(crate) globals: Globals,
-    pub(crate) actions: Vec<Action>,
-    /// The globals `update_global` changed (their readers render again).
-    pub(crate) changed_globals: Vec<TypeId>,
-}
-
-impl ErasedCx {
-    pub(crate) fn new(
-        environment: Environment,
-        host: NodeId,
-        executor: Rc<Executor>,
-        globals: Globals,
-    ) -> Self {
-        Self {
-            emits: Vec::new(),
-            notify: false,
-            environment,
-            host,
-            executor,
-            globals,
-            actions: Vec::new(),
-            changed_globals: Vec::new(),
-        }
-    }
-}
-
-/// A render's context: the theme, the environment (reading it subscribes:
-/// the component renders again when what it read changes, as TS
-/// accessors do), and listeners for the elements.
-pub struct RenderCx<'a, C> {
-    scope: &'a RenderScope<'a>,
-    pub(crate) reads: RefCell<RenderReads>,
-    _component: PhantomData<fn(&mut C)>,
-}
-
-/// What a render can read, from the core.
-pub(crate) struct RenderScope<'a> {
-    pub(crate) theme: &'a Theme,
-    pub(crate) environment: &'a Environment,
-    pub(crate) insets: EdgeInsets,
-    pub(crate) globals: &'a Globals,
-    /// The nearest provided value of a type above the component.
-    pub(crate) context: &'a dyn Fn(TypeId) -> Option<Rc<dyn Any>>,
-    /// The width of a line of text in a canvas font (the text engine's).
-    pub(crate) measure: &'a dyn Fn(&crate::canvas::CanvasFont, &str) -> f32,
-}
-
-/// A value a render provides to the components below it.
-#[derive(Clone)]
-pub(crate) struct Provided {
-    pub(crate) type_id: TypeId,
-    pub(crate) value: Rc<dyn Any>,
-    pub(crate) eq: fn(&dyn Any, &dyn Any) -> bool,
-}
-
-impl Provided {
-    /// Whether `other` provides the same value.
-    pub(crate) fn same(&self, other: &Provided) -> bool {
-        self.type_id == other.type_id && (self.eq)(&*self.value, &*other.value)
-    }
-}
-
-/// What a render read (it renders again when one changes) and provided.
-#[derive(Clone, Default)]
-pub(crate) struct RenderReads {
-    /// Parts of the environment ([`env`] bits).
-    pub(crate) env: u16,
-    pub(crate) globals: Vec<TypeId>,
-    pub(crate) contexts: Vec<TypeId>,
-    pub(crate) provided: Vec<Provided>,
-}
-
-impl<'a, C: Component> RenderCx<'a, C> {
-    pub(crate) fn new(scope: &'a RenderScope<'a>) -> Self {
-        Self {
-            scope,
-            reads: RefCell::new(RenderReads::default()),
-            _component: PhantomData,
-        }
-    }
-
-    fn read(&self, what: u16) -> &'a Environment {
-        self.reads.borrow_mut().env |= what;
-        self.scope.environment
-    }
-
-    /// The surface's `G` (made with `Default` the first time; TS: a
-    /// signal at module level). Reading subscribes: the component
-    /// renders again when a listener, task or module changes `G` with
-    /// `update_global`.
-    pub fn global<G: Default + 'static>(&self) -> std::cell::Ref<'a, G> {
-        let id = TypeId::of::<G>();
-        {
-            let mut reads = self.reads.borrow_mut();
-            if !reads.globals.contains(&id) {
-                reads.globals.push(id);
-            }
-        }
-        let globals = self.scope.globals;
-        if !globals.borrow().contains_key(&id) {
-            globals.borrow_mut().insert(id, Box::new(G::default()));
-        }
-        std::cell::Ref::map(globals.borrow(), |g| {
-            g[&id].downcast_ref::<G>().expect("keyed by its type")
-        })
-    }
-
-    /// Provides `value` to the components rendered below this one (TS:
-    /// `<Ctx.Provider value>`): their [`Self::context`] finds it. A new value
-    /// renders the components that read it again.
-    pub fn provide<T: PartialEq + 'static>(&self, value: T) {
-        fn eq<T: PartialEq + 'static>(a: &dyn Any, b: &dyn Any) -> bool {
-            matches!((a.downcast_ref::<T>(), b.downcast_ref::<T>()), (Some(a), Some(b)) if a == b)
-        }
-        let provided = Provided {
-            type_id: TypeId::of::<T>(),
-            value: Rc::new(value),
-            eq: eq::<T>,
-        };
-        let mut reads = self.reads.borrow_mut();
-        reads.provided.retain(|p| p.type_id != provided.type_id);
-        reads.provided.push(provided);
-    }
-
-    /// The `T` the nearest component above this one provides (TS:
-    /// calling the context, `Ctx()`), through the app's elements too; `None` without one.
-    /// Reading subscribes.
-    pub fn context<T: 'static>(&self) -> Option<Rc<T>> {
-        let id = TypeId::of::<T>();
-        {
-            let mut reads = self.reads.borrow_mut();
-            if !reads.contexts.contains(&id) {
-                reads.contexts.push(id);
-            }
-        }
-        (self.scope.context)(id).and_then(|v| v.downcast::<T>().ok())
-    }
-
-    /// The app's theme.
-    pub fn theme(&self) -> &'a Theme {
-        self.scope.theme
-    }
-
-    /// The surface's size in points (TS: `windowSize()`).
-    pub fn window(&self) -> Size {
-        self.read(env::WINDOW).window
-    }
-
-    /// The edges system UI covers: notch, home indicator (TS:
-    /// `safeArea()`).
-    pub fn safe_area(&self) -> EdgeInsets {
-        self.read(env::SAFE_AREA).safe_area
-    }
-
-    /// The edges system UI or a header covers where the component renders:
-    /// its screen's (below the header) or modal's, else the safe area
-    /// (TS: `useSafeAreaInsets()`).
-    pub fn insets(&self) -> EdgeInsets {
-        self.reads.borrow_mut().env |= env::INSETS;
-        self.scope.insets
-    }
-
-    /// The software keyboard's height over the surface, 0 when hidden
-    /// (TS: `keyboard().height`).
-    pub fn keyboard_height(&self) -> f32 {
-        self.read(env::KEYBOARD).keyboard_height
-    }
-
-    /// Dark appearance (TS: `colorScheme() === "dark"`). Theme colors
-    /// follow it without this; read it for anything else.
-    pub fn dark(&self) -> bool {
-        self.read(env::APPEARANCE).dark
-    }
-
-    /// `color` for the appearance now (props that take a [`Color`], such as
-    /// an input's placeholder color; styles take theme colors as they are).
-    pub fn color(&self, color: impl Into<super::AdaptiveColor>) -> Color {
-        let color = color.into();
-        if self.dark() { color.dark } else { color.light }
-    }
-
-    /// The user's text size relative to the default (TS: `fontScale()`).
-    pub fn font_scale(&self) -> f32 {
-        self.read(env::FONT_SCALE).font_scale
-    }
-
-    /// The user asked for less motion (TS: `reduceMotion()`).
-    pub fn reduce_motion(&self) -> bool {
-        self.read(env::MOTION).reduce_motion
-    }
-
-    /// A screen reader runs (TS: `screenReaderEnabled()`).
-    pub fn screen_reader(&self) -> bool {
-        self.read(env::SCREEN_READER).screen_reader
-    }
-
-    /// The layout runs right to left (TS: `I18nManager.isRTL`).
-    pub fn rtl(&self) -> bool {
-        self.read(env::RTL).rtl
-    }
-
-    /// The width of `text` on one line in `font` (the CSS `font` shorthand,
-    /// as [`super::Painter::font`] takes it; an invalid one measures in the
-    /// canvas default, `10px sans-serif`), measured by the platform's text
-    /// engine (TS: a canvas's `measureText(text).width`).
-    pub fn measure_text(&self, font: &str, text: &str) -> f32 {
-        let font = crate::canvas::CanvasFont::parse(font).unwrap_or_default();
-        (self.scope.measure)(&font, text)
-    }
-
-    /// Device pixels per point (TS: `PixelRatio.get()`); one device pixel
-    /// is `1.0 / cx.pixel_ratio()` points.
-    pub fn pixel_ratio(&self) -> f32 {
-        self.read(env::PIXEL_RATIO).pixel_ratio
-    }
-
-    /// `points` rounded to whole device pixels (TS:
-    /// `PixelRatio.roundToNearestPixel`).
-    pub fn round_to_nearest_pixel(&self, points: f32) -> f32 {
-        let ratio = self.pixel_ratio().max(f32::MIN_POSITIVE);
-        (points * ratio).round() / ratio
-    }
-
-    /// The user's locale (TS: what `Intl` and `toLocaleString` format
-    /// for by default): format numbers and dates for it with a Rust crate.
-    pub fn locale(&self) -> crate::platform::Locale {
-        self.read(env::LOCALE).locale
-    }
-
-    /// The operating system (TS: `Platform.OS`).
-    pub fn os(&self) -> crate::platform::Os {
-        self.scope.environment.os
-    }
-
-    /// The OS version: major and minor on iOS, the API level and 0 on
-    /// Android (TS: `Platform.Version`).
-    pub fn os_version(&self) -> (u16, u16) {
-        self.scope.environment.os_version
-    }
-
-    /// The kind of device (TS: `Platform.isPad`, `isTV`,
-    /// `isMacCatalyst`).
-    pub fn idiom(&self) -> crate::platform::Idiom {
-        self.scope.environment.idiom
-    }
-
-    /// A handler for an element of this render: `f` gets the component (its
-    /// state), the event and a [`Context`] to change state, emit events and
-    /// start timers.
-    pub fn listener<E: ?Sized + 'static>(
-        &self,
-        f: impl Fn(&mut C, &E, &mut Context<'_, C>) + 'static,
-    ) -> Listener<E> {
-        Listener(Rc::new(move |this, props, event, cx| {
-            if let (Some(this), Some(props)) =
-                (this.downcast_mut::<C>(), props.downcast_ref::<C::Props>())
-            {
-                f(this, event, &mut Context::new(cx, props));
-            }
-        }))
-    }
-}
-
-/// The context of everything that changes a component: [`Component::setup`],
-/// [`Component::props_changed`], listeners, timers and tasks' updates.
-pub struct Context<'a, C: Component> {
-    inner: &'a mut ErasedCx,
-    props: &'a C::Props,
-}
-
-impl<'a, C: Component> Context<'a, C> {
-    pub(crate) fn new(inner: &'a mut ErasedCx, props: &'a C::Props) -> Self {
-        Self { inner, props }
-    }
-
-    /// The component's props now (TS: `props` in the component's body).
-    pub fn props(&self) -> &C::Props {
-        self.props
-    }
-
-    /// Sends `event` to the app (its `on<Event>` handler), or to the
-    /// component that rendered this one.
-    pub fn emit(&mut self, event: C::Event) {
-        self.inner.emits.push(Box::new(event));
-    }
-
-    /// The component's state changed: render it again.
-    pub fn notify(&mut self) {
-        self.inner.notify = true;
-    }
-
-    /// The environment now (not a subscription: read it in the render for
-    /// that).
-    pub fn environment(&self) -> &Environment {
-        &self.inner.environment
-    }
-
-    /// Runs `f` on the surface's `G` (made with `Default` the first time):
-    /// state components share, like a signal at module level.
-    pub fn update_global<G: Default + 'static, R>(
-        &mut self,
-        f: impl FnOnce(&mut G, &mut Self) -> R,
-    ) -> R {
-        let id = TypeId::of::<G>();
-        // Out of the map while `f` runs: it may use other globals.
-        let taken = self.inner.globals.borrow_mut().remove(&id);
-        let mut global = taken
-            .and_then(|g| g.downcast::<G>().ok())
-            .unwrap_or_default();
-        let result = f(&mut global, self);
-        self.inner.globals.borrow_mut().insert(id, global);
-        if !self.inner.changed_globals.contains(&id) {
-            self.inner.changed_globals.push(id);
-        }
-        result
-    }
-
-    /// Shows `dialog` (an alert, or with `sheet` an action sheet); await the
-    /// answer in a task.
-    pub fn dialog(&mut self, dialog: Dialog) -> DialogAnswer {
-        let (answer, slot) = DialogAnswer::new();
-        self.inner.actions.push(Action::Dialog(dialog, slot));
-        answer
-    }
-
-    /// Unfocuses the focused input, hiding the software keyboard.
-    pub fn dismiss_keyboard(&mut self) {
-        self.inner
-            .actions
-            .push(Action::Command(crate::ROOT_ID, Command::Blur));
-    }
-
-    /// Adds `setting` over the status bar's other settings (and what
-    /// functions set) until [`Self::remove_status_bar`]: the most recently
-    /// added wins, field by field.
-    pub fn add_status_bar(&mut self, setting: StatusBarSetting) -> StatusBarEntry {
-        StatusBars::update(&self.inner.globals, |bars| bars.add(setting))
-    }
-
-    /// Changes a setting [`Self::add_status_bar`] added.
-    pub fn update_status_bar(&mut self, entry: StatusBarEntry, setting: StatusBarSetting) {
-        StatusBars::update(&self.inner.globals, |bars| bars.set(entry, setting));
-    }
-
-    /// Removes a setting [`Self::add_status_bar`] added.
-    pub fn remove_status_bar(&mut self, entry: StatusBarEntry) {
-        StatusBars::update(&self.inner.globals, |bars| bars.remove(entry));
-    }
-
-    /// Animates the layout changes of the next commit (React Native's
-    /// `LayoutAnimation.configureNext`).
-    pub fn animate_layout(&mut self, animation: LayoutAnimation) {
-        self.inner.actions.push(Action::Command(
-            crate::ROOT_ID,
-            Command::LayoutAnimation(animation),
-        ));
-    }
-
-    /// The screen reader reads `message` (TS:
-    /// `AccessibilityInfo.announceForAccessibility`).
-    pub fn announce_for_accessibility(&mut self, message: impl Into<String>) {
-        self.inner
-            .actions
-            .push(super::services::announce(message.into()));
-    }
-
-    /// Puts `text` on the system clipboard (TS: `Clipboard.setString`).
-    pub fn set_clipboard(&mut self, text: impl Into<String>) {
-        self.inner
-            .actions
-            .push(super::services::set_clipboard(text.into()));
-    }
-
-    /// The text on the system clipboard, `""` when it holds none (TS:
-    /// `Clipboard.getString`), to await in a task. On iOS, reading it may
-    /// show the system's paste notice.
-    pub fn clipboard_string(&mut self) -> task::Answer<String> {
-        let (answer, action) = super::services::clipboard_string();
-        self.inner.actions.push(action);
-        answer
-    }
-
-    /// Whether the system clipboard holds text, without reading it (TS:
-    /// `Clipboard.hasString`), to await in a task.
-    pub fn clipboard_has_string(&mut self) -> task::Answer<bool> {
-        let (answer, action) = super::services::clipboard_has_string();
-        self.inner.actions.push(action);
-        answer
-    }
-
-    /// Shows `message` at the bottom of the screen (Android's toasts, TS:
-    /// `Toast.show`); nothing happens elsewhere.
-    pub fn toast(&mut self, message: impl Into<String>, duration: super::ToastDuration) {
-        self.inner
-            .actions
-            .push(super::services::toast(message.into(), duration));
-    }
-
-    /// The size in pixels of the image at `uri` (TS: `Image.getSize`), to
-    /// await in a task; its bytes stay loaded for the views that show it
-    /// next.
-    pub fn image_size(
-        &mut self,
-        uri: impl Into<String>,
-    ) -> task::Answer<Result<task::ImageSize, String>> {
-        let (answer, action) = super::services::image_size(uri.into());
-        self.inner.actions.push(action);
-        answer
-    }
-
-    /// Loads the image at `uri` ahead of showing it (TS: `Image.prefetch`):
-    /// await it in a task for whether it loaded.
-    pub fn prefetch_image(&mut self, uri: impl Into<String>) -> super::Prefetch {
-        let (answer, action) = super::services::prefetch(uri.into());
-        self.inner.actions.push(action);
-        answer
-    }
-
-    /// Shows the surface in `appearance` whatever the system's (TS:
-    /// `setColorScheme`): [`crate::ui::RenderCx::dark`] (the theme's
-    /// mode), `dark:` classes and the platform's controls follow it;
-    /// [`crate::platform::Appearance::System`] follows the system again.
-    pub fn set_color_scheme(&mut self, appearance: crate::platform::Appearance) {
-        self.inner.actions.push(Action::Appearance(appearance));
-    }
-
-    /// Lays the surface out right to left whatever the user's language
-    /// (TS: `I18nManager.forceRTL`), at once: the components that read
-    /// [`RenderCx::rtl`] render again. `false` follows the language again.
-    pub fn force_rtl(&mut self, force: bool) {
-        self.inner
-            .actions
-            .push(Action::Direction(super::services::Direction::Force(force)));
-    }
-
-    /// Whether a right-to-left language lays the surface out right to left
-    /// (TS: `I18nManager.allowRTL`; true by default).
-    pub fn allow_rtl(&mut self, allow: bool) {
-        self.inner
-            .actions
-            .push(Action::Direction(super::services::Direction::Allow(allow)));
-    }
-
-    /// A native animation value starting at `value` (TS:
-    /// `createNativeValue`): keep it in a field, bind it to styles, drags,
-    /// scroll offsets or drawings, and animate it from listeners and tasks.
-    pub fn native_value(&self, value: f32) -> super::NativeValue {
-        super::NativeValue::new(&self.inner.executor, value)
-    }
-
-    /// A handle for an element of the render (TS: `ref`): keep it in a
-    /// field, put it on the element with [`Element::element_ref`], call its
-    /// commands from listeners and tasks.
-    pub fn element_ref(&self) -> super::ElementRef {
-        super::ElementRef::new(&self.inner.executor)
-    }
-
-    /// A handle for a component of the render (TS: a `ref` to a component,
-    /// `stepper.value()`): keep it in a field, put it on the component with
-    /// [`ComponentElement::component_ref`], call its methods with
-    /// [`super::ComponentRef::update`] from listeners and tasks.
-    pub fn component_ref<T: Component>(&self) -> super::ComponentRef<T> {
-        super::ComponentRef::new(&self.inner.executor)
-    }
-
-    /// Starts a task: `f(this, cx)` builds a future run on the engine
-    /// thread, which changes the component with `this.update(..)` and waits
-    /// with `cx.timer(..)` or for any other future. Dropping the [`Task`]
-    /// cancels it; the component's tasks end with it.
-    ///
-    /// ```ignore
-    /// self.loading = Some(cx.spawn(|this, cx| async move {
-    ///     cx.timer(Duration::from_millis(300)).await;
-    ///     this.update(|this, cx| { this.ready = true; cx.notify(); }).await;
-    /// }));
-    /// ```
-    pub fn spawn<R: 'static, Fut: Future<Output = R> + 'static>(
-        &mut self,
-        f: impl FnOnce(WeakComponent<C>, AsyncCx) -> Fut,
-    ) -> Task<R> {
-        task::spawn(&self.inner.executor, self.inner.host, f)
-    }
-
-    /// This component as a handle others keep (TS: handing another part
-    /// of the app an object with methods, a store's `start()` / `stop()`):
-    /// a component elsewhere, on another screen say, changes it with
-    /// [`WeakComponent::update`], applied before the next render, `None`
-    /// once it is gone. Its tasks get the same handle.
-    pub fn weak(&self) -> WeakComponent<C> {
-        WeakComponent::new(self.inner.host, Rc::downgrade(&self.inner.executor))
-    }
-
-    /// Listens to the Android back button (TS:
-    /// `BackHandler.addEventListener("hardwareBackPress", f)`): when no modal
-    /// is shown, `f` runs before the stack pops, newest listener first, and
-    /// returns true when it handled the press; when no listener does, the
-    /// innermost stack pops, else the app exits. Dropping the subscription
-    /// removes the listener; while one exists, a back gesture does not
-    /// preview the pop.
-    pub fn on_back_press(
-        &mut self,
-        f: impl Fn(&mut C, &mut Context<'_, C>) -> bool + 'static,
-    ) -> super::BackSubscription {
-        let listener: super::back::BackListener = Rc::new(move |this, props, cx| {
-            match (this.downcast_mut::<C>(), props.downcast_ref::<C::Props>()) {
-                (Some(this), Some(props)) => f(this, &mut Context::new(cx, props)),
-                _ => false,
-            }
-        });
-        let back = &self.inner.executor.back;
-        let id = back.borrow_mut().add(self.inner.host, listener);
-        super::BackSubscription::new(back, id)
-    }
-
-    /// Runs `f` once after `delay` (TS: `setTimeout`; dropping the task
-    /// is `clearTimeout`). A task: a timer, then an update.
-    pub fn set_timeout(
-        &mut self,
-        delay: Duration,
-        f: impl FnOnce(&mut C, &mut Context<'_, C>) + 'static,
-    ) -> Task<()> {
-        self.spawn(move |this, cx| async move {
-            cx.timer(delay).await;
-            this.update(f).await;
-        })
-    }
-
-    /// Runs `f` when the next display frame starts, with its time (TS:
-    /// `requestAnimationFrame`; dropping the task is
-    /// `cancelAnimationFrame`). Ask again from `f` for the frame after; a
-    /// task awaiting [`AsyncCx::next_frame`] in a loop runs every frame.
-    pub fn request_animation_frame(
-        &mut self,
-        f: impl FnOnce(&mut C, Instant, &mut Context<'_, C>) + 'static,
-    ) -> Task<()> {
-        self.spawn(move |this, cx| async move {
-            let at = cx.next_frame().await;
-            this.update(move |this, cx| f(this, at, cx)).await;
-        })
-    }
-
-    /// Runs `f` every `period` (TS: `setInterval`; dropping the task is
-    /// `clearInterval`). Late wakes do not pile up runs.
-    pub fn set_interval(
-        &mut self,
-        period: Duration,
-        f: impl Fn(&mut C, &mut Context<'_, C>) + 'static,
-    ) -> Task<()> {
-        let f = Rc::new(f);
-        self.spawn(move |this, cx| async move {
-            let mut next = Instant::now() + period;
-            loop {
-                cx.timer_until(next).await;
-                next = (next + period).max(Instant::now());
-                let f = f.clone();
-                if this.update(move |this, cx| f(this, cx)).await.is_none() {
-                    break;
-                }
-            }
-        })
     }
 }
 
@@ -2128,13 +1532,11 @@ impl<C: Component> ComponentElement<C> {
     pub fn on_event(mut self, listener: impl Into<Listener<C::Event>>) -> Self {
         let inner = listener.into().0;
         if let ElKind::Component(c) = &mut self.node.kind {
-            c.on_event = Some(Listener(Rc::new(
-                move |this, props, event: &dyn Any, cx| {
-                    if let Some(event) = event.downcast_ref::<C::Event>() {
-                        inner(this, props, event, cx);
-                    }
-                },
-            )));
+            c.on_event = Some(Listener(Rc::new(move |event: &dyn Any| {
+                if let Some(event) = event.downcast_ref::<C::Event>() {
+                    inner(event);
+                }
+            })));
         }
         self
     }

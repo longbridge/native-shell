@@ -1079,7 +1079,7 @@ impl<M: TextEngine> Core<M> {
                 id: crate::ROOT_ID,
                 command: Command::SetStatusBar(patch),
             } => {
-                StatusBars::update(&self.components.globals, |bars| bars.set_base(patch));
+                StatusBars::update(&self.components.status_bars, |bars| bars.set_base(patch));
                 Ok(())
             }
             // JS's responder blocks native scroll views as the components'
@@ -1172,7 +1172,7 @@ impl<M: TextEngine> Core<M> {
         self.update_lists(relayout);
         self.flush_text();
         // What this turn's status bar settings add up to, once.
-        if let Some(config) = StatusBars::take_changed(&self.components.globals) {
+        if let Some(config) = StatusBars::take_changed(&self.components.status_bars) {
             self.commands
                 .push((crate::ROOT_ID, Command::StatusBar(config)));
         }

@@ -11,16 +11,16 @@ use std::{
 use rustc_hash::FxHashMap;
 
 use super::{
-    Children, Context, Environment, IntoElement, PropError, Slot, TsType, TsTypes,
-    element::{ComponentElement, ElNode, ErasedCx, RenderCx, RenderReads, RenderScope},
+    Children, IntoElement, PropError, Slot, TsType, TsTypes,
+    element::{ComponentElement, ElNode},
     module::{Function, FunctionSpec, Module, ModuleSpec},
 };
 use crate::JsonValue;
 
-/// A component written in Rust. Its state is `Self` (`Default` makes a new
-/// one, [`Component::setup`] sets it up from the first props); its props
-/// come from JS (or from the component that renders it); its events go to
-/// JS. Resources it owns are freed by `Drop`; its timers end with it.
+/// A component written in Rust: a function that runs once ([`Self::view`])
+/// and makes its view, binding what changes to signals. Its props come from
+/// JS (or from the component that renders it), its events go to JS.
+/// `#[component]` on a function makes the type and this impl.
 ///
 /// It is registered under its type's name ([`std::any::type_name`]:
 /// `nsh_ui_mobile::button::Button`) and exported to JS as the type's own
@@ -28,19 +28,17 @@ use crate::JsonValue;
 /// ([`Registry::register`]).
 ///
 /// ```ignore
-/// #[derive(Default)]
-/// pub struct Button;
-///
-/// impl Component for Button {
-///     type Props = ButtonProps;
-///     type Event = ButtonEvent;
-///
-///     fn render(&self, props: &ButtonProps, cx: &mut RenderCx<Self>) -> impl IntoElement {
-///         view().px_4().py_3().bg(cx.theme().primary).child(props.title.clone())
-///     }
+/// #[component]
+/// pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
+///     view()
+///         .px_4()
+///         .py_3()
+///         .bg(move || theme().primary)
+///         .on_press(move |_: &()| cx.emit(ButtonEvent::Press))
+///         .child(text(props.title))
 /// }
 /// ```
-pub trait Component: Default + 'static {
+pub trait Component: 'static {
     /// Its props (`#[derive(Props)]`).
     type Props: Props;
 
@@ -51,76 +49,22 @@ pub trait Component: Default + 'static {
     /// registers (`Methods::of::<StepperApi>()`; none by default).
     const METHODS: Methods = Methods::NONE;
 
-    /// Runs once, before the first render, with the first props: what the
-    /// body of a TS component does (state from props, timers).
-    fn setup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
-        let _ = (props, cx);
-    }
+    /// What it shows: its elements, with bindings where values change (TS:
+    /// a component's body). Runs once, under an owner of its own: what it
+    /// makes (signals, effects, timers) goes with the component.
+    fn view(props: Self::Props, cx: super::Scope<Self::Event>) -> impl IntoElement;
 
-    /// The props changed since the last render (TS: an `effect`
-    /// reading a prop): adjust the state before the next render.
-    fn props_changed(&mut self, old: &Self::Props, new: &Self::Props, cx: &mut Context<'_, Self>) {
-        let _ = (old, new, cx);
-    }
-
-    /// What the last render read of the environment changed (TS: an
-    /// `effect` reading an accessor): side effects of the change, before the
-    /// render it causes (animating with the keyboard, say).
-    fn environment_changed(
-        &mut self,
-        props: &Self::Props,
-        old: &Environment,
-        new: &Environment,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let _ = (props, old, new, cx);
-    }
-
-    /// Runs once when the component goes away (TS: `cleanup`), with a
-    /// context to undo what it did outside itself. Its tasks end after it;
-    /// its own resources are freed by `Drop`.
-    fn cleanup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
-        let _ = (props, cx);
-    }
-
-    /// Its element tree. Runs again when a prop changes, a listener or a
-    /// timer calls [`Context::notify`], or what it read of the environment
-    /// changes; keep it cheap and free of side effects.
-    fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let _ = (props, cx);
-        super::view()
-    }
-
-    /// Whether it runs once ([`Self::view`]) rather than rendering again.
-    const RUNS_ONCE: bool = false;
-
-    /// What a component that runs once ([`Self::RUNS_ONCE`]) shows: its
-    /// elements, with bindings where values change (TS: a component's
-    /// body). Runs once, under an owner of its own: what it makes (signals,
-    /// effects, timers) goes with the component.
-    fn view(props: Self::Props, cx: super::Scope<Self::Event>) -> impl IntoElement {
-        let _ = (props, cx);
-        super::view()
-    }
-
-    /// A component below this one failed (its code panicked: a render, a
-    /// listener, a task): return true to handle it (an error
-    /// boundary), typically keeping the error, rendering
-    /// a fallback instead of the content and clearing it to try again. The
-    /// nearest component that handles it does; the failed one renders
-    /// nothing until it renders again.
-    fn catch_error(&mut self, error: &ComponentError, cx: &mut Context<'_, Self>) -> bool {
-        let _ = (error, cx);
-        false
-    }
-
-    /// This component inside another one's render.
-    fn element(props: Self::Props) -> ComponentElement<Self> {
+    /// This component inside another one's view.
+    fn element(props: Self::Props) -> ComponentElement<Self>
+    where
+        Self: Sized,
+    {
         ComponentElement::new(props)
     }
 }
 
-/// A component's code panicked ([`Component::catch_error`]).
+/// A component's code panicked: what an error boundary
+/// ([`super::catch_error`]) shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComponentError {
     /// The component that failed (its registered name: its type's).
@@ -459,150 +403,32 @@ fn export_name(type_name: &str) -> &str {
     path.rsplit("::").next().unwrap_or(path)
 }
 
-/// An instance: a component's state and props, their types erased.
+/// An instance: a component's props and view, their types erased.
 pub(crate) trait AnyInstance {
     fn set_prop(&mut self, name: &str, value: Option<JsonValue>) -> Result<bool, PropError>;
-    /// Props from the component that renders this one; true when they
-    /// changed.
-    fn set_props(&mut self, props: &dyn Any) -> bool;
-    fn set_slot(&mut self, name: &'static str, filled: bool) -> bool;
-    fn set_children(&mut self, present: bool) -> bool;
-    /// Before a render: the setup the first time, else what changed.
-    fn update(&mut self, cx: &mut ErasedCx);
-    /// The component goes away.
-    fn cleanup(&mut self, cx: &mut ErasedCx);
-    /// What the last render read of the environment changed.
-    fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx);
-    /// The tree, and what it read of the environment.
-    fn render(&mut self, scope: &RenderScope<'_>) -> (ElNode, RenderReads);
-    /// [`Component::catch_error`].
-    fn catch_error(&mut self, error: &ComponentError, cx: &mut ErasedCx) -> bool;
+    /// Props from the component that renders this one.
+    fn set_props(&mut self, props: &dyn Any);
+    fn set_slot(&mut self, name: &'static str, filled: bool);
+    fn set_children(&mut self, present: bool);
+    /// The component goes away: what its view made goes with it.
+    fn cleanup(&mut self);
+    /// Its view, made once.
+    fn view(&mut self) -> ElNode;
     /// Its registered name.
     fn name(&self) -> &'static str;
-    /// The state, and the props.
-    fn parts(&mut self) -> (&mut dyn Any, &dyn Any);
-    /// Method `name` of the ref; `None` when it has none of that name.
-    fn call(
-        &mut self,
-        name: &str,
-        args: Vec<JsonValue>,
-        cx: &mut ErasedCx,
-    ) -> Option<Result<JsonValue, PropError>>;
-    /// A component that runs once: its owner (none until its view is made).
-    fn runs_once(&self) -> Option<super::Owner> {
-        None
-    }
+    /// Method `name` of its ref; `None` when it has none of that name.
+    fn call(&mut self, name: &str, args: Vec<JsonValue>) -> Option<Result<JsonValue, PropError>>;
+    /// Its view's owner, once its view is made.
+    fn owner(&self) -> Option<super::Owner>;
     /// Where a failure of its code goes first: its owner, or where it is
-    /// made before it has one (none: a component that renders again).
-    fn failure_owner(&self) -> Option<super::Owner> {
-        None
-    }
-    /// A component that runs once made by JS (made where no owner is): its
-    /// view will be made under `parent`, the owner of the nearest component
-    /// above it in the tree, so it sees that one's context.
-    fn adopt(&mut self, parent: super::Owner) {
-        let _ = parent;
-    }
+    /// made before it has one.
+    fn failure_owner(&self) -> super::Owner;
+    /// Made by JS (where no owner is): its view will be made under
+    /// `parent`, the owner of the nearest component above it in the tree,
+    /// so it sees that one's context.
+    fn adopt(&mut self, parent: super::Owner);
     /// It is the component of `host`, made where `parent` owns.
-    fn place(&mut self, host: crate::NodeId, parent: super::Owner) {
-        let _ = (host, parent);
-    }
-}
-
-struct Instance<C: Component> {
-    state: C,
-    props: C::Props,
-    /// The props of the last render (cheap: props hold shared strings).
-    rendered: Option<C::Props>,
-    set_up: bool,
-}
-
-impl<C: Component> AnyInstance for Instance<C> {
-    fn set_prop(&mut self, name: &str, value: Option<JsonValue>) -> Result<bool, PropError> {
-        self.props.set(name, value)
-    }
-
-    fn set_props(&mut self, props: &dyn Any) -> bool {
-        match props.downcast_ref::<C::Props>() {
-            Some(p) if *p != self.props => {
-                self.props = p.clone();
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn set_slot(&mut self, name: &'static str, filled: bool) -> bool {
-        self.props.set_slot(name, filled.then(|| Slot::new(name)))
-    }
-
-    fn set_children(&mut self, present: bool) -> bool {
-        self.props.set_children(Children::new(present))
-    }
-
-    fn update(&mut self, cx: &mut ErasedCx) {
-        if !self.set_up {
-            self.set_up = true;
-            self.state
-                .setup(&self.props, &mut Context::new(cx, &self.props));
-        } else if let Some(old) = &self.rendered
-            && *old != self.props
-        {
-            self.state
-                .props_changed(old, &self.props, &mut Context::new(cx, &self.props));
-        }
-    }
-
-    fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx) {
-        if self.set_up {
-            self.state.environment_changed(
-                &self.props,
-                old,
-                new,
-                &mut Context::new(cx, &self.props),
-            );
-        }
-    }
-
-    fn cleanup(&mut self, cx: &mut ErasedCx) {
-        if self.set_up {
-            self.state
-                .cleanup(&self.props, &mut Context::new(cx, &self.props));
-        }
-    }
-
-    fn render(&mut self, scope: &RenderScope<'_>) -> (ElNode, RenderReads) {
-        let mut cx = RenderCx::new(scope);
-        let node = self.state.render(&self.props, &mut cx).into_element().0;
-        match &mut self.rendered {
-            Some(old) if *old == self.props => {}
-            rendered => *rendered = Some(self.props.clone()),
-        }
-        (node, cx.reads.into_inner())
-    }
-
-    fn parts(&mut self) -> (&mut dyn Any, &dyn Any) {
-        (&mut self.state, &self.props)
-    }
-
-    fn catch_error(&mut self, error: &ComponentError, cx: &mut ErasedCx) -> bool {
-        self.state
-            .catch_error(error, &mut Context::new(cx, &self.props))
-    }
-
-    fn name(&self) -> &'static str {
-        name_of::<C>()
-    }
-
-    // Methods are those of a view's API.
-    fn call(
-        &mut self,
-        _: &str,
-        _: Vec<JsonValue>,
-        _: &mut ErasedCx,
-    ) -> Option<Result<JsonValue, PropError>> {
-        None
-    }
+    fn place(&mut self, host: crate::NodeId, parent: super::Owner);
 }
 
 /// The root of a Rust app: makes the app's top component (on the engine
@@ -670,15 +496,7 @@ impl fmt::Debug for Root {
 
 /// A new instance of `C`, its props not set yet.
 pub(crate) fn make_instance<C: Component>() -> Box<dyn AnyInstance> {
-    if C::RUNS_ONCE {
-        return Box::new(super::once::OnceInstance::<C>::new());
-    }
-    Box::new(Instance::<C> {
-        state: C::default(),
-        props: C::Props::initial(),
-        rendered: None,
-        set_up: false,
-    })
+    Box::new(super::once::OnceInstance::<C>::new())
 }
 
 #[derive(Clone)]
@@ -1187,7 +1005,7 @@ mod tests {
         type Event = StepperEvent;
         const METHODS: Methods = Methods::of::<StepperApi>();
 
-        fn render(&self, _props: &StepperProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        fn view(_: StepperProps, _: super::super::Scope<StepperEvent>) -> impl IntoElement {
             view()
         }
     }
@@ -1256,7 +1074,7 @@ mod tests {
             type Props = ();
             type Event = NoEvent;
 
-            fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            fn view(_: (), _: crate::ui::Scope<NoEvent>) -> impl IntoElement {
                 view()
             }
         }

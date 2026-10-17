@@ -492,14 +492,6 @@ impl<M: TextEngine> Core<M> {
             }
         }
     }
-
-    /// A view's region element in a parent: bound now (`binding`), else its
-    /// elements once (what they make goes after this render).
-    pub(super) fn region_once(&mut self, region: &Region) -> Vec<ElNode> {
-        let (owner, elements) = crate::ui::create_root(|| region.once());
-        self.components.transient.push(owner);
-        elements.into_iter().map(|e| e.0).collect()
-    }
 }
 
 /// A placeholder element for a region of `tag` (it has no node).

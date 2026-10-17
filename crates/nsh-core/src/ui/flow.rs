@@ -49,28 +49,6 @@ pub(crate) struct RegionElement {
 }
 
 impl Region {
-    /// The elements once, for a component that renders again (read
-    /// untracked; what they make lives until the render's `owner` goes).
-    pub(crate) fn once(&self) -> Vec<AnyElement> {
-        untracked(|| match self {
-            Region::Dynamic(f) => f(),
-            Region::If {
-                when,
-                then,
-                otherwise,
-            } => {
-                if when.get() {
-                    then()
-                } else {
-                    otherwise.as_ref().map(|f| f()).unwrap_or_default()
-                }
-            }
-            Region::Each(rows) => rows.once(),
-            // A component that renders again catches with `catch_error`.
-            Region::Catch { view, .. } => view(),
-        })
-    }
-
     /// Makes the region a binding under the current owner: `show` gets its
     /// elements now and each time they change.
     pub(crate) fn bind(&self, show: Rc<dyn Fn(Vec<RegionElement>)>) {
@@ -285,8 +263,6 @@ impl Each {
 
 /// The rows of an [`Each`], with their type erased.
 pub(crate) trait EachRows {
-    /// Every row's elements once.
-    fn once(&self) -> Vec<AnyElement>;
     /// Binds the rows (see [`Region::bind`]).
     fn bind(self: Rc<Self>, show: Rc<dyn Fn(Vec<RegionElement>)>);
 }
@@ -320,17 +296,6 @@ fn element_key(id: u64, i: usize) -> super::SharedString {
 }
 
 impl<T: Clone + PartialEq + 'static, K: Hash + Eq + Clone + 'static> EachRows for Rows<T, K> {
-    fn once(&self) -> Vec<AnyElement> {
-        let items = self.items.get();
-        let mut out = Vec::new();
-        for (i, item) in items.into_iter().enumerate() {
-            let item = signal_with(item, SignalEquals::Never).read_only();
-            let index = signal_with(i, SignalEquals::Never).read_only();
-            out.extend((self.row)(item, index));
-        }
-        out
-    }
-
     fn bind(self: Rc<Self>, show: Rc<dyn Fn(Vec<RegionElement>)>) {
         // The rows go with the region's owner.
         let rows = self.clone();

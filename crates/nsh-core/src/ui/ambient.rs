@@ -19,11 +19,10 @@ use rustc_hash::FxHashMap;
 
 use super::{
     AdaptiveColor, Environment, Memo, Owner, Signal, SignalEquals, Theme, cleanup, computed,
-    element::Globals,
     reactive::with_data,
     signal_with,
-    status_bar::{StatusBarEntry, StatusBars},
-    task::{self, Action, Answer, AsyncCx, DialogAnswer, Executor, ImageSize},
+    status_bar::{SharedStatusBars, StatusBarEntry, StatusBars},
+    task::{self, Action, Answer, DialogAnswer, Executor, ImageSize},
 };
 use crate::{
     Command, Dialog, EdgeInsets, LayoutAnimation, NodeId, Size, StatusBarSetting,
@@ -40,9 +39,8 @@ pub(crate) type MeasureFn = Rc<dyn Fn(&CanvasFont, &str) -> f32>;
 #[derive(Default)]
 pub(crate) struct Ambient {
     executor: Option<Rc<Executor>>,
-    /// The globals of components that render again (the status bar's
-    /// layers live there).
-    old_globals: Option<Globals>,
+    /// The status bar's layers.
+    status_bars: Option<SharedStatusBars>,
     env: Option<EnvSignals>,
     theme: Option<Signal<Arc<Theme>>>,
     globals: FxHashMap<TypeId, Box<dyn Any>>,
@@ -105,13 +103,12 @@ impl EnvSignals {
 // --- What the core sets ------------------------------------------------------
 
 impl super::Runtime {
-    /// The executor of tasks and actions, and the globals of components that
-    /// render again.
-    pub(crate) fn set_services(&self, executor: Rc<Executor>, globals: Globals) {
+    /// The executor of tasks and actions, and the status bar's layers.
+    pub(crate) fn set_services(&self, executor: Rc<Executor>, status_bars: SharedStatusBars) {
         let _entered = self.enter();
         with_data(|d| {
             d.ambient.executor = Some(executor);
-            d.ambient.old_globals = Some(globals);
+            d.ambient.status_bars = Some(status_bars);
         });
     }
 
@@ -180,11 +177,6 @@ fn executor() -> Rc<Executor> {
 
 fn act(action: Action) {
     executor().act(action);
-}
-
-/// What services and timers take: a handle on the executor.
-fn async_cx() -> AsyncCx {
-    AsyncCx::new(Rc::downgrade(&executor()))
 }
 
 // --- The environment ---------------------------------------------------------
@@ -421,7 +413,8 @@ pub fn allow_rtl(allow: bool) {
 /// owner lives (the most recently added wins, field by field): the entry,
 /// to change it.
 pub fn add_status_bar(setting: StatusBarSetting) -> StatusBarEntry {
-    let globals = with_data(|d| d.ambient.old_globals.clone()).expect("the core sets the globals");
+    let globals =
+        with_data(|d| d.ambient.status_bars.clone()).expect("the core sets the status bars");
     let entry = StatusBars::update(&globals, |bars| bars.add(setting));
     cleanup(move || StatusBars::update(&globals, |bars| bars.remove(entry)));
     entry
@@ -429,7 +422,8 @@ pub fn add_status_bar(setting: StatusBarSetting) -> StatusBarEntry {
 
 /// Changes a setting [`add_status_bar`] added.
 pub fn update_status_bar(entry: StatusBarEntry, setting: StatusBarSetting) {
-    let globals = with_data(|d| d.ambient.old_globals.clone()).expect("the core sets the globals");
+    let globals =
+        with_data(|d| d.ambient.status_bars.clone()).expect("the core sets the status bars");
     StatusBars::update(&globals, |bars| bars.set(entry, setting));
 }
 
@@ -501,44 +495,52 @@ pub fn request_animation_frame(f: impl FnOnce(Instant) + 'static) -> Spawned<()>
     })
 }
 
-/// Waits `delay` (in a task).
+/// Waits `delay` (in a task; TS: what `setTimeout` waits for).
 pub fn timer(delay: Duration) -> impl Future<Output = ()> {
-    let cx = async_cx();
-    async move {
-        cx.timer(delay).await;
-    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let sleep = tokio::time::sleep(delay);
+    #[cfg(target_arch = "wasm32")]
+    let sleep = crate::time::sleep(delay);
+    sleep
 }
 
 /// Waits until `at` (in a task).
 pub fn timer_until(at: Instant) -> impl Future<Output = ()> {
-    let cx = async_cx();
-    async move {
-        cx.timer_until(at).await;
-    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let sleep = tokio::time::sleep_until(at.into());
+    #[cfg(target_arch = "wasm32")]
+    let sleep = crate::time::sleep_until(at);
+    sleep
 }
 
-/// The next display frame's start (in a task).
+/// The next display frame's start (in a task; TS: what
+/// `requestAnimationFrame` waits for). Awaited in a loop, it runs once per
+/// frame.
 pub fn next_frame() -> Answer<Instant> {
-    async_cx().next_frame()
+    let (answer, action) = super::services::frame();
+    act(action);
+    answer
 }
 
-/// Runs `f` on a thread of its own, for blocking work (in a task: await
-/// its result).
+/// Runs blocking `f` on the runtime's blocking threads (in a task: await
+/// its result; `tokio::task::spawn_blocking`). Not in WebAssembly.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn blocking<R: Send + 'static>(
     f: impl FnOnce() -> R + Send + 'static,
 ) -> tokio::task::JoinHandle<R> {
-    async_cx().blocking(f)
+    tokio::task::spawn_blocking(f)
 }
 
-/// Runs `future` on the background runtime (in a task: await its result).
+/// Runs `future` on the runtime's threads (in a task: await its result;
+/// `tokio::spawn`): `Send` work that should not hold the engine thread.
+/// Not in WebAssembly, which has no threads.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn background<F>(future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    async_cx().background(future)
+    tokio::spawn(future)
 }
 
 // --- Handles -----------------------------------------------------------------
@@ -572,9 +574,9 @@ pub fn component_ref<C: super::Component>() -> super::ComponentRef<C> {
 /// not preview the pop.
 pub fn on_back_press(f: impl Fn() -> bool + 'static) {
     let owner = Owner::current();
-    let listener: super::back::BackListener = Rc::new(move |_, _, _| owner.run(&f));
+    let listener: super::back::BackListener = Rc::new(move || owner.run(&f));
     let back = &executor().back;
-    let id = back.borrow_mut().add(0, listener);
-    let subscription = super::BackSubscription::new(back, id);
+    let id = back.borrow_mut().add(listener);
+    let subscription = super::back::BackSubscription::new(back, id);
     cleanup(move || drop(subscription));
 }
