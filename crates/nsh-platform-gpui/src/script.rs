@@ -32,17 +32,21 @@
 //! - `quit`: closes the window.
 //!
 //! The whole script is parsed first: a step that does not parse is
-//! reported, and the window closes without running any. The steps run on GPUI's main
+//! reported, and the window closes without running any. A failed script
+//! (a step that does not parse, an app that shows nothing, a shot not
+//! written, the window closing before `quit`, an error the app reports
+//! while the script runs) makes [`crate::run_app`] exit with a failure. The steps run on GPUI's main
 //! thread, one after another, in one task of the window's app: input goes
 //! through the handlers real input goes through ([`crate::input`],
 //! [`crate::text_input`]), with times on the surface's clock, so presses,
 //! gestures and flings behave as they do under a mouse. Running starts
 //! once the app's first views are mounted, the app settled and the window
-//! drew it. After an input step the script waits a frame (16 ms). The app
-//! counts as settled when no batch came for 100 ms (at most 2 s: an app
-//! that commits on every frame never settles), so a `shot` right after a
-//! `tap` shows what the app did in response; timers and animations still
-//! need a `wait`.
+//! drew it. Input steps and shots first wait for the app to settle: no
+//! batch for 100 ms (at most 2 s: an app that commits on every frame
+//! never settles). So a `shot` right after a `tap` shows what the app did
+//! in response, and a `tap` after a `tap` that pushed a screen lands on
+//! that screen; timers, animations and network images still need a
+//! `wait`.
 //!
 //! Shots: with feature `shot` (which turns on GPUI's `test-support`; the
 //! development host turns it on there) on macOS and Windows, GPUI renders
@@ -59,7 +63,12 @@
 //! copied in as GPUI presents them. Under Wayland proper there are no
 //! shots.
 
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 use gpui::{App, AsyncApp, Window, WindowHandle};
 
@@ -112,12 +121,39 @@ enum Step {
     Quit,
 }
 
+/// A script failed: the standalone app exits with a failure.
+static FAILED: AtomicBool = AtomicBool::new(false);
+
+/// True when a script failed: a step did not parse, the app showed
+/// nothing, a shot was not written, the window closed before `quit` or the
+/// app reported an error.
+pub(crate) fn failed() -> bool {
+    FAILED.load(Ordering::Relaxed)
+}
+
+fn fail(message: &str) {
+    log::error!("script: {message}");
+    FAILED.store(true, Ordering::Relaxed);
+}
+
+thread_local! {
+    /// A script runs on this (main) thread.
+    static RUNNING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The app reported an error: a script running fails.
+pub(crate) fn app_error() {
+    if RUNNING.with(Cell::get) {
+        FAILED.store(true, Ordering::Relaxed);
+    }
+}
+
 /// Runs `script`'s steps in `window` once it shows.
 pub(crate) fn run(window: WindowHandle<AppView>, script: &str, cx: &mut App) {
     let steps = match parse(script) {
         Ok(steps) => steps,
         Err(err) => {
-            log::error!("script: {err}");
+            fail(&err);
             // Whatever drives the script is not left waiting for a window
             // that never quits.
             cx.spawn(async move |cx| {
@@ -127,17 +163,26 @@ pub(crate) fn run(window: WindowHandle<AppView>, script: &str, cx: &mut App) {
             return;
         }
     };
+    RUNNING.with(|r| r.set(true));
     cx.spawn(async move |cx| {
         if !started(window, cx).await {
-            log::error!("script: the app showed nothing in {START_TIMEOUT:?}; not running");
+            fail(&format!(
+                "the app showed nothing in {START_TIMEOUT:?}; not running"
+            ));
+            let _ = window.update(cx, |_, window, _| window.remove_window());
             return;
         }
         for step in steps {
             log::debug!("script: {step:?}");
+            let quit = step == Step::Quit;
             if !run_step(window, step, cx).await {
+                if !quit {
+                    fail("the window closed before the script ended");
+                }
                 break;
             }
         }
+        RUNNING.with(|r| r.set(false));
     })
     .detach();
 }
@@ -167,6 +212,24 @@ async fn run_step(window: WindowHandle<AppView>, step: Step, cx: &mut AsyncApp) 
     let input = |cx: &mut AsyncApp, f: &dyn Fn(&Rc<Surface>)| {
         with_surface(window, cx, |s, _, _| f(s)).is_some()
     };
+    // Input goes to what the previous steps led to (a pushed screen, a
+    // switched page), not to what was there a moment before.
+    let is_input = !matches!(
+        step,
+        Step::Wait(_) | Step::Shot { .. } | Step::Dark(_) | Step::Resize(..) | Step::Quit
+    );
+    if is_input && !settled(window, cx).await {
+        return false;
+    }
+    if matches!(step, Step::Tap(..) | Step::Drag { .. }) {
+        // A press focuses the view, as a real one does ([`crate::events`]).
+        let _ = window.update(cx, |view, window, cx| {
+            let focus = gpui::Focusable::focus_handle(view, cx);
+            if !focus.is_focused(window) {
+                window.focus(&focus, cx);
+            }
+        });
+    }
     let alive = match step {
         Step::Wait(ms) => {
             sleep(cx, ms).await;
@@ -240,7 +303,7 @@ async fn run_step(window: WindowHandle<AppView>, step: Step, cx: &mut AsyncApp) 
             }
             match take_shot(window, cx, &path, scale).await {
                 Some(Ok((w, h))) => log::info!("script: wrote {path} ({w}x{h})"),
-                Some(Err(err)) => log::error!("script: shot {path}: {err:#}"),
+                Some(Err(err)) => fail(&format!("shot {path}: {err:#}")),
                 None => return false,
             }
             return true;

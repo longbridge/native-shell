@@ -567,7 +567,8 @@ pub fn open_app_window(
     Ok(handle)
 }
 
-/// Runs `source` in a window until it is closed.
+/// Runs `source` in a window until it is closed. Fails when the window
+/// cannot open or [`AppOptions::script`] failed.
 pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode {
     let ok = Rc::new(std::cell::Cell::new(true));
     let result = ok.clone();
@@ -586,7 +587,7 @@ pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode
         }
         cx.activate(true);
     });
-    if result.get() {
+    if result.get() && !crate::script::failed() {
         std::process::ExitCode::SUCCESS
     } else {
         std::process::ExitCode::FAILURE
