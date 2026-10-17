@@ -59,7 +59,7 @@ const groups: { title: string; demos: DemoEntry[] }[] = [
       { name: "Canvas", detail: "2D context: paths, gradients, text, images, native animation", icon: "canvas", screen: CanvasDemo },
       { name: "Styles", detail: "Corners, borders, shadows, clipping, 3D transforms", icon: "styles", screen: Styles },
       { name: "Tailwind", detail: "class=\"…\" resolved natively: variants, grid, shadows, motion", icon: "tailwind", screen: Tailwind },
-      { name: "Text", detail: "Fonts, spans, inline views and images, decorations, truncation", icon: "text", screen: TextDemo },
+      { name: "Text", detail: "Fonts, spans, inline views and images, decorations, truncation, languages", icon: "text", screen: TextDemo },
       { name: "Images", detail: "Resize modes, tint, GIF / WebP, placeholders, blur, fade", icon: "image", screen: Images },
     ],
   },
