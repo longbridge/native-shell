@@ -64,9 +64,9 @@ pub enum Key {
 impl Key {
     /// The key named `name`: a key name (`"enter"`, `"f5"`, `"plus"`) or
     /// the character the key types on the US layout without Shift (`"n"`,
-    /// `"1"`, `","`), in lowercase ([`Shortcut::parse`]).
+    /// `"1"`, `","`), in any case ([`Shortcut::parse`]).
     pub fn parse(name: &str) -> Option<Key> {
-        parse_key(name, name).ok()
+        parse_key(name, &name.to_ascii_lowercase()).ok()
     }
 
     /// Its name in a shortcut's label (`N`, `Enter`, `F5`).
@@ -120,8 +120,9 @@ impl Shortcut {
         }
     }
 
-    /// Parses `"mod+shift+n"`: lowercase modifiers and one key joined by
-    /// `+`. `mod` (`cmdorctrl`, `commandorcontrol`) is Command when
+    /// Parses `"mod+shift+n"`: modifiers and one key joined by `+`, in any
+    /// case (lowercase is the style; a capital letter is the same key, not
+    /// Shift). `mod` (`cmdorctrl`, `commandorcontrol`) is Command when
     /// `mod_is_meta` (macOS), else Control; `cmd` (`command`, `meta`,
     /// `super`, `win`) is Command, the Windows key or Super; then `ctrl`
     /// (`control`), `alt` (`option`, `opt`) and `shift`. The key is a name
@@ -129,7 +130,10 @@ impl Shortcut {
     /// the `=` key. `nsh/keymap` (`crate::keymap`) reads the same
     /// keystrokes, with the same messages for those that are not.
     pub fn parse(text: &str, mod_is_meta: bool) -> Result<Shortcut, ShortcutError> {
-        let (mods, key) = split(text)?;
+        // Case does not matter; messages quote the text as written and
+        // suggest lowercase.
+        let lower = text.to_ascii_lowercase();
+        let (mods, key) = split(text, &lower)?;
         // Modifiers first, as `nsh/keymap` reads them (so are its errors).
         let mut shortcut = Shortcut::key(Key::Space);
         for name in mods {
@@ -233,7 +237,7 @@ const NAMED: &[(&str, Key)] = &[
 ];
 
 /// The modifiers and the key of `text` (`"mod+shift+n"`).
-fn split(text: &str) -> Result<(Vec<&str>, &str), ShortcutError> {
+fn split<'a>(text: &str, lower: &'a str) -> Result<(Vec<&'a str>, &'a str), ShortcutError> {
     if text.is_empty() {
         return Err(error(text, "empty"));
     }
@@ -243,8 +247,8 @@ fn split(text: &str) -> Result<(Vec<&str>, &str), ShortcutError> {
             "one keystroke per binding (key sequences such as \"mod+k mod+s\" are not supported)",
         ));
     }
-    if text == "+" || text.ends_with("++") {
-        let mods = text.strip_suffix("++").unwrap_or("");
+    if lower == "+" || lower.ends_with("++") {
+        let mods = lower.strip_suffix("++").unwrap_or("");
         let plus = if mods.is_empty() {
             "plus".to_owned()
         } else {
@@ -255,9 +259,9 @@ fn split(text: &str) -> Result<(Vec<&str>, &str), ShortcutError> {
             format_args!("write the plus key as \"plus\": {plus:?}"),
         ));
     }
-    let (mods, key) = match text.rsplit_once('+') {
+    let (mods, key) = match lower.rsplit_once('+') {
         Some((mods, key)) => (mods.split('+').collect(), key),
-        None => (Vec::new(), text),
+        None => (Vec::new(), lower),
     };
     if key.is_empty() {
         return Err(error(text, "no key after the modifiers"));
@@ -279,12 +283,6 @@ fn modifier<'a>(
         "mod" | "cmdorctrl" | "commandorcontrol" if mod_is_meta => &mut shortcut.meta,
         "mod" | "cmdorctrl" | "commandorcontrol" => &mut shortcut.ctrl,
         "" => return Err("an empty modifier".into()),
-        other if other != other.to_ascii_lowercase() => {
-            return Err(format!(
-                "modifiers are lower case: {:?}",
-                other.to_ascii_lowercase()
-            ));
-        }
         other => {
             return Err(format!(
                 "unknown modifier {other:?} (ctrl, alt, shift, cmd or mod)"
@@ -307,14 +305,7 @@ fn parse_key(text: &str, key: &str) -> Result<Key, ShortcutError> {
     }
     let mut chars = key.chars();
     let (Some(c), None) = (chars.next(), chars.next()) else {
-        let lower = key.to_ascii_lowercase();
-        let named = NAMED.iter().any(|(name, _)| *name == lower)
-            || lower
-                .strip_prefix('f')
-                .is_some_and(|n| n.parse::<u8>().is_ok());
-        let hint = if named {
-            format!(" (key names are lower case: {lower:?})")
-        } else if let Some((first, _)) = key.split_once('-')
+        let hint = if let Some((first, _)) = key.split_once('-')
             && modifier(&mut Shortcut::key(Key::Space), first, false).is_ok()
         {
             // `mod--` is `mod+-`.
@@ -328,15 +319,6 @@ fn parse_key(text: &str, key: &str) -> Result<Key, ShortcutError> {
         };
         return Err(error(text, format_args!("unknown key {key:?}{hint}")));
     };
-    if c.is_ascii_uppercase() {
-        return Err(error(
-            text,
-            format_args!(
-                "letters are lower case, with shift+ for Shift (\"shift+{}\")",
-                c.to_ascii_lowercase()
-            ),
-        ));
-    }
     if let Some(&(_, base)) = SHIFTED.iter().find(|(shifted, _)| *shifted == c) {
         return Err(error(
             text,
@@ -623,6 +605,26 @@ mod tests {
             Shortcut::parse("meta+k", false),
             Shortcut::parse("cmd+k", false)
         );
+        // Case does not matter, and a capital letter is not Shift.
+        assert_eq!(Shortcut::parse("Mod+Shift+N", false), Ok(s));
+        assert_eq!(
+            Shortcut::parse("CMD+K", false),
+            Shortcut::parse("cmd+k", false)
+        );
+        assert_eq!(
+            Shortcut::parse("mod+N", false),
+            Shortcut::parse("mod+n", false)
+        );
+        assert_eq!(
+            Shortcut::parse("Escape", false),
+            Shortcut::parse("escape", false)
+        );
+        assert_eq!(Shortcut::parse("F5", false), Shortcut::parse("f5", false));
+        assert_eq!(
+            Shortcut::parse("Ctrl+Plus", false),
+            Shortcut::parse("ctrl+=", false)
+        );
+        assert_eq!(Key::parse("PageUp"), Some(Key::PageUp));
         // The plus key is the `=` key.
         assert_eq!(
             Shortcut::parse("ctrl+plus", false),
@@ -653,11 +655,11 @@ mod tests {
         assert!(err("mod+k mod+s").contains("one keystroke per binding"));
         assert!(err("mod+").contains("no key after the modifiers"));
         assert!(err("hyper+k").contains("unknown modifier \"hyper\""));
-        assert!(err("Mod+Shift+N").contains("modifiers are lower case: \"mod\""));
         assert!(err("ctrl+ctrl+k").contains("\"ctrl\" twice"));
         assert!(err("mod-k").contains("join modifiers and the key with \"+\": \"mod+k\""));
-        assert!(err("mod+N").contains("\"shift+n\""));
-        assert!(err("Escape").contains("key names are lower case: \"escape\""));
+        // Hints suggest lowercase, whatever case the text was written in.
+        assert!(err("Mod-N").contains("join modifiers and the key with \"+\": \"mod+n\""));
+        assert!(err("CTRL++").contains("\"ctrl+plus\""));
         assert!(err("mod+?").contains("write \"shift+/\""));
         assert!(err("ctrl++").contains("write the plus key as \"plus\": \"ctrl+plus\""));
         assert!(err("ctrl+f25").contains("unknown key"));

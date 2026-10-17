@@ -512,7 +512,9 @@ export type MenuItem =
       label?: string;
       /** A standard item. */
       role?: MenuRole;
-      /** Its shortcut, in lowercase: modifiers and a key joined by `+`:
+      /** Its shortcut: modifiers and a key joined by `+`, in any case
+       * (lowercase is the recommended style; a capital letter is the same
+       * key, not Shift):
        * `"mod+n"`, `"mod+shift+z"`, `"alt+f4"`, `"f11"`. `mod` (`cmdorctrl`)
        * is Command on macOS and Control elsewhere; `cmd` (`command`,
        * `meta`, `super`, `win`), `ctrl` (`control`), `alt` (`option`,
