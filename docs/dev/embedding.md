@@ -54,7 +54,9 @@
   clipping ancestors), the tree paints it where it draws the box (nsh content drawn later covers it), and a `BlockMouse`
   hitbox under it keeps nsh's input away; keys go to it while focus is inside it, and one that returns its widget's
   handle from `NativeComponent::focus_handle` is a Tab stop among the text fields (in tree order, in the newest modal's
-  scope). `render` is also called while the box is empty, so a component can size itself. Content masks are
+  scope). Props and commands reach it with the next frame, before `render`, with the window and `App` (`set_prop(name,
+  value, window, cx)`, `command(name, args, window, cx)`), so it can update its entities. `render` is also called while
+  the box is empty, so a component can size itself. Content masks are
   rectangles: rounded corners do not cut a component (videos follow them).
   `crates/nsh-platform-gpui/examples/embed.rs` runs `examples/embedded` with its badge as a GPUI element.
 - **The iOS SDK** (`crates/xtask/src/ios.rs`): per platform slice (device, simulator, Catalyst) a static

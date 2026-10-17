@@ -96,7 +96,13 @@ use crate::{
 ///         )
 ///     }
 ///
-///     fn set_prop(&mut self, name: &str, value: Option<&serde_json::Value>) {
+///     fn set_prop(
+///         &mut self,
+///         name: &str,
+///         value: Option<&serde_json::Value>,
+///         _window: &mut Window,
+///         _cx: &mut App,
+///     ) {
 ///         if name == "text" {
 ///             self.text = value.and_then(|v| v.as_str()).unwrap_or("").to_owned();
 ///         }
@@ -130,12 +136,21 @@ pub trait NativeComponent {
     }
 
     /// Prop `name` changed (`None`: removed). Every prop the app set comes
-    /// right after the component is made.
-    fn set_prop(&mut self, name: &str, value: Option<&JsonValue>);
+    /// right after the component is made. Delivered with the next frame of
+    /// the surface, before [`NativeComponent::render`], with its window:
+    /// the component may update its entities here.
+    fn set_prop(
+        &mut self,
+        name: &str,
+        value: Option<&JsonValue>,
+        window: &mut Window,
+        cx: &mut App,
+    );
 
-    /// JS called `ref.command(name, args)`.
-    fn command(&mut self, name: &str, args: &JsonValue) {
-        let _ = (name, args);
+    /// JS called `ref.command(name, args)`. Delivered as props are, in
+    /// order with them.
+    fn command(&mut self, name: &str, args: &JsonValue, window: &mut Window, cx: &mut App) {
+        let _ = (name, args, window, cx);
     }
 }
 
@@ -343,6 +358,7 @@ pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
             id,
             component: RefCell::new(None),
             element: RefCell::new(None),
+            pending: RefCell::default(),
         })),
     };
     fill(view, &host.item());
@@ -412,14 +428,14 @@ pub(crate) fn component_props(
     let Some(item) = component_item(surface, view.id()) else {
         return;
     };
-    // Taken out while the app's code runs, so it may reach the surface.
-    let Some(mut component) = item.component.borrow_mut().take() else {
+    if item.component.borrow().is_none() {
         return;
-    };
-    for (name, value) in props {
-        component.set_prop(name, value.as_ref());
     }
-    item.put(component);
+    let mut pending = item.pending.borrow_mut();
+    for (name, value) in props {
+        pending.push(Pending::Prop(name.clone(), value.clone()));
+    }
+    drop(pending);
     view.changed();
 }
 
@@ -434,13 +450,13 @@ pub(crate) fn command(surface: &Rc<Surface>, view: &NshView, command: &Command) 
     match (host, command) {
         (Some(HostRef::Video(video)), Command::Seek(seconds)) => video.seek(*seconds),
         (Some(HostRef::Web(web)), _) => web.command(command),
-        (Some(HostRef::Component(item)), Command::Native { name, args }) => {
-            let taken = item.component.borrow_mut().take();
-            if let Some(mut component) = taken {
-                component.command(name, args);
-                item.put(component);
-                view.changed();
-            }
+        (Some(HostRef::Component(item)), Command::Native { name, args })
+            if item.component.borrow().is_some() =>
+        {
+            item.pending
+                .borrow_mut()
+                .push(Pending::Command(name.clone(), args.clone()));
+            view.changed();
         }
         _ => {}
     }
@@ -463,6 +479,8 @@ pub(crate) fn prepaint(surface: &Rc<Surface>, window: &mut Window, cx: &mut App)
         hosts.sort_unstable_by_key(|(id, _)| *id);
         hosts
     };
+    // Video frames (and images) dropped where nothing draws images.
+    crate::image::release_dropped(window, cx);
     let mut focused = Vec::new();
     for (id, host) in hosts {
         let Some(view) = surface.view(id) else {
@@ -471,6 +489,7 @@ pub(crate) fn prepaint(surface: &Rc<Surface>, window: &mut Window, cx: &mut App)
         let geometry = geometry(surface, &view);
         match host {
             HostRef::Component(item) => {
+                item.deliver(window, cx);
                 if let Some(focus) = item.prepaint(geometry, window, cx) {
                     focused.push((id, focus));
                 }
@@ -658,6 +677,14 @@ struct ComponentItem {
     /// The element the last prepaint laid out, painted when the tree draws
     /// the container.
     element: RefCell<Option<AnyElement>>,
+    /// Props and commands for the next prepaint, which has the window.
+    pending: RefCell<Vec<Pending>>,
+}
+
+/// A prop or command waiting for [`ComponentItem::deliver`].
+enum Pending {
+    Prop(Arc<str>, Option<JsonValue>),
+    Command(Arc<str>, JsonValue),
 }
 
 impl ComponentItem {
@@ -675,7 +702,28 @@ impl ComponentItem {
         }
     }
 
+    /// Hands the props and commands that came since the last frame to the
+    /// component, in order.
+    fn deliver(&self, window: &mut Window, cx: &mut App) {
+        let pending = std::mem::take(&mut *self.pending.borrow_mut());
+        if pending.is_empty() {
+            return;
+        }
+        // Taken out while the app's code runs, so it may reach the surface.
+        let Some(mut component) = self.component.borrow_mut().take() else {
+            return;
+        };
+        for p in &pending {
+            match p {
+                Pending::Prop(name, value) => component.set_prop(name, value.as_ref(), window, cx),
+                Pending::Command(name, args) => component.command(name, args, window, cx),
+            }
+        }
+        self.put(component);
+    }
+
     fn close(&self) {
+        self.pending.borrow_mut().clear();
         self.element.borrow_mut().take();
         // Dropped here, with whatever the component holds.
         let component = self.component.borrow_mut().take();
