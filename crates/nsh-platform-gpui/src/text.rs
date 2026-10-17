@@ -368,6 +368,12 @@ impl GpuiTextEngine {
         fonts
     }
 
+    /// The GPUI font `style` is set in (canvas text, which must measure as
+    /// `measureText` does).
+    pub(crate) fn font(&self, style: &ResolvedTextStyle) -> Font {
+        self.face(style).font.clone()
+    }
+
     /// The font `style` is set in.
     fn face(&self, style: &ResolvedTextStyle) -> Rc<Face> {
         let key = (
@@ -1301,6 +1307,7 @@ impl TextEngine for GpuiTextEngine {
             .add_fonts(vec![Cow::Owned(data.to_vec())])
             .map_err(|e| e.to_string())?;
         registered.push((key.0, key.1, families));
+        crate::canvas::font_registered(data);
         FONT_GENERATION.fetch_add(1, Ordering::Release);
         Ok(())
     }
