@@ -10,12 +10,17 @@ publish.workspace = true
 workspace = true
 
 [features]
-default = ["js"]
+default = ["js", "webview"]
 # JS apps (bundles, signed packages); without it, the library only runs a
 # Rust app and links no QuickJS.
 js = ["nsh-engine/js"]
 # Development support: dev server client, log forwarding, error overlay.
 dev = ["js", "dep:nsh-dev"]
+# Web views (wry; on Linux GTK 3 and WebKitGTK 4.1, on an X11 window).
+webview = ["dep:wry", "dep:gtk", "dep:webkit2gtk"]
+# Videos (GStreamer 1.20+ with its base and good plug-ins; libav for most
+# codecs).
+video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 
 [dependencies]
 log.workspace = true
@@ -39,3 +44,11 @@ crossbeam-channel.workspace = true
 futures-channel.workspace = true
 futures-util.workspace = true
 nsh-dev = { workspace = true, features = ["client"], optional = true }
+wry = { workspace = true, optional = true }
+gstreamer = { workspace = true, optional = true }
+gstreamer-app = { workspace = true, optional = true }
+gstreamer-video = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { workspace = true, optional = true }
+webkit2gtk = { workspace = true, optional = true }

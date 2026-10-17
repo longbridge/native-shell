@@ -37,6 +37,13 @@
   size). `ref.command(name, args)` → `Command::Native`. Unknown names render an empty box (warned once). Props and events
   cross the C ABI / JNI as JSON text (Swift `JSONSerialization`, Java `org.json` as maps and lists). Registered
   components are the embedding app's own code: capabilities do not apply to them.
+  On the GPUI backend (`nsh-platform-gpui`, `native.rs`) a component renders a GPUI element
+  (`NativeComponent::render(window, cx) -> Option<AnyElement>`, any GPUI / GPUI Kit element or `Entity` view): the
+  surface element's prepaint lays it out at the box's window bounds and prepaints it (`prepaint_as_root`, clipped to the
+  clipping ancestors), the tree paints it where it draws the box (nsh content drawn later covers it), and a `BlockMouse`
+  hitbox under it keeps nsh's input away; keys go to it while focus is inside it. `render` is also called while the box
+  is empty, so a component can size itself. Content masks are rectangles: rounded corners do not cut it.
+  `crates/nsh-platform-gpui/examples/embed.rs` runs `examples/embedded` with its badge as a GPUI element.
 - **The iOS SDK** (`crates/xtask/src/ios.rs`): per platform slice (device, simulator, Catalyst) a static
   `NativeShell.framework` whose binary is `nsh-platform-ios` with feature `embed` (built by `cargo rustc --crate-type
   staticlib`, so the hosts never build or export it) merged by `libtool` with the Swift module, compiled with library

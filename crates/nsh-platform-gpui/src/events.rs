@@ -207,7 +207,7 @@ pub(crate) fn install(
 
     let s = surface.clone();
     window.on_key_event(move |e: &KeyDownEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble {
+        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window) {
             return;
         }
         let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {
@@ -230,8 +230,8 @@ pub(crate) fn install(
     });
 
     let s = surface.clone();
-    window.on_key_event(move |e: &KeyUpEvent, phase, _window, cx| {
-        if phase != DispatchPhase::Bubble {
+    window.on_key_event(move |e: &KeyUpEvent, phase, window, cx| {
+        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window) {
             return;
         }
         let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {

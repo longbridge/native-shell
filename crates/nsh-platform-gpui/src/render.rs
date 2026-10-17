@@ -430,7 +430,10 @@ impl Element for SurfaceElement {
         // Changes made by the tick are in this frame.
         surface.drawing();
         window.set_focus_handle(&self.focus, cx);
-        window.insert_hitbox(bounds, HitboxBehavior::BlockMouse)
+        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::BlockMouse);
+        // Native components and web views take the input over their boxes.
+        crate::native::prepaint(surface, window, cx);
+        hitbox
     }
 
     fn paint(

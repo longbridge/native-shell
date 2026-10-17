@@ -123,6 +123,15 @@ webview2-com = "0.39"
 # The Linux backend (GTK 4.14+: Ubuntu 24.04, Debian 13, Fedora 40).
 gtk4 = { version = "0.11", features = ["v4_14"] }
 pango = "0.22"
+# The GPUI backend's web views: wry, the version GPUI Kit's `gpui-webview` uses
+# (WebKitGTK 4.1 on GTK 3 on Linux, WKWebView on macOS, WebView2 on Windows).
+wry = { package = "lb-wry", version = "0.53.3" }
+gtk = "0.18"
+webkit2gtk = { version = "=2.0.1", features = ["v2_38"] }
+# The GPUI backend's videos (GStreamer 1.20+).
+gstreamer = "0.25"
+gstreamer-app = "0.25"
+gstreamer-video = "0.25"
 pangocairo = "0.22"
 taffy = { version = "0.15", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
 # Features per crate: the runtime's binaries get only what they use.
