@@ -12,20 +12,24 @@
 //!   Direct2D draws in the view, so a video is clipped, transformed and
 //!   covered like any other content. `controls` draws a small control bar
 //!   (play / pause, a scrubber, the time) over the picture.
-//! - **Web views** are WebView2 controllers ([`web`]): a child window of
-//!   the surface's window, moved where the view was drawn after every frame
-//!   ([`Hosted::placed`]). Being a window, it sits above everything nsh
-//!   draws (the "airspace" limit of child windows): it is clipped to its
-//!   clipping ancestors and its rounded corners with a window region, and
-//!   hidden while its view is not drawn, but nsh content drawn over it (a
-//!   dialog, a menu) is covered by it.
+//! - **Web views** are WebView2 composition controllers ([`web`]): the page
+//!   is a visual of the window's composition ([`crate::compose`]), placed,
+//!   clipped and faded like its view by every frame, between what nsh draws
+//!   before it and what it draws after it, so nsh content over a page (a
+//!   dialog, a sheet, a menu) covers it. The window takes the input and
+//!   forwards to the page what nsh's hit testing gives it.
 //! - **Registered components**: [`crate::AppView::register_component`]
 //!   names a factory; the core creates a [`ViewKind::Native`] container,
 //!   names the component ([`MountItem::Component`]) and sends its props as
 //!   JSON as they change. A component draws with Direct2D in the view
 //!   ([`NativeComponent::draw`]) or brings a child window of its own
-//!   ([`NativeComponent::window`]), placed as a web view's. Components emit
-//!   events and report their own size through their [`ComponentContext`].
+//!   ([`NativeComponent::window`]), moved where the view was drawn after
+//!   every frame ([`Hosted::placed`]), clipped to its clipping ancestors
+//!   and its rounded corners with a window region and hidden while its view
+//!   is not drawn. Being a window, it sits above everything nsh draws (the
+//!   "airspace" limit of child windows): nsh content drawn over it is
+//!   covered by it. Components emit events and report their own size
+//!   through their [`ComponentContext`].
 //!   Registries belong to one `AppView` (and the views made from the same
 //!   [`crate::AppOptions`]): no globals.
 //!
@@ -119,8 +123,8 @@ pub trait NativeComponent {
 
     /// A window of its own (a map, a video surface, a third-party control),
     /// if it has one: nsh makes it a child of the surface's window and
-    /// moves, clips and hides it with the view, as a web view's. It sits
-    /// above whatever nsh draws.
+    /// moves, clips and hides it with the view. It sits above whatever nsh
+    /// draws, web views included.
     fn window(&self) -> Option<HWND> {
         None
     }
@@ -275,9 +279,15 @@ impl NativeState {
         *self.app_id.borrow_mut() = app_id.to_owned();
     }
 
-    /// Drops every control (the app stopped): media stops playing.
+    /// Drops every control (the app stopped): media stops playing, pages
+    /// close.
     pub(crate) fn clear(&self) {
         let hosts = std::mem::take(&mut *self.hosts.borrow_mut());
+        for host in hosts.values() {
+            if let Host::Web(w) = host {
+                w.close();
+            }
+        }
         drop(hosts);
     }
 }
@@ -303,10 +313,11 @@ impl Drop for Host {
     fn drop(&mut self) {
         // The item may outlive its control in its view (a removal
         // animation keeps the view on screen a little longer): it shows the
-        // last frame of a video, and nothing of a web view.
+        // last frame of a video, and a web view's page until the view is
+        // not drawn anymore.
         match self {
             Host::Video(v) => v.close(),
-            Host::Web(w) => w.close(),
+            Host::Web(w) => w.retire(),
             Host::Component(c) => c.close(),
         }
     }
@@ -446,6 +457,35 @@ impl Host {
             Host::Web(w) => HostRef::Web(w.clone()),
             Host::Component(c) => HostRef::Component(c.clone()),
         }
+    }
+}
+
+/// Content that takes the keyboard (a dialog, a modal) comes over the
+/// views: a page that had the focus gives it back to the window, as a web
+/// view resigns first responder when something is presented over it.
+pub(crate) fn take_keyboard(surface: &Surface) {
+    use windows::Win32::UI::{
+        Input::KeyboardAndMouse::{GetFocus, SetFocus},
+        WindowsAndMessaging::IsChild,
+    };
+    let hwnd = surface.hwnd();
+    if hwnd.is_invalid() {
+        return;
+    }
+    // SAFETY: plain calls on this thread's window.
+    unsafe {
+        let focus = GetFocus();
+        if !focus.is_invalid() && focus != hwnd && IsChild(hwnd, focus).as_bool() {
+            let _ = SetFocus(Some(hwnd));
+        }
+    }
+}
+
+/// The web view of node `id`.
+fn web_item(surface: &Surface, id: NodeId) -> Option<Rc<web::WebItem>> {
+    match surface.native.hosts.borrow().get(&id) {
+        Some(Host::Web(item)) => Some(item.clone()),
+        _ => None,
     }
 }
 

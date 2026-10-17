@@ -108,6 +108,17 @@ pub(crate) struct ItemPointer {
     pub(crate) clicks: u32,
     /// Shift, Ctrl and Alt.
     pub(crate) modifiers: crate::input::Modifiers,
+    /// The button of a press or release: 0 left, 1 right, 2 middle, 3 back
+    /// (X1), 4 forward (X2). Items other than [`Hosted::raw`] ones only
+    /// get the left one.
+    pub(crate) button: u8,
+    /// Which pointer: 1 is the mouse, touch and pen contacts have their own
+    /// (their `WM_POINTER` id plus 2).
+    pub(crate) pointer: u32,
+    /// A finger.
+    pub(crate) touch: bool,
+    /// A pen.
+    pub(crate) pen: bool,
 }
 
 /// Something a view hosts and draws above its children: a text editor, a
@@ -141,6 +152,40 @@ pub(crate) trait Hosted {
     /// window (a web view) move it there.
     fn placed(&self, rect: Option<windows::Win32::Foundation::RECT>) {
         let _ = rect;
+    }
+
+    /// True for an item whose content the system composes itself (a web
+    /// view's page): the frame's drawing splits there, and what is drawn
+    /// after it goes on a layer above it ([`crate::compose`]).
+    fn composed(&self) -> bool {
+        false
+    }
+
+    /// The visual of a [`Hosted::composed`] item, stacked between the
+    /// layers.
+    fn visual(&self) -> Option<windows::Win32::Graphics::DirectComposition::IDCompositionVisual2> {
+        None
+    }
+
+    /// Where the last frame put a [`Hosted::composed`] item, or `None` when
+    /// it was not drawn.
+    fn compose_at(&self, at: Option<&crate::compose::Placement>) {
+        let _ = at;
+    }
+
+    /// True when the item takes the pointer as it comes (every button,
+    /// every move while one is down, no presses or drags of its views): a
+    /// web view's page.
+    fn raw(&self) -> bool {
+        false
+    }
+
+    /// A wheel or touchpad scroll at `(x, y)` (item coordinates) for a
+    /// [`Hosted::raw`] item; true when it took it (else the scroll views
+    /// around it get it).
+    fn wheel(&self, x: f32, y: f32, event: &crate::input::WheelEvent) -> bool {
+        let _ = (x, y, event);
+        false
     }
 }
 

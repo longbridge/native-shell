@@ -122,6 +122,7 @@ pub(crate) fn draw_into(
 ) -> bool {
     let gfx = cx.gfx;
     let mut drawn = Vec::new();
+    let mut composed = Vec::new();
     let ok = with_context(gfx, |dc| {
         // SAFETY: COM calls on the live contexts; `EndDraw` follows
         // `BeginDraw`.
@@ -139,6 +140,7 @@ pub(crate) fn draw_into(
             Ok(mut inner) => {
                 f(&mut inner);
                 drawn = std::mem::take(&mut inner.drawn);
+                composed = std::mem::take(&mut inner.composed);
             }
             Err(err) => log::debug!("decor: offscreen pass not started: {err}"),
         }
@@ -153,6 +155,7 @@ pub(crate) fn draw_into(
     })
     .unwrap_or(false);
     cx.drawn.append(&mut drawn);
+    cx.adopt_composed(composed);
     ok
 }
 

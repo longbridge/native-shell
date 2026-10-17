@@ -27,10 +27,14 @@
 //!
 //! Mouse button and move events go through the application's event queue
 //! (`postEvent:atStart:`), wheels through the window and keys through
-//! the application (`sendEvent:`, see `key`), so they take the path real ones take: AppKit's hit
-//! testing, the root view, [`crate::input`]. `hover` makes the window
-//! accept mouse moves (sent moves reach the first responder only then;
-//! real ones come through the root's tracking area).
+//! the application (`sendEvent:`, see `key`), so they take the path real
+//! ones take: AppKit's hit testing, the root view, [`crate::input`]. A
+//! wheel is the event the root's `hitTest:` sees while the window handles
+//! it, as `NSApp.currentEvent` would be ([`crate::view::scripted`]).
+//! Presses make the app active first: WebKit takes left presses only in
+//! the active app. `hover` makes the window accept mouse moves (sent moves
+//! reach the first responder only then; real ones come through the root's
+//! tracking area).
 
 use std::{rc::Rc, time::Duration};
 
@@ -149,6 +153,7 @@ pub(crate) fn run(window: &NSWindow, surface: Rc<Surface>, script: &str) {
         window,
         _surface: key,
         steps: std::cell::RefCell::new(steps.into_iter().collect()),
+        activations: std::cell::Cell::new(0),
     });
     RUNNER.with(|r| *r.borrow_mut() = Some(state));
     later(300, next);
@@ -159,6 +164,9 @@ struct Runner {
     /// The surface's key (kept for steps that will need it).
     _surface: u64,
     steps: std::cell::RefCell<std::collections::VecDeque<Step>>,
+    /// Attempts to make the app active since it last was (presses wait
+    /// for it).
+    activations: std::cell::Cell<u32>,
 }
 
 thread_local! {
@@ -190,6 +198,22 @@ fn next() {
 /// Runs `step`; returns the delay before the next one (`None`: no next).
 fn run_step(runner: &Runner, step: Step) -> Option<u64> {
     let window = &*runner.window;
+    // WebKit takes left presses only in the active app (in another, a
+    // click into a page just activates it), and another app may have
+    // become active since the script started: activate first, then press.
+    if matches!(step, Step::Tap(..) | Step::Down(..) | Step::Drag(..)) {
+        let app = objc2_app_kit::NSApplication::sharedApplication(MainThreadMarker::from(window));
+        if app.isActive() {
+            runner.activations.set(0);
+        } else if runner.activations.get() < 20 {
+            // Given up after a second (a locked screen): press anyway.
+            runner.activations.set(runner.activations.get() + 1);
+            #[allow(deprecated)]
+            app.activateIgnoringOtherApps(true);
+            runner.steps.borrow_mut().push_front(step);
+            return Some(50);
+        }
+    }
     match step {
         Step::Wait(ms) => return Some(ms),
         Step::Shot(path) => shot(window, &path),
@@ -455,7 +479,7 @@ fn wheel_with(
         return;
     };
     if momentum == 0 {
-        window.sendEvent(&ns);
+        crate::view::scripted(&ns, || window.sendEvent(&ns));
         return;
     }
     // The window drops synthesized momentum events (the system's go to
@@ -471,7 +495,7 @@ fn wheel_with(
         content.hitTest(p)
     });
     if let Some(view) = view {
-        view.scrollWheel(&ns);
+        crate::view::scripted(&ns, || view.scrollWheel(&ns));
     }
 }
 

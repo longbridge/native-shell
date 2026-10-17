@@ -15,10 +15,10 @@
 //!   A stream GStreamer cannot play (no plug-in for its container or
 //!   codec) reports `onError` (logged once, with a hint) and stops; it
 //!   never reports `onLoad`.
-//! - **Web views** would need WebKitGTK (the `webkit6` crate, WebKitGTK
-//!   6.0 for GTK 4): a system library many machines lack and nsh does not
-//!   depend on. Until it is an optional feature, a web view shows a
-//!   neutral placeholder and ignores its commands.
+//! - **Web views** (feature `webview`): a `WebKitWebView` (WebKitGTK 6.0)
+//!   filling the view, see `web`. Without the feature (nsh built without
+//!   WebKitGTK), a web view shows a neutral placeholder and ignores its
+//!   commands.
 //! - **Registered components**: [`AppView::register_component`] names a
 //!   factory; the core creates a [`ViewKind::Native`] container, names the
 //!   component ([`MountItem::Component`]) and sends its props as JSON as
@@ -49,6 +49,9 @@ use nsh_engine::EngineControl;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{image::AssetBase, surface::Surface, view::NshView};
+
+#[cfg(feature = "webview")]
+mod web;
 
 /// A native component made by a registered factory.
 ///
@@ -177,6 +180,13 @@ pub(crate) struct NativeState {
     components: RefCell<Components>,
     /// Where `asset:/` video sources are.
     asset_base: RefCell<Option<AssetBase>>,
+    /// What the running app may reach (web view navigations); `None`
+    /// before an app starts.
+    #[cfg(feature = "webview")]
+    access: RefCell<Option<Arc<nsh_engine::Access>>>,
+    /// The application id: web views keep their data under it.
+    #[cfg(feature = "webview")]
+    app_id: RefCell<String>,
     /// The controls, by node.
     hosts: RefCell<FxHashMap<NodeId, Host>>,
 }
@@ -197,6 +207,45 @@ impl NativeState {
         *self.asset_base.borrow_mut() = base;
     }
 
+    /// What the app that starts may reach: web views keep their
+    /// navigations within its `webview` capability.
+    #[cfg(feature = "webview")]
+    pub(crate) fn set_access(&self, access: Arc<nsh_engine::Access>) {
+        *self.access.borrow_mut() = Some(access);
+    }
+
+    /// What the app that starts may reach (nothing to keep without web
+    /// views).
+    #[cfg(not(feature = "webview"))]
+    pub(crate) fn set_access(&self, _access: Arc<nsh_engine::Access>) {}
+
+    /// The application id ([`crate::AppOptions::app_id`]): web views keep
+    /// their data in `$XDG_DATA_HOME/<app id>/webkit`.
+    #[cfg(feature = "webview")]
+    pub(crate) fn set_app_id(&self, app_id: &str) {
+        *self.app_id.borrow_mut() = app_id.to_owned();
+    }
+
+    /// The application id (nothing to keep without web views).
+    #[cfg(not(feature = "webview"))]
+    pub(crate) fn set_app_id(&self, _app_id: &str) {}
+
+    /// Whether any web view is mounted (input then keeps pointer events
+    /// from the parts of pages nsh clips off).
+    #[cfg(feature = "webview")]
+    pub(crate) fn has_pages(&self) -> bool {
+        self.hosts
+            .borrow()
+            .values()
+            .any(|h| matches!(h, Host::Web(_)))
+    }
+
+    /// Whether any web view is mounted: never without WebKitGTK.
+    #[cfg(not(feature = "webview"))]
+    pub(crate) fn has_pages(&self) -> bool {
+        false
+    }
+
     /// Drops every control (the app stopped): media stops playing.
     pub(crate) fn clear(&self) {
         let hosts = std::mem::take(&mut *self.hosts.borrow_mut());
@@ -207,7 +256,10 @@ impl NativeState {
 /// What a native view holds.
 enum Host {
     Video(VideoHost),
+    #[cfg(feature = "webview")]
+    Web(web::WebHost),
     /// A web view's placeholder (kept by the view).
+    #[cfg(not(feature = "webview"))]
     Web,
     /// A registered component; `None` until named, or when unknown.
     Component(Option<Box<dyn NativeComponent>>),
@@ -217,12 +269,15 @@ enum Host {
 pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
     let host = match view.kind() {
         ViewKind::Video => Host::Video(VideoHost::new(surface, view)),
+        #[cfg(feature = "webview")]
+        ViewKind::WebView => Host::Web(web::WebHost::new(surface, view)),
+        #[cfg(not(feature = "webview"))]
         ViewKind::WebView => {
             static WARNED: AtomicBool = AtomicBool::new(false);
             if !WARNED.swap(true, Ordering::Relaxed) {
                 log::warn!(
                     target: "js",
-                    "WebView is not available on Linux (nsh is built without WebKitGTK): it shows a placeholder"
+                    "WebView is not available: nsh is built without WebKitGTK (feature `webview` of nsh-platform-linux); it shows a placeholder"
                 );
             }
             // Gray reads on light and dark apps alike.
@@ -261,7 +316,10 @@ pub(crate) fn props(surface: &Rc<Surface>, view: &NshView, props: &NativeProps) 
             let base = surface.native.asset_base.borrow();
             video.set(view, p, base.as_ref());
         }
+        #[cfg(feature = "webview")]
+        (Some(Host::Web(web)), NativeProps::WebView(p)) => web.set(view, p),
         // Nothing to configure on the placeholder.
+        #[cfg(not(feature = "webview"))]
         (Some(Host::Web), NativeProps::WebView(_)) => {}
         _ => log::debug!("native: props for a view of another kind"),
     }
@@ -316,10 +374,49 @@ pub(crate) fn command(surface: &Rc<Surface>, view: &NshView, command: &Command) 
                 put_component(surface, view.id(), component);
             }
         }
-        // Web view commands: there is no page.
+        #[cfg(feature = "webview")]
+        _ => {
+            // Outside the hosts' borrow: WebKit may call back at once.
+            let web = match surface.native.hosts.borrow().get(&view.id()) {
+                Some(Host::Web(web)) => Some(web.web()),
+                _ => None,
+            };
+            if let Some(web) = web {
+                web::command(&web, command);
+            }
+        }
+        // Web view commands: the placeholder has no page.
+        #[cfg(not(feature = "webview"))]
         _ => {}
     }
 }
+
+/// The web view `widget` is, or is inside (up to its node's view).
+#[cfg(feature = "webview")]
+pub(crate) fn page_of(widget: &gtk::Widget) -> Option<gtk::Widget> {
+    let mut current = Some(widget.clone());
+    while let Some(w) = current {
+        if w.is::<webkit6::WebView>() {
+            return Some(w);
+        }
+        if w.is::<NshView>() {
+            return None;
+        }
+        current = w.parent();
+    }
+    None
+}
+
+/// The web view `widget` is in: none without WebKitGTK.
+#[cfg(not(feature = "webview"))]
+pub(crate) fn page_of(_widget: &gtk::Widget) -> Option<gtk::Widget> {
+    None
+}
+
+/// The CSS class of a web view whose page does not scroll
+/// (`scrollEnabled: false`): wheels over it go to the scroll views around
+/// it (`crate::input`).
+pub(crate) const UNSCROLLABLE: &str = "nsh-unscrollable";
 
 fn take_component(surface: &Surface, id: NodeId) -> Option<Box<dyn NativeComponent>> {
     match surface.native.hosts.borrow_mut().get_mut(&id) {
@@ -337,9 +434,29 @@ fn put_component(surface: &Surface, id: NodeId, component: Box<dyn NativeCompone
 
 /// Hosts `widget` in `view`, filling it at every frame.
 fn fill(view: &NshView, widget: &gtk::Widget) {
+    host(view, widget, false);
+}
+
+/// Hosts `widget` in `view` like [`fill`], mapped only while the view has
+/// a size. WebKit sizes a page's surface from its widget: mapped at 0 × 0
+/// (a view's frame comes after the view) and resized a frame later, a
+/// page sometimes never presents a frame and stays blank for good.
+#[cfg(feature = "webview")]
+fn fill_sized(view: &NshView, widget: &gtk::Widget) {
+    host(view, widget, true);
+}
+
+fn host(view: &NshView, widget: &gtk::Widget, sized: bool) {
     let frame = view.state().frame;
-    view.set_native(widget, bounds(frame.width, frame.height));
+    let has_size = |rect: Rect| rect.width >= 1.0 && rect.height >= 1.0;
+    let rect = bounds(frame.width, frame.height);
+    view.set_native(widget, rect);
+    // After `set_native`: parenting makes a widget child visible.
+    if sized {
+        widget.set_child_visible(has_size(rect));
+    }
     let weak = view.downgrade();
+    let hosted = widget.downgrade();
     // Runs at the start of the view's allocation, before it places its
     // natives: no allocation needs to be queued.
     view.on_resize(move |_, _| {
@@ -348,6 +465,10 @@ fn fill(view: &NshView, widget: &gtk::Widget) {
             let rect = bounds(s.frame.width, s.frame.height);
             for native in &mut s.natives {
                 native.rect = rect;
+            }
+            drop(s);
+            if sized && let Some(widget) = hosted.upgrade() {
+                widget.set_child_visible(has_size(rect));
             }
         }
     });

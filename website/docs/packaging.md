@@ -160,8 +160,8 @@ nsh package App.tsx --target linux --run
 
 Writes `out/<Name>/` (the executable `<Name>`, `nsh/bundle.nshc`, `nsh/assets/…`, `nsh/app.json` with the window title
 and the application id, `<id>.desktop` and the icon `<id>.png`) and the same as `out/<Name>.tar.gz`. Package on
-Linux: the runner is built for the machine it is built on. GTK 4 (4.14 or later) and Pango must be installed where the
-app runs. Installing it and the desktop entry: [Linux](./linux.md#packaging).
+Linux: the runner is built for the machine it is built on. GTK 4 (4.14 or later), Pango and WebKitGTK 6.0 (for web
+views) must be installed where the app runs. Installing it and the desktop entry: [Linux](./linux.md#packaging).
 
 ## Windows
 

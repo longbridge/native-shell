@@ -19,7 +19,9 @@
 //! (or under the bar for transparent headers and large titles).
 //!
 //! Going back (the back button, Escape, Alt+Left, the Back key, the
-//! mouse's back button; Escape in a focused text field only leaves it)
+//! mouse's back button; Escape in a focused text field or page only
+//! leaves it; the others go back in a page's history first while the page
+//! has the focus, or the pointer for the mouse button)
 //! pops natively, then sends `onDismiss`, which
 //! removes the route in JS; until the app removes the screen it is
 //! `popped` and ignored. With `preventBack` the screen gets
@@ -1647,17 +1649,22 @@ fn go_back_from(surface: &Rc<Surface>, screen: NodeId) {
 }
 
 /// The window of `surface`, when a text field (a `gtk::TextView` or any
-/// `gtk::Editable`) has its keyboard focus.
+/// `gtk::Editable`) or a web view's page has its keyboard focus.
 fn focused_field(surface: &Surface) -> Option<gtk::Root> {
     let root = surface.root.root()?;
     let focus = root.focus()?;
-    (focus.is::<gtk::TextView>() || focus.is::<gtk::Editable>()).then_some(root)
+    (focus.is::<gtk::TextView>()
+        || focus.is::<gtk::Editable>()
+        || crate::native::page_of(&focus).is_some())
+    .then_some(root)
 }
 
 /// A key nothing in the window used: Escape, Alt+Left and the Back key go
 /// back. Whether it was taken. Escape in a focused text field only leaves
 /// the field (a desktop convention: it never navigates away from what is
-/// being typed); Alt+Left and the Back key still go back.
+/// being typed), and so does Escape a focused page did not use (WebKit
+/// hands those back to the window); Alt+Left and the Back key still go
+/// back (in a page they go back in its history first, `native::web`).
 pub(crate) fn key_pressed(
     surface: &Rc<Surface>,
     key: gdk::Key,

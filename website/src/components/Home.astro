@@ -37,7 +37,7 @@ const copy = zh
       replay: '重播',
       capKicker: 'AI 友好',
       capTitle: '为模型编写、为宿主把关而设计',
-      capLead: '生成的界面要好写、可验证、跑得安全，还要是真正的原生界面。nsh 的每一层都围绕这四点设计。',
+      capLead: '生成的界面要是真正的原生界面，能作为插件装进已经发布的应用或独立成应用，还要好写、可验证、跑得安全。nsh 的每一层都围绕这几点设计。',
       usesKicker: '三种用法',
       usesTitle: '同一个模块，三种用法',
       usesLead: '首要用途是 AI 生成的界面；同一套机制也让原生应用可以扩展，或者直接组成一个独立应用。',
@@ -74,7 +74,7 @@ const copy = zh
       replay: 'Replay',
       capKicker: 'AI friendly',
       capTitle: 'Designed for models to write and hosts to trust.',
-      capLead: 'Generated UI has to be easy to write, checkable, safe to run and truly native. Every layer of nsh is built around those four.',
+      capLead: 'Generated UI has to be truly native, plug into apps that have already shipped or stand alone as an app, and be easy to write, checkable and safe to run. Every layer of nsh is built around that.',
       usesKicker: 'Three uses',
       usesTitle: 'One module, three ways to use it.',
       usesLead: 'AI-generated UI is what nsh is designed for. The same mechanism makes native apps extensible, or becomes a whole app.',
@@ -93,16 +93,16 @@ const copy = zh
 const caps = zh
   ? [
       { id: 'native', icon: 'devices', title: '真正的原生界面', body: '模块在手机上由 UIKit 与 Android 视图组成，在桌面上由 AppKit、GTK 4 以及用 Direct2D 绘制的 Win32 窗口呈现。地图、网页视图这类原生组件可以直接嵌入，没有图层问题；系统的文本、输入法和无障碍都原样可用。', chips: ['UIView', 'android.view.View', 'NSView', 'GtkWidget', 'Direct2D'] },
-      { id: 'tsx', icon: 'file', title: '模型擅长的格式', body: '一个模块就是一个 TSX 文件：信号、少量宿主元素和 Tailwind 类。没有构建配置，无需 NPM。', chips: ['TSX', 'signal()', 'class'] },
-      { id: 'types', icon: 'braces', title: '精确的生成式契约', body: '每个元素、属性和模块都有从 Rust 源码生成的 TypeScript 声明，文档也以 llms.txt 提供给模型。', chips: ['.nsh/types', 'llms.txt'] },
+      { id: 'plugin', icon: 'plug', title: '插件，或独立应用', body: '在已有应用的任意页面放一个 NshAppView（iOS）、NshView（Android）或 AppView（桌面），运行时动态加载模块，新功能无需发版；同样的模块也能用 nsh package 打成独立应用。', chips: ['NshAppView', 'NshView', 'nsh package'] },
+      { id: 'tsx', icon: 'spark', title: 'AI 友好：TSX + Tailwind', body: '一个模块就是一个 TSX 文件：组件、信号和 Tailwind 类，正是模型最擅长写的格式。每个元素、属性和模块都有从 Rust 源码生成的 TypeScript 声明，文档以 llms.txt 提供给模型。', chips: ['TSX', 'Tailwind', 'llms.txt'] },
       { id: 'check', icon: 'check', title: '无需设备即可验证', body: 'nsh trace 无界面地运行模块并报告错误；编译器还能在进程内或浏览器里运行。生成、检查、重试。', chips: ['nsh trace', 'compile_module'] },
       { id: 'sandbox', icon: 'lock', title: '不可信，也能安全运行', body: '每个视图一个 QuickJS 虚拟机，内存、调用时长和节点数都有上限，只能使用宿主授予的能力。', chips: ['NshLimits', 'grantCapabilities'] },
       { id: 'signed', icon: 'shield', title: '签名下发，可吊销', body: '模块以 Ed25519 签名的 .nshpkg 到达；发布密钥由离线根密钥认证，设备端检查吊销列表。', chips: ['nsh publish', 'NshTrust'] },
     ]
   : [
       { id: 'native', icon: 'devices', title: 'Real native UI', body: 'Modules are UIKit and Android views on phones, and AppKit views, GTK 4 widgets and Win32 windows drawn with Direct2D on the desktop. Native components such as maps and web views embed with no layering problems, and the system’s text, input and accessibility just work.', chips: ['UIView', 'android.view.View', 'NSView', 'GtkWidget', 'Direct2D'] },
-      { id: 'tsx', icon: 'file', title: 'A format models write well', body: 'A module is one TSX file: signals, a few host elements and Tailwind classes. No build configuration, no NPM.', chips: ['TSX', 'signal()', 'class'] },
-      { id: 'types', icon: 'braces', title: 'An exact, generated contract', body: 'Every element, prop and module has TypeScript declarations generated from the Rust sources; the docs are served to models as llms.txt.', chips: ['.nsh/types', 'llms.txt'] },
+      { id: 'plugin', icon: 'plug', title: 'Plugins, or standalone apps', body: 'Put an NshAppView (iOS), NshView (Android) or AppView (desktop) on any screen of an existing app and load modules into it at run time: features ship without an app release. The same modules also package into standalone apps with nsh package.', chips: ['NshAppView', 'NshView', 'nsh package'] },
+      { id: 'tsx', icon: 'spark', title: 'AI-friendly: TSX + Tailwind', body: 'A module is one TSX file of components, signals and Tailwind classes: the format models write best. Every element, prop and module has TypeScript declarations generated from the Rust sources, and the docs are served to models as llms.txt.', chips: ['TSX', 'Tailwind', 'llms.txt'] },
       { id: 'check', icon: 'check', title: 'Checked without a device', body: 'nsh trace runs a module headless and reports errors; the compiler also runs in-process or in a browser. Generate, check, retry.', chips: ['nsh trace', 'compile_module'] },
       { id: 'sandbox', icon: 'lock', title: 'Untrusted, and contained', body: 'One QuickJS VM per view, with memory, call-time and node limits, reaching only the capabilities the host grants.', chips: ['NshLimits', 'grantCapabilities'] },
       { id: 'signed', icon: 'shield', title: 'Signed, revocable delivery', body: 'Modules arrive as Ed25519-signed .nshpkg files; release keys are certified by an offline root and revocations are checked on device.', chips: ['nsh publish', 'NshTrust'] },
@@ -183,6 +183,7 @@ const icons: Record<string, string> = {
   scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1ZM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1ZM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
   building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  plug: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>',
   spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
 };
 const icon = (name: string, size = 16) =>
@@ -260,12 +261,14 @@ const icon = (name: string, size = 16) =>
                   <i style="--w:20%;--c:var(--code-fn);--x:12px"></i>
                 </div>
               )}
-              {c.id === 'types' && (
-                <pre class="mini-dts"><span class="c-k">interface</span> <span class="c-t">ButtonProps</span> {'{'}
-  title: <span class="c-t">string</span>;
-  variant?: <span class="c-s">"primary"</span> | <span class="c-s">"plain"</span>;
-  onPress?: () =&gt; <span class="c-t">void</span>;
-{'}'}</pre>
+              {c.id === 'plugin' && (
+                <div class="mini-plugin">
+                  <div class="app">
+                    <i style="--w:44%"></i>
+                    <div class="slot"><code>.nshpkg</code><span set:html={icon('arrow', 12)} /><code>NshAppView</code></div>
+                    <i style="--w:62%"></i>
+                  </div>
+                </div>
               )}
               {c.id === 'check' && (
                 <ul class="mini-checks">
@@ -496,7 +499,12 @@ const icon = (name: string, size = 16) =>
   .mini-code { position: relative; display: grid; gap: 7px; padding-top: 22px; }
   .mini-file { position: absolute; top: 0; left: 0; font: 600 10px/1 var(--font-mono); color: var(--muted-foreground); }
   .mini-code i { display: block; height: 6px; width: var(--w); margin-left: var(--x, 0); border-radius: 3px; background: color-mix(in srgb, var(--c) 55%, transparent); }
-  .mini-dts { margin: 0; font: 11px/1.55 var(--font-mono); color: var(--code-fg); white-space: pre; }
+  .mini-plugin { display: grid; place-items: center; height: 100%; }
+  .mini-plugin .app { display: grid; gap: 8px; width: 100%; max-width: 240px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--finish-raised-bg); box-shadow: var(--finish-raised); }
+  .mini-plugin .app i { display: block; height: 5px; width: var(--w); border-radius: 3px; background: color-mix(in srgb, var(--foreground) 18%, transparent); }
+  .mini-plugin .slot { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 8px; border: 1.5px dashed color-mix(in srgb, var(--data-3) 55%, transparent); border-radius: 7px; color: var(--data-3); font: 600 10.5px/1 var(--font-mono); white-space: nowrap; }
+  .mini-plugin .slot code { font: inherit; }
+  .mini-plugin .slot span { display: grid; place-items: center; }
   .mini-checks { display: grid; gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
   .mini-checks li { display: grid; grid-template-columns: 14px 44px 1fr; align-items: center; gap: 8px; }
   .mini-checks span { display: grid; place-items: center; color: var(--success); }

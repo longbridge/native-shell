@@ -54,7 +54,9 @@ pub struct AppOptions {
     /// Where bundled assets are (for [`AppSource::Bundle`]); dev servers
     /// serve them themselves.
     pub asset_base: Option<AssetBase>,
-    /// The application id (`com.example.app`).
+    /// The application id (`com.example.app`); web views keep their
+    /// website data (cookies, storage) under it, in
+    /// `$XDG_DATA_HOME/<app id>/webkit`.
     pub app_id: String,
     /// The window title.
     pub title: String,
@@ -148,6 +150,7 @@ impl AppView {
         outer.append(&overlay);
         crate::chrome::attach(&surface, &overlay, &slot);
         surface.native.set_components(options.components.clone());
+        surface.native.set_app_id(&options.app_id);
         let view = Rc::new(AppView {
             surface,
             overlay,
@@ -167,6 +170,12 @@ impl AppView {
 
     /// Runs `app`, replacing what ran.
     pub fn load(&self, app: App) {
+        let access = match &app {
+            App::Js(bundle) => bundle.policy.access(),
+            // Native code reaches what the platform allows.
+            App::Rust(_) => nsh_engine::Policy::default().access(),
+        };
+        self.surface.native.set_access(Arc::new(access));
         let options = self.options.borrow();
         let config = EngineConfig {
             app,

@@ -8,7 +8,8 @@
   the debug key unless `--keystore`). Linux: a directory `<name>/` with the release runner (`crates/nsh-linux-app`) as
   the executable, `nsh/bundle.nshc`, `nsh/assets/` and `nsh/app.json` (the window title and the GTK application id,
   which the runner reads next to itself), `<id>.desktop` (`StartupWMClass` is the id, which GTK makes the window's
-  app id) and `<id>.png`, plus the same as `<name>.tar.gz`; GTK 4 and Pango must be installed where it runs. macOS: `<name>.app` with the
+  app id) and `<id>.png`, plus the same as `<name>.tar.gz`; GTK 4, Pango and WebKitGTK 6.0 (the runner's default
+  `webview` feature, `linux.md`) must be installed where it runs. macOS: `<name>.app` with the
   release runner (`crates/nsh-macos-app`) as `Contents/MacOS/<executable>`, `Contents/Resources/nsh/` holding
   `bundle.nshc`, `assets/` and `app.json` (the window title and appearance), the icon as `AppIcon.icns` (`sips`), signed
   ad hoc (`codesign -s -`); `--run` opens it.

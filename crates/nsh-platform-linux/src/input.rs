@@ -16,7 +16,10 @@
 //! their allocation transforms (frame, scroll offset, shift, transform).
 //! Outside a view's bounds, only the area its descendants cover
 //! (`MountItem::Overflow`: a dropdown under its field) is looked into, as
-//! on iOS and Android.
+//! on iOS and Android. GTK still delivers events by its own picking, so
+//! presses, hovers and wheels GTK would send to a web view's page where
+//! nsh does not show it (clipped off, hidden) are kept from the page
+//! (`shields_page`), after nsh handled them.
 //!
 //! Presses follow React Native and the other backends: the innermost view
 //! listening to press events gets them (or the pressable text span under
@@ -108,7 +111,8 @@ pub(crate) struct Input {
     /// The scroll view mouse wheel notches go to while they keep coming,
     /// whether they scroll horizontally, and when the last one came (ms).
     latch: RefCell<Option<(NshView, bool, f64)>>,
-    /// Views that track `HOVERED` (hover is only tested while there are).
+    /// Views that track `HOVERED` or listen to hover events (hover is only
+    /// tested while there are).
     hover_tracked: RefCell<FxHashSet<NodeId>>,
     /// Views that are hovered now.
     hovered: RefCell<Vec<NshView>>,
@@ -375,7 +379,7 @@ pub(crate) fn reset(surface: &Surface) {
 
 /// `TrackStates`.
 pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
-    let id = {
+    {
         let mut s = view.state_mut();
         s.tracked = states;
         // The core keeps the states still tracked and forgets the rest
@@ -383,15 +387,28 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
         // about (the pointer leaving a view whose hover was tracked
         // throughout) would never reach it.
         s.states &= states;
-        s.id
-    };
+    }
+    update_hover_tracking(surface, view);
+}
+
+/// Whether hovering `view` matters: for its `hover:` styles (the
+/// `HOVERED` state) or its `onHoverIn` / `onHoverOut`.
+fn hoverable(view: &NshView) -> bool {
+    let s = view.state();
+    s.tracked & HOVERED != 0
+        || s.events.contains(EventKind::HoverIn)
+        || s.events.contains(EventKind::HoverOut)
+}
+
+fn update_hover_tracking(surface: &Surface, view: &NshView) {
+    let id = view.state().id;
     let mut tracked = surface.input.hover_tracked.borrow_mut();
-    if states & HOVERED != 0 {
+    if hoverable(view) {
         tracked.insert(id);
     } else {
         tracked.remove(&id);
-        // Not hovered as far as anyone knows: picked again if it tracks
-        // hovers again under the pointer.
+        // Not hovered as far as anyone knows: picked again if hovering it
+        // matters again under the pointer.
         surface.input.hovered.borrow_mut().retain(|v| v != view);
     }
 }
@@ -425,8 +442,10 @@ pub(crate) fn gestures(surface: &Rc<Surface>, view: &NshView, values: GestureVal
     }
 }
 
-/// The view's events changed.
-pub(crate) fn events_changed(_surface: &Rc<Surface>, view: &NshView) {
+/// The view's events changed (hover handlers have it hovered, from the
+/// next mouse move).
+pub(crate) fn events_changed(surface: &Rc<Surface>, view: &NshView) {
+    update_hover_tracking(surface, view);
     update_cursor(view);
 }
 
@@ -522,6 +541,56 @@ fn update_cursor(view: &NshView) {
 // --- GDK events ---------------------------------------------------------------------
 
 fn handle(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
+    // Decided before nsh's own handling moves anything.
+    let shielded = shields_page(surface, event);
+    let propagation = dispatch(surface, event);
+    if shielded {
+        glib::Propagation::Stop
+    } else {
+        propagation
+    }
+}
+
+/// Whether `event` would reach a web view's page where nsh does not show
+/// it: GTK picks widgets by their allocations and knows nothing of
+/// `overflow: hidden`, `hidden` or `pointerEvents`, so without this a
+/// page clipped by a parent would take clicks, hovers and wheels outside
+/// what is drawn of it. nsh's own handling of the event goes on (the view
+/// actually under the pointer gets it); only the page is kept from it.
+fn shields_page(surface: &Surface, event: &gdk::Event) -> bool {
+    use gdk::EventType as T;
+    if !surface.native.has_pages() {
+        return false;
+    }
+    let buttons = gdk::ModifierType::BUTTON1_MASK
+        | gdk::ModifierType::BUTTON2_MASK
+        | gdk::ModifierType::BUTTON3_MASK;
+    let point = match event.event_type() {
+        T::ButtonPress | T::TouchBegin => root_point(&surface.root, event),
+        // Drags that started in the page stay with it.
+        T::MotionNotify if !event.modifier_state().intersects(buttons) => {
+            root_point(&surface.root, event)
+        }
+        T::Scroll => root_point(&surface.root, event).or_else(|| surface.input.last.get()),
+        _ => None,
+    };
+    let Some((x, y)) = point else {
+        return false;
+    };
+    let Some(page) = surface
+        .root
+        .pick(x as f64, y as f64, gtk::PickFlags::DEFAULT)
+        .and_then(|target| crate::native::page_of(&target))
+    else {
+        return false;
+    };
+    let shown = pick(&surface.root, x, y)
+        .and_then(|hit| hit.native)
+        .is_some_and(|native| native == page || native.is_ancestor(&page));
+    !shown
+}
+
+fn dispatch(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
     use gdk::EventType as T;
     let ty = event.event_type();
     match ty {
@@ -1770,29 +1839,43 @@ fn wheel_zoom(surface: &Rc<Surface>, x: f32, y: f32, dy: f32) -> bool {
 
 // --- Hover --------------------------------------------------------------------------
 
-/// The mouse moved to `(x, y)`: updates `HOVERED` along the views under it.
+/// The mouse moved to `(x, y)`: updates `HOVERED` and raises `onHoverIn` /
+/// `onHoverOut` along the views under it.
 fn hover(surface: &Surface, x: f32, y: f32) {
     let input = &surface.input;
     if input.hover_tracked.borrow().is_empty() && input.hovered.borrow().is_empty() {
         return;
     }
     let views = match pick(&surface.root, x, y) {
-        Some(hit) => chain(&hit.view)
-            .into_iter()
-            .filter(|v| v.state().tracked & HOVERED != 0)
-            .collect(),
+        Some(hit) => chain(&hit.view).into_iter().filter(hoverable).collect(),
         None => Vec::new(),
     };
     set_hovered(surface, views);
 }
 
+/// The views under the mouse are `views` (innermost first): those it left
+/// hear so from the inside out, then those it came over from the outside
+/// in, as with the DOM's `pointerleave` / `pointerenter`.
 fn set_hovered(surface: &Surface, views: Vec<NshView>) {
     let old = std::mem::replace(&mut *surface.input.hovered.borrow_mut(), views.clone());
     for v in old.iter().filter(|v| !views.contains(v)) {
         set_state(surface, v, HOVERED, false);
+        hover_event(surface, v, EventKind::HoverOut);
     }
-    for v in views.iter().filter(|v| !old.contains(v)) {
+    for v in views.iter().rev().filter(|v| !old.contains(v)) {
         set_state(surface, v, HOVERED, true);
+        hover_event(surface, v, EventKind::HoverIn);
+    }
+}
+
+/// `onHoverIn` / `onHoverOut` of `view`, if it listens.
+fn hover_event(surface: &Surface, view: &NshView, kind: EventKind) {
+    let (id, listens) = {
+        let s = view.state();
+        (s.id, s.events.contains(kind))
+    };
+    if listens {
+        surface.event(id, kind, EventPayload::None);
     }
 }
 
@@ -1807,10 +1890,12 @@ fn scrolls_itself(widget: &gtk::Widget) -> bool {
             return false;
         }
         let ty = w.type_();
-        if ty.is_a(gtk::Scrollable::static_type())
-            || ty.is_a(gtk::ScrolledWindow::static_type())
-            || ty.name().contains("WebView")
-        {
+        if ty.name().contains("WebView") {
+            // A page with `scrollEnabled: false` leaves wheels to the
+            // scroll views around it.
+            return !w.has_css_class(crate::native::UNSCROLLABLE);
+        }
+        if ty.is_a(gtk::Scrollable::static_type()) || ty.is_a(gtk::ScrolledWindow::static_type()) {
             return true;
         }
         current = w.parent();

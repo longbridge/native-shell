@@ -1029,6 +1029,15 @@ pub(crate) fn drag_end(surface: &Rc<Surface>, view: &NshView, vx: f32, vy: f32) 
     release(surface, view, v, 0.0);
 }
 
+/// True when [`draw_indicator`] may draw something for `state` (its
+/// indicator shows, or it is pulled down).
+pub(crate) fn indicates(state: &ViewState) -> bool {
+    state
+        .scroll
+        .as_ref()
+        .is_some_and(|s| (s.indicator && s.live.alpha > 0.0) || s.y < 0.0)
+}
+
 /// Whether a mouse press at `(x, y)` (view coordinates) grabs `view`'s
 /// indicator, faded out or not: on the desktop it is a scroll bar.
 pub(crate) fn grabs_thumb(view: &NshView, x: f32, y: f32) -> bool {

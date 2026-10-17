@@ -58,6 +58,7 @@ What exists today:
 | `ios={{ allowsBackForwardNavigationGestures }}` | `WebView` | Swipe back and forward in the page history. |
 | `desktop={{ headerLargeTitle }}`, `desktop={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`: a card centered in the window. |
+| `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history; Windows: touchscreen swipes; Linux: touchpad swipes. |
 | `desktop={{ windowDrag }}` | every element | Pressing it drags the window, as the system's title bar would (see [nsh/desktop](../modules/nsh-desktop.md#a-title-bar-of-your-own)). |
 
 `desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.

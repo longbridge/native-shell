@@ -7,7 +7,10 @@
 //! is applied: a new top screen slides in from the right over the previous
 //! one (which moves left a bit); a top screen the app removes slides out as
 //! the image it last showed (rendered from its layers when it is detached,
-//! before the same batch tears its content down).
+//! before the same batch tears its content down). The rendering leaves
+//! out what other processes draw, web pages and videos: their live views
+//! go with the image ([`crate::native::lend`]), so they do not go blank
+//! as the screen (or a modal, which leaves the same way) slides out.
 //!
 //! The header is drawn by plain AppKit views the screen hosts
 //! ([`NshView::set_native`]): a bar (with its hairline and the title) and a
@@ -19,8 +22,8 @@
 //! titles). Each screen also gets an opaque background under its content.
 //!
 //! Going back (the back button, Escape, Option+Left, Command+[, the
-//! mouse's back button; Escape in a focused text field only leaves it)
-//! pops natively, then sends `onDismiss`, which removes the route in JS;
+//! mouse's back button; Escape in a focused text field or web view only
+//! leaves it) pops natively, then sends `onDismiss`, which removes the route in JS;
 //! until the app removes the screen it is `popped` and ignored. With
 //! `preventBack` the screen gets `onBackRequest` instead. The newest modal
 //! comes first: a stack inside it pops, else it gets `onRequestClose`
@@ -459,7 +462,7 @@ struct StackNav {
     /// The top screen's view: its image is kept when the app removes it.
     top: Option<NshView>,
     /// The image the top screen showed when the app took it away.
-    image: Option<(NodeId, CFRetained<CGImage>)>,
+    image: Option<(NodeId, Shot)>,
 }
 
 /// One modal (kept while its node lives: the app may show it again).
@@ -482,7 +485,7 @@ enum Leaving {
     /// The screen itself (popped by the user).
     View(NshView),
     /// The image of a screen the app removed, hosted by the stack.
-    Image(Retained<Fill>),
+    Image(Shot),
 }
 
 enum Motion {
@@ -509,7 +512,7 @@ enum Motion {
         /// The modal to report `onDismiss` for at the end (`None`: it was
         /// reported when the user closed it).
         dismiss: Option<NodeId>,
-        image: Retained<Fill>,
+        image: Shot,
         /// Where the modal was (a sheet's card, or the whole window).
         frame: Rect,
         scrim: Option<Retained<Scrim>>,
@@ -799,11 +802,31 @@ fn image_of(surface: &Surface, view: &NshView) -> Option<CFRetained<CGImage>> {
     }
 }
 
-/// An image view of `image`, hosted by navigation while it leaves.
-fn image_fill(mtm: MainThreadMarker, image: &CGImage) -> Retained<Fill> {
-    let fill = Fill::new(mtm);
-    fill.set_image(image);
-    fill
+/// The last image of a screen or modal that leaves, hosted by navigation
+/// while it leaves. `renderInContext:` draws no web page (WebKit's process
+/// draws them), so the live web views it showed are lent to it
+/// ([`crate::native::lend`]), and given back or let go with it.
+struct Shot {
+    fill: Retained<Fill>,
+    _lent: Vec<crate::native::Lent>,
+}
+
+impl std::ops::Deref for Shot {
+    type Target = Fill;
+
+    fn deref(&self) -> &Fill {
+        &self.fill
+    }
+}
+
+/// What `view` shows now, as a view of its own to host while it leaves
+/// (`view` may be detached; it is not changed but for its web views).
+fn shot(surface: &Rc<Surface>, view: &NshView) -> Option<Shot> {
+    let image = image_of(surface, view)?;
+    let fill = Fill::new(surface.mtm);
+    fill.set_image(&image);
+    let lent = crate::native::lend(surface, view, &fill);
+    Some(Shot { fill, _lent: lent })
 }
 
 /// Moves `tail` to the end of `parent`'s subviews (drawn last), unless
@@ -1083,7 +1106,7 @@ impl Nav {
         }
         for t in &self.transitions {
             if let Motion::ModalOut { image, scrim, .. } = &t.motion {
-                hosted.push(Retained::into_super(image.clone()));
+                hosted.push(Retained::into_super(image.fill.clone()));
                 hosted.extend(scrim.iter().map(|s| Retained::into_super(s.clone())));
             }
         }
@@ -1420,7 +1443,7 @@ impl Nav {
                 }
                 None => {
                     let Some(image) = image else { return };
-                    Leaving::Image(image_fill(surface.mtm, &image))
+                    Leaving::Image(image)
                 }
             };
             let motion = Motion::Pop {
@@ -1525,9 +1548,7 @@ impl Nav {
         let frame = view.state().frame;
         let motion = modal_motion(surface, m.config.animation);
         let shown = view.ns().window().is_some();
-        let image = motion
-            .filter(|_| shown)
-            .and_then(|_| image_of(surface, &view));
+        let image = motion.filter(|_| shown).and_then(|_| shot(surface, &view));
         if view.has_parent() {
             drop_focus(surface, view.ns());
             view.unparent();
@@ -1539,7 +1560,6 @@ impl Nav {
         set_fade(&view, 1.0);
         match (motion, image) {
             (Some((duration, fade)), Some(image)) => {
-                let image = image_fill(surface.mtm, &image);
                 surface
                     .root
                     .set_native(&image, rect(frame.x, frame.y, frame.width, frame.height));
@@ -1642,7 +1662,7 @@ impl Nav {
                 if let Some(scrim) = scrim {
                     tail.push(Retained::into_super(scrim.clone()));
                 }
-                tail.push(Retained::into_super(image.clone()));
+                tail.push(Retained::into_super(image.fill.clone()));
             }
         }
         keep_last(surface.root.ns(), &tail);
@@ -1823,9 +1843,9 @@ fn focused_field(surface: &Surface) -> bool {
 }
 
 /// A key nothing in the window used: Escape, Option+Left and Command+[ go
-/// back. Whether it was taken. Escape in a focused text field only leaves
-/// the field (a desktop convention: it never navigates away from what is
-/// being typed); Option+Left and Command+[ still go back.
+/// back. Whether it was taken. Escape in a focused text field or web view
+/// only leaves it (a desktop convention: it never navigates away from what
+/// is being typed); Option+Left and Command+[ still go back.
 pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &NSEvent) -> bool {
     const ESCAPE: u16 = 53;
     const LEFT: u16 = 123;
@@ -1840,7 +1860,12 @@ pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &NSEvent) -> bool {
     let back = escape
         || (code == LEFT && mods == NSEventModifierFlags::Option)
         || (mods == NSEventModifierFlags::Command && bracket());
-    if escape && focused_field(surface) {
+    // A page's Escape reaches here only when the page let it go (WebKit
+    // sends the keys a page does not use up the responder chain): it
+    // hands the keyboard back to the app, as a field's does, rather than
+    // closing the screen under a form being filled in. Option+Left and
+    // Command+[ a page does not use still go back.
+    if escape && (focused_field(surface) || crate::native::web_focused(surface)) {
         if let Some(window) = surface.root.ns().window() {
             window.makeFirstResponder(Some(surface.root.ns()));
         }
@@ -1867,7 +1892,7 @@ pub(crate) fn stack_changed(surface: &Rc<Surface>, stack: &NshView, added: Optio
         && let Some(top) = st.top.clone()
         && !top.has_parent()
     {
-        st.image = image_of(surface, &top).map(|image| (top.id(), image));
+        st.image = shot(surface, &top).map(|image| (top.id(), image));
     }
     if let Some(screen) = added.filter(|v| v.kind() == ViewKind::Screen) {
         nav.screen(screen);

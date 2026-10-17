@@ -1,13 +1,24 @@
-//! Web views: WebView2 controllers in child windows.
+//! Web views: WebView2 composition controllers in the window's
+//! composition.
 //!
-//! Each web view gets a container window, a child of the surface's window,
-//! that its WebView2 controller fills. The container follows its view:
-//! after every frame the renderer tells the item where the view was drawn
-//! ([`Hosted::placed`]), and the container moves there, clipped to the
-//! view's clipping ancestors and rounded corners with a window region, or
-//! hides when the view was not drawn. Being a window, it covers whatever
-//! nsh draws at its place (a dialog drawn above the web view is under it),
-//! and it is absent from offscreen snapshots (`--script` screenshots).
+//! Each web view is a WebView2 composition controller ("visual hosting")
+//! drawing into a visual of the surface's [`Composition`] ([`Portal`]):
+//! the frame records where the view goes as it draws the tree, the visual
+//! is clipped, transformed and faded like the view, and what nsh draws
+//! after it goes on a layer above it, so dialogs, sheets, toasts, the dev
+//! overlay and later siblings cover the page as they would any view. The
+//! window gets the input: nsh hit-tests it as for any view, and what falls
+//! on the page (nothing of nsh's is over it there) is forwarded to it as
+//! it comes ([`Hosted::raw`]): mouse buttons, moves and wheels through
+//! `SendMouseInput`, touch and pen contacts through `SendPointerInput`. The
+//! page's cursor comes back through `CursorChanged`. A click on the page
+//! gives it the keyboard focus (`MoveFocus`: WebView2 then takes keys and
+//! the IME itself), which blurs nsh's text fields; a click on nsh content
+//! gives it back to the window, and Tab out of the page
+//! (`MoveFocusRequested`) too. The page is rasterized at the window's
+//! scale (`RasterizationScale`); its bounds are where its view is in the
+//! window's pixels, which WebView2 places pop-ups (select menus) and the
+//! IME's candidates from.
 //!
 //! WebView2 is asynchronous: the environment (one per thread and profile
 //! folder, `%LOCALAPPDATA%\<app id>\WebView2`) and then the controller are
@@ -26,8 +37,17 @@
 //! `onNavigationStateChange` when a navigation starts, `onLoad` and
 //! `onNavigationStateChange` when it completes, `onError` when it fails.
 //!
-//! Not supported: `source.baseUrl` for HTML (WebView2 loads strings
-//! without one), `scrollEnabled` and `allowsBackForwardNavigationGestures`.
+//! - `source.html` with a `baseUrl` navigates to the base URL and answers
+//!   that document's request with the HTML (`WebResourceRequested`): the
+//!   page's URL and origin are the base URL's and relative URLs resolve
+//!   against it, as with `loadHTMLString:baseURL:`. Without a base URL the
+//!   HTML is loaded with `NavigateToString`.
+//! - `scrollEnabled={false}`: the wheel goes to the scroll views around the
+//!   web view instead of the page, and a style keeps the page's viewport
+//!   from scrolling (`overflow: hidden` on its root element) while scripts
+//!   still may, as a `UIScrollView` with scrolling disabled.
+//! - `desktop={{ allowsBackForwardNavigationGestures }}`: WebView2's swipe navigation
+//!   (`IsSwipeNavigationEnabled`, touch swipes).
 
 use std::{
     cell::{Cell, RefCell},
@@ -42,41 +62,70 @@ use std::{
 use nsh_core::{Color, Command, EventKind, EventPayload, PayloadValue, WebProps, WebSource};
 use webview2_com::{
     AddScriptToExecuteOnDocumentCreatedCompletedHandler,
-    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    CreateCoreWebView2CompositionControllerCompletedHandler,
+    CreateCoreWebView2EnvironmentCompletedHandler, CursorChangedEventHandler,
+    FocusChangedEventHandler,
     Microsoft::Web::WebView2::Win32::{
-        COREWEBVIEW2_COLOR, COREWEBVIEW2_WEB_ERROR_STATUS, ICoreWebView2, ICoreWebView2Controller,
-        ICoreWebView2Controller2, ICoreWebView2Environment,
-        ICoreWebView2ExecuteScriptCompletedHandler, ICoreWebView2Settings2,
+        COREWEBVIEW2_COLOR, COREWEBVIEW2_MOUSE_EVENT_KIND,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_HORIZONTAL_WHEEL, COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOUBLE_CLICK,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOUBLE_CLICK,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOWN,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP, COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOUBLE_CLICK,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOWN,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP, COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_DOUBLE_CLICK,
+        COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_DOWN, COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_UP,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS, COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC,
+        COREWEBVIEW2_POINTER_EVENT_KIND, COREWEBVIEW2_WEB_ERROR_STATUS,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT, ICoreWebView2,
+        ICoreWebView2CompositionController, ICoreWebView2Controller, ICoreWebView2Controller2,
+        ICoreWebView2Controller3, ICoreWebView2Environment, ICoreWebView2Environment3,
+        ICoreWebView2ExecuteScriptCompletedHandler, ICoreWebView2Settings2, ICoreWebView2Settings6,
     },
-    NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    WebMessageReceivedEventHandler, take_pwstr,
+    MoveFocusRequestedEventHandler, NavigationCompletedEventHandler,
+    NavigationStartingEventHandler, WebMessageReceivedEventHandler,
+    WebResourceRequestedEventHandler, take_pwstr,
 };
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Foundation::{POINT, RECT},
         Graphics::{
             Direct2D::D2D1_DRAW_TEXT_OPTIONS_NONE,
+            DirectComposition::IDCompositionVisual2,
             DirectWrite::{
                 DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
                 DWRITE_MEASURING_MODE_NATURAL, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
                 DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP, IDWriteTextFormat,
             },
+            Gdi::ScreenToClient,
         },
-        System::LibraryLoader::GetModuleHandleW,
-        UI::WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, WINDOW_EX_STYLE,
-            WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS,
+        UI::{
+            Input::{
+                KeyboardAndMouse::{GetFocus, SetFocus},
+                Pointer::{
+                    GetPointerDeviceRects, GetPointerInfo, GetPointerPenInfo, GetPointerTouchInfo,
+                    POINTER_INFO, POINTER_PEN_INFO, POINTER_TOUCH_INFO,
+                },
+            },
+            Shell::SHCreateMemStream,
+            WindowsAndMessaging::{HCURSOR, IsChild, SetCursor},
         },
     },
     core::{BOOL, HRESULT, HSTRING, Interface, PCWSTR, PWSTR, w},
 };
 
-use super::{Emitter, Placement, error};
+use super::{Emitter, error};
 use crate::{
+    compose::{Placement, Portal},
     gfx,
+    input::{Modifiers, PointerKind, WheelEvent},
     render::{DrawCx, rect_f},
     surface::Surface,
-    view::{Hosted, NshView},
+    view::{Hosted, ItemPointer, NshView},
 };
 
 /// Lets pages talk to the app, like React Native's web view.
@@ -95,16 +144,25 @@ unsafe extern "system" {
     ) -> HRESULT;
 }
 
-/// A web view: its container window and, once made, its controller.
+/// A web view: its visuals and, once made, its controller.
 pub(crate) struct WebItem {
     emitter: Emitter,
     surface: Weak<Surface>,
-    /// The container window (`None` once closed).
-    container: Cell<Option<HWND>>,
+    /// The visuals the page is composed in (`None` once closed, or when the
+    /// window has no composition).
+    portal: RefCell<Option<Portal>>,
+    env: RefCell<Option<ICoreWebView2Environment>>,
+    composition: RefCell<Option<ICoreWebView2CompositionController>>,
     controller: RefCell<Option<ICoreWebView2Controller>>,
     webview: RefCell<Option<ICoreWebView2>>,
     /// No web view can be made (no WebView2 runtime): a placeholder.
     failed: Cell<bool>,
+    /// Closed (its view was deleted and is not drawn anymore, or the app
+    /// stopped).
+    closed: Cell<bool>,
+    /// Its view was deleted: it closes once the view is not drawn anymore
+    /// (a removal animation keeps it on screen a little longer).
+    retired: Cell<bool>,
     /// The props asked for (applied once the controller is ready).
     props: RefCell<Option<WebProps>>,
     /// The props applied to the web view.
@@ -113,55 +171,85 @@ pub(crate) struct WebItem {
     queued: RefCell<Vec<Command>>,
     /// The ids of the app's document scripts (removed when they change).
     scripts: Rc<RefCell<Vec<String>>>,
+    /// The id of the document script that keeps the page from scrolling.
+    scroll_script: Rc<RefCell<Option<String>>>,
     /// The engine's own user agent (restored when the app's is removed).
     default_agent: RefCell<Option<String>>,
-    /// Where the last frame drew the view (window pixels).
-    target: Cell<Option<RECT>>,
-    placement: Placement,
-    /// The controller's bounds and visibility applied.
-    bounds: Cell<Option<(i32, i32)>>,
+    /// The HTML served at its base URL (`source.baseUrl`).
+    html: RefCell<Option<(String, Arc<str>)>>,
+    /// The document requests are watched (for `html`).
+    serving: Cell<bool>,
+    /// Where the last frame put it.
+    at: Cell<Option<Placement>>,
+    /// The controller's bounds applied (window pixels; `None`: hidden).
+    bounds: Cell<Option<RECT>>,
+    /// The rasterization scale applied.
+    raster: Cell<f32>,
     /// The view's background, the page's until it paints.
     background: Cell<Color>,
+    /// The page's cursor (an `HCURSOR`).
+    cursor: Cell<isize>,
+    /// The mouse is over the page.
+    hovered: Cell<bool>,
+    /// The page has the keyboard focus.
+    focused: Cell<bool>,
+    /// Mouse buttons held on the page (bits by button).
+    buttons: Cell<u8>,
 }
 
 impl WebItem {
     pub(crate) fn new(surface: &Rc<Surface>, view: &NshView) -> Rc<Self> {
+        let portal = surface
+            .compose()
+            .and_then(Portal::new)
+            .map_err(|err| log::warn!("web view: no composition: {err}"))
+            .ok();
         let item = Rc::new(WebItem {
             emitter: Emitter::new(surface, view.id()),
             surface: Rc::downgrade(surface),
-            container: Cell::new(None),
+            portal: RefCell::new(portal),
+            env: RefCell::new(None),
+            composition: RefCell::new(None),
             controller: RefCell::new(None),
             webview: RefCell::new(None),
             failed: Cell::new(false),
+            closed: Cell::new(false),
+            retired: Cell::new(false),
             props: RefCell::new(None),
             applied: RefCell::new(None),
             queued: RefCell::new(Vec::new()),
             scripts: Rc::default(),
+            scroll_script: Rc::default(),
             default_agent: RefCell::new(None),
-            target: Cell::new(None),
-            placement: Placement::default(),
+            html: RefCell::new(None),
+            serving: Cell::new(false),
+            at: Cell::new(None),
             bounds: Cell::new(None),
+            raster: Cell::new(0.0),
             background: Cell::new(view.state().style.background_color),
+            cursor: Cell::new(0),
+            hovered: Cell::new(false),
+            focused: Cell::new(false),
+            buttons: Cell::new(0),
         });
-        match make_container(surface.hwnd()) {
-            Some(container) => {
-                item.container.set(Some(container));
-                let folder = profile_folder(&surface.native.app_id.borrow());
-                let weak = Rc::downgrade(&item);
-                with_environment(&folder, move |env| {
-                    if let Some(item) = weak.upgrade() {
-                        item.environment_ready(env);
-                    }
-                });
-            }
-            None => item.unavailable("cannot create its window"),
+        if item.portal.borrow().is_none() {
+            item.unavailable("the window cannot compose it");
+            return item;
         }
+        let folder = profile_folder(&surface.native.app_id.borrow());
+        let weak = Rc::downgrade(&item);
+        with_environment(&folder, move |env| {
+            if let Some(item) = weak.upgrade() {
+                item.environment_ready(env);
+            }
+        });
         item
     }
 
     /// No web view: the placeholder shows.
     fn unavailable(&self, why: &str) {
         self.failed.set(true);
+        self.portal.borrow_mut().take();
         static WARNED: AtomicBool = AtomicBool::new(false);
         if !WARNED.swap(true, Ordering::Relaxed) {
             log::warn!(
@@ -175,18 +263,27 @@ impl WebItem {
     }
 
     fn environment_ready(self: &Rc<Self>, env: Option<ICoreWebView2Environment>) {
-        let (Some(env), Some(container)) = (env, self.container.get()) else {
-            if self.container.get().is_some() {
-                self.unavailable("no WebView2 environment");
-            }
+        if self.closed.get() {
             return;
+        }
+        let Some(env) = env else {
+            return self.unavailable("no WebView2 environment");
         };
+        let (Ok(env3), Some(surface)) = (
+            env.cast::<ICoreWebView2Environment3>(),
+            self.surface.upgrade(),
+        ) else {
+            return self.unavailable("the WebView2 runtime cannot host it in a visual");
+        };
+        *self.env.borrow_mut() = Some(env);
         let weak = Rc::downgrade(self);
-        let handler = CreateCoreWebView2ControllerCompletedHandler::create(Box::new(
+        let handler = CreateCoreWebView2CompositionControllerCompletedHandler::create(Box::new(
             move |result, controller| {
-                let Some(item) = weak.upgrade() else {
+                let Some(item) = weak.upgrade().filter(|i| !i.closed.get()) else {
                     // The view went away meanwhile.
-                    if let Some(c) = controller {
+                    if let Some(c) =
+                        controller.and_then(|c| c.cast::<ICoreWebView2Controller>().ok())
+                    {
                         // SAFETY: a call on the controller just made.
                         let _ = unsafe { c.Close() };
                     }
@@ -202,21 +299,24 @@ impl WebItem {
                 Ok(())
             },
         ));
-        // SAFETY: a call on a live environment with a live window of this
-        // thread.
-        if let Err(err) = unsafe { env.CreateCoreWebView2Controller(container, &handler) } {
+        // SAFETY: a call on a live environment with the live window of
+        // this thread.
+        if let Err(err) =
+            unsafe { env3.CreateCoreWebView2CompositionController(surface.hwnd(), &handler) }
+        {
             log::warn!("web view: cannot create a controller: {err}");
             self.unavailable("cannot create a WebView2 controller");
         }
     }
 
     /// The controller is made: sets it up, applies what waited for it.
-    fn ready(self: &Rc<Self>, controller: ICoreWebView2Controller) {
-        if self.container.get().is_none() {
-            // SAFETY: closed before it was ready: the controller goes too.
-            let _ = unsafe { controller.Close() };
-            return;
-        }
+    fn ready(self: &Rc<Self>, composition: ICoreWebView2CompositionController) {
+        let target = self.portal.borrow().as_ref().map(|p| p.target().clone());
+        let (Some(target), Ok(controller)) =
+            (target, composition.cast::<ICoreWebView2Controller>())
+        else {
+            return self.unavailable("no WebView2 controller");
+        };
         // SAFETY: WebView2 calls on the live controller, on its thread.
         let webview = match unsafe { controller.CoreWebView2() } {
             Ok(webview) => webview,
@@ -225,8 +325,19 @@ impl WebItem {
                 return self.unavailable("no WebView2 core");
             }
         };
-        // SAFETY: as above.
+        // SAFETY: as above; the visual belongs to this thread's
+        // composition.
         unsafe {
+            if let Err(err) = composition.SetRootVisualTarget(&target) {
+                log::warn!("web view: cannot compose it: {err}");
+                let _ = controller.Close();
+                return self.unavailable("cannot compose a WebView2 controller");
+            }
+            if let Ok(c) = controller.cast::<ICoreWebView2Controller3>() {
+                // The window's scale, not the monitor's: nsh decides.
+                let _ = c.SetShouldDetectMonitorScaleChanges(false);
+            }
+            let _ = controller.SetIsVisible(false);
             if let Ok(settings) = webview.Settings() {
                 let _ = settings.SetIsStatusBarEnabled(false);
                 if let Ok(settings) = settings.cast::<ICoreWebView2Settings2>() {
@@ -242,6 +353,8 @@ impl WebItem {
             );
         }
         self.listen(&webview);
+        self.listen_input(&composition, &controller);
+        *self.composition.borrow_mut() = Some(composition);
         *self.controller.borrow_mut() = Some(controller);
         *self.webview.borrow_mut() = Some(webview);
         self.paint_background();
@@ -344,10 +457,96 @@ impl WebItem {
         }
     }
 
+    /// Follows the page's cursor and keyboard focus.
+    fn listen_input(
+        self: &Rc<Self>,
+        composition: &ICoreWebView2CompositionController,
+        controller: &ICoreWebView2Controller,
+    ) {
+        let mut token = 0i64;
+        let weak = Rc::downgrade(self);
+        let cursor = CursorChangedEventHandler::create(Box::new(move |sender, _| {
+            let (Some(item), Some(sender)) = (weak.upgrade(), sender) else {
+                return Ok(());
+            };
+            let mut handle = HCURSOR::default();
+            // SAFETY: a WebView2 getter on the event's live sender.
+            if unsafe { sender.Cursor(&mut handle) }.is_ok() {
+                item.cursor.set(handle.0 as isize);
+                if item.hovered.get() && !handle.is_invalid() {
+                    // The window asks for the cursor only when the mouse
+                    // moves: show the page's now.
+                    // SAFETY: a cursor handle WebView2 just gave.
+                    unsafe { SetCursor(Some(handle)) };
+                }
+            }
+            Ok(())
+        }));
+        let weak = Rc::downgrade(self);
+        let got = FocusChangedEventHandler::create(Box::new(move |_, _| {
+            if let Some(item) = weak.upgrade() {
+                item.focused.set(true);
+                // The page has the keyboard: nsh's fields give it up, as a
+                // text field resigns when a web view becomes first
+                // responder.
+                if let Some(surface) = item.surface.upgrade() {
+                    crate::text_input::blur_all(&surface);
+                }
+            }
+            Ok(())
+        }));
+        let weak = Rc::downgrade(self);
+        let lost = FocusChangedEventHandler::create(Box::new(move |_, _| {
+            if let Some(item) = weak.upgrade() {
+                item.focused.set(false);
+            }
+            Ok(())
+        }));
+        let weak = Rc::downgrade(self);
+        let tab_out = MoveFocusRequestedEventHandler::create(Box::new(move |_, args| {
+            if let (Some(item), Some(args)) = (weak.upgrade(), args) {
+                item.focus_window();
+                // SAFETY: a WebView2 call on the event's live object.
+                let _ = unsafe { args.SetHandled(true) };
+            }
+            Ok(())
+        }));
+        // SAFETY: WebView2 calls on the live controllers; the handlers hold
+        // the item weakly.
+        unsafe {
+            let _ = composition.add_CursorChanged(&cursor, &mut token);
+            let _ = controller.add_GotFocus(&got, &mut token);
+            let _ = controller.add_LostFocus(&lost, &mut token);
+            let _ = controller.add_MoveFocusRequested(&tab_out, &mut token);
+        }
+    }
+
+    /// Gives the keyboard back to the surface's window.
+    fn focus_window(&self) {
+        let Some(surface) = self.surface.upgrade() else {
+            return;
+        };
+        let hwnd = surface.hwnd();
+        // SAFETY: plain calls on this thread's window.
+        unsafe {
+            let focus = GetFocus();
+            if focus != hwnd && (focus.is_invalid() || IsChild(hwnd, focus).as_bool()) {
+                let _ = SetFocus(Some(hwnd));
+            }
+        }
+        self.focused.set(false);
+    }
+
     /// True when the app may show `url` at the top level.
     fn allows(&self, url: &str) -> bool {
         // Pages the app gave as HTML.
-        if url.starts_with("data:") {
+        if url.starts_with("data:")
+            || self
+                .html
+                .borrow()
+                .as_ref()
+                .is_some_and(|(base, _)| same_document(url, base))
+        {
             return true;
         }
         let Some(surface) = self.surface.upgrade() else {
@@ -390,6 +589,9 @@ impl WebItem {
                         let _ = settings.SetUserAgent(&HSTRING::from(agent));
                     }
                 }
+                if let Ok(settings) = settings.cast::<ICoreWebView2Settings6>() {
+                    let _ = settings.SetIsSwipeNavigationEnabled(p.back_forward_gestures);
+                }
             }
             if scripts_changed {
                 for id in self.scripts.borrow_mut().drain(..) {
@@ -413,29 +615,117 @@ impl WebItem {
                         .AddScriptToExecuteOnDocumentCreated(&HSTRING::from(script), &handler);
                 }
             }
+            if old.as_ref().is_none_or(|o| o.scroll_enabled) != p.scroll_enabled {
+                self.set_scrolls(&webview, p.scroll_enabled);
+            }
             let navigate = scripts_changed || old.as_ref().is_none_or(|o| o.source != p.source);
             if navigate {
                 let result = match &p.source {
-                    WebSource::Uri(uri) => webview.Navigate(&HSTRING::from(&**uri)),
-                    WebSource::Html { html, base_url } => {
-                        if base_url.is_some() {
-                            static WARNED: AtomicBool = AtomicBool::new(false);
-                            if !WARNED.swap(true, Ordering::Relaxed) {
-                                log::warn!(
-                                    target: "js",
-                                    "WebView `source.baseUrl` is not supported on Windows: relative links do not resolve"
-                                );
-                            }
-                        }
+                    WebSource::Uri(uri) => {
+                        self.html.borrow_mut().take();
+                        webview.Navigate(&HSTRING::from(&**uri))
+                    }
+                    WebSource::Html {
+                        html,
+                        base_url: Some(base),
+                    } if !base.is_empty() => {
+                        *self.html.borrow_mut() = Some((base.to_string(), html.clone()));
+                        self.serve_html(&webview);
+                        webview.Navigate(&HSTRING::from(&**base))
+                    }
+                    WebSource::Html { html, .. } => {
+                        self.html.borrow_mut().take();
                         webview.NavigateToString(&HSTRING::from(&**html))
                     }
-                    WebSource::None => webview.Navigate(w!("about:blank")),
+                    WebSource::None => {
+                        self.html.borrow_mut().take();
+                        webview.Navigate(w!("about:blank"))
+                    }
                 };
                 if let Err(err) = result {
                     let message = err.message();
                     self.emitter.emit(EventKind::Error, || error(message));
                 }
             }
+        }
+    }
+
+    /// `scrollEnabled`: the page's viewport scrolls, or not (the style is
+    /// put in the page now and in every page loaded later).
+    fn set_scrolls(&self, webview: &ICoreWebView2, enabled: bool) {
+        let none = None::<&ICoreWebView2ExecuteScriptCompletedHandler>;
+        // SAFETY: WebView2 calls on the live web view, on its thread.
+        unsafe {
+            if let Some(id) = self.scroll_script.borrow_mut().take() {
+                let _ = webview.RemoveScriptToExecuteOnDocumentCreated(&HSTRING::from(id));
+            }
+            if !enabled {
+                let slot = Rc::downgrade(&self.scroll_script);
+                let handler = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(
+                    Box::new(move |result, id| {
+                        if let (Ok(()), Some(slot)) = (result, slot.upgrade()) {
+                            *slot.borrow_mut() = Some(id);
+                        }
+                        Ok(())
+                    }),
+                );
+                let _ = webview.AddScriptToExecuteOnDocumentCreated(
+                    &HSTRING::from(scroll_style(false)),
+                    &handler,
+                );
+            }
+            let _ = webview.ExecuteScript(&HSTRING::from(scroll_style(enabled)), none);
+        }
+    }
+
+    /// Answers the request of the document at the base URL with the app's
+    /// HTML (`source.baseUrl`).
+    fn serve_html(&self, webview: &ICoreWebView2) {
+        if self.serving.replace(true) {
+            return;
+        }
+        let item = self.emitter.clone();
+        let surface = self.surface.clone();
+        let handler = WebResourceRequestedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let Some(web) = surface.upgrade().and_then(|s| super::web_item(&s, item.id)) else {
+                return Ok(());
+            };
+            let Some((base, html)) = web.html.borrow().clone() else {
+                return Ok(());
+            };
+            let Some(env) = web.env.borrow().clone() else {
+                return Ok(());
+            };
+            // SAFETY: WebView2 calls on the event's live objects; the
+            // stream holds a copy of the bytes.
+            unsafe {
+                let request = args.Request()?;
+                let mut uri = PWSTR::null();
+                request.Uri(&mut uri)?;
+                if !same_document(&take_pwstr(uri), &base) {
+                    return Ok(());
+                }
+                let Some(stream) = SHCreateMemStream(Some(html.as_bytes())) else {
+                    return Ok(());
+                };
+                let response = env.CreateWebResourceResponse(
+                    &stream,
+                    200,
+                    w!("OK"),
+                    w!("Content-Type: text/html; charset=utf-8"),
+                )?;
+                args.SetResponse(&response)?;
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        // SAFETY: WebView2 calls on the live web view; the handler finds the
+        // item through its surface.
+        unsafe {
+            let _ = webview
+                .AddWebResourceRequestedFilter(w!("*"), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT);
+            let _ = webview.add_WebResourceRequested(&handler, &mut token);
         }
     }
 
@@ -490,54 +780,259 @@ impl WebItem {
         }
     }
 
-    /// Moves the container where the view was drawn, and the controller
-    /// with it.
+    /// Gives the controller the bounds, visibility and scale of where the
+    /// last frame put the page.
     fn place(&self) {
-        let (Some(container), Some(surface)) = (self.container.get(), self.surface.upgrade())
-        else {
-            return;
-        };
-        let before = self.placement.last.get();
-        let size = self
-            .placement
-            .apply(&surface, self.emitter.id, container, self.target.get());
         let Some(controller) = self.controller.borrow().clone() else {
             return;
         };
-        if self.bounds.replace(size) != size {
-            // SAFETY: WebView2 calls on the live controller.
-            unsafe {
-                if let Some((w, h)) = size {
-                    let _ = controller.SetBounds(RECT {
-                        left: 0,
-                        top: 0,
-                        right: w,
-                        bottom: h,
-                    });
+        let at = self.at.get();
+        let bounds = at.map(|p| p.bounds());
+        let before = self.bounds.replace(bounds);
+        if before == bounds {
+            return;
+        }
+        // SAFETY: WebView2 calls on the live controller, on its thread.
+        unsafe {
+            if let Some(b) = bounds {
+                let scale = self.surface.upgrade().map_or(1.0, |s| s.scale());
+                if self.raster.replace(scale) != scale
+                    && let Ok(c) = controller.cast::<ICoreWebView2Controller3>()
+                {
+                    let _ = c.SetRasterizationScale(scale as f64);
                 }
-                let _ = controller.SetIsVisible(size.is_some());
+                let _ = controller.SetBounds(b);
+                if before.is_none() {
+                    let _ = controller.SetIsVisible(true);
+                } else {
+                    // Pop-ups (select menus, tooltips) follow the page.
+                    let _ = controller.NotifyParentWindowPositionChanged();
+                }
+            } else {
+                let _ = controller.SetIsVisible(false);
             }
         }
-        if before != self.placement.last.get() && size.is_some() {
-            // Pop-ups (select menus, tooltips) follow the page.
-            // SAFETY: as above.
-            let _ = unsafe { controller.NotifyParentWindowPositionChanged() };
+        if bounds.is_none() && self.focused.get() {
+            // A hidden page keeps no keyboard focus.
+            self.focus_window();
         }
     }
 
-    /// The view was deleted or the app stopped: the page closes.
+    /// Its view was deleted: it closes once the view is not drawn anymore
+    /// (now, unless a removal animation keeps it on screen).
+    pub(crate) fn retire(&self) {
+        self.retired.set(true);
+        if self.at.get().is_none() {
+            self.close();
+        }
+    }
+
+    /// The page closes (the app stopped, or its view is gone).
     pub(crate) fn close(&self) {
+        if self.closed.replace(true) {
+            return;
+        }
+        if self.focused.get() {
+            self.focus_window();
+        }
         self.webview.borrow_mut().take();
         self.queued.borrow_mut().clear();
+        self.composition.borrow_mut().take();
         if let Some(controller) = self.controller.borrow_mut().take() {
             // SAFETY: closes the live controller; it is not used afterwards.
             let _ = unsafe { controller.Close() };
         }
-        if let Some(container) = self.container.take() {
-            // SAFETY: destroys the window this item made.
-            let _ = unsafe { DestroyWindow(container) };
+        // Its visuals leave the composition (gone with the last web view).
+        self.portal.borrow_mut().take();
+        if let Some(surface) = self.surface.upgrade() {
+            surface.invalidate();
         }
     }
+
+    /// Pixels per point of the window.
+    fn scale(&self) -> f32 {
+        self.surface.upgrade().map_or(1.0, |s| s.scale())
+    }
+
+    /// A touch or pen contact through `SendPointerInput`, with the
+    /// system's data of pointer `id` moved to `point` (the page's pixels).
+    /// False when the system has no data for it (synthesized input).
+    fn send_pointer(&self, event: &ItemPointer, point: POINT) -> bool {
+        let (Some(composition), Some(env), Some(surface)) = (
+            self.composition.borrow().clone(),
+            self.env.borrow().clone(),
+            self.surface.upgrade(),
+        ) else {
+            return false;
+        };
+        let Some(id) = event.pointer.checked_sub(2) else {
+            return false;
+        };
+        let Ok(env) = env.cast::<ICoreWebView2Environment3>() else {
+            return false;
+        };
+        let kind = match event.kind {
+            PointerKind::Down => 0x0246,
+            PointerKind::Move => 0x0245,
+            PointerKind::Up | PointerKind::Cancel => 0x0247,
+            PointerKind::Leave => 0x024A,
+        };
+        // SAFETY: plain pointer queries into locals, then WebView2 calls on
+        // live objects of this thread.
+        unsafe {
+            let mut info = POINTER_INFO::default();
+            if GetPointerInfo(id, &mut info).is_err() {
+                return false;
+            }
+            let Ok(p) = env.CreateCoreWebView2PointerInfo() else {
+                return false;
+            };
+            let mut client = info.ptPixelLocation;
+            let _ = ScreenToClient(surface.hwnd(), &mut client);
+            // From where the contact is in the window to where nsh put it
+            // on the page.
+            let (dx, dy) = (point.x - client.x, point.y - client.y);
+            let mut device = RECT::default();
+            let mut display = RECT::default();
+            let _ = GetPointerDeviceRects(info.sourceDevice, &mut device, &mut display);
+            // Himetric units per pixel.
+            let ratio = |d: i32, s: i32| if s != 0 { d as f32 / s as f32 } else { 1.0 };
+            let (hx, hy) = (
+                ratio(device.right - device.left, display.right - display.left),
+                ratio(device.bottom - device.top, display.bottom - display.top),
+            );
+            let moved = |q: POINT| POINT {
+                x: q.x + dx,
+                y: q.y + dy,
+            };
+            let moved_himetric = |q: POINT| POINT {
+                x: q.x + (dx as f32 * hx) as i32,
+                y: q.y + (dy as f32 * hy) as i32,
+            };
+            let _ = p.SetPointerKind(info.pointerType.0 as u32);
+            let _ = p.SetPointerId(info.pointerId);
+            let _ = p.SetFrameId(info.frameId);
+            let _ = p.SetPointerFlags(info.pointerFlags.0);
+            let _ = p.SetPointerDeviceRect(device);
+            let _ = p.SetDisplayRect(display);
+            let _ = p.SetPixelLocation(point);
+            let _ = p.SetHimetricLocation(moved_himetric(info.ptHimetricLocation));
+            let _ = p.SetPixelLocationRaw(moved(info.ptPixelLocationRaw));
+            let _ = p.SetHimetricLocationRaw(moved_himetric(info.ptHimetricLocationRaw));
+            let _ = p.SetTime(info.dwTime);
+            let _ = p.SetHistoryCount(info.historyCount);
+            let _ = p.SetInputData(info.InputData);
+            let _ = p.SetKeyStates(info.dwKeyStates);
+            let _ = p.SetPerformanceCount(info.PerformanceCount);
+            let _ = p.SetButtonChangeKind(info.ButtonChangeType.0);
+            if event.touch {
+                let mut touch = POINTER_TOUCH_INFO::default();
+                if GetPointerTouchInfo(id, &mut touch).is_ok() {
+                    let shift = |r: RECT| RECT {
+                        left: r.left + dx,
+                        top: r.top + dy,
+                        right: r.right + dx,
+                        bottom: r.bottom + dy,
+                    };
+                    let _ = p.SetTouchFlags(touch.touchFlags);
+                    let _ = p.SetTouchMask(touch.touchMask);
+                    let _ = p.SetTouchContact(shift(touch.rcContact));
+                    let _ = p.SetTouchContactRaw(shift(touch.rcContactRaw));
+                    let _ = p.SetTouchOrientation(touch.orientation);
+                    let _ = p.SetTouchPressure(touch.pressure);
+                }
+            } else {
+                let mut pen = POINTER_PEN_INFO::default();
+                if GetPointerPenInfo(id, &mut pen).is_ok() {
+                    let _ = p.SetPenFlags(pen.penFlags);
+                    let _ = p.SetPenMask(pen.penMask);
+                    let _ = p.SetPenPressure(pen.pressure);
+                    let _ = p.SetPenRotation(pen.rotation);
+                    let _ = p.SetPenTiltX(pen.tiltX);
+                    let _ = p.SetPenTiltY(pen.tiltY);
+                }
+            }
+            composition
+                .SendPointerInput(COREWEBVIEW2_POINTER_EVENT_KIND(kind), &p)
+                .is_ok()
+        }
+    }
+
+    /// Sends a mouse event to the page.
+    fn send_mouse(
+        &self,
+        kind: COREWEBVIEW2_MOUSE_EVENT_KIND,
+        data: u32,
+        point: POINT,
+        m: Modifiers,
+    ) {
+        let Some(composition) = self.composition.borrow().clone() else {
+            return;
+        };
+        // MK_LBUTTON, MK_RBUTTON, MK_MBUTTON, MK_XBUTTON1 and MK_XBUTTON2 by
+        // button; MK_SHIFT and MK_CONTROL.
+        const BUTTON_KEYS: [i32; 5] = [0x1, 0x2, 0x10, 0x20, 0x40];
+        let held = self.buttons.get();
+        let mut keys = (0..5)
+            .filter(|b| held & (1 << b) != 0)
+            .fold(0, |k, b| k | BUTTON_KEYS[b]);
+        if m.shift {
+            keys |= 0x4;
+        }
+        if m.ctrl {
+            keys |= 0x8;
+        }
+        // SAFETY: a WebView2 call on the live controller, on its thread.
+        let sent = unsafe {
+            composition.SendMouseInput(
+                kind,
+                COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS(keys),
+                data,
+                point,
+            )
+        };
+        if let Err(err) = sent {
+            log::debug!("web view: input not sent: {err}");
+        }
+    }
+}
+
+impl Drop for WebItem {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+/// The mouse event of `button` going down (with its click count) or up.
+fn button_event(button: u8, down: bool, clicks: u32) -> (COREWEBVIEW2_MOUSE_EVENT_KIND, u32) {
+    // Windows sends a double click as the second press of a pair.
+    let double = down && clicks >= 2 && clicks.is_multiple_of(2);
+    let kind = match (button, down, double) {
+        (0, true, false) => COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+        (0, true, true) => COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOUBLE_CLICK,
+        (0, false, _) => COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+        (1, true, false) => COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOWN,
+        (1, true, true) => COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOUBLE_CLICK,
+        (1, false, _) => COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP,
+        (2, true, false) => COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOWN,
+        (2, true, true) => COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOUBLE_CLICK,
+        (2, false, _) => COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP,
+        (_, true, false) => COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_DOWN,
+        (_, true, true) => COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_DOUBLE_CLICK,
+        (_, false, _) => COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_UP,
+    };
+    // XBUTTON1 is the back button (3), XBUTTON2 the forward one (4).
+    let data = match button {
+        3 => 1,
+        4 => 2,
+        _ => 0,
+    };
+    (kind, data)
+}
+
+/// The wheel delta (120 a notch) of a scroll by `points`.
+fn wheel_delta(points: f32) -> i32 {
+    (points / (crate::window::lines_per_notch() * 16.0) * 120.0).round() as i32
 }
 
 impl Hosted for WebItem {
@@ -566,15 +1061,183 @@ impl Hosted for WebItem {
         cx.pop();
     }
 
-    fn hit(&self, _x: f32, _y: f32, _size: (f32, f32)) -> bool {
-        // The page's window takes its own input.
-        false
+    fn hit(&self, x: f32, y: f32, size: (f32, f32)) -> bool {
+        // The page takes the pointer where nothing of nsh's covers it.
+        self.composed() && x >= 0.0 && y >= 0.0 && x < size.0 && y < size.1
     }
 
-    fn placed(&self, rect: Option<RECT>) {
-        self.target.set(rect);
-        self.place();
+    fn composed(&self) -> bool {
+        !self.failed.get() && !self.closed.get() && self.portal.borrow().is_some()
     }
+
+    fn visual(&self) -> Option<IDCompositionVisual2> {
+        self.portal.borrow().as_ref().map(|p| p.visual().clone())
+    }
+
+    fn compose_at(&self, at: Option<&Placement>) {
+        self.at.set(at.copied());
+        if let Some(portal) = &*self.portal.borrow() {
+            match at {
+                Some(p) => portal.place(p),
+                None => portal.hidden(),
+            }
+        }
+        self.place();
+        if at.is_none() && self.retired.get() {
+            self.close();
+        }
+    }
+
+    fn raw(&self) -> bool {
+        self.composed()
+    }
+
+    fn pointer(&self, event: &ItemPointer) -> bool {
+        let s = self.scale();
+        let point = POINT {
+            x: (event.x * s).round() as i32,
+            y: (event.y * s).round() as i32,
+        };
+        if (event.touch || event.pen) && self.send_pointer(event, point) {
+            if event.kind == PointerKind::Down && !self.focused.get() {
+                self.take_focus();
+            }
+            return true;
+        }
+        // Synthesized contacts (and pens without data) come as the left
+        // button.
+        let button = if event.touch || event.pen {
+            0
+        } else {
+            event.button
+        };
+        let bit = 1u8 << button.min(7);
+        match event.kind {
+            PointerKind::Down => {
+                let (kind, data) = button_event(button, true, event.clicks);
+                self.buttons.set(self.buttons.get() | bit);
+                self.send_mouse(kind, data, point, event.modifiers);
+                if !self.focused.get() {
+                    self.take_focus();
+                }
+            }
+            PointerKind::Up => {
+                let (kind, data) = button_event(button, false, 1);
+                self.buttons.set(self.buttons.get() & !bit);
+                self.send_mouse(kind, data, point, event.modifiers);
+            }
+            PointerKind::Move => {
+                self.hovered.set(true);
+                self.send_mouse(
+                    COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+                    0,
+                    point,
+                    event.modifiers,
+                );
+            }
+            PointerKind::Cancel | PointerKind::Leave => {
+                self.hovered.set(false);
+                self.buttons.set(0);
+                self.send_mouse(
+                    COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE,
+                    0,
+                    point,
+                    event.modifiers,
+                );
+            }
+        }
+        true
+    }
+
+    fn wheel(&self, x: f32, y: f32, event: &WheelEvent) -> bool {
+        if !self
+            .applied
+            .borrow()
+            .as_ref()
+            .is_none_or(|p| p.scroll_enabled)
+        {
+            // The scroll views around it scroll instead.
+            return false;
+        }
+        let s = self.scale();
+        let point = POINT {
+            x: (x * s).round() as i32,
+            y: (y * s).round() as i32,
+        };
+        // Positive deltas scroll up and right, as `WM_MOUSEWHEEL` and
+        // `WM_MOUSEHWHEEL`.
+        if event.dy != 0.0 {
+            let delta = wheel_delta(-event.dy);
+            self.send_mouse(
+                COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL,
+                delta as u32,
+                point,
+                event.modifiers,
+            );
+        }
+        if event.dx != 0.0 {
+            let delta = wheel_delta(event.dx);
+            self.send_mouse(
+                COREWEBVIEW2_MOUSE_EVENT_KIND_HORIZONTAL_WHEEL,
+                delta as u32,
+                point,
+                event.modifiers,
+            );
+        }
+        true
+    }
+
+    fn cursor(&self, _x: f32, _y: f32) -> Option<crate::input::Cursor> {
+        let c = self.cursor.get();
+        (c != 0 && self.composed()).then_some(crate::input::Cursor::Native(c))
+    }
+}
+
+impl WebItem {
+    /// Gives the page the keyboard focus (a click on it).
+    fn take_focus(&self) {
+        if let Some(controller) = self.controller.borrow().clone() {
+            // SAFETY: a WebView2 call on the live controller.
+            let _ = unsafe { controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC) };
+        }
+    }
+}
+
+/// True when `a` and `b` name the same document (fragments aside; a URL
+/// with no path is its root's).
+fn same_document(a: &str, b: &str) -> bool {
+    fn normal(url: &str) -> String {
+        let url = url.split('#').next().unwrap_or(url);
+        match url.find("://") {
+            Some(i) => {
+                let rest = &url[i + 3..];
+                let (host, path) = match rest.find('/') {
+                    Some(j) => (&rest[..j], &rest[j..]),
+                    None => (rest, "/"),
+                };
+                format!(
+                    "{}://{}{path}",
+                    url[..i].to_ascii_lowercase(),
+                    host.to_ascii_lowercase()
+                )
+            }
+            None => url.to_owned(),
+        }
+    }
+    normal(a) == normal(b)
+}
+
+/// The script that lets the page's viewport scroll, or keeps it from
+/// scrolling (a style on its root element; scripts still scroll it).
+fn scroll_style(enabled: bool) -> String {
+    format!(
+        "(function () {{ var on = {enabled}; var id = 'nsh-no-scroll'; \
+         function apply() {{ var s = document.getElementById(id); \
+         if (on) {{ if (s) s.remove(); return; }} \
+         if (!s && document.documentElement) {{ s = document.createElement('style'); s.id = id; \
+         s.textContent = 'html {{ overflow: hidden !important; }}'; document.documentElement.appendChild(s); }} }} \
+         if (document.documentElement) apply(); else document.addEventListener('readystatechange', apply, {{ once: true }}); }})();"
+    )
 }
 
 /// The page's navigation state, as `WebViewNavigation`.
@@ -807,55 +1470,6 @@ fn start_environment(folder: &str) {
     }
 }
 
-/// A hidden child window of `parent` for a controller to fill.
-fn make_container(parent: HWND) -> Option<HWND> {
-    if parent.is_invalid() {
-        return None;
-    }
-    static REGISTERED: std::sync::Once = std::sync::Once::new();
-    let class = w!("nsh-native-host");
-    // SAFETY: plain window calls; the class's procedure is the default
-    // one, and the window is destroyed by `WebItem::close`.
-    unsafe {
-        let instance = GetModuleHandleW(None).ok()?;
-        REGISTERED.call_once(|| {
-            let wc = WNDCLASSW {
-                lpfnWndProc: Some(container_proc),
-                hInstance: instance.into(),
-                lpszClassName: class,
-                ..Default::default()
-            };
-            RegisterClassW(&wc);
-        });
-        CreateWindowExW(
-            WINDOW_EX_STYLE(0),
-            class,
-            w!(""),
-            WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-            0,
-            0,
-            1,
-            1,
-            Some(parent),
-            None,
-            Some(instance.into()),
-            None,
-        )
-        .map_err(|err| log::warn!("web view: cannot create its window: {err}"))
-        .ok()
-    }
-}
-
-unsafe extern "system" fn container_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    // SAFETY: default handling: the controller's window paints the page.
-    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-}
-
 /// The placeholder's text format, made once per thread.
 fn placeholder_format() -> Option<IDWriteTextFormat> {
     thread_local! {
@@ -937,5 +1551,53 @@ mod tests {
         let folder = profile_folder("com.example.app");
         assert!(folder.ends_with(r"com.example.app\WebView2"), "{folder}");
         assert!(profile_folder("a:b").contains("a_b"));
+    }
+
+    #[test]
+    fn matches_base_documents() {
+        assert!(same_document("https://Example.com", "https://example.com/"));
+        assert!(same_document(
+            "https://example.com/a/b.html#top",
+            "https://example.com/a/b.html"
+        ));
+        assert!(!same_document(
+            "https://example.com/a/",
+            "https://example.com/a/b.html"
+        ));
+        assert!(!same_document(
+            "https://example.com/A",
+            "https://example.com/a"
+        ));
+    }
+
+    #[test]
+    fn maps_buttons_to_mouse_events() {
+        assert_eq!(
+            button_event(0, true, 1),
+            (COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, 0)
+        );
+        assert_eq!(
+            button_event(0, true, 2),
+            (COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOUBLE_CLICK, 0)
+        );
+        assert_eq!(
+            button_event(0, true, 3),
+            (COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, 0)
+        );
+        assert_eq!(
+            button_event(1, false, 1),
+            (COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP, 0)
+        );
+        assert_eq!(
+            button_event(4, true, 1),
+            (COREWEBVIEW2_MOUSE_EVENT_KIND_X_BUTTON_DOWN, 2)
+        );
+    }
+
+    #[test]
+    fn styles_scrolling() {
+        assert!(scroll_style(false).contains("var on = false"));
+        assert!(scroll_style(true).contains("var on = true"));
+        assert!(scroll_style(false).contains("overflow: hidden !important"));
     }
 }

@@ -17,7 +17,9 @@
 //! The iOS runtimes and SDK need Xcode: they are built on macOS only, as is
 //! the macOS (AppKit) runtime, built for this machine. The
 //! Linux runtime is built for this machine, on Linux only (where it runs,
-//! GTK 4 and Pango must be installed); the Windows runtime likewise, on
+//! GTK 4, Pango and, for web views, WebKitGTK 6.0 must be installed;
+//! without WebKitGTK's development files it is built with placeholders for
+//! web views and needs only GTK); the Windows runtime likewise, on
 //! Windows only (where the CLI is `bin/nsh.exe`). The GPUI runtime is
 //! built for this machine on each of the three.
 
@@ -60,11 +62,27 @@ pub(crate) fn dist() -> anyhow::Result<()> {
         }
     }
     if cfg!(target_os = "linux") {
+        // Web views need WebKitGTK 6.0 to build (and then to run packaged
+        // apps): without its development files the runtime is made with
+        // placeholders for web views rather than not at all.
+        let webkit = Command::new("pkg-config")
+            .args(["--exists", "webkitgtk-6.0"])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !webkit {
+            term::warn(
+                "no WebKitGTK 6.0 (libwebkitgtk-6.0-dev): the Linux runtime shows placeholders for web views",
+            );
+        }
         for (package, what) in [
             ("nsh-linux-host", "the development host for Linux"),
             ("nsh-linux-app", "the release runner for Linux"),
         ] {
-            cargo(&["build", "--release", "-p", package], what)?;
+            let mut args = vec!["build", "--release", "-p", package];
+            if !webkit {
+                args.push("--no-default-features");
+            }
+            cargo(&args, what)?;
             copy(
                 &release.join("release").join(package),
                 &out.join("runtime/linux").join(package),

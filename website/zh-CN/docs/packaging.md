@@ -152,7 +152,7 @@ nsh package App.tsx --target linux --run
 
 写出 `out/<Name>/`（可执行文件 `<Name>`、`nsh/bundle.nshc`、`nsh/assets/…`、包含窗口标题和应用 id 的 `nsh/app.json`、`<id>.desktop`
 和图标 `<id>.png`），以及同样内容的 `out/<Name>.tar.gz`。请在 Linux 上打包：运行器是为构建它的机器构建的。运行应用的机器上必须装有
-GTK 4（4.14 及以上）和 Pango。如何安装应用及其桌面条目：见 [Linux](./linux.md#打包)。
+GTK 4（4.14 及以上）、Pango 和 WebKitGTK 6.0（用于 Web 视图）。如何安装应用及其桌面条目：见 [Linux](./linux.md#打包)。
 
 ## Windows
 

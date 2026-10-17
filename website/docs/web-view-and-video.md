@@ -11,15 +11,20 @@ group: ui
 
 | Component | iOS | Android | macOS | Linux | Windows |
 |---|---|---|---|---|---|
-| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | Not supported: a placeholder | WebView2, in a child window |
+| `WebView` | WKWebView | `android.webkit.WebView` | WKWebView | WebKitGTK 6.0's `WebKitWebView` | WebView2, in a child window |
 | `Video` | AVPlayerLayer; AVPlayerViewController with `controls` | MediaPlayer on a TextureView; MediaController with `controls` | AVPlayerLayer; AVKit's AVPlayerView with `controls` | GTK's media stream (GStreamer) in a `GtkPicture`; `GtkVideo` with `controls` | Media Foundation's media engine, frames drawn with Direct2D; nsh's own control bar with `controls` |
 
 The frameworks behind them (WebKit, AVFoundation) are loaded the first time an app uses one, so apps that never show a web page or a video do not pay for them at launch. Import them from `nsh/webview` and `nsh/video`.
 
-On [macOS](./macos.md) the web view has no scroll view of its own, so `scrollEnabled` is ignored.
+On [macOS](./macos.md) the web view has no scroll view of its own: with `scrollEnabled={false}` the mouse wheel and the
+trackpad scroll the app's scroll views around it instead of the page, which still scrolls with its keyboard and its
+own scripts.
 
-On [Linux](./linux.md) a web view would need WebKitGTK, which nsh does not use: it shows a neutral placeholder and
-ignores its commands. Videos play the formats the installed GStreamer plugins decode; `rate` is not supported (they
+On [Linux](./linux.md) a web view is a WebKitGTK page drawn inside its view: nsh content over it (a dialog, a sheet)
+covers it, and its parents clip it. The `webview` capability also applies to the navigations of frames there (an
+`iframe` of a host that is not granted stays empty), and `scrollEnabled: false` stops the page itself from scrolling
+(elements inside it still scroll). Apps need WebKitGTK 6.0 installed; a runtime built without it shows a neutral
+placeholder. Videos play the formats the installed GStreamer plugins decode; `rate` is not supported (they
 play at 1×), and `onEnd` only comes for videos that do not loop.
 
 On [Windows](./windows.md) a web view is a WebView2 control in a child window that follows its view: it is clipped to
@@ -63,6 +68,7 @@ Changing `source` loads the new page.
 | `scrollEnabled` | `boolean` | `true` | The user can scroll the page. |
 | `userAgent` | `string` | | The browser's user agent string. |
 | `ios={{ allowsBackForwardNavigationGestures }}` | `boolean` | | iOS: swipe back and forward through the page history. |
+| `desktop={{ allowsBackForwardNavigationGestures }}` | `boolean` | | macOS: swipe with two fingers on the trackpad to go back and forward; Windows: swipe on a touchscreen; Linux: swipe on the touchpad. |
 
 Events:
 

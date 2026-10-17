@@ -46,6 +46,10 @@ function Browser() {
 |---|---|---|
 | `allowsBackForwardNavigationGestures` | `boolean` | 从边缘轻扫以后退和前进。 |
 
+| `desktop` 键 | 类型 | 说明 |
+|---|---|---|
+| `allowsBackForwardNavigationGestures` | `boolean` | macOS：双指在触控板上轻扫以后退和前进；Windows：在触摸屏上轻扫；Linux：在触控板上轻扫。 |
+
 ## 事件
 
 | 事件 | 载荷 | 时机 |

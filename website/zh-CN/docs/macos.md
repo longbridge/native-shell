@@ -116,7 +116,8 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 深色模式实时跟随系统外观。见[设备与环境](./device-and-environment.md)。
 
 输入是桌面输入：鼠标、触控板（带惯性的滚动、捏合和旋转）和键盘。`selectable` 文本通过拖动、双击和三击选择，用 Cmd+C 复制。
-Escape、Option+Left、Cmd+[ 和鼠标的后退键会在栈中返回，或请求模态视图关闭；`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗。
+Escape、Option+Left、Cmd+[ 和鼠标的后退键会在栈中返回，或请求模态视图关闭（焦点在输入框或网页中时，Escape 只会离开它；
+网页先收到这些按键，它自己用掉的不会触发返回）；`pageSheet` 和 `formSheet` 是窗口中居中的卡片，背后的内容变暗。
 点击 `Input` 的任意位置（包括内边距）都会把光标放到最近的位置。
 `Alert` 和 `ActionSheet` 以 `NSAlert` 表单的形式显示在窗口上：不超过两个按钮的提示框按钮排成一行（取消按钮在最左边，最后一个普通按钮是
 Return 的默认按钮）；更多按钮以及操作表的选项按顺序竖排，取消按钮在最后，没有默认按钮；Escape 按下取消按钮。
@@ -146,7 +147,8 @@ Return 不会提交。`onKeyPress` 报告的内容与 React Native 一致：输�
 - **可缩放的滚动视图**（`zoomTo`、缩放相关属性）。
 - **`mixBlendMode`**，以及大于 1 的 `brightness()`。
 - **输入框**：内容类型与自动填充、键盘类型、自动大写、字间距；输入辅助视图从不显示（没有软键盘），`keyboardShouldPersistTaps` 被忽略。
-- **`WebView` 的 `scrollEnabled`** 被忽略（macOS 的 Web 视图没有可关闭的滚动视图）。
+- **`WebView` 的 `scrollEnabled={false}`** 让鼠标滚轮和触控板不再滚动页面，而是像 iOS 上一样滚动它外面的应用滚动视图。
+  页面仍可用键盘（空格、方向键）和它自己的脚本滚动，触控板在页面之间的轻扫（`allowsBackForwardNavigationGestures`）也会停用。
 - **无障碍**：自定义 `accessibilityActions`。
 - **状态栏**和**触感反馈**（桌面上没有对应物）。
 

@@ -128,7 +128,8 @@ The environment is a desktop's: the safe area and the keyboard height are 0, `Pl
 
 Input is a desktop's: the mouse, the trackpad (scrolling with momentum, pinch and rotation) and the keyboard.
 `selectable` text is selected by dragging, double- and triple-clicking, and copied with Cmd+C. Escape, Option+Left,
-Cmd+[ and the mouse's back button go back in a stack or ask a modal to close; page and form sheets are cards centered
+Cmd+[ and the mouse's back button go back in a stack or ask a modal to close (Escape in a focused field or web page
+only leaves it; a page gets these keys first, and keeps those it uses); page and form sheets are cards centered
 in the window over a dimmed backdrop. A click anywhere in an `Input`, its padding too, puts the caret at the nearest
 point. `Alert` and `ActionSheet` show an `NSAlert` sheet on the window: up to two alert buttons in a row (the cancel
 button leftmost, the last regular one the default for Return), more buttons and an action sheet's options stacked in
@@ -162,7 +163,9 @@ Not supported, or different:
 - **`mixBlendMode`**, and `brightness()` above 1.
 - **Inputs**: content types and autofill, keyboard types, autocapitalization, letter spacing; input accessory views
   are never shown (there is no software keyboard) and `keyboardShouldPersistTaps` is ignored.
-- **`WebView`'s `scrollEnabled`** is ignored (macOS's web view has no scroll view to turn off).
+- **`WebView`'s `scrollEnabled={false}`** keeps the mouse wheel and the trackpad from scrolling the page: they scroll
+  the app's scroll views around it, as on iOS. The page still scrolls with its keyboard (Space, the arrows) and its own
+  scripts, and trackpad swipes between its pages (`allowsBackForwardNavigationGestures`) stop as well.
 - **Accessibility**: custom `accessibilityActions`.
 - **The status bar** and **haptics** (no desktop equivalent).
 

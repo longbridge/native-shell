@@ -19,9 +19,10 @@ import { WebView, type WebViewNavigation, type WebViewProps } from "nsh/webview"
 ```ts
 const WebView: (props: WebViewProps) => YNode;
 
-interface WebViewProps extends Omit<ViewProps, "children" | "ios">, WebViewHostProps {
+interface WebViewProps extends Omit<ViewProps, "children" | "ios" | "desktop">, WebViewHostProps {
   source: string | { uri: string } | { html: string; baseUrl?: string };
   ios?: IOSWebViewHostProps;
+  desktop?: DesktopWebViewHostProps;
 }
 ```
 
@@ -60,6 +61,7 @@ mount(Browser);
 | `scrollEnabled` | `boolean` | `true` | 用户可以滚动页面。 |
 | `javaScriptEnabled` | `boolean` | `true` | 页面可以运行脚本。 |
 | `ios` | `{ allowsBackForwardNavigationGestures?: boolean }` | | 仅 iOS：从边缘轻扫以后退和前进。 |
+| `desktop` | `{ allowsBackForwardNavigationGestures?: boolean }` | | macOS：双指在触控板上轻扫以后退和前进；Windows：在触摸屏上轻扫；Linux：在触控板上轻扫。 |
 
 ## 事件
 

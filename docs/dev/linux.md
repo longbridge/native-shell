@@ -8,12 +8,15 @@ view per node, the core lays everything out); the GPUI backend (`gpui.md`) is a 
 ## Building and checking
 
 The crates need the GTK 4 (≥ 4.14; Pango from 1.50 on, the app's fonts going through Fontconfig) development
-packages (`libgtk-4-dev` on Debian / Ubuntu, `gtk4` on Arch, `gtk4-devel` on Fedora) and, for QuickJS, clang. Off Linux
-the crates are empty (like the other platform crates off their targets), so check them on Linux:
+packages (`libgtk-4-dev` on Debian / Ubuntu, `gtk4` on Arch, `gtk4-devel` on Fedora), for web views WebKitGTK 6.0's
+(2.40 or later: `libwebkitgtk-6.0-dev` on Debian / Ubuntu, `webkitgtk-6.0` on Arch, `webkitgtk6.0-devel` on Fedora) and,
+for QuickJS, clang. Off Linux the crates are empty (like the other platform crates off their targets), so check them on
+Linux:
 
 ```sh
-cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets
-cargo test -p nsh-platform-linux          # needs no display: tests do not start GTK
+cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targets   # with web views (the hosts' default)
+cargo clippy -p nsh-platform-linux --all-targets   # without: web views as placeholders
+cargo test -p nsh-platform-linux --features webview   # needs no display: tests do not start GTK
 cargo build -p nsh-linux-host             # ./target/debug/nsh-linux-host
 ```
 
@@ -22,8 +25,18 @@ The Linux binaries are built for the machine itself, so the CLI finds them in `t
 `dist/nsh/runtime/linux/` (`docs/dev/tooling.md`, `embedding.md`). CI: `.github/workflows/linux.yml` (Ubuntu 24.04:
 clippy and tests of the Linux crates, the CLI, `nsh-dev` and xtask).
 
-Features: `js` (default; JS apps; without it the crate only runs Rust apps and links no QuickJS) and `dev` (the dev
-server client, log forwarding, the error overlay: `dev.rs`).
+Features: `js` (default; JS apps; without it the crate only runs Rust apps and links no QuickJS), `dev` (the dev
+server client, log forwarding, the error overlay: `dev.rs`) and `webview` (web views with WebKitGTK 6.0, the `webkit6`
+crate: `native/web.rs`; without it a `WebView` shows a placeholder). `webview` is off in `nsh-platform-linux` itself,
+so an embedding GTK app decides whether it links WebKitGTK, and on by default in `nsh-linux-host` and `nsh-linux-app`
+(their own feature `webview`): `nsh run`, `nsh package --target linux` and the generated crates of Rust apps build
+those two crates with their default features, so web views work wherever nsh runs apps, as on the other platforms.
+The price is that the release runner links `libwebkitgtk-6.0.so.4`, so every packaged app needs WebKitGTK 6.0
+installed to start (`libwebkitgtk-6.0-4` on Debian / Ubuntu; GNOME desktops have it), whether or not it shows a
+web view: WebKitGTK cannot be loaded on demand the way iOS and macOS load WebKit, as the `webkit6` bindings link
+it. `cargo xtask dist` builds both with web views when `pkg-config` finds `webkitgtk-6.0`, else without them
+(`--no-default-features`, with a warning), so a distribution made without WebKitGTK's development files still
+works and its runner only needs GTK.
 
 ## Architecture
 
@@ -33,7 +46,7 @@ server client, log forwarding, the error overlay: `dev.rs`).
   frames are kept as `f32` points and the integer
   allocation only bounds picking. `snapshot` draws, in order: shadows and background (`decor.rs`), the content (text,
   image, canvas), the children (clipped to the rounded bounds with `overflow: hidden`), the border, then hosted GTK
-  widgets (`ViewState::natives`: text editors, headers, videos).
+  widgets (`ViewState::natives`: text editors, headers, videos, web views).
 - **One hop per commit.** The engine runs on its own thread (`nsh_engine::Engine`); its sink queues each commit and wakes
   the main loop once (`MainContext::invoke`), and the main thread applies every queued batch in order (`surface.rs`,
   `mount.rs`). `invoke` closures must be `Send`, so they find their surface by key in a thread-local map; no globals
@@ -58,12 +71,13 @@ server client, log forwarding, the error overlay: `dev.rs`).
 | Images | `image.rs` | Loaded and decoded on worker threads (GDK's PNG / JPEG / TIFF loaders, the `image` crate for GIF and WebP), textures in an LRU cache per resolved location; animated GIF / WebP play on timers of their frame delays (paused while unmapped); blur and tint at draw time |
 | Canvas | `canvas.rs` | The recorded drawing replayed with Cairo into a recording surface (`Snapshot::append_cairo`), sharp at any scale; shadows blurred into a mask; conic gradients as mesh patterns |
 | Scroll views | `scroll.rs` | Offsets of their own (`ScrollState`), reported as UIKit's `contentOffset`; wheel / touchpad / drag scrolling with UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags; an indicator that fades and that the mouse drags as a scroll bar (a mouse press within 12 pt of the edge on the indicator, faded or not, drags it as a scroll bar's thumb: the content moves the other way, so the thumb follows the pointer); the keyboard (arrows by 40 pt, Page Up / Page Down and Space / Shift+Space by a page, Home / End) scrolls the view around the focused widget or under the pointer while no field has focus; a widget that gets the focus (Tab, a click, `focus()`) is scrolled into view, animated |
-| Input | `input.rs` | Its own hit testing over the views (GTK's `pick` ignores `overflow: hidden`, `hidden` and `box-only`; hosted widgets are picked inside with GTK's; outside a view's bounds only in its `Overflow` area); touches for the responder system, with `panActivation` gates (the scroll views around wait for the pan to fail; `TouchEvent::activated`); native presses, long presses, hover and pressed states; pan / pinch / rotate native values (Ctrl + wheel pinches); wheel, touchpad, mouse drag and touch scrolling routed to scroll views: wheels go to views along their axis, and a scroll stays on its view until it ends (touchpad gesture; wheel notches within 200 ms) |
+| Input | `input.rs` | Its own hit testing over the views (GTK's `pick` ignores `overflow: hidden`, `hidden` and `box-only`; hosted widgets are picked inside with GTK's; outside a view's bounds only in its `Overflow` area); touches for the responder system, with `panActivation` gates (the scroll views around wait for the pan to fail; `TouchEvent::activated`); native presses, long presses, hover and pressed states, `onHoverIn` / `onHoverOut`; pan / pinch / rotate native values (Ctrl + wheel pinches); wheel, touchpad, mouse drag and touch scrolling routed to scroll views: wheels go to views along their axis, and a scroll stays on its view until it ends (touchpad gesture; wheel notches within 200 ms) |
 | Text inputs | `text_input.rs` | `gtk::Text` / `gtk::TextView` in a `gtk::ScrolledWindow`, hosted at the content box; the view draws the decoration, a per-input style provider clears GTK's (an animated `color` goes to a second one-rule provider, so frames do not reload the sheet); edit counts drop stale JS values; a user edit reports `onChangeText` once the main loop is idle (or before a submit or blur), so a text view's paste over a selection, undo and redo (a deletion and an insertion) report their result once; offsets converted between UTF-16 and characters; return does what `submitBehavior` says (see "Keyboard") |
 | Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) child-visible; headers are plain GTK widgets, of a fixed height reported to the core (`set_screen_header`); departing screens leave as a `gtk::WidgetPaintable` image; Escape (unless a text field has the focus: Escape leaves the field), Alt+Left, the Back key and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close; without a modal, the app's back listeners hear it before the stacks, and `Command::Back` goes on when none takes it) |
 | Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close; the views under the newest modal cannot take the focus (`can-focus` off), and the widget that had it when a modal opened gets it back when it closes |
 | Dialogs, toasts | `system.rs` | GTK widgets the root hosts over the app's views (not separate windows: they stay with an embedded surface and never block the main loop) |
 | Video | `native.rs` | `gtk::MediaFile` (GStreamer) in a `gtk::Picture`, or `gtk::Video` with `controls` |
+| Web views | `native/web.rs` | `WebKitWebView` (WebKitGTK 6.0, feature `webview`) hosted in the node's view like a video (mapped only while the view has a size, and loading only once mapped: with WebKit's DMA-BUF renderer a page loaded before its view is mapped sometimes stays blank for good), so it stacks, clips, fades and transforms with nsh content (sheets, scrims, dialogs, toasts and later siblings draw over it; departing screens keep its last frame in their `WidgetPaintable`): no composition surfaces. iOS's bridge (`ReactNativeWebView.postMessage` through a script message handler), injected scripts as top-frame user scripts, `javaScriptEnabled` as `enable-javascript-markup`, `scrollEnabled: false` as a user style sheet hiding the top document's overflow, `allowsBackForwardNavigationGestures`, user agent; the `webview` capability decided in `decide-policy` (for frames too: WebKitGTK does not tell them apart); responses it cannot show are refused, not downloaded; website data per app id in a `NetworkSession` (`$XDG_DATA_HOME/<app id>/webkit`, cache in `$XDG_CACHE_HOME`); the page's `prefers-color-scheme` follows GTK's settings, which follow the app. Pointer events GTK would send to a clipped-off part of a page are kept from it (`input.rs`); Escape a focused page does not use leaves it, Alt+Left / Alt+Right / Back / Forward and the mouse's side buttons move in the page's history first |
 | Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent`'s widget fills the node's view; `ComponentContext::emit` / `set_size` from any thread |
 | Accessibility | `access.rs` | `GtkAccessible` (AT-SPI): roles from `accessibilityRole` / text / press handlers / labelled images, labels, descriptions, values, states; `testID` as the widget name; live regions emulated with `gtk_accessible_announce` |
 | Environment | `system.rs` | Color scheme: the app's appearance (`nsh.json` `"appearance"`, `setColorScheme`) when it forces one, else the XDG settings portal's (`org.freedesktop.appearance color-scheme`, live); hosted GTK widgets, dialogs and the root's background follow it, and a packaged app's window opens in it (`nsh/app.json`). The locale (`Intl`) from `LC_ALL` / `LC_TIME` / `LC_NUMERIC` / `LC_MESSAGES` / `LANG`, else GLib's language names. Font scale from `gtk-xft-dpi`, reduce motion from `gtk-enable-animations`, the surface's (fractional) scale, GTK's text direction, AT-SPI's `ScreenReaderEnabled`; `Platform.OS` `"linux"`, idiom `desktop`, OS version the kernel's major.minor; safe area and keyboard height 0 |
@@ -154,8 +168,12 @@ Without `--bundle` the host connects to the dev server on this machine (`--dev-s
 
 ## Not implemented, or different
 
-- **Web views** need WebKitGTK (`webkit6`, WebKitGTK 6.0 for GTK 4), which many machines lack and nsh does not depend
-  on: a `WebView` shows a neutral placeholder and ignores its commands.
+- **Web views** (with the `webview` feature): the `webview` capability also applies to the navigations of frames (an
+  `iframe` of a host that is not granted stays empty), as WebKitGTK's `decide-policy` does not say which frame a
+  navigation is for; iOS and macOS only check the main frame's. A new window (`target="_blank"`, `window.open`) opens
+  nothing, as on iOS. Script dialogs (`alert`, `confirm`) are WebKitGTK's own, drawn inside the page (iOS and macOS show
+  none). Simulated taps (`--script`'s `tap`) focus a page but do not click into it (GTK never sees them). Without the
+  feature a `WebView` shows a neutral placeholder and ignores its commands.
 - **Video**: GTK streams have no playback rate, so `rate` is ignored (warned once); a looping video never ends, so
   `onEnd` only comes for videos that do not loop. Which formats play depends on the installed GStreamer plugins.
 - **Zooming scroll views**: `zoomTo` and the zoom props are ignored.
@@ -168,4 +186,5 @@ Without `--bundle` the host connects to the dev server on this machine (`--dev-s
 - **Accessibility**: `accessible={true}` grouping (children stay separate elements), `accessibilityActions` (GTK has no
   custom actions) and real live regions (emulated by announcements).
 - **No desktop equivalent**: the status bar; `AccessibilityFocus` moves keyboard focus when the view can take it.
-- **Packaged apps** are a directory and a `.tar.gz` (`embedding.md`); GTK 4 and Pango must be installed where they run.
+- **Packaged apps** are a directory and a `.tar.gz` (`embedding.md`); GTK 4, Pango and (with the release runner's
+  default `webview` feature) WebKitGTK 6.0 must be installed where they run.

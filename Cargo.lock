@@ -4371,6 +4371,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "javascriptcore6"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d8d4f64d976c6dc6068723b6ef7838acf954d56b675f376c826f7e773362ddb"
+dependencies = [
+ "glib 0.22.10",
+ "javascriptcore6-sys",
+ "libc",
+]
+
+[[package]]
+name = "javascriptcore6-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2b9787581c8949a7061c9b8593c4d1faf4b0fe5e5643c6c7793df20dbe39cf6"
+dependencies = [
+ "glib-sys 0.22.9",
+ "gobject-sys 0.22.9",
+ "libc",
+ "system-deps 7.0.8",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4585,7 +4608,7 @@ dependencies = [
  "percent-encoding",
  "raw-window-handle",
  "sha2",
- "soup3",
+ "soup3 0.5.0",
  "tao-macros",
  "thiserror 2.0.21",
  "url",
@@ -5441,6 +5464,7 @@ dependencies = [
  "serde_json",
  "ttf-parser",
  "ureq",
+ "webkit6",
 ]
 
 [[package]]
@@ -8974,7 +8998,20 @@ dependencies = [
  "gio 0.18.4",
  "glib 0.18.5",
  "libc",
- "soup3-sys",
+ "soup3-sys 0.5.0",
+]
+
+[[package]]
+name = "soup3"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92d38b59ff6d302538efd337e15d04d61c5b909ec223c60ae4061d74605a962a"
+dependencies = [
+ "futures-channel",
+ "gio 0.22.10",
+ "glib 0.22.10",
+ "libc",
+ "soup3-sys 0.9.0",
 ]
 
 [[package]]
@@ -8988,6 +9025,19 @@ dependencies = [
  "gobject-sys 0.18.0",
  "libc",
  "system-deps 6.2.2",
+]
+
+[[package]]
+name = "soup3-sys"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79d5d25225bb06f83b78ff8cc35973b56d45fcdd21af6ed6d2bbd67f5a6f9bea"
+dependencies = [
+ "gio-sys 0.22.9",
+ "glib-sys 0.22.9",
+ "gobject-sys 0.22.9",
+ "libc",
+ "system-deps 7.0.8",
 ]
 
 [[package]]
@@ -9246,6 +9296,19 @@ dependencies = [
  "heck 0.5.0",
  "pkg-config",
  "toml 0.8.23",
+ "version-compare",
+]
+
+[[package]]
+name = "system-deps"
+version = "7.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7"
+dependencies = [
+ "cfg-expr 0.20.10",
+ "heck 0.5.0",
+ "pkg-config",
+ "toml 1.1.8+spec-1.1.0",
  "version-compare",
 ]
 
@@ -10365,7 +10428,7 @@ dependencies = [
  "javascriptcore-rs",
  "libc",
  "once_cell",
- "soup3",
+ "soup3 0.5.0",
  "webkit2gtk-sys",
 ]
 
@@ -10385,8 +10448,41 @@ dependencies = [
  "javascriptcore-rs-sys",
  "libc",
  "pkg-config",
- "soup3-sys",
+ "soup3-sys 0.5.0",
  "system-deps 6.2.2",
+]
+
+[[package]]
+name = "webkit6"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4959dd2a92813d4b2ae134e71345a03030bcff189b4f79cd131e9218aba22b70"
+dependencies = [
+ "gdk4",
+ "gio 0.22.10",
+ "glib 0.22.10",
+ "gtk4",
+ "javascriptcore6",
+ "libc",
+ "soup3 0.9.0",
+ "webkit6-sys",
+]
+
+[[package]]
+name = "webkit6-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "236078ce03ff041bf87904c8257e6a9b0e9e0f957267c15f9c1756aadcf02581"
+dependencies = [
+ "gdk4-sys",
+ "gio-sys 0.22.9",
+ "glib-sys 0.22.9",
+ "gobject-sys 0.22.9",
+ "gtk4-sys",
+ "javascriptcore6-sys",
+ "libc",
+ "soup3-sys 0.9.0",
+ "system-deps 7.0.8",
 ]
 
 [[package]]

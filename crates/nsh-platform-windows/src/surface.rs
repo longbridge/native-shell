@@ -154,6 +154,10 @@ pub(crate) struct Surface {
     pub(crate) keymap: crate::keymap::KeymapState,
     /// Hosted items drawn by the last frame ([`Hosted::placed`]).
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
+    /// The window's composition while it has web views (each holds it).
+    composition: RefCell<Weak<crate::compose::Composition>>,
+    /// Composed items (web views) drawn by the last frame.
+    composed: RefCell<Vec<Rc<dyn Hosted>>>,
     /// The window's chrome: title bar, menus ([`crate::chrome`]).
     pub(crate) chrome: crate::chrome::Chrome,
     /// Called after the surface is resized (development overlays).
@@ -200,6 +204,8 @@ impl Surface {
             native: Default::default(),
             keymap: Default::default(),
             placed: RefCell::default(),
+            composition: RefCell::default(),
+            composed: RefCell::default(),
             on_resized: RefCell::default(),
             shortcuts: RefCell::default(),
             chrome: Default::default(),
@@ -398,6 +404,60 @@ impl Surface {
         for (item, rect) in drawn {
             item.placed(Some(rect));
             placed.push(item);
+        }
+    }
+
+    /// The window's composition, if it has web views.
+    pub(crate) fn composition(&self) -> Option<Rc<crate::compose::Composition>> {
+        self.composition.borrow().upgrade()
+    }
+
+    /// The window's composition, made for a web view if there is none.
+    pub(crate) fn compose(&self) -> windows::core::Result<Rc<crate::compose::Composition>> {
+        if let Some(c) = self.composition() {
+            return Ok(c);
+        }
+        let hwnd = self.hwnd();
+        if hwnd.is_invalid() {
+            return Err(windows::core::Error::from_hresult(
+                windows::Win32::Foundation::E_HANDLE,
+            ));
+        }
+        let c = crate::compose::Composition::new(hwnd)?;
+        *self.composition.borrow_mut() = Rc::downgrade(&c);
+        Ok(c)
+    }
+
+    /// The composed items the frame just shown drew, where they go, and
+    /// the layers it drew (how many items are below each): tells them, and
+    /// the ones no longer drawn, and stacks them.
+    pub(crate) fn composed_placed(
+        &self,
+        composition: Option<&crate::compose::Composition>,
+        composed: Vec<crate::render::Composed>,
+        layers: &[usize],
+    ) {
+        let old = std::mem::replace(
+            &mut *self.composed.borrow_mut(),
+            composed.iter().map(|c| c.item.clone()).collect(),
+        );
+        if old.is_empty() && composed.is_empty() {
+            return;
+        }
+        for item in &old {
+            if !composed.iter().any(|c| Rc::ptr_eq(&c.item, item)) {
+                item.compose_at(None);
+            }
+        }
+        let mut visuals = Vec::with_capacity(composed.len());
+        for c in &composed {
+            c.item.compose_at(Some(&c.at));
+            if let Some(v) = c.item.visual() {
+                visuals.push(v);
+            }
+        }
+        if let Some(composition) = composition {
+            composition.arrange(&visuals, layers);
         }
     }
 

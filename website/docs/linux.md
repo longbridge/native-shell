@@ -17,6 +17,11 @@ so one bundle runs everywhere. On Linux, `Platform.OS` is `"linux"` and the `des
 - **GTK 4.14** or later. To build nsh's Linux runtime (from a checkout, or `cargo xtask
   dist` on Linux) you need their development packages and clang: `libgtk-4-dev clang` on Debian and Ubuntu (24.04 or
   later), `gtk4 clang` on Arch, `gtk4-devel clang` on Fedora.
+- **WebKitGTK 6.0** (2.40 or later) for web views: `libwebkitgtk-6.0-dev` on Debian and Ubuntu, `webkitgtk-6.0` on
+  Arch, `webkitgtk6.0-devel` on Fedora to build the runtime. The development host and the release runner use it by
+  default, so packaged apps need WebKitGTK 6.0 where they run (`libwebkitgtk-6.0-4` on Debian and Ubuntu; GNOME
+  desktops have it). `cargo xtask dist` on a machine without its development files builds a runtime whose web views
+  are placeholders, and whose apps need only GTK.
 - **GStreamer** plugins for the video formats your app plays (GTK plays video through GStreamer).
 
 ## Running an app
@@ -58,8 +63,8 @@ out/<Name>/
 out/<Name>.tar.gz
 ```
 
-The executable finds `nsh/` next to itself (a symbolic link to it, in `~/.local/bin` say, works too). GTK 4 and Pango
-must be installed where the app runs. To show the app in a desktop's launcher, put the executable (or a link) on the
+The executable finds `nsh/` next to itself (a symbolic link to it, in `~/.local/bin` say, works too). GTK 4, Pango and
+WebKitGTK 6.0 must be installed where the app runs. To show the app in a desktop's launcher, put the executable (or a link) on the
 `PATH`, the `.desktop` file in `~/.local/share/applications` and the icon in an icon theme directory. `--run` launches
 the app after packaging it.
 
@@ -128,9 +133,14 @@ Shortcuts work with any keyboard layout (on a Cyrillic or Greek one, Ctrl+C is t
 A return that commits an input method's composition (Chinese, Japanese, ...) never submits. `onKeyPress` reports
 what React Native reports: the typed text, `"Enter"`, `"Backspace"`, and `"Escape"`; pasted text is not reported.
 
+Web views are WebKitGTK pages, drawn inside nsh's views: sheets, dialogs, toasts and views after them draw over a page,
+and parents clip it and fade it. Their website data (cookies, storage, the cache) is kept per app, under
+`~/.local/share/<app id>/webkit` and `~/.cache/<app id>/webkit`. The `webview` capability also applies to the pages of
+frames: an `iframe` of a host your app was not granted stays empty. Escape in a page leaves it, as in a text field
+(unless the page uses it); Alt+Left and the mouse's back button go back in the page while it has a history.
+
 Not supported:
 
-- **`WebView`**: it would need WebKitGTK; a web view shows a neutral placeholder.
 - **Video `rate`**: GTK plays at normal speed only. `onEnd` only comes for videos that do not loop.
 - **Zooming scroll views** (`zoomTo`, the zoom props).
 - **`mixBlendMode` and `backdropFilter`** (the background color still draws); `borderCurve: "continuous"` draws

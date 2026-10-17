@@ -4,7 +4,11 @@
 //!
 //! - `wait <ms>`: waits.
 //! - `shot <file.png>`: draws the window's content offscreen at scale 1
-//!   into a PNG, whatever covers the window on screen.
+//!   into a PNG, whatever covers the window on screen. Web views are not
+//!   in it (the system composes their pages).
+//! - `screen <file.png>`: captures what the window shows, web views
+//!   included, at the window's scale (`PrintWindow` with
+//!   `PW_RENDERFULLCONTENT`), whatever covers the window.
 //! - `tap <x> <y>`: presses and releases at a point (points, root
 //!   coordinates).
 //! - `drag <x0> <y0> <x1> <y1> [ms]`: presses, moves in steps over `ms`
@@ -13,12 +17,14 @@
 //! - `wheel <x> <y> <dx> <dy>`: a wheel scroll (points; positive scrolls
 //!   toward the end); `pad <x> <y> <dx> <dy>` a precision touchpad's.
 //! - `hover <x> <y>`: moves the pointer.
-//! - `type <text>`: types into the focused field.
 //! - `mark <text>`: an IME's composition in the focused field (`mark`
 //!   alone ends it).
+//! - `type <text>`: types into the focused field, or the focused web
+//!   page (posted to its window as `WM_CHAR`s).
 //! - `key <name>`: presses a key: `Return`, `BackSpace`, `Tab`, `Escape`,
 //!   `Left`, `Home`, `Page_Down`, `F5`, a letter, ...; `ctrl+`, `shift+`,
-//!   `alt+` prefixes add modifiers (`ctrl+a`).
+//!   `alt+` prefixes add modifiers (`ctrl+a`). Keys without modifiers go
+//!   to the focused web page, if one has the focus.
 //! - `selectall`: Ctrl+A.
 //! - `dark` / `light`: switches the system's appearance (an app that
 //!   forces one keeps it).
@@ -100,8 +106,12 @@ pub(crate) fn run(surface: Rc<Surface>, script: &str) {
                         )
                     });
                 }
-                "type" => on_main(key, move |s| crate::text_input::char_input(s, &rest)),
                 "mark" => on_main(key, move |s| crate::text_input::mark(s, &rest)),
+                "type" => on_main(key, move |s| {
+                    if !type_into_child(s, &rest) {
+                        crate::text_input::char_input(s, &rest);
+                    }
+                }),
                 "key" | "selectall" => {
                     let name = if cmd == "selectall" {
                         "ctrl+a".to_owned()
@@ -127,6 +137,10 @@ pub(crate) fn run(surface: Rc<Surface>, script: &str) {
                 "shot" => on_main(key, move |s| match shot(s, &rest) {
                     Ok(()) => log::info!("script: wrote {rest}"),
                     Err(err) => log::error!("script: shot {rest}: {err}"),
+                }),
+                "screen" => on_main(key, move |s| match screen(s, &rest) {
+                    Ok(()) => log::info!("script: wrote {rest}"),
+                    Err(err) => log::error!("script: screen {rest}: {err}"),
                 }),
                 "quit" => on_main(key, |s| {
                     // SAFETY: a plain call on the surface's window.
@@ -169,7 +183,62 @@ fn pointer(surface: &Rc<Surface>, kind: PointerKind, x: f32, y: f32, touch: bool
     );
 }
 
+/// The window of another module that has the keyboard focus (a web view's
+/// page), if any.
+fn focused_child(surface: &Surface) -> Option<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
+    // SAFETY: a plain query.
+    let focus = unsafe { GetFocus() };
+    (!focus.is_invalid() && focus != surface.hwnd()).then_some(focus)
+}
+
+/// Types `text` into the focused page (posted as `WM_CHAR`s to its window,
+/// as the keyboard would); false when nsh has the focus.
+fn type_into_child(surface: &Surface, text: &str) -> bool {
+    use windows::Win32::{
+        Foundation::{LPARAM, WPARAM},
+        UI::WindowsAndMessaging::{PostMessageW, WM_CHAR},
+    };
+    let Some(hwnd) = focused_child(surface) else {
+        return false;
+    };
+    for unit in text.encode_utf16() {
+        // SAFETY: posting plain messages to a live window.
+        let _ = unsafe { PostMessageW(Some(hwnd), WM_CHAR, WPARAM(unit as usize), LPARAM(1)) };
+    }
+    true
+}
+
+/// Presses `vk` in the focused page; false when nsh has the focus.
+fn press_in_child(surface: &Surface, vk: u16) -> bool {
+    use windows::Win32::{
+        Foundation::{LPARAM, WPARAM},
+        UI::WindowsAndMessaging::{PostMessageW, WM_CHAR, WM_KEYDOWN, WM_KEYUP},
+    };
+    let Some(hwnd) = focused_child(surface) else {
+        return false;
+    };
+    // SAFETY: posting plain messages to a live window.
+    unsafe {
+        let _ = PostMessageW(Some(hwnd), WM_KEYDOWN, WPARAM(vk as usize), LPARAM(1));
+        if matches!(vk, 0x08 | 0x09 | 0x0D | 0x1B) {
+            // What `TranslateMessage` adds for these keys.
+            let _ = PostMessageW(Some(hwnd), WM_CHAR, WPARAM(vk as usize), LPARAM(1));
+        }
+        let _ = PostMessageW(
+            Some(hwnd),
+            WM_KEYUP,
+            WPARAM(vk as usize),
+            LPARAM((1 | (3 << 30)) as isize),
+        );
+    }
+    true
+}
+
 fn press(surface: &Rc<Surface>, vk: u16, modifiers: Modifiers) {
+    if modifiers == Modifiers::default() && press_in_child(surface, vk) {
+        return;
+    }
     for down in [true, false] {
         let handled = crate::input::key(
             surface,
@@ -280,6 +349,84 @@ fn resize(surface: &Rc<Surface>, w: f32, h: f32) {
             rect.bottom - rect.top,
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
+    }
+}
+
+/// Captures what the window shows on screen, web views included, at its
+/// own scale and writes it to `path` (PNG): `PrintWindow` with
+/// `PW_RENDERFULLCONTENT`, which composes the window's swap chain and its
+/// DirectComposition content (pages, layers) as DWM does, whatever covers
+/// the window.
+fn screen(surface: &Rc<Surface>, path: &str) -> Result<(), String> {
+    use windows::Win32::{
+        Foundation::RECT,
+        Graphics::Gdi::{
+            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection,
+            DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
+        },
+        Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow},
+        UI::WindowsAndMessaging::GetClientRect,
+    };
+    // PW_CLIENTONLY | PW_RENDERFULLCONTENT.
+    const FLAGS: u32 = 0x1 | 0x2;
+    let hwnd = surface.hwnd();
+    let mut rect = RECT::default();
+    // SAFETY: plain GDI calls on this thread's window and the objects made
+    // here, released before returning; the DIB's bits are read while it is
+    // alive.
+    unsafe {
+        GetClientRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+        let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+        if w <= 0 || h <= 0 {
+            return Err("the window has no client area".into());
+        }
+        let screen = GetDC(None);
+        let dc = CreateCompatibleDC(Some(screen));
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                // Top-down rows.
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let bitmap = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0);
+        let result = match bitmap {
+            Ok(bitmap) => {
+                let old = SelectObject(dc, bitmap.into());
+                let printed = PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(FLAGS)).as_bool();
+                let mut rgba =
+                    std::slice::from_raw_parts(bits as *const u8, (w * h * 4) as usize).to_vec();
+                SelectObject(dc, old);
+                let _ = DeleteObject(bitmap.into());
+                if printed {
+                    for px in rgba.as_chunks_mut::<4>().0 {
+                        px.swap(0, 2);
+                        px[3] = 255;
+                    }
+                    image::save_buffer(
+                        path,
+                        &rgba,
+                        w as u32,
+                        h as u32,
+                        image::ExtendedColorType::Rgba8,
+                    )
+                    .map_err(|e| e.to_string())
+                } else {
+                    Err("PrintWindow failed".into())
+                }
+            }
+            Err(err) => Err(err.to_string()),
+        };
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, screen);
+        result
     }
 }
 

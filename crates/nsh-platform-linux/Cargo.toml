@@ -16,6 +16,9 @@ default = ["js"]
 js = ["nsh-engine/js"]
 # Development support: dev server client, log forwarding, error overlay.
 dev = ["js", "dep:nsh-dev"]
+# Web views with WebKitGTK 6.0 (`libwebkitgtk-6.0-dev` to build,
+# `libwebkitgtk-6.0-4` to run); without it a web view shows a placeholder.
+webview = ["dep:webkit6"]
 
 [dependencies]
 log.workspace = true
@@ -37,3 +40,4 @@ ttf-parser.workspace = true
 ureq.workspace = true
 crossbeam-channel.workspace = true
 nsh-dev = { workspace = true, features = ["client"], optional = true }
+webkit6 = { workspace = true, optional = true }

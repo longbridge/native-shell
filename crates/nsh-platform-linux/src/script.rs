@@ -52,7 +52,15 @@ fn next(window: gtk::ApplicationWindow, surface: Rc<Surface>, steps: Rc<Vec<Stri
     let mut delay = 16u64;
     match cmd {
         "wait" => delay = num(0) as u64,
-        "shot" => shot(&window, args.first().copied().unwrap_or("shot.png")),
+        "shot" => {
+            let path = args.first().copied().unwrap_or("shot.png").to_owned();
+            // The step after starts once the shot is taken.
+            after_paint(&window.clone(), move |w| {
+                shot(w, &path);
+                next(window, surface, steps, i + 1);
+            });
+            return;
+        }
         "tap" => {
             crate::input::simulate(&surface, Simulated::Down(num(0), num(1)));
             let surface = surface.clone();
@@ -104,6 +112,45 @@ fn next(window: gtk::ApplicationWindow, surface: Rc<Surface>, steps: Rc<Vec<Stri
     glib::timeout_add_local_once(Duration::from_millis(delay), move || {
         next(window, surface, steps, i + 1)
     });
+}
+
+/// Runs `f` right after the window's next frame is painted (or after
+/// half a second when no frame comes).
+///
+/// `GtkWidgetPaintable` draws the render nodes widgets kept from their
+/// last frame, and a widget queueing a draw drops its node (and those of
+/// its ancestors) until the next frame: a web view's page does so every
+/// time it paints, so a shot taken between frames came out empty or
+/// without the page.
+fn after_paint(window: &gtk::ApplicationWindow, f: impl FnOnce(&gtk::ApplicationWindow) + 'static) {
+    let Some(clock) = window.frame_clock() else {
+        f(window);
+        return;
+    };
+    let f = Rc::new(std::cell::RefCell::new(Some(f)));
+    let handler = Rc::new(std::cell::Cell::new(None::<glib::SignalHandlerId>));
+    let run = {
+        let window = window.clone();
+        let clock = clock.clone();
+        let handler = handler.clone();
+        move || {
+            if let Some(id) = handler.take() {
+                clock.disconnect(id);
+            }
+            if let Some(f) = f.borrow_mut().take() {
+                f(&window);
+            }
+        }
+    };
+    let run = Rc::new(run);
+    handler.set(Some(clock.connect_after_paint({
+        let run = run.clone();
+        move |_| run()
+    })));
+    glib::timeout_add_local_once(Duration::from_millis(500), move || run());
+    if let Some(child) = window.child() {
+        child.queue_draw();
+    }
 }
 
 /// Renders the window's content offscreen and saves it as a PNG.
