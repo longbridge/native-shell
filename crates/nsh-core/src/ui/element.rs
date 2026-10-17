@@ -5,6 +5,7 @@
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
+    fmt,
     future::Future,
     marker::PhantomData,
     rc::Rc,
@@ -809,24 +810,57 @@ impl Clone for ComponentEl {
 pub(crate) type PlaceFn = Rc<dyn Fn(Child, Position) -> AnyElement>;
 
 /// Where a JSX child or a list row is among its siblings (what a TS row
-/// knows from its index and the data's length).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// knows from its index and the data's length). `Copy`: a handle of two
+/// signals, so a binding that reads it (`move || at.is_last()`) runs again
+/// when a list cell shows another row or the rows come and go, and the
+/// cell's content stays.
+#[derive(Clone, Copy)]
 pub struct Position {
-    /// Its index.
-    pub index: usize,
-    /// How many there are.
-    pub count: usize,
+    index: super::reactive::Node,
+    count: super::reactive::Node,
 }
 
 impl Position {
+    /// The position read from signals (or memos) of the index and the
+    /// count.
+    pub(crate) fn of(index: super::reactive::Node, count: super::reactive::Node) -> Self {
+        Self { index, count }
+    }
+
+    /// A position that does not change (signals of the current owner).
+    pub(crate) fn fixed(index: usize, count: usize) -> Self {
+        Self::of(super::signal(index).node(), super::signal(count).node())
+    }
+
+    /// Its index, subscribing the running computation.
+    #[track_caller]
+    pub fn index(&self) -> usize {
+        self.index.with("a position", |i: &usize| *i)
+    }
+
+    /// How many there are, subscribing the running computation.
+    #[track_caller]
+    pub fn count(&self) -> usize {
+        self.count.with("a position", |n: &usize| *n)
+    }
+
     /// The first one.
+    #[track_caller]
     pub fn is_first(&self) -> bool {
-        self.index == 0
+        self.index() == 0
     }
 
     /// The last one.
+    #[track_caller]
     pub fn is_last(&self) -> bool {
-        self.index + 1 == self.count
+        self.index() + 1 == self.count()
+    }
+}
+
+impl fmt::Debug for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (index, count) = super::untracked(|| (self.index(), self.count()));
+        write!(f, "Position({index} of {count})")
     }
 }
 

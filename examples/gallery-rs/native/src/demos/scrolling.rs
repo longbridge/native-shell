@@ -343,7 +343,8 @@ impl Component for Cards {
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         const CARD: f32 = 220.0;
         const GAP: f32 = 12.0;
-        let cards = virtual_list(20, |i, _| {
+        let cards = virtual_list(20, |at| {
+            let i = at.index();
             let tone = TONES[i % TONES.len()];
             view()
                 .w(px(CARD))
@@ -824,7 +825,8 @@ impl Component for Feed {
         view()
             .gap_3()
             .child(
-                virtual_list(posts.len(), move |i, _| {
+                virtual_list(posts.len(), move |at| {
+                    let i = at.index();
                     let post = &posts[i];
                     view()
                         .flex_row()
@@ -859,7 +861,10 @@ impl Component for Feed {
                                 .into_element()
                         })
                 })
-                .keys(self.posts.iter().map(|p| p.id))
+                .keys({
+                    let ids: Vec<_> = self.posts.iter().map(|p| p.id).collect();
+                    move || ids.clone()
+                })
                 .estimated_item_size(48.0)
                 .h(px(240.0))
                 .rounded(px(radius::CONTROL))

@@ -53,6 +53,12 @@ pub(super) enum Patch {
         region: u32,
         elements: Vec<RegionElement>,
     },
+    /// A list's rows, its bound count or keys read again.
+    Rows {
+        list: NodeId,
+        count: u32,
+        keys: Option<Rc<[u64]>>,
+    },
 }
 
 /// The queue the bindings of views push to.
@@ -267,6 +273,7 @@ impl<M: TextEngine> Core<M> {
     fn apply_patch(&mut self, patch: Patch) {
         match patch {
             Patch::Region { region, elements } => self.reconcile_region(region, elements),
+            Patch::Rows { list, count, keys } => self.set_list_rows(list, count, keys),
             Patch::Text { host, id, text } => {
                 let Some(inst) = self.components.instances.get_mut(&host) else {
                     return;

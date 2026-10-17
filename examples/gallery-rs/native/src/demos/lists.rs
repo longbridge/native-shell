@@ -181,7 +181,8 @@ impl Component for Grid {
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let list = self.list.clone().expect("set up");
         view().flex_1().child(
-            virtual_list(ITEMS, |id, _| {
+            virtual_list(ITEMS, |at| {
+                let id = at.index();
                 let height = 84 + (id % 4) * 22;
                 view()
                     .h(px(height as f32))
@@ -410,11 +411,13 @@ impl Component for Contacts {
         // A tap lights a person's row up and does nothing else.
         let noop = cx.listener(|_: &mut Self, _: &(), _| {});
         view().flex_1().child(
-            virtual_list(rows.len(), move |i, _| contact_row(&rows[i], noop.clone()))
-                .sticky_header_indices(headers)
-                .estimated_item_size(60.0)
-                .content_padding_bottom(24.0)
-                .flex_1(),
+            virtual_list(rows.len(), move |at| {
+                contact_row(&rows[at.index()], noop.clone())
+            })
+            .sticky_header_indices(headers)
+            .estimated_item_size(60.0)
+            .content_padding_bottom(24.0)
+            .flex_1(),
         )
     }
 }
@@ -502,7 +505,8 @@ impl Component for Chat {
             Rc::make_mut(&mut this.messages).extend(older);
             cx.notify();
         });
-        let list = virtual_list(messages.len(), move |i, _| {
+        let list = virtual_list(messages.len(), move |at| {
+            let i = at.index();
             let m = &messages[i];
             let mine = m.mine;
             view()
@@ -551,7 +555,10 @@ impl Component for Chat {
                         .px_1(),
                 )
         })
-        .keys(self.messages.iter().map(|m| m.id))
+        .keys({
+            let ids: Vec<_> = self.messages.iter().map(|m| m.id).collect();
+            move || ids.clone()
+        })
         .inverted()
         .estimated_item_size(52.0)
         .content_padding_x(16.0)
@@ -782,7 +789,8 @@ impl More {
     }
 
     fn cards(&self) -> Section {
-        let cards = virtual_list(1000, |i, _| {
+        let cards = virtual_list(1000, |at| {
+            let i = at.index();
             let tone = TONES[i % (TONES.len() - 1)];
             let load = ((i * 37) % 100) as f32 / 100.0;
             view()
@@ -845,7 +853,8 @@ impl More {
             cx.notify();
         });
         let items = self.items.clone();
-        let list = virtual_list(items.len(), move |i, _| {
+        let list = virtual_list(items.len(), move |at| {
+            let i = at.index();
             let item = &items[i];
             view()
                 .h(px(48.0))

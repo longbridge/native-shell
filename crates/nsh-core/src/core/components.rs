@@ -11,6 +11,7 @@
 
 use std::{
     any::{Any, TypeId},
+    cell::RefCell,
     rc::Rc,
     sync::Arc,
 };
@@ -26,8 +27,8 @@ use crate::{
         Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ClipboardRead, ComponentError,
         ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall,
         Globals, ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn,
-        Position, PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
-        StyleRefinement, Task, Theme, caught,
+        Position, PropError, Provided, Reactive, Registry, RenderReads, RenderScope, Root,
+        SharedString, StyleRefinement, Task, Theme, caught,
         responder::ResponderEl,
         view,
         virtual_list::{self, RowFn, SeparatorFn, VirtualListEl},
@@ -64,6 +65,13 @@ enum Inner {
     },
 }
 
+/// A list's row count and keys.
+type Rows = (u32, Option<Rc<[u64]>>);
+
+/// The parts of a view's list cells that show rows: the index each one's
+/// content reads, and the content's owner.
+type CellRows = Rc<RefCell<FxHashMap<NodeId, (crate::ui::Signal<usize>, crate::ui::Owner)>>>;
+
 /// A component's own list.
 struct VirtualListState {
     /// The component whose render it is in (its rows' handlers are its).
@@ -74,6 +82,9 @@ struct VirtualListState {
     separator: Option<SeparatorFn>,
     /// The cells, by recycling slot.
     cells: Vec<NodeId>,
+    /// In a view: the live parts of its cells (cells and contents) with the
+    /// index their content reads and its owner, for its rows' binding.
+    rows: CellRows,
     /// The rows of another component's `Items` prop
     /// ([`crate::ui::ComponentElement::items`]): each cell is that
     /// component's wrapper (`place`, its row function: an [`Inner::Row`])
@@ -147,6 +158,9 @@ pub(super) struct Instance {
     pub(super) js_kids: Option<crate::ui::Signal<Vec<NodeId>>>,
     /// A cell of a view's list: the owner of the row it shows.
     cell_owner: Option<crate::ui::Owner>,
+    /// ... and the index its content reads (its [`Position`]): a cell
+    /// that shows another row sets it instead of being built again.
+    row_index: Option<crate::ui::Signal<usize>>,
 }
 
 impl Instance {
@@ -179,6 +193,7 @@ impl Instance {
             bound: FxHashMap::default(),
             js_kids: None,
             cell_owner: None,
+            row_index: None,
         }
     }
 }
@@ -294,6 +309,9 @@ pub(super) struct Components {
     pub(super) measures: Vec<(NodeId, AnswerSlot<Option<crate::Measurement>>)>,
     /// The components' own lists, by node.
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
+    /// The row counts the cells of views' lists read (their positions), by
+    /// list, each under a root of its own that goes with the list.
+    list_counts: FxHashMap<NodeId, (crate::ui::Owner, crate::ui::Signal<usize>)>,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
     /// JS listens to the back button (`BackHandler`) on the root.
@@ -343,6 +361,7 @@ impl Default for Components {
             animations: FxHashMap::default(),
             measures: Vec::new(),
             virtual_lists: FxHashMap::default(),
+            list_counts: FxHashMap::default(),
             insets: FxHashMap::default(),
             js_back: false,
             touch: super::touch::TouchState::default(),
@@ -715,6 +734,7 @@ impl<M: TextEngine> Core<M> {
                 self.unslot(id);
                 self.components.slot_names.remove(&id);
                 self.components.lists.remove(&id);
+                self.forget_list_count(id);
                 Ok(Some(Op::Release { id }))
             }
             // The number of rows changed: the rows' wrappers render again
@@ -731,13 +751,22 @@ impl<M: TextEngine> Core<M> {
                 // A splice before may have changed the list's count already.
                 let seen = &mut self.components.lists.get_mut(&id).expect("list").1;
                 if std::mem::replace(seen, count) != count {
+                    // A view's wrappers read it.
+                    if let Some(&(_, signal)) = self.components.list_counts.get(&id) {
+                        signal.set(count as usize);
+                    }
                     let cells: Vec<NodeId> = self.nodes[key as usize]
                         .children
                         .iter()
                         .map(|&c| self.nodes[c as usize].id)
                         .collect();
                     for cell in cells {
-                        self.components.mark(cell);
+                        let binds = self.components.instances.get(&cell).is_some_and(|inst| {
+                            inst.row_index.is_some() && inst.cell_owner.is_some_and(|o| o.is_live())
+                        });
+                        if !binds {
+                            self.components.mark(cell);
+                        }
                     }
                 }
                 Ok(None)
@@ -752,7 +781,13 @@ impl<M: TextEngine> Core<M> {
                     && *current != index as usize
                 {
                     *current = index as usize;
-                    self.components.mark(id);
+                    match inst.row_index {
+                        // A view's wrapper keeps its content.
+                        Some(row) if inst.cell_owner.is_some_and(|o| o.is_live()) => {
+                            row.set(index as usize);
+                        }
+                        _ => self.components.mark(id),
+                    }
                 }
                 Ok(Some(op))
             }
@@ -1303,13 +1338,28 @@ impl<M: TextEngine> Core<M> {
             }
             // The cell itself stays the list's: the wrapper goes inside.
             Inner::Row { place, index } => {
-                let at = Position {
-                    index: *index,
-                    count: self.rows_of_cell(host),
+                let (place, index) = (place.clone(), *index);
+                let count = self.rows_of_cell(host);
+                let list = self.list_of(host);
+                // A view's wrapper reads its position from signals.
+                let count_signal = match list {
+                    Some(list) if inst.binding => Some(self.list_count(list, count)),
+                    _ => None,
                 };
-                let place = place.clone();
-                let build = move || view().child(place(Child::row(), at)).into_element().0;
-                match self.build_cell(host, inst, build) {
+                let made = std::cell::Cell::new(None);
+                let build = || {
+                    let at = row_position(index, count, count_signal, &made);
+                    view().child(place(Child::row(), at)).into_element().0
+                };
+                let el = self.build_cell(host, inst, build);
+                inst.row_index = made.take();
+                if let (Some(list), Some(index), Some(owner)) =
+                    (list, inst.row_index, inst.cell_owner)
+                    && let Some(state) = self.components.virtual_lists.get(&list)
+                {
+                    state.rows.borrow_mut().insert(host, (index, owner));
+                }
+                match el {
                     Ok(el) => el,
                     Err(message) => {
                         failure = Some(message);
@@ -1318,39 +1368,63 @@ impl<M: TextEngine> Core<M> {
                 }
             }
             Inner::VirtualRow { list, index } => {
-                let list = *list;
-                let index = *index;
+                let (list, index) = (*list, *index);
                 let inverted = self
                     .key(list)
                     .ok()
                     .and_then(|k| self.nodes[k as usize].list.as_ref())
                     .is_some_and(|l| l.inverted);
-                match self.components.virtual_lists.get(&list) {
+                let state = self.components.virtual_lists.get(&list).map(|state| {
+                    (
+                        state.count as usize,
+                        state.row.clone(),
+                        state.separator.clone(),
+                        state.rows.clone(),
+                    )
+                });
+                match state {
                     // The row is gone (the list shrank): the cell shows
                     // nothing until the list unbinds it or binds it to a
                     // row again; the row function is never asked for a
                     // row past the end.
-                    Some(state) if index >= state.count as usize => ElNode::empty_view(),
-                    Some(state) => {
-                        let at = Position {
-                            index,
-                            count: state.count as usize,
-                        };
-                        let row = state.row.clone();
-                        // Between rows: after each but the last (before it,
-                        // inverted).
-                        let separator = state.separator.clone().filter(|_| !at.is_last());
+                    Some((count, ..)) if index >= count => {
+                        if let Some(owner) = inst.cell_owner.take() {
+                            owner.dispose();
+                        }
+                        inst.row_index = None;
+                        ElNode::empty_view()
+                    }
+                    Some((count, row, separator, rows)) => {
+                        let binding = inst.binding;
+                        let count_signal = binding.then(|| self.list_count(list, count));
+                        let made = std::cell::Cell::new(None);
                         let build = || {
-                            let row = row(index, at);
-                            match &separator {
-                                Some(s) if inverted => view().child(s()).child(row),
-                                Some(s) => view().child(row).child(s()),
+                            let at = row_position(index, count, count_signal, &made);
+                            let row = row(at);
+                            // Between rows: after each but the last (before
+                            // it, inverted); in a view, while it is not.
+                            let separator = match separator {
+                                Some(s) if binding => Some(
+                                    crate::ui::If::new(move || !at.is_last(), move || s())
+                                        .into_element(),
+                                ),
+                                Some(s) => (!crate::ui::untracked(|| at.is_last())).then(|| s()),
+                                None => None,
+                            };
+                            match separator {
+                                Some(s) if inverted => view().child(s).child(row),
+                                Some(s) => view().child(row).child(s),
                                 None => view().child(row),
                             }
                             .into_element()
                             .0
                         };
-                        match self.build_cell(host, inst, build) {
+                        let el = self.build_cell(host, inst, build);
+                        inst.row_index = made.take();
+                        if let (Some(index), Some(owner)) = (inst.row_index, inst.cell_owner) {
+                            rows.borrow_mut().insert(host, (index, owner));
+                        }
+                        match el {
                             Ok(el) => el,
                             Err(message) => {
                                 failure = Some(message);
@@ -1797,29 +1871,24 @@ impl<M: TextEngine> Core<M> {
                             crate::ui::SignalEquals::Never,
                         )
                     });
+                    // A wrapper per child, kept while the child stays; its
+                    // position follows it.
                     let place = place.clone();
-                    let mut region = ElNode::new(Tag::View);
-                    region.kind =
-                        ElKind::Region(crate::ui::flow::Region::Dynamic(Rc::new(move || {
-                            let children = children.get();
-                            let count = children.len();
-                            children
-                                .iter()
-                                .enumerate()
-                                .map(|(index, &child)| {
-                                    let mut wrapper =
-                                        place(Child::js(child), Position { index, count });
-                                    wrapper.0.key = Some(format!("\u{0}{child}").into());
-                                    wrapper
-                                })
-                                .collect()
-                        })));
-                    each.push((owner, region));
+                    let count = crate::ui::computed(move || children.with(Vec::len));
+                    let region = crate::ui::Each::new(
+                        children,
+                        |&child: &NodeId| child,
+                        move |child, index| {
+                            let at = Position::of(index.node(), count.node());
+                            place(Child::js(child.get_untracked()), at)
+                        },
+                    );
+                    each.push((owner, region.0));
                     continue;
                 }
                 let count = inst.js_children.len();
                 for (index, &child) in inst.js_children.iter().enumerate() {
-                    let mut wrapper = place(Child::js(child), Position { index, count }).0;
+                    let mut wrapper = place(Child::js(child), Position::fixed(index, count)).0;
                     wrapper.key = Some(format!("\u{0}{child}").into());
                     each.push((owner, wrapper));
                 }
@@ -2306,7 +2375,7 @@ impl<M: TextEngine> Core<M> {
         let list = match virtual_list {
             Some(list) => {
                 let config = list.config;
-                self.update_virtual_list(id, host, *list, &old_list);
+                self.update_virtual_list(id, host, *list, &old_list, inst.binding);
                 config
             }
             None => ListConfig::default(),
@@ -2367,45 +2436,30 @@ impl<M: TextEngine> Core<M> {
 
     /// A render's list of its own rows: its layout, its rows (a splice
     /// when the keys say rows came or went, then the count), and its live
-    /// cells render again with the new row function.
+    /// cells render again with the new row function. In a view (`binding`)
+    /// a bound count or keys are a binding: a memo that, before the rows'
+    /// own bindings run, moves the live cells' indices as the rows moved
+    /// (dropping the content of cells whose row went) and queues the change
+    /// for the list ([`Self::set_list_rows`]).
     fn update_virtual_list(
         &mut self,
         id: NodeId,
         owner: NodeId,
         list: VirtualListEl,
         old: &ListConfig,
+        binding: bool,
     ) {
         let mut props = std::mem::take(&mut self.components.props);
         list.config.changes(old, &mut props);
-        let (old_count, old_keys) = match self.components.virtual_lists.get(&id) {
-            Some(state) => (Some(state.count), state.keys.clone()),
-            None => (None, None),
-        };
-        if let (Some(old), Some(new)) = (&old_keys, &list.keys)
-            && let Some((at, removed, inserted)) = crate::ui::virtual_list::splice(old, new)
-        {
-            props.push(Prop::Splice(at, removed, inserted));
-        }
-        if old_count != Some(list.count) {
-            props.push(Prop::Count(list.count));
-        }
         for prop in props.drain(..) {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
         self.components.props = props;
-        if old_count.is_none()
-            && let Some(index) = list.initial_index
-        {
-            let _ = self.apply_op(Op::Command {
-                id,
-                command: Command::ScrollToIndex {
-                    index,
-                    animated: false,
-                    view_position: 0.0,
-                    view_offset: 0.0,
-                },
-            });
-        }
+        let before = self
+            .components
+            .virtual_lists
+            .get(&id)
+            .map(|state| (state.count, state.keys.clone()));
         // The rows of another component's `Items` prop (its slot's node).
         let items = self.components.slot_names.contains_key(&id);
         let state = self
@@ -2419,6 +2473,7 @@ impl<M: TextEngine> Core<M> {
                 keys: None,
                 separator: None,
                 cells: Vec::new(),
+                rows: CellRows::default(),
                 items,
                 place: None,
                 contents: Vec::new(),
@@ -2427,9 +2482,64 @@ impl<M: TextEngine> Core<M> {
                 latest: None,
                 report: None,
             });
+        let cells = state.rows.clone();
+        let bound = matches!(list.count, Reactive::Bound(_)) || list.keys.is_some();
+        let (count, keys) = (list.count, list.keys);
+        let rows = move || (count.get(), keys.as_ref().map(|k| k()));
+        let (count, keys) = if binding && bound {
+            let count_signal = self.list_count(id, 0);
+            let patches = self.components.patches.clone();
+            let first: Rc<RefCell<Option<Rows>>> = Rc::default();
+            let slot = first.clone();
+            let last: RefCell<Option<Rc<[u64]>>> = RefCell::new(None);
+            let made = std::cell::Cell::new(false);
+            crate::ui::computed(move || {
+                let (count, keys) = rows();
+                let splice = match (&*last.borrow(), &keys) {
+                    (Some(old), Some(new)) => crate::ui::virtual_list::splice(old, new),
+                    _ => None,
+                };
+                last.replace(keys.clone());
+                if made.replace(true) {
+                    move_rows(&cells, splice, count);
+                    count_signal.set(count as usize);
+                    patches.borrow_mut().push(super::views::Patch::Rows {
+                        list: id,
+                        count,
+                        keys,
+                    });
+                } else {
+                    count_signal.set(count as usize);
+                    *slot.borrow_mut() = Some((count, keys));
+                }
+            });
+            first.take().expect("a memo runs when it is made")
+        } else {
+            let (count, keys) = crate::ui::untracked(rows);
+            // What the cells of a view (or a view's wrappers) read.
+            if binding || self.components.list_counts.contains_key(&id) {
+                self.list_count(id, count as usize).set(count as usize);
+            }
+            (count, keys)
+        };
+        self.send_list_rows(id, before.as_ref(), count, keys.as_ref());
+        if before.is_none()
+            && let Some(index) = list.initial_index
+        {
+            let _ = self.apply_op(Op::Command {
+                id,
+                command: Command::ScrollToIndex {
+                    index,
+                    animated: false,
+                    view_position: 0.0,
+                    view_offset: 0.0,
+                },
+            });
+        }
+        let state = self.components.virtual_lists.get_mut(&id).expect("list");
         state.row = list.row;
-        state.count = list.count;
-        state.keys = list.keys;
+        state.count = count;
+        state.keys = keys;
         state.separator = list.separator;
         state.min_view = list.min_view_time;
         let marked: Vec<NodeId> = state
@@ -2444,12 +2554,98 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// Sends list `id` its rows' changes from `before` (none: a new list):
+    /// a splice when the keys say rows came or went, then the count.
+    fn send_list_rows(
+        &mut self,
+        id: NodeId,
+        before: Option<&Rows>,
+        count: u32,
+        keys: Option<&Rc<[u64]>>,
+    ) {
+        if let (Some((_, Some(old))), Some(new)) = (before, keys)
+            && let Some((at, removed, inserted)) = crate::ui::virtual_list::splice(old, new)
+        {
+            let _ = self.apply_op(Op::SetProp {
+                id,
+                prop: Prop::Splice(at, removed, inserted),
+            });
+        }
+        if before.map(|(count, _)| *count) != Some(count) {
+            let _ = self.apply_op(Op::SetProp {
+                id,
+                prop: Prop::Count(count),
+            });
+        }
+    }
+
+    /// A view's list `id` has new rows (its bound count or keys changed):
+    /// sent to the list. Its cells' bindings already follow their rows
+    /// ([`move_rows`]); the core takes their indices, and the cells whose row
+    /// went show nothing until the list shows another row in them.
+    pub(super) fn set_list_rows(&mut self, id: NodeId, count: u32, keys: Option<Rc<[u64]>>) {
+        let Some(state) = self.components.virtual_lists.get(&id) else {
+            return;
+        };
+        let before = (state.count, state.keys.clone());
+        self.send_list_rows(id, Some(&before), count, keys.as_ref());
+        let state = self.components.virtual_lists.get_mut(&id).expect("list");
+        state.count = count;
+        state.keys = keys;
+        let parts: Vec<NodeId> = state
+            .cells
+            .iter()
+            .chain(&state.contents)
+            .copied()
+            .filter(|&c| c != 0)
+            .collect();
+        for part in parts {
+            let Some(inst) = self.components.instances.get_mut(&part) else {
+                continue;
+            };
+            let Some(signal) = inst.row_index else {
+                continue;
+            };
+            let live = inst.cell_owner.is_some_and(|o| o.is_live());
+            if let Inner::VirtualRow { index, .. } | Inner::Row { index, .. } = &mut inst.inner {
+                *index = if live {
+                    signal.get_untracked()
+                } else {
+                    usize::MAX
+                };
+            }
+            if !live {
+                self.components.mark(part);
+            }
+        }
+    }
+
+    /// The row count the cells of list `list` read, made with `count` the
+    /// first time.
+    fn list_count(&mut self, list: NodeId, count: usize) -> crate::ui::Signal<usize> {
+        if let Some(&(_, signal)) = self.components.list_counts.get(&list) {
+            return signal;
+        }
+        let made = crate::ui::Owner::detached()
+            .run(|| crate::ui::create_root(|| crate::ui::signal(count)));
+        self.components.list_counts.insert(list, made);
+        made.1
+    }
+
+    /// List `list` goes: so does the count its cells read.
+    fn forget_list_count(&mut self, list: NodeId) {
+        if let Some((owner, _)) = self.components.list_counts.remove(&list) {
+            owner.dispose();
+        }
+    }
+
     /// Binds the cells of the components' own lists the last layout asked
     /// for (creating them as needed); false when there were none.
     pub(super) fn bind_virtual_lists(&mut self) -> bool {
         if self.components.virtual_lists.is_empty() {
             return false;
         }
+        let _entered = self.components.runtime.enter();
         let mut binds = std::mem::take(&mut self.list_binds);
         let mut bound = false;
         binds.retain(|bind| {
@@ -2478,6 +2674,14 @@ impl<M: TextEngine> Core<M> {
                             Inner::VirtualRow { index: current, .. }
                             | Inner::Row { index: current, .. } => *current = index,
                             _ => {}
+                        }
+                        // A view's cell keeps its content: what reads its
+                        // position follows.
+                        if let Some(row) = inst.row_index
+                            && inst.cell_owner.is_some_and(|o| o.is_live())
+                        {
+                            row.set(index);
+                            continue;
                         }
                     }
                     self.components.mark(part);
@@ -2639,6 +2843,7 @@ impl<M: TextEngine> Core<M> {
                     self.unslot(e.id);
                 }
                 self.components.lists.remove(&e.id);
+                self.forget_list_count(e.id);
             }
             Part::Node => {}
         }
@@ -3284,5 +3489,66 @@ impl<M: TextEngine> Core<M> {
                 },
             )),
         }
+    }
+}
+
+/// Moves the live cells of a view's list as its rows moved (`splice`, now
+/// `count` rows): each keeps its row, at the row's new index. A cell whose
+/// row went keeps its index (the list frees it, and binds it to another row
+/// before showing it again) while that is a row; past the rows, its content
+/// is disposed, before its bindings could read there.
+fn move_rows(cells: &CellRows, splice: Option<(u32, u32, u32)>, count: u32) {
+    let parts: Vec<_> = cells
+        .borrow()
+        .iter()
+        .map(|(&id, &(index, owner))| (id, index, owner))
+        .collect();
+    let mut gone = Vec::new();
+    for (id, index, owner) in parts {
+        if !owner.is_live() {
+            gone.push(id);
+            continue;
+        }
+        let i = index.get_untracked();
+        let to = match splice {
+            Some((at, removed, inserted)) => {
+                let (at, removed, inserted) = (at as usize, removed as usize, inserted as usize);
+                if i < at || (at..at + removed).contains(&i) {
+                    i
+                } else {
+                    i - removed + inserted
+                }
+            }
+            None => i,
+        };
+        if to < count as usize {
+            index.set(to);
+        } else {
+            owner.dispose();
+            gone.push(id);
+        }
+    }
+    let mut cells = cells.borrow_mut();
+    for id in gone {
+        cells.remove(&id);
+    }
+}
+
+/// The position of row `index` of `count` that a cell's content reads: in a
+/// view (`count_signal`), its index a signal of the cell's (handed back in
+/// `made`) and the list's count; else fixed.
+fn row_position(
+    index: usize,
+    count: usize,
+    count_signal: Option<crate::ui::Signal<usize>>,
+    made: &std::cell::Cell<Option<crate::ui::Signal<usize>>>,
+) -> Position {
+    match count_signal {
+        Some(count) => {
+            let index = crate::ui::signal(index);
+            made.set(Some(index));
+            Position::of(index.node(), count.node())
+        }
+        None => Position::fixed(index, count),
     }
 }

@@ -4901,7 +4901,8 @@ mod components {
                 cx.notify();
             });
             view().flex_1().child(
-                virtual_list(rows.len(), move |i, at| {
+                virtual_list(rows.len(), move |at| {
+                    let i = at.index();
                     let remove = remove.clone();
                     view()
                         .h(px(40.0))
@@ -4913,7 +4914,10 @@ mod components {
                         )))
                 })
                 .estimated_item_size(40.0)
-                .keys(self.rows.iter().cloned())
+                .keys({
+                    let rows = self.rows.clone();
+                    move || rows.to_vec()
+                })
                 .flex_1(),
             )
         }
@@ -5015,7 +5019,8 @@ mod components {
                         .map(|e| text(format!("failed: {}", e.message))),
                 )
                 .child(
-                    virtual_list(rows.len(), move |i, _| {
+                    virtual_list(rows.len(), move |at| {
+                        let i = at.index();
                         view().h(px(40.0)).child(text(rows[i].clone()))
                     })
                     .estimated_item_size(40.0)
@@ -5078,7 +5083,7 @@ mod components {
                         })),
                 )
                 .child(
-                    virtual_list(20, move |_, at| {
+                    virtual_list(20, move |at| {
                         view().h(px(if tall && at.is_last() { 120.0 } else { 40.0 }))
                     })
                     .estimated_item_size(40.0)
@@ -6619,5 +6624,172 @@ mod views {
         assert_eq!(style.background_color, crate::style::Color(0xff00_00ff));
         assert_eq!(style.opacity, 0.5);
         let _ = Rc::new(());
+    }
+
+    /// Its own rows in a list, from a signal: a press on a row removes it,
+    /// one on "add" appends one. A row's text says when it is the last.
+    #[derive(Default)]
+    struct Mailbox;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct MailboxProps {
+        #[prop(default)]
+        rows: crate::ui::Prop<u32>,
+    }
+
+    impl Component for Mailbox {
+        type Props = MailboxProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(props: MailboxProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let rows = signal(
+                (0..props.rows.get_untracked())
+                    .map(|i| format!("mail {i}"))
+                    .collect::<Vec<_>>(),
+            );
+            view()
+                .flex_1()
+                .child(view().h(px(20.0)).label("add").on_press(move |_: &()| {
+                    rows.update(|r| {
+                        let n = r.len();
+                        r.push(format!("new {n}"));
+                    });
+                }))
+                .child(
+                    virtual_list(
+                        move || rows.with(Vec::len),
+                        move |at| {
+                            view()
+                                .h(px(40.0))
+                                .on_press(move |_: &()| {
+                                    rows.update(|r| {
+                                        r.remove(at.index());
+                                    });
+                                })
+                                // Indexing: a row's bindings never read
+                                // past the rows.
+                                .child(text(move || {
+                                    let row = rows.with(|r| r[at.index()].clone());
+                                    let last = if at.is_last() { " (last)" } else { "" };
+                                    format!("{row}{last}")
+                                }))
+                        },
+                    )
+                    .estimated_item_size(40.0)
+                    .keys(move || rows.get())
+                    .flex_1(),
+                )
+        }
+    }
+
+    fn mailbox(rows: u32) -> (Core<FakeEngine>, MountBatch) {
+        let mut c = core();
+        c.mount_root(&Root::new::<Mailbox>(move || MailboxProps {
+            rows: rows.into(),
+        }));
+        let batch = c.commit().unwrap();
+        (c, batch)
+    }
+
+    fn pressable(batch: &MountBatch) -> Vec<NodeId> {
+        batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn creates(batch: &MountBatch) -> usize {
+        batch
+            .items
+            .iter()
+            .filter(|i| matches!(i, MountItem::Create { .. }))
+            .count()
+    }
+
+    #[test]
+    fn a_views_list_splices_and_its_cells_keep_their_rows() {
+        let (mut c, batch) = mailbox(100);
+        let shown = texts(&batch);
+        assert!(shown.contains(&"mail 0".to_owned()), "{shown:?}");
+        assert!(shown.len() < 100, "virtualized: {}", shown.len());
+        // A press on row 0 removes it: the list splices, the other cells
+        // keep their content (their rows did not change: nothing to send)
+        // and the freed cell shows the row coming into view.
+        let row0 = pressable(&batch)[1];
+        assert!(c.component_event(row0, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), [format!("mail {}", shown.len())]);
+        assert_eq!(creates(&batch), 0, "{:?}", batch.items);
+    }
+
+    #[test]
+    fn a_views_list_grows_in_place() {
+        let (mut c, batch) = mailbox(3);
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["mail 0", "mail 1", "mail 2 (last)"]);
+        let add = pressable(&batch)[0];
+        assert!(c.component_event(add, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        // The old last row's text changes; a cell comes for the new one.
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["mail 2", "new 3 (last)"]);
+    }
+
+    #[test]
+    fn a_views_list_cells_show_other_rows_through_their_bindings() {
+        let (mut c, batch) = mailbox(1000);
+        let list = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Create {
+                    id,
+                    kind: crate::ViewKind::Scroll,
+                } => Some(*id),
+                _ => None,
+            })
+            .expect("a list");
+        c.set_scroll_offset(list, 0.0, 10_000.0, u32::MAX);
+        c.commit().unwrap();
+        // Scrolling on: the cells are reused and their content stays; only
+        // the texts change.
+        c.set_scroll_offset(list, 0.0, 20_000.0, u32::MAX);
+        let batch = c.commit().unwrap();
+        assert_eq!(creates(&batch), 0, "{:?}", batch.items);
+        let shown = texts(&batch);
+        assert!(shown.contains(&"mail 500".to_owned()), "{shown:?}");
+    }
+
+    #[test]
+    fn a_views_list_drops_the_rows_that_went_past_its_end() {
+        let (mut c, batch) = mailbox(3);
+        // The row of the last text.
+        let text = text_node(&batch, "mail 2 (last)");
+        let last = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Insert { parent, child, .. } if *child == text => Some(*parent),
+                _ => None,
+            })
+            .expect("the last row");
+        assert!(c.component_event(last, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["mail 1 (last)"]);
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Delete { .. })),
+            "the gone row's nodes: {:?}",
+            batch.items
+        );
     }
 }

@@ -1288,7 +1288,7 @@ impl Chat {
             Action::Copy(key.to_string(), text.to_string())
         });
         let list = self.list.as_ref().expect("set up");
-        virtual_list(count, move |i, _| match &messages[i] {
+        virtual_list(count, move |at| match &messages[at.index()] {
             Msg::Date { label, .. } => date_separator(label).into_element(),
             Msg::User {
                 text: body,
@@ -1309,7 +1309,7 @@ impl Chat {
                 assistant_row(m, copied.as_deref(), &actions, &on_copy).into_element()
             }
         })
-        .keys(ids)
+        .keys(move || ids.clone())
         .estimated_item_size(140.0)
         .initial_scroll_index(count.saturating_sub(1))
         .flex_1()

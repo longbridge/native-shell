@@ -131,44 +131,46 @@ impl Component for Own {
         view()
             .flex_1()
             .child(
-                virtual_list(self.count, |i, _| text(format!("row {i}")).h(px(40.0)))
-                    .estimated_item_size(40.0)
-                    .flex_1()
-                    .header(
-                        text(format!("header {}", self.header_taps)).on_press(cx.listener(
-                            |this: &mut Self, _, cx| {
-                                this.header_taps += 1;
-                                cx.notify();
-                            },
-                        )),
-                    )
-                    .footer(text("footer"))
-                    .empty(
-                        text("nothing").on_press(cx.listener(|this: &mut Self, _, cx| {
-                            this.count = 3;
-                            cx.notify();
-                        })),
-                    )
-                    .separator(|| view().h(px(1.0)).bg(rgb(0xeeeeee)))
-                    .sticky_header_indices([0])
-                    .keyboard_dismiss_mode(KeyboardDismissMode::OnDrag)
-                    .end_reached_threshold(0.5)
-                    .initial_scroll_index(2)
-                    .minimum_view_time(Duration::from_millis(100))
-                    .on_viewable_items_changed(cx.listener(
-                        |this: &mut Self, rows: &ViewableItems, cx| {
-                            let rows = rows.indices();
-                            this.visible = format!("{}-{}", rows.start(), rows.end());
+                virtual_list(self.count, |at| {
+                    text(format!("row {}", at.index())).h(px(40.0))
+                })
+                .estimated_item_size(40.0)
+                .flex_1()
+                .header(
+                    text(format!("header {}", self.header_taps)).on_press(cx.listener(
+                        |this: &mut Self, _, cx| {
+                            this.header_taps += 1;
                             cx.notify();
                         },
-                    ))
-                    .on_end_reached(cx.listener(|this: &mut Self, _, cx| {
-                        if !this.emptied {
-                            this.emptied = true;
-                            this.count = 0;
-                            cx.notify();
-                        }
+                    )),
+                )
+                .footer(text("footer"))
+                .empty(
+                    text("nothing").on_press(cx.listener(|this: &mut Self, _, cx| {
+                        this.count = 3;
+                        cx.notify();
                     })),
+                )
+                .separator(|| view().h(px(1.0)).bg(rgb(0xeeeeee)))
+                .sticky_header_indices([0])
+                .keyboard_dismiss_mode(KeyboardDismissMode::OnDrag)
+                .end_reached_threshold(0.5)
+                .initial_scroll_index(2)
+                .minimum_view_time(Duration::from_millis(100))
+                .on_viewable_items_changed(cx.listener(
+                    |this: &mut Self, rows: &ViewableItems, cx| {
+                        let rows = rows.indices();
+                        this.visible = format!("{}-{}", rows.start(), rows.end());
+                        cx.notify();
+                    },
+                ))
+                .on_end_reached(cx.listener(|this: &mut Self, _, cx| {
+                    if !this.emptied {
+                        this.emptied = true;
+                        this.count = 0;
+                        cx.notify();
+                    }
+                })),
             )
             .child(text(format!("visible {}", self.visible)))
     }
@@ -280,10 +282,11 @@ impl Component for Stocks {
         });
         view().flex_1().child(
             ListView::element(ListViewProps::default()).items(
-                virtual_list(rows.len(), move |i, _| {
+                virtual_list(rows.len(), move |at| {
+                    let i = at.index();
                     text(rows[i].clone()).on_press(press.clone().map(move |_: &()| i))
                 })
-                .keys(0..100)
+                .keys(|| 0..100)
                 .header(text(format!("{} ended {}", self.pressed, self.ended)))
                 .on_end_reached(cx.listener(|this: &mut Self, _, cx| {
                     this.ended += 1;

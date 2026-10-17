@@ -496,7 +496,8 @@ impl Component for ButtonRows {
             .flex_1()
             .child(text(format!("pressed {:?}", self.pressed)))
             .child(
-                virtual_list(20, move |i, _| {
+                virtual_list(20, move |at| {
+                    let i = at.index();
                     nsh_ui_mobile::Button::element(nsh_ui_mobile::ButtonProps {
                         title: format!("row {i}").into(),
                         ..Default::default()

@@ -899,7 +899,8 @@ impl Styles {
             )
             .child(mono_note("Horizontal list", "List"))
             .child(
-                virtual_list(30, move |i, _| {
+                virtual_list(30, move |at| {
+                    let i = at.index();
                     chip(i + 1, tints::ACCENT, colors::ACCENT).me(px(6.0))
                 })
                 .horizontal()

@@ -253,8 +253,8 @@ impl Component for Header {
                                 .overflow_hidden()
                                 .child(
                                     SelectList::element(SelectListProps {
-                                        options: self.cities.to_vec(),
-                                        value: self.city,
+                                        options: self.cities.to_vec().into(),
+                                        value: self.city.into(),
                                     })
                                     .on_event(cx.listener(
                                         |this: &mut Self, e: &SelectListEvent, cx| {
@@ -447,7 +447,8 @@ impl Component for MobileUi {
         let stocks = self.stocks.clone();
         // White on the fills in light appearance, the inset's black in dark.
         let on_fill = AdaptiveColor::new(rgb(0xffffff), colors::INSET.dark);
-        let rows = virtual_list(stocks.len(), move |i, _| {
+        let rows = virtual_list(stocks.len(), move |at| {
+            let i = at.index();
             let stock = &stocks[i];
             let up = stock.change >= 0.0;
             view()
@@ -494,7 +495,10 @@ impl Component for MobileUi {
                         ),
                 )
         })
-        .keys(self.stocks.iter().map(|s| s.id))
+        .keys({
+            let ids: Vec<_> = self.stocks.iter().map(|s| s.id).collect();
+            move || ids.clone()
+        })
         .header(
             Header::element(HeaderProps { inset: self.inset }).on_event(cx.listener(
                 |this: &mut Self, e: &HeaderEvent, cx| {

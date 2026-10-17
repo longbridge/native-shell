@@ -281,7 +281,7 @@ impl Component for Photos {
             .flex_1()
             .bg(colors::BACKGROUND)
             .child(
-                virtual_list(photos.len(), move |i, _| row(&photos[i]))
+                virtual_list(photos.len(), move |at| row(&photos[at.index()]))
                     .estimated_item_size(76.0)
                     .flex_1()
                     .content_padding_bottom(24.0)

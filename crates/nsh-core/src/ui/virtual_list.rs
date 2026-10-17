@@ -13,7 +13,7 @@ use std::{
 };
 
 use super::{
-    Accessible, AnyElement, Interactive, Position,
+    Accessible, AnyElement, If, Interactive, IntoReactive, Position, Reactive,
     element::{ElKind, ElNode, Element, IntoElement, ListConfig, Listener},
     events,
 };
@@ -119,21 +119,25 @@ pub trait ListLayout: Sized {
     }
 }
 
-/// Renders row `index` (of `Position::count`).
-pub(crate) type RowFn = Rc<dyn Fn(usize, Position) -> AnyElement>;
+/// Renders the row at a position.
+pub(crate) type RowFn = Rc<dyn Fn(Position) -> AnyElement>;
 
 /// Renders the separator between two rows.
 pub(crate) type SeparatorFn = Rc<dyn Fn() -> AnyElement>;
+
+/// The rows' identities, hashed, read in a binding.
+pub(crate) type KeysFn = Rc<dyn Fn() -> Rc<[u64]>>;
 
 /// A list of the component's own rows, as the render makes it.
 #[derive(Clone)]
 pub(crate) struct VirtualListEl {
     pub(crate) config: ListConfig,
-    pub(crate) count: u32,
+    /// How many rows: in a view, a binding that updates the list in place.
+    pub(crate) count: Reactive<u32>,
     pub(crate) row: RowFn,
     /// The rows' identities, for splices (rows keep their cells and sizes
     /// when rows are added or removed before them).
-    pub(crate) keys: Option<Rc<[u64]>>,
+    pub(crate) keys: Option<KeysFn>,
     /// Between rows (after each row but the last; before it, inverted).
     pub(crate) separator: Option<SeparatorFn>,
     /// The row scrolled to before the first frame.
@@ -143,26 +147,42 @@ pub(crate) struct VirtualListEl {
 }
 
 /// A virtualized, recycling list of `count` rows rendered by `row`: only
-/// the rows near the viewport exist. `row(index, at)` builds a row from the
-/// component's data (move it in: `let rows = self.rows.clone()`); it runs
-/// again when the cell shows another row and when the component renders.
-/// Give the rows' identities with [`VirtualList::keys`] when rows come and
-/// go other than at the end.
+/// the rows near the viewport exist. `row(at)` builds the row at `at`
+/// (`at.index()`) from the component's data.
+///
+/// In a component that runs once, each cell's content is made once: when
+/// the cell shows another row its position changes, and only the bindings
+/// that read it run again (`text(move || rows.with(|r| r[at.index()].name.clone()))`).
+/// `count` can be a signal or a closure there: the list grows and shrinks
+/// in place. In a component that renders again, `row` runs again when the
+/// cell shows another row and when the component renders. Give the rows'
+/// identities with [`VirtualList::keys`] when rows come and go other than
+/// at the end.
 pub fn virtual_list<R: IntoElement>(
-    count: usize,
-    row: impl Fn(usize, Position) -> R + 'static,
+    count: impl IntoReactive<usize>,
+    row: impl Fn(Position) -> R + 'static,
 ) -> VirtualList {
+    let count = count.into_reactive().map(|n| n as u32);
     let mut node = ElNode::new(Tag::List);
     node.kind = ElKind::VirtualList(Box::new(VirtualListEl {
         config: ListConfig::default(),
-        count: count as u32,
-        row: Rc::new(move |index, at| row(index, at).into_element()),
+        count,
+        row: Rc::new(move |at| row(at).into_element()),
         keys: None,
         separator: None,
         initial_index: None,
         min_view_time: None,
     }));
     VirtualList(node)
+}
+
+/// One of a list's own cells (header, footer, empty) holding `content`.
+fn extra_cell(slot: CellSlot, key: &'static str, content: AnyElement) -> ElNode {
+    let mut cell = ElNode::new(Tag::Cell);
+    cell.key = Some(key.into());
+    super::host::set(&mut cell, Prop::Slot(slot));
+    cell.children.push(content.0);
+    cell
 }
 
 /// A list of the component's own rows ([`virtual_list`]).
@@ -183,25 +203,27 @@ impl VirtualList {
         self.0
             .children
             .retain(|c| c.key.as_ref().is_none_or(|k| k.as_str() != key));
-        let mut cell = ElNode::new(Tag::Cell);
-        cell.key = Some(key.into());
-        super::host::set(&mut cell, Prop::Slot(slot));
-        cell.children.push(content.0);
-        self.0.children.push(cell);
+        self.0.children.push(extra_cell(slot, key, content));
         self
     }
 
-    /// The rows' identities, in order (any hashable id per row).
-    pub fn keys<K: Hash>(mut self, keys: impl IntoIterator<Item = K>) -> Self {
-        let keys: Rc<[u64]> = keys
-            .into_iter()
-            .map(|k| {
-                let mut h = rustc_hash::FxHasher::default();
-                k.hash(&mut h);
-                h.finish()
-            })
-            .collect();
-        self.list().keys = Some(keys);
+    /// The rows' identities, in order (any hashable id per row), read in a
+    /// binding in a component that runs once (once per render otherwise):
+    /// `.keys(move || rows.with(|r| r.iter().map(|r| r.id).collect::<Vec<_>>()))`.
+    pub fn keys<K: Hash, I: IntoIterator<Item = K>>(
+        mut self,
+        keys: impl Fn() -> I + 'static,
+    ) -> Self {
+        self.list().keys = Some(Rc::new(move || {
+            keys()
+                .into_iter()
+                .map(|k| {
+                    let mut h = rustc_hash::FxHasher::default();
+                    k.hash(&mut h);
+                    h.finish()
+                })
+                .collect()
+        }));
         self
     }
 
@@ -220,10 +242,18 @@ impl VirtualList {
     /// Shown instead of the rows while there are none (TS:
     /// `ListEmptyComponent`).
     pub fn empty(mut self, empty: impl IntoElement) -> Self {
-        if self.list().count > 0 {
-            return self;
+        let empty = empty.into_element();
+        match self.list().count.clone() {
+            Reactive::Static(0) => self.extra(CellSlot::Empty, "\0empty", empty),
+            Reactive::Static(_) => self,
+            // While the bound count is 0.
+            Reactive::Bound(count) => {
+                let cell = extra_cell(CellSlot::Empty, "\0empty", empty);
+                let shown = If::new(move || count() == 0, move || AnyElement(cell.clone()));
+                self.0.children.push(shown.into_element().0);
+                self
+            }
         }
-        self.extra(CellSlot::Empty, "\0empty", empty.into_element())
     }
 
     /// Between rows (TS: `ItemSeparatorComponent`): `separator()` renders
