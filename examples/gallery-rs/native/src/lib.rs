@@ -10,8 +10,9 @@ mod nav;
 mod ui;
 
 use nsh_core::ui::prelude::*;
+use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
 
-use crate::nav::Routes;
+use crate::{nav::Routes, ui::colors};
 
 /// The UI set of the gallery: what `App.tsx` imports from `gallery/native`.
 #[native_module("gallery/native")]
@@ -20,7 +21,8 @@ fn native(registry: &mut Registry) {
     registry.assets(assets!());
 }
 
-/// The gallery: a native stack of its index and the screens pushed on it.
+/// The gallery: a native stack of its index and the screens pushed on it,
+/// in the gallery's design for the system's appearance.
 #[derive(Default)]
 pub struct Gallery {
     _back: Option<BackSubscription>,
@@ -58,8 +60,20 @@ impl Component for Gallery {
                     }))
             })
             .collect();
+        // The status bar's content contrasts with the page in either
+        // appearance.
+        let bar_style = if cx.dark() {
+            BarStyle::LightContent
+        } else {
+            BarStyle::DarkContent
+        };
         view()
             .flex_1()
+            .bg(colors::BACKGROUND)
+            .child(StatusBar::element(StatusBarProps {
+                bar_style: Some(bar_style),
+                ..StatusBarProps::default()
+            }))
             .child(stack().flex_1().child(index).children(pushed))
     }
 }

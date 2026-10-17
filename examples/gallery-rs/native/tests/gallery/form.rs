@@ -52,7 +52,7 @@ fn form_selects_through_the_controlled_selection() {
     let selections = |label: &str, screen: &mut crate::common::Screen| {
         let text = screen.find(label).expect(label);
         engine.control().dispatch_event(
-            screen.parents[&text],
+            screen.press_target(text),
             EventKind::Press,
             EventPayload::None,
         );

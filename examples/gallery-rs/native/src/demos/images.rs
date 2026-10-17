@@ -8,7 +8,7 @@ use nsh_core::{
 
 use crate::{
     assets::{BOUNCE, LOGO, SPINNER},
-    ui::{button, colors, page, section},
+    ui::legacy::{button, colors, page, section},
 };
 
 /// A 2:1 network image.

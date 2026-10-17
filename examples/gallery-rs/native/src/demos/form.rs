@@ -16,7 +16,7 @@ use nsh_ui_mobile::{
 
 use crate::{
     nav,
-    ui::{button, colors, page, section},
+    ui::legacy::{button, colors, page, section},
 };
 
 /// The green of success texts and the message bar's button.

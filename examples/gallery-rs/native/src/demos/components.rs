@@ -19,7 +19,7 @@ use nsh_ui_mobile::{
 
 use crate::{
     nav,
-    ui::{button, colors, page, section},
+    ui::legacy::{button, colors, page, section},
 };
 
 /// A row of controls.

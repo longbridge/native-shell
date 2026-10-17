@@ -24,7 +24,7 @@ fn dispatch(
     payload: EventPayload,
 ) -> Vec<Driver> {
     let text = screen.find(label).unwrap_or_else(|| panic!("no {label}"));
-    let target = screen.parents[&text];
+    let target = screen.press_target(text);
     engine.control().dispatch_event(target, kind, payload);
     let mut started = Vec::new();
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {

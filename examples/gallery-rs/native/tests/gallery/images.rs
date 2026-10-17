@@ -68,7 +68,7 @@ impl Shown {
             .screen
             .find(label)
             .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
-        let target = self.screen.parents[&text];
+        let target = self.screen.press_target(text);
         engine
             .control()
             .dispatch_event(target, EventKind::Press, EventPayload::None);

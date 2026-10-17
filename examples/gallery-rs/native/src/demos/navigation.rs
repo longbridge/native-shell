@@ -10,7 +10,7 @@ use nsh_ui_mobile::{SafeAreaView, SafeAreaViewProps};
 
 use crate::{
     Gallery, nav,
-    ui::{button, colors, page, section},
+    ui::legacy::{button, colors, page, section},
 };
 
 /// The safe-area insets where it renders.

@@ -8,7 +8,7 @@ use nsh_core::{
     ui::{Text, TouchEvent, prelude::*},
 };
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// A muted note under a demo.
 fn note(content: impl Into<SharedString>) -> Text {

@@ -64,10 +64,12 @@ fn components_render_and_answer_presses() {
         screen.texts
     );
 
-    // Layout animation: the boxes 1, 2, 3; Add puts 4 first.
-    assert!(!shows(&screen, "4"), "{:?}", screen.texts);
+    // Layout animation: the boxes 1, 2, 3; Add puts 4 first (the index
+    // under the demo shows a 4 of its own).
+    let fours = |screen: &crate::common::Screen| screen.texts.iter().filter(|t| t.1 == "4").count();
+    let before = fours(&screen);
     crate::common::press(&engine, &rx, &mut screen, "Add");
-    assert!(shows(&screen, "4"), "{:?}", screen.texts);
+    assert_eq!(fours(&screen), before + 1, "{:?}", screen.texts);
 
     crate::common::press(&engine, &rx, &mut screen, "statusBarTranslucent: false");
     assert!(shows(&screen, "statusBarTranslucent: true"));
@@ -109,7 +111,7 @@ fn components_announce_and_move_the_readers_focus() {
     let commands = |label: &str, screen: &mut crate::common::Screen| {
         let text = screen.find(label).expect(label);
         engine.control().dispatch_event(
-            screen.parents[&text],
+            screen.press_target(text),
             EventKind::Press,
             EventPayload::None,
         );
@@ -152,9 +154,11 @@ fn components_put_the_accessory_bar_over_the_keyboard() {
     };
     collect(&mut screen);
     let text = screen.find("Components").expect("the index's row");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     collect(&mut screen);
     // The bar is an input accessory (iOS): its content is mounted in it.
     let accessory = kinds

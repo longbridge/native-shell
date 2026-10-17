@@ -22,7 +22,7 @@ fn press_drawing(
     let text = screen
         .find(label)
         .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
-    let target = screen.parents[&text];
+    let target = screen.press_target(text);
     engine
         .control()
         .dispatch_event(target, EventKind::Press, EventPayload::None);

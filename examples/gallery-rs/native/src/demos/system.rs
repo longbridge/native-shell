@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use nsh_core::ui::{AnyElement, Dialog, DialogButton, DialogButtonStyle, prelude::*};
 use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// The status bar's styles, in the order "Next style" goes through them.
 const BAR_STYLES: [(BarStyle, &str); 3] = [

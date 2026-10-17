@@ -8,7 +8,7 @@ use std::{rc::Rc, time::Duration};
 use nsh_core::ui::{Text, prelude::*};
 use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
-use crate::ui::colors;
+use crate::ui::legacy::colors;
 
 /// The tiles' colors.
 const TINTS: [u32; 6] = [0xfde2e4, 0xe2ece9, 0xdfe7fd, 0xfff1e6, 0xe8e8e4, 0xcddafd];

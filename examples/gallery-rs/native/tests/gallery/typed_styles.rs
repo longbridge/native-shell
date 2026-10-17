@@ -58,9 +58,11 @@ fn typed_styles_send_gradients_filters_and_animations_natively() {
     let mut screen = crate::common::Screen::default();
     crate::common::drain(&rx, &mut screen);
     let text = screen.find("Typed styles").expect("the demo in the index");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut styles: HashMap<u32, ViewStyle> = HashMap::new();
     let mut tracked = 0;
     while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {

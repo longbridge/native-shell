@@ -19,9 +19,11 @@ fn press_for_dialog(
     label: &str,
 ) -> Dialog {
     let text = screen.find(label).expect(label);
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut dialog = None;
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
         screen.apply(&batch);
@@ -124,9 +126,11 @@ fn system_counts_seconds() {
 fn system_shows_a_toast() {
     let (engine, rx, mut screen) = crate::common::open("System");
     let text = screen.find("Toast (Android)").expect("the toast's button");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut toast = None;
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
         screen.apply(&batch);

@@ -43,7 +43,9 @@ impl Platform {
             bound: Vec::new(),
         };
         p.pump();
-        let row = p.screen.parents[&p.screen.find("Animations").expect("its row")];
+        let row = p
+            .screen
+            .press_target(p.screen.find("Animations").expect("its row"));
         p.dispatch(row);
         assert!(
             p.screen.titles.iter().any(|t| t.1 == "Animations"),
@@ -106,7 +108,7 @@ impl Platform {
             .screen
             .find(label)
             .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
-        self.dispatch(self.screen.parents[&text]);
+        self.dispatch(self.screen.press_target(text));
     }
 
     /// Runs the graph's frames (60 Hz) for `secs`.

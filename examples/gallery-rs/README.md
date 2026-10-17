@@ -5,6 +5,10 @@ app's own crate `native/` (`nsh.json` `"rust": "native"`). It shows what Rust co
 gallery (`examples/gallery`). The crate's set is the `#[native_module("gallery/native")]` function in
 `native/src/lib.rs`, which registers `Gallery` and the crate's `assets/`; `App.tsx` imports it by that specifier.
 
+It has the TSX gallery's design (`ui.tsx`, `icons.tsx`, `theme.json`), following the system's appearance:
+`native/src/ui/` is its Rust form (the palette for light and dark, finishes, icons, `Press`, `Appear`, `Toggle`,
+`Segmented`, `Card`, `Section`, `Button`, ...), which the index and the demos are built with.
+
 ```sh
 cargo build -p nsh-cli
 ./target/debug/nsh run examples/gallery-rs --target ios   # or android, catalyst

@@ -37,9 +37,11 @@ fn styles_send_the_cards_styles() {
     let mut screen = crate::common::Screen::default();
     crate::common::drain(&rx, &mut screen);
     let text = screen.find("Styles").expect("the demo in the index");
-    engine
-        .control()
-        .dispatch_event(screen.parents[&text], EventKind::Press, EventPayload::None);
+    engine.control().dispatch_event(
+        screen.press_target(text),
+        EventKind::Press,
+        EventPayload::None,
+    );
     let mut styles: HashMap<u32, ViewStyle> = HashMap::new();
     while let Ok(batch) = rx.recv_timeout(std::time::Duration::from_millis(300)) {
         for item in &batch.items {

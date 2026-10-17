@@ -4,7 +4,7 @@
 
 use nsh_core::ui::{LayoutAnimation, prelude::*};
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// How far the dots and squares travel.
 const TRACK: f32 = 220.0;

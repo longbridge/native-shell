@@ -1,4 +1,66 @@
-//! The gallery on a headless engine: its screens push and render.
+//! The gallery on a headless engine: its index, and the screens pushed.
+
+#[test]
+fn every_demo_opens_from_the_index() {
+    for name in [
+        "Stocks",
+        "AI Chat",
+        "Photos",
+        "Lists",
+        "Scrolling",
+        "Navigation",
+        "Form",
+        "Gestures",
+        "Physics",
+        "Animations",
+        "Canvas",
+        "Styles",
+        "Typed styles",
+        "Text",
+        "Images",
+        "Mobile UI",
+        "Components",
+        "Web and video",
+        "System",
+    ] {
+        // `open` checks that the demo's screen is pushed with its title.
+        let (_engine, _rx, screen) = crate::common::open(name);
+        if matches!(name, "Stocks" | "AI Chat") {
+            assert!(
+                crate::common::shows(&screen, "Being ported to Rust"),
+                "{name}: {:?}",
+                screen.texts
+            );
+        }
+    }
+}
+
+#[test]
+fn the_index_groups_the_demos() {
+    let (_engine, rx) = crate::common::start();
+    let mut screen = crate::common::Screen::default();
+    crate::common::drain(&rx, &mut screen);
+    for (title, count) in [
+        ("APPS", "3"),
+        ("LAYOUT AND LISTS", "4"),
+        ("TOUCH AND MOTION", "3"),
+        ("DRAWING AND TYPE", "5"),
+        ("PLATFORM", "4"),
+    ] {
+        let at = screen.find(title).unwrap_or_else(|| panic!("no {title}"));
+        // The count is the title's sibling.
+        let row = screen.parents[&at];
+        assert!(
+            screen
+                .texts
+                .iter()
+                .any(|(id, t)| t == count && screen.parents.get(id) == Some(&row)),
+            "{title}: {count}"
+        );
+    }
+    // Each row has its icon and its chevron drawn.
+    assert!(screen.drawings.len() >= 2 * 19, "{}", screen.drawings.len());
+}
 
 #[test]
 fn navigation_pushes_its_screens() {

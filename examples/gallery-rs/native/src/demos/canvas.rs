@@ -17,7 +17,7 @@ use nsh_core::{
     ui::{AnyElement, prelude::*},
 };
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// A number in `0..1` (TS: `Math.random()`): xorshift, seeded by the clock.
 fn random() -> f32 {

@@ -50,7 +50,7 @@ impl Media {
             .find(label)
             .unwrap_or_else(|| panic!("no {label}: {:?}", self.screen.texts));
         engine.control().dispatch_event(
-            self.screen.parents[&text],
+            self.screen.press_target(text),
             EventKind::Press,
             EventPayload::None,
         );

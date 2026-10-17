@@ -9,7 +9,7 @@ use nsh_core::{
     ui::{AnyElement, View, prelude::*},
 };
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// The pages', cards' and tiles' colors.
 const PALETTE: [u32; 7] = [

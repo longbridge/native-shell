@@ -59,15 +59,22 @@ fn mobile_ui_renders_and_answers_presses() {
 
     // The stepper with its own value: one step up, then asked for its
     // value and reset through its ref.
-    let five = screen.find("5").expect("the own stepper's value");
-    let stepper = screen.parents[&five];
-    let plus = screen
+    // (The index under the demo shows a 5 of its own.)
+    let (five, plus) = screen
         .texts
         .iter()
-        .filter(|t| t.1 == "+")
-        .map(|t| screen.parents[&t.0])
-        .find(|button| screen.parents.get(button) == Some(&stepper))
-        .expect("its + button");
+        .filter(|t| t.1 == "5")
+        .find_map(|five| {
+            let stepper = screen.parents[&five.0];
+            let plus = screen
+                .texts
+                .iter()
+                .filter(|t| t.1 == "+")
+                .map(|t| screen.parents[&t.0])
+                .find(|button| screen.parents.get(button) == Some(&stepper))?;
+            Some((five.0, plus))
+        })
+        .expect("the own stepper's value and its + button");
     for kind in [EventKind::PressIn, EventKind::PressOut] {
         engine
             .control()

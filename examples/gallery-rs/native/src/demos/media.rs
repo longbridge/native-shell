@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use nsh_core::ui::{AnyElement, prelude::*};
 
-use crate::ui::{button, colors, page, section};
+use crate::ui::legacy::{button, colors, page, section};
 
 /// The inline page of the first web view: it posts to the app and shows
 /// what the app posts to it.

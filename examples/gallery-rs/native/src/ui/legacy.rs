@@ -1,5 +1,6 @@
-//! What the demos share: the gallery's colors and a few building blocks
-//! (as the TSX gallery's `ui.tsx`).
+//! The building blocks of the gallery's former, light-only design, which
+//! the demos not yet restyled still use: they go once every demo is on
+//! the shared design of [`super`].
 
 use nsh_core::ui::{AnyElement, Scroll, View, prelude::*};
 
