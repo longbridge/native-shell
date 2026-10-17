@@ -368,9 +368,17 @@ impl Decor {
         // latter gets its background from the same outline. A backdrop
         // blur is a subview, above the layer's own background: the
         // background moves to a fill layer above the blur.
-        let fill =
-            (shared.is_none() || (raw.continuous && stroke) || crate::visual::has_backdrop(style))
-                && kind != Kind::Text;
+        // An opaque background under outer box shadows moves to the fill
+        // layer too: above the shadows, it hides them inside the box, and
+        // they need no mask (`visual.rs`).
+        let covers_shadows = crate::visual::has_outer_shadow(style)
+            && style.background_color.0 & 0xff == 0xff
+            && s.anim.background.is_none();
+        let fill = (shared.is_none()
+            || (raw.continuous && stroke)
+            || crate::visual::has_backdrop(style)
+            || covers_shadows)
+            && kind != Kind::Text;
 
         // Corners of the layer itself. Core Animation draws nothing for a
         // radius over half the short side (`rounded-full` is 9999). Empty
@@ -524,8 +532,16 @@ impl Decor {
             layer.setShadowOpacity(0.0);
             layer.setShadowPath(None);
         }
-        self.visual
-            .apply(view, layer, style, local, radii, kind == Kind::Text);
+        let covered = covers_shadows && kind != Kind::Text;
+        self.visual.apply(
+            view,
+            layer,
+            style,
+            local,
+            radii,
+            kind == Kind::Text,
+            covered,
+        );
     }
 
     /// Draws borders with differing sides: the ring between the outer and

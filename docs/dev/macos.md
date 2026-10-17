@@ -54,6 +54,13 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   the lever is drawing less. Rendering canvases into bitmaps on a background queue was measured too (Stocks:
   main-thread frame 2.7 → 0.3 ms) and left out: the process' CPU went from ~53% to ~140% (Core Graphics on the CPU
   instead of AppKit's display-list replay), and the canvas showed a frame late.
+- **No masks on what scrolls, where avoidable** (`visual.rs`): the window server pays for a mask on every frame its
+  layer moves. Outer box shadows under an opaque background (a fill layer, or an opaque gradient, both above them)
+  are plain `shadowPath` casters, masked only under translucent ones; inset shadows are clipped by their holder's
+  rounded bounds (`masksToBounds`), masked only for differing corners. Measured by screen capture, a scroll of the
+  gallery's Lists (a shadow and an inset highlight on every card) was composited at ~55 of 120 Hz with the masks and
+  ~107 without, although the app committed every frame in time (Instruments' Animation Hitches: every frame one
+  refresh late).
 - **One hop per commit.** The engine runs on its own thread; its sink queues each commit and wakes the main queue once
   (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
   Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared
@@ -173,7 +180,8 @@ nsh build examples/gallery -o /tmp/gallery
 works while the screen is locked. That rendering is not Core Animation's own: it ignores `maskedCorners`, cuts masks at
 their layer's bounds, ignores `shadowPath` and Core Image filters, flattens 3D transforms (perspective, `rotateX`,
 `rotateY`), and does not show backdrop blur, sheets, `AVPlayerLayer` or `WKWebView` content. `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
-shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them.
+shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them, and
+so are outer box shadows under an opaque background (unmasked `shadowPath` casters, `visual.rs`).
 
 ## Not implemented, or different
 

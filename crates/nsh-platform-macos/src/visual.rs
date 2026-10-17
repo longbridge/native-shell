@@ -4,10 +4,16 @@
 //! what the window shows behind the view: Core Animation's
 //! `backgroundFilters` do nothing in AppKit windows).
 //!
-//! CSS draws a box shadow only outside the box, so outer shadow layers are
-//! masked to everything but the box: they can sit above the view's own
-//! background (sublayers always draw over a layer's contents) without
-//! covering it, and work with transparent backgrounds.
+//! CSS draws a box shadow only outside the box. Under an opaque background
+//! (a fill layer, or a gradient, which draw above them) outer shadow layers
+//! are plain `shadowPath` casters; otherwise they are masked to everything
+//! but the box, so that they can sit above the view's own background
+//! (sublayers always draw over a layer's contents) without covering it.
+//! Masks are what the window server pays for on every frame the view moves:
+//! a scroll of the gallery's Lists (a shadow on every card) was composited
+//! at ~60 of 120 Hz with them. Inset shadows are clipped by their holder's
+//! rounded bounds for the same reason, masked only for differing corners.
+//! In-process renderings (`shot`) do not show unmasked outer shadows.
 
 use nsh_core::{
     BorderStyle, BoxShadow, Color, CornerRadii, Filter, Gradient, GradientKind, GradientSize,
@@ -98,6 +104,14 @@ pub(crate) fn draws_outside(style: &ViewStyle) -> bool {
             .is_some_and(|e| e.box_shadows.iter().any(|s| !s.inset && s.is_visible()))
 }
 
+/// Whether `style` has a visible outer box shadow.
+pub(crate) fn has_outer_shadow(style: &ViewStyle) -> bool {
+    style
+        .effects
+        .as_ref()
+        .is_some_and(|e| e.box_shadows.iter().any(|s| !s.inset && s.is_visible()))
+}
+
 /// The view's drop shadow filter, if any (it follows the content's shape).
 pub(crate) fn drop_shadow(style: &ViewStyle) -> Option<(f32, f32, f32, Color)> {
     style
@@ -118,7 +132,8 @@ pub(crate) fn drop_shadow(style: &ViewStyle) -> Option<(f32, f32, f32, Color)> {
 
 impl Visual {
     /// Shapes the effect layers of `view` (in its own `layer`) after
-    /// `style`.
+    /// `style`; `filled`: an opaque fill layer covers the box.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn apply(
         &mut self,
         view: &NshView,
@@ -127,6 +142,7 @@ impl Visual {
         local: CGRect,
         radii: CornerRadii,
         text: bool,
+        filled: bool,
     ) {
         let effects = style.effects.as_deref();
         let shadows = effects.map_or(&[][..], |e| &e.box_shadows[..]);
@@ -138,7 +154,16 @@ impl Visual {
             .iter()
             .filter(|s| s.inset && s.is_visible())
             .collect();
-        self.set_shadows(layer, &outer, local, radii);
+        // An opaque fill or gradient (both above the shadows) hides the box.
+        // (Text views draw no gradient layers.)
+        let covered = filled
+            || !text
+                && effects.is_some_and(|e| {
+                    e.background_images
+                        .iter()
+                        .any(|g| g.stops.iter().all(|s| s.color.0 & 0xff == 0xff))
+                });
+        self.set_shadows(layer, &outer, local, radii, covered);
         // Text draws in the layer's own contents, below every sublayer:
         // effects inside the box would cover it.
         let inner: &[&BoxShadow] = if text { &[] } else { &inner };
@@ -179,6 +204,7 @@ impl Visual {
         shadows: &[&BoxShadow],
         local: CGRect,
         radii: CornerRadii,
+        covered: bool,
     ) {
         if shadows.is_empty() {
             if let Some((h, _)) = self.shadows.take() {
@@ -199,18 +225,27 @@ impl Visual {
             .fold(0.0, f32::max) as CGFloat;
         let around = grow(local, reach);
         holder.setFrame(local);
-        let mask = mask_layer(holder);
-        let path = CGMutablePath::new();
-        // SAFETY: valid mutable paths, a null transform.
-        unsafe {
-            CGMutablePath::add_rect(Some(&path), std::ptr::null(), around);
-            CGMutablePath::add_path(Some(&path), std::ptr::null(), Some(&rounded(local, radii)));
+        if covered {
+            // SAFETY: clearing the mask.
+            unsafe { holder.setMask(None) };
+        } else {
+            let mask = mask_layer(holder);
+            let path = CGMutablePath::new();
+            // SAFETY: valid mutable paths, a null transform.
+            unsafe {
+                CGMutablePath::add_rect(Some(&path), std::ptr::null(), around);
+                CGMutablePath::add_path(
+                    Some(&path),
+                    std::ptr::null(),
+                    Some(&rounded(local, radii)),
+                );
+            }
+            // The mask covers all it lets through: in-process renderings
+            // (`renderInContext:`) cut masks off at their bounds.
+            mask.setFrame(around);
+            mask.setBounds(around);
+            mask.setPath(Some(&path));
         }
-        // The mask covers all it lets through: in-process renderings
-        // (`renderInContext:`) cut masks off at their bounds.
-        mask.setFrame(around);
-        mask.setBounds(around);
-        mask.setPath(Some(&path));
         resize(casters, shadows.len(), holder, CAShapeLayer::new);
         // The box, which the mask hides.
         let content = rounded(local, radii);
@@ -220,6 +255,10 @@ impl Visual {
             l.setFrame(local);
             let path = rounded(shape, grown(radii, s.spread));
             cast(l, &path, &content, s, s.offset_x, s.offset_y);
+            if covered {
+                // Nothing to hide the stand-in content: the shadow only.
+                l.setFillColor(None);
+            }
         }
     }
 
@@ -246,10 +285,27 @@ impl Visual {
         // Inside the padding box.
         let padding = inset(local, border as CGFloat);
         let inner_radii = radii.inset(border);
-        holder.setFrame(local);
-        let mask = mask_layer(holder);
-        mask.setFrame(local);
-        mask.setPath(Some(&rounded(padding, inner_radii)));
+        match crate::decor::shared(&inner_radii) {
+            Some(r) => {
+                // Rounded bounds clip at no cost per frame (a mask has one):
+                // the holder is the padding box, its sublayers keep the
+                // view's coordinates.
+                // SAFETY: clearing the mask.
+                unsafe { holder.setMask(None) };
+                holder.setFrame(padding);
+                holder.setBounds(padding);
+                crate::decor::set_corners(holder, r as CGFloat, inner_radii.continuous);
+                holder.setMasksToBounds(true);
+            }
+            None => {
+                holder.setCornerRadius(0.0);
+                holder.setMasksToBounds(false);
+                holder.setFrame(local);
+                let mask = mask_layer(holder);
+                mask.setFrame(local);
+                mask.setPath(Some(&rounded(padding, inner_radii)));
+            }
+        }
         resize(casters, shadows.len(), holder, CAShapeLayer::new);
         // A frame around the box, which the mask hides.
         let content = CGMutablePath::new();
