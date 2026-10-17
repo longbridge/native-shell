@@ -310,6 +310,7 @@ impl Surface {
         self.nav.borrow_mut().reset();
         crate::input::reset(self);
         crate::keymap::clear(self);
+        crate::text_input::surface_stopped(self.key);
         self.js_frame.set(false);
         self.frame_clients.borrow_mut().clear();
         self.invalidate();

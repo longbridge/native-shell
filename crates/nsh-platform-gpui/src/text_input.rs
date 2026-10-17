@@ -710,6 +710,13 @@ pub(crate) fn window_focus(surface: &Rc<Surface>, has_focus: bool) -> bool {
     true
 }
 
+/// The surface with `key` stopped (its app or its view went): its focus
+/// is forgotten, so neither the field nor the caret's timer outlive it.
+pub(crate) fn surface_stopped(key: u64) {
+    FOCUS.with(|f| f.borrow_mut().remove(&key));
+    blink::update();
+}
+
 /// True while the surface's focused field takes text: the surface
 /// registers the window's input handler then.
 pub(crate) fn wants_text(surface: &Surface) -> bool {
@@ -1839,12 +1846,12 @@ mod blink {
     }
 
     /// The fields whose caret shows now.
-    fn carets() -> Vec<NshView> {
+    pub(super) fn carets() -> Vec<NshView> {
         FOCUS.with(|f| {
             f.borrow()
-                .values()
-                .filter(|f| !f.inactive)
-                .filter_map(|f| f.view.clone())
+                .iter()
+                .filter(|(key, f)| !f.inactive && Surface::by_key(**key).is_some())
+                .filter_map(|(_, f)| f.view.clone())
                 .collect()
         })
     }
@@ -1971,6 +1978,27 @@ mod tests {
         assert!(!is_command(Modifiers { alt: true, ..cmd }));
         assert!(!is_command(Modifiers::default()));
         assert_eq!(unit_of(Modifiers::default()), Unit::Char);
+    }
+
+    /// A stopped surface's focus is dropped, and carets of surfaces that
+    /// are gone never blink.
+    #[test]
+    fn stopped_surfaces_forget_their_focus() {
+        let key = u64::MAX - 7;
+        let view = NshView::new(2, nsh_core::ViewKind::Input);
+        FOCUS.with(|f| {
+            f.borrow_mut().insert(
+                key,
+                Focus {
+                    view: Some(view),
+                    inactive: false,
+                },
+            )
+        });
+        // No surface has that key: its field shows no caret.
+        assert!(blink::carets().is_empty());
+        surface_stopped(key);
+        assert!(FOCUS.with(|f| !f.borrow().contains_key(&key)));
     }
 
     /// What the input method sees of a composition.
