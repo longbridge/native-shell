@@ -10,7 +10,9 @@ trusted: every limit and check is enforced in Rust, never in JS.
   `max_op_values`: ops are Rust memory), ops per canvas drawing, nodes in the core (`Core::set_max_nodes`; each may hold a native view) and dense
   node ids (an id far past the ids in use would grow the id table: `ApplyError::IdOutOfRange`).
 - An overrun call is cut off by the interrupt handler with an exception no `catch` swallows, reported with the budget it
-  exceeded; the VM goes on. Running out of memory or going over a quota **stops the VM** (`Host::fatal`): it is reported
+  exceeded; the VM goes on. Running out of memory or going over a quota **stops the VM** (`Host::fatal`), also when the
+  app catches the error: the heap's allocator (`HeapAllocator`) enforces the limit and records reaching it, since QuickJS
+  reports running out in several ways (an `InternalError`, a `null` exception). It is reported
   once (`MountSink::report_error`, the embedder's error callback), no JS runs after that and the views stay as they were.
 - **Hardening** (`Policy::harden`, on unless the bundle came from a dev server): `eval` is deleted, the `Function`,
   `AsyncFunction` and generator constructors throw, and the shared prototypes (`Object`, `Array`, `Function`, `String`,
