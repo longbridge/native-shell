@@ -427,21 +427,7 @@ fn package_macos(
     fs::write(nsh.join("app.json"), info.to_string())?;
     let icon = match &config.icon {
         Some(icon) => {
-            let icns = resources.join("AppIcon.icns");
-            let output = Command::new("sips")
-                .args(["-s", "format", "icns"])
-                .arg(icon)
-                .arg("--out")
-                .arg(&icns)
-                .output()
-                .context("run sips")?;
-            if !output.status.success() {
-                bail!(
-                    "converting {} to an icon failed: {}",
-                    icon.display(),
-                    String::from_utf8_lossy(&output.stderr).trim()
-                );
-            }
+            macos_icns(icon, &resources.join("AppIcon.icns"))?;
             true
         }
         None => false,
@@ -473,6 +459,50 @@ fn package_macos(
         ui::done(format!("launched {name}"));
     }
     Ok(())
+}
+
+/// Converts `icon` (a PNG) to `icns`: an iconset of every size macOS
+/// uses, scaled by `sips`, packed by `iconutil`. `sips -s format icns`
+/// alone fails on 1024-pixel images, the size app icons are drawn at.
+fn macos_icns(icon: &Path, icns: &Path) -> anyhow::Result<()> {
+    let set = icns.with_extension("iconset");
+    fs::create_dir_all(&set)?;
+    let run = |cmd: &mut Command, what: &str| -> anyhow::Result<()> {
+        let output = cmd.output().with_context(|| format!("run {what}"))?;
+        if !output.status.success() {
+            bail!(
+                "converting {} to an icon failed ({what}): {}",
+                icon.display(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
+    };
+    let result = (|| {
+        for size in [16u32, 32, 128, 256, 512] {
+            for (scale, suffix) in [(1, ""), (2, "@2x")] {
+                let px = (size * scale).to_string();
+                run(
+                    Command::new("sips")
+                        .args(["-s", "format", "png", "-z", &px, &px])
+                        .arg(icon)
+                        .arg("--out")
+                        .arg(set.join(format!("icon_{size}x{size}{suffix}.png"))),
+                    "sips",
+                )?;
+            }
+        }
+        run(
+            Command::new("iconutil")
+                .args(["-c", "icns"])
+                .arg(&set)
+                .arg("-o")
+                .arg(icns),
+            "iconutil",
+        )
+    })();
+    let _ = fs::remove_dir_all(&set);
+    result
 }
 
 /// The `Info.plist` of a macOS app.
@@ -748,6 +778,21 @@ fn make_ipa(app: &Path, ipa: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// App icons are drawn at 1024 pixels, which `sips` alone cannot
+    /// convert.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn converts_large_icons() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let dir = std::env::temp_dir().join(format!("nsh-icns-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let icns = dir.join("AppIcon.icns");
+        macos_icns(&root.join("examples/gallery/icon.png"), &icns).unwrap();
+        assert!(fs::metadata(&icns).unwrap().len() > 0);
+        assert!(!dir.join("AppIcon.iconset").exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn profiles_match_bundle_ids() {
