@@ -1198,6 +1198,11 @@ impl<M: TextEngine> Core<M> {
                     .and_then(|k| self.nodes[k as usize].list.as_ref())
                     .is_some_and(|l| l.inverted);
                 match self.components.virtual_lists.get(&list) {
+                    // The row is gone (the list shrank): the cell shows
+                    // nothing until the list unbinds it or binds it to a
+                    // row again; the row function is never asked for a
+                    // row past the end.
+                    Some(state) if index >= state.count as usize => ElNode::empty_view(),
                     Some(state) => {
                         let at = Position {
                             index,

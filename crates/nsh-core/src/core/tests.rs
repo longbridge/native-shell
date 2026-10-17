@@ -4946,6 +4946,85 @@ mod components {
         );
     }
 
+    /// Its own rows indexing its data; a press clears the data. Its errors
+    /// show as a text.
+    #[derive(Default)]
+    struct Clearable {
+        rows: std::rc::Rc<Vec<String>>,
+        error: Option<ComponentError>,
+    }
+
+    impl Component for Clearable {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), _: &mut Context<'_, Self>) {
+            self.rows = std::rc::Rc::new((0..3).map(|i| format!("row {i}")).collect());
+        }
+
+        fn catch_error(&mut self, error: &ComponentError, cx: &mut Context<'_, Self>) -> bool {
+            self.error = Some(error.clone());
+            cx.notify();
+            true
+        }
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let rows = self.rows.clone();
+            view()
+                .flex_1()
+                .child(
+                    view()
+                        .h(px(20.0))
+                        .on_press(cx.listener(|this: &mut Self, _, cx| {
+                            this.rows = std::rc::Rc::default();
+                            cx.notify();
+                        })),
+                )
+                .children(
+                    self.error
+                        .as_ref()
+                        .map(|e| text(format!("failed: {}", e.message))),
+                )
+                .child(
+                    virtual_list(rows.len(), move |i, _| {
+                        view().h(px(40.0)).child(text(rows[i].clone()))
+                    })
+                    .estimated_item_size(40.0)
+                    .flex_1(),
+                )
+        }
+    }
+
+    #[test]
+    fn virtual_lists_drop_rows_that_are_gone() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Clearable>(|| ()));
+        let batch = c.commit().unwrap();
+        assert!(
+            texts(&batch).contains(&"row 2".to_owned()),
+            "{:?}",
+            texts(&batch)
+        );
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button");
+        // The cells of rows that are gone render nothing until the list
+        // binds them again, never a row past the end.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            if let Some(batch) = c.commit() {
+                shown.extend(texts(&batch));
+            }
+        }
+        assert!(shown.iter().all(|t| !t.starts_with("failed")), "{shown:?}");
+    }
+
     /// A chat: its own rows in a list that follows its end; a press makes
     /// the last row taller (a reply streaming in).
     #[derive(Default)]
