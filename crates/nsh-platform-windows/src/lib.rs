@@ -31,6 +31,7 @@ mod geom;
 mod gfx;
 mod image;
 mod input;
+mod keymap;
 mod mount;
 mod native;
 mod navigation;

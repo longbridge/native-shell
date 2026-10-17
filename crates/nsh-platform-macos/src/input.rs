@@ -702,25 +702,30 @@ pub(crate) fn shortcut_key(event: &NSEvent) -> Option<char> {
     if typed.is_ascii() {
         return Some(typed.to_ascii_lowercase());
     }
-    // The ANSI keyboard's virtual key codes (`kVK_ANSI_*`): its letters and
-    // brackets.
-    const KEYS: &[u8] = b"asdfhgzxcv\0bqweryt";
-    let code = usize::from(event.keyCode());
-    match code {
-        _ if code < KEYS.len() && KEYS[code] != b'\0' => Some(KEYS[code] as char),
-        30 => Some(']'),
-        31 => Some('o'),
-        32 => Some('u'),
-        33 => Some('['),
-        34 => Some('i'),
-        35 => Some('p'),
-        37 => Some('l'),
-        38 => Some('j'),
-        40 => Some('k'),
-        45 => Some('n'),
-        46 => Some('m'),
-        _ => None,
-    }
+    us_key(event.keyCode())
+}
+
+/// The ANSI keyboard's virtual key codes (`kVK_ANSI_*`), by the character
+/// their key types on the US layout without Shift (`\0`: not a character
+/// key).
+const US_KEYS: &[u8; 51] = b"asdfhgzxcv\0bqweryt123465=97-80]ou[ip\0lj'k;\\,/nm.\0\0`";
+
+/// The character the key of virtual key code `code` types on the US
+/// layout without Shift (letters, digits, punctuation).
+pub(crate) fn us_key(code: u16) -> Option<char> {
+    US_KEYS
+        .get(usize::from(code))
+        .filter(|&&c| c != 0)
+        .map(|&c| c as char)
+}
+
+/// The virtual key code of the key typing `c` on the US layout (without
+/// Shift), for synthesized key events.
+pub(crate) fn us_key_code(c: char) -> Option<u16> {
+    let c = u8::try_from(c.to_ascii_lowercase())
+        .ok()
+        .filter(|&c| c != 0)?;
+    US_KEYS.iter().position(|&k| k == c).map(|i| i as u16)
 }
 
 /// Where keys look for a scroll view: the mouse, or the middle.
@@ -2044,7 +2049,8 @@ mod tests {
         assert_eq!(key("\u{441}", 8), Some('c'));
         assert_eq!(key("\u{43a}", 15), Some('r'));
         assert_eq!(key("\u{445}", 33), Some('['));
-        assert_eq!(key("\u{44d}", 39), None);
+        assert_eq!(key("\u{44d}", 39), Some('\''));
+        assert_eq!(key("\u{44d}", 36), None);
     }
 
     #[test]

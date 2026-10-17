@@ -150,6 +150,8 @@ pub(crate) struct Surface {
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
+    /// The app's keyboard shortcuts ([`crate::keymap`]).
+    pub(crate) keymap: crate::keymap::KeymapState,
     /// Hosted items drawn by the last frame ([`Hosted::placed`]).
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
     /// Called after the surface is resized (development overlays).
@@ -194,6 +196,7 @@ impl Surface {
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
             native: Default::default(),
+            keymap: Default::default(),
             placed: RefCell::default(),
             on_resized: RefCell::default(),
             shortcuts: RefCell::default(),
@@ -292,6 +295,7 @@ impl Surface {
         *self.anim.borrow_mut() = UiAnimation::default();
         self.nav.borrow_mut().reset();
         crate::input::reset(self);
+        crate::keymap::clear(self);
         self.js_frame.set(false);
         self.frame_clients.borrow_mut().clear();
         self.invalidate();

@@ -18,14 +18,14 @@
 //! | `hover <x> <y>` | Moves the pointer. |
 //! | `type <text>` | Types into the focused field. |
 //! | `mark <text>` | Sets the focused field's marked text, as an input method composing it does (a `key Return` then commits it). |
-//! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `space`, or one character; with modifiers before it, as in `cmd+a`, `shift+Tab` (`cmd`, `shift`, `alt`, `ctrl`). Keys with `cmd` go through the application (menus, key monitors). |
+//! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `Delete`, `F1` to `F12`, `space`, or one character (with its US layout key code); with modifiers before it, as in `cmd+a`, `shift+Tab` (`cmd`, `shift`, `alt`, `ctrl`). Keys go through the application (menus, key monitors such as `nsh/keymap`'s) while the window is key, else through the window (keys with `cmd` always through the application). |
 //! | `dark` / `light` | Switches the app's window to that appearance (as the system's would). |
 //! | `resize <w> <h>` | Resizes the window's content. |
 //! | `quit` | Closes the window. |
 //!
 //! Mouse button and move events go through the application's event queue
-//! (`postEvent:atStart:`), wheels and keys through the window
-//! (`sendEvent:`), so they take the path real ones take: AppKit's hit
+//! (`postEvent:atStart:`), wheels through the window and keys through
+//! the application (`sendEvent:`, see `key`), so they take the path real ones take: AppKit's hit
 //! testing, the root view, [`crate::input`]. `hover` makes the window
 //! accept mouse moves (sent moves reach the first responder only then;
 //! real ones come through the root's tracking area).
@@ -544,10 +544,31 @@ fn key(window: &NSWindow, name: &str) {
         "Page_Down" => ("\u{f72d}".into(), 121),
         "Home" => ("\u{f729}".into(), 115),
         "End" => ("\u{f72b}".into(), 119),
+        "Delete" => ("\u{f728}".into(), 117),
+        // F1 to F12 (`F5`).
+        f if f.len() > 1
+            && f.starts_with('F')
+            && let Some(n) = f[1..].parse::<u16>().ok().filter(|n| (1..=12).contains(n)) =>
+        {
+            const CODES: [u16; 12] = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111];
+            let c = char::from_u32(0xf703 + u32::from(n)).unwrap_or('\0');
+            (c.to_string(), CODES[usize::from(n - 1)])
+        }
         // Shift types the shifted character, which menus' key
-        // equivalents match (`cmd+shift+z` is Redo's `Z`).
-        other if flags.contains(NSEventModifierFlags::Shift) => (other.to_uppercase(), 0),
-        other => (other.into(), 0),
+        // equivalents match (`cmd+shift+z` is Redo's `Z`). A character's
+        // key is the US layout's, as a real event's would be.
+        other => {
+            let mut chars = other.chars();
+            let code = match (chars.next(), chars.next()) {
+                (Some(c), None) => crate::input::us_key_code(c).unwrap_or(0),
+                _ => 0,
+            };
+            if flags.contains(NSEventModifierFlags::Shift) {
+                (other.to_uppercase(), code)
+            } else {
+                (other.into(), code)
+            }
+        }
     };
     key_event(window, &chars, code, flags);
 }
@@ -568,9 +589,9 @@ fn key_event(window: &NSWindow, chars: &str, code: u16, flags: NSEventModifierFl
             code,
         );
         let Some(event) = event else { continue };
-        if flags.contains(NSEventModifierFlags::Command) {
-            // Key equivalents (menus) and key monitors are the
-            // application's.
+        // Key equivalents (menus) and key monitors (`nsh/keymap`) are the
+        // application's, which hands the key to its key window.
+        if window.isKeyWindow() || flags.contains(NSEventModifierFlags::Command) {
             objc2_app_kit::NSApplication::sharedApplication(MainThreadMarker::from(window))
                 .sendEvent(&event);
         } else {

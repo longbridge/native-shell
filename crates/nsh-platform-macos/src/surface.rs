@@ -166,6 +166,8 @@ pub(crate) struct Surface {
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
+    /// The app's keyboard shortcuts ([`crate::keymap`]).
+    pub(crate) keymap: crate::keymap::KeymapState,
 }
 
 /// A per-frame callback ([`Surface::add_frame_callback`]): gets the frame
@@ -203,6 +205,7 @@ impl Surface {
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
             native: Default::default(),
+            keymap: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         // CoreText's first use loads fonts and caches (tens of
@@ -265,6 +268,7 @@ impl Surface {
         *self.anim.borrow_mut() = UiAnimation::default();
         self.nav.borrow_mut().reset();
         crate::input::reset(self);
+        crate::keymap::clear(self);
         self.js_frame.set(false);
         self.frame_callbacks.borrow_mut().clear();
     }
