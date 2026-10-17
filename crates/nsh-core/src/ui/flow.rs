@@ -37,7 +37,7 @@ pub(crate) enum Region {
     /// A view, or its fallback once something under it failed.
     Catch {
         view: Rc<dyn Fn() -> Vec<AnyElement>>,
-        fallback: Rc<dyn Fn(super::ComponentError) -> Vec<AnyElement>>,
+        fallback: Rc<dyn Fn(super::ComponentError, Reset) -> Vec<AnyElement>>,
     },
 }
 
@@ -128,7 +128,7 @@ impl Region {
                     }
                     let owner = Owner::current();
                     let elements = untracked(|| match error {
-                        Some(error) => fallback(error),
+                        Some(error) => fallback(error, Reset(failed)),
                         None => view(),
                     })
                     .into_iter()
@@ -191,15 +191,27 @@ pub fn dynamic<E: IntoElements>(f: impl Fn() -> E + 'static) -> AnyElement {
 /// `view`'s elements, or `fallback`'s once something under them failed (a
 /// panic in a binding, a listener, an effect or a component's view, TS:
 /// `<ErrorBoundary>`): the failed part goes, and the fallback shows the
-/// error. What fails in the fallback goes to the boundary above.
+/// error; its [`Reset`] makes the view again. What fails in the fallback
+/// goes to the boundary above.
 pub fn catch_error<E: IntoElements, F: IntoElements>(
     view: impl Fn() -> E + 'static,
-    fallback: impl Fn(super::ComponentError) -> F + 'static,
+    fallback: impl Fn(super::ComponentError, Reset) -> F + 'static,
 ) -> AnyElement {
     region(Region::Catch {
         view: Rc::new(move || view().into_elements()),
-        fallback: Rc::new(move |error| fallback(error).into_elements()),
+        fallback: Rc::new(move |error, reset| fallback(error, reset).into_elements()),
     })
+}
+
+/// What tries a [`catch_error`]'s view again (TS: the fallback's `reset`).
+#[derive(Clone, Copy)]
+pub struct Reset(Signal<Option<super::ComponentError>>);
+
+impl Reset {
+    /// Makes the view again, in place of the fallback.
+    pub fn reset(&self) {
+        self.0.set(None);
+    }
 }
 
 /// `then`'s elements while `when` holds, else `otherwise`'s (TS: `<If

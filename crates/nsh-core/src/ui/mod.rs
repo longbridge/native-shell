@@ -81,7 +81,7 @@ pub use self::{
         GestureEvent, ImageProgress, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection,
         VideoInfo, VideoProgress, WebNavigation,
     },
-    flow::{Each, If, IntoElements, catch_error, dynamic},
+    flow::{Each, If, IntoElements, Reset, catch_error, dynamic},
     host::{
         CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, Modal, NativeView,
         Orientation, Painter, Screen, Scroll, Stack, Video, WebView, canvas, input,

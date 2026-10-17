@@ -164,6 +164,9 @@ pub(super) struct Instance {
     /// Lazy children a view passes: whether it places them, which what
     /// passes them reads.
     lazy_wanted: Option<crate::ui::Signal<bool>>,
+    /// In a view: the owner where it places its JS children (a region's),
+    /// which the components JS made among them are under.
+    children_owner: Option<crate::ui::Owner>,
 }
 
 impl Instance {
@@ -198,6 +201,7 @@ impl Instance {
             cell_owner: None,
             row_index: None,
             lazy_wanted: None,
+            children_owner: None,
         }
     }
 }
@@ -1362,12 +1366,17 @@ impl<M: TextEngine> Core<M> {
             }
             key = Some(parent);
             let id = self.nodes[parent as usize].id;
+            // What JS made is under a component through its JS children:
+            // under where it places them.
             let owner = self
                 .components
                 .instances
                 .get(&id)
                 .and_then(|inst| match &inst.inner {
-                    Inner::Component(inner) => inner.runs_once().filter(|o| o.is_live()),
+                    Inner::Component(inner) => inst
+                        .children_owner
+                        .filter(|o| o.is_live())
+                        .or_else(|| inner.runs_once().filter(|o| o.is_live())),
                     _ => inst.cell_owner,
                 });
             if let Some(owner) = owner {
@@ -2213,6 +2222,9 @@ impl<M: TextEngine> Core<M> {
                     old[j] = None;
                 }
                 *placeholder = Some(out.len());
+                if inst.binding {
+                    inst.children_owner = Some(crate::ui::Owner::current());
+                }
                 out.push(Expanded::js(0, Part::Children));
             }
             ElKind::JsChild(id) => {
