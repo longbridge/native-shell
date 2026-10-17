@@ -48,7 +48,7 @@ Build the nsh app into the app's assets:
 nsh build App.tsx --release --out app/src/main/assets/nsh
 ```
 
-This writes `bundle.qbc` (bytecode), `bundle.js` (source), `bundle.js.map`, `capabilities.json` (when `nsh.json`
+This writes `bundle.nsh` (bytecode), `bundle.js` (source), `bundle.js.map`, `capabilities.json` (when `nsh.json`
 declares [capabilities](./sandbox-and-capabilities.md)) and `assets/` (the images and fonts the app imports).
 
 ## Show the app
@@ -68,7 +68,7 @@ public final class MainActivity extends Activity {
         nsh = new NshView(this);
         nsh.setErrorListener(message -> Log.e("nsh", message));
         setContentView(nsh);
-        nsh.loadAssetBundle("nsh");   // runs assets/nsh/bundle.qbc
+        nsh.loadAssetBundle("nsh");   // runs assets/nsh/bundle.nsh
     }
 
     @Override
@@ -122,8 +122,8 @@ again replaces the running app. The complete sample is
 | `setErrorListener(ErrorListener listener)` | Receives fatal app errors (load failures, uncaught JS exceptions, a VM stopped by a limit) on the UI thread. They are always logged. |
 | `setLimits(int memoryMb, int stackKb, int loadMs, int callMs, int maxNodes)` | VM limits of the apps loaded next; 0 keeps a default. |
 | `setGrantedCapabilities(String json)` | The most the apps loaded next may do, as JSON in the form of `nsh.json`'s `capabilities`; `null` grants what each app declares. Returns `false` (and is ignored) for an invalid grant. |
-| `loadAssetBundle(String dir)` | Runs `dir/bundle.qbc` from the APK's assets; app assets come from `dir/assets/`. Returns `false` if it cannot be read (also reported to the error listener). |
-| `loadBundleFile(File file)` | Runs a `bundle.js` file; assets come from `assets/` next to it. Refuses `.qbc` files. |
+| `loadAssetBundle(String dir)` | Runs `dir/bundle.nsh` from the APK's assets; app assets come from `dir/assets/`. Returns `false` if it cannot be read (also reported to the error listener). |
+| `loadBundleFile(File file)` | Runs a `bundle.js` file; assets come from `assets/` next to it. Refuses `.nsh` files. |
 | `runPackage(NshPackage pkg)` | Runs a verified signed package, replacing the running app. A package runs once. |
 | `registerComponent(String name, NshComponent.Factory factory)` | Registers a [native component](./native-components.md). |
 | `connectDevServer(String url)` | Development: loads from a `nsh dev` server and reloads on every change. Returns `false` with the release AAR. |
@@ -131,7 +131,7 @@ again replaces the running app. The complete sample is
 | `destroy()` | Stops the app. The view can no longer be used. |
 
 > [!IMPORTANT]
-> Bytecode (`.qbc`) only loads from the APK's own assets or from a signed package. Files on storage can be replaced,
+> Bytecode (`.nsh`) only loads from the APK's own assets or from a signed package. Files on storage can be replaced,
 > and QuickJS does not validate bytecode, so `loadBundleFile` takes JS source only. Code the app downloads should come
 > as a [signed package](./signed-packages.md).
 

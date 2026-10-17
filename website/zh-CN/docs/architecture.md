@@ -26,7 +26,7 @@ order: 35
    prop 是 getter。
 3. **rolldown** 把你的模块打包成一个 ES 模块。对 nsh 模块（`nsh`、`nsh/list`、`nsh/ui/mobile` 等）的导入保持为导入：
    这些模块是原生的，由运行时提供。**bundle 只包含你的应用代码**；计数器示例的 JS 不到 1 KB。
-4. bundle 被编译为 **QuickJS 字节码**（`bundle.qbc`），加载比源码更快；同时会跨所有步骤合成一份 **source map**，
+4. bundle 被编译为 **QuickJS 字节码**（`bundle.nsh`），加载比源码更快；同时会跨所有步骤合成一份 **source map**，
    让堆栈跟踪指向你的 `.tsx` 代码行。
 
 你导入的图片和字体会作为资源收集起来，供编辑器使用的类型声明则写入 `.nsh/types`。

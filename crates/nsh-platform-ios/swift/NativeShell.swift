@@ -149,7 +149,7 @@ public final class NshAppView: UIView {
     }
 
     /// Runs a bundle written by `nsh build`; assets come from `assets` next
-    /// to it. Bytecode (`bundle.qbc`) loads only from inside the app bundle;
+    /// to it. Bytecode (`bundle.nsh`) loads only from inside the app bundle;
     /// elsewhere load `bundle.js`, or use signed packages.
     public func loadBundle(at url: URL) throws {
         try check(nsh_app_load_bundle(app, url.path))

@@ -140,7 +140,7 @@ fn assemble(
     )];
     let mut bytecode_version = String::new();
     if let Some((bytecode, version)) = &contents.bytecode {
-        blobs.push(("bundle.qbc".into(), FileKind::Bytecode, bytecode));
+        blobs.push(("bundle.nsh".into(), FileKind::Bytecode, bytecode));
         bytecode_version = version.clone();
     }
     if let Some(map) = &contents.source_map {

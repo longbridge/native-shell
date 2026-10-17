@@ -142,7 +142,7 @@ nsh build [ENTRY] [-o <OUT>] [--release]
 |---|---|
 | `bundle.js` | JavaScript 形式的 bundle |
 | `bundle.js.map` | 它的 source map（堆栈会映射回你的源码） |
-| `bundle.qbc` | QuickJS 字节码形式的 bundle：应用实际加载的就是它 |
+| `bundle.nsh` | QuickJS 字节码形式的 bundle：应用实际加载的就是它 |
 | `capabilities.json` | `nsh.json` 中声明的 `capabilities`（未声明时删除） |
 | `assets/` | 所有被导入的图片和字体，保持相对于应用根目录的路径 |
 

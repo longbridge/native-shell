@@ -6,7 +6,7 @@
   --profile <file.mobileprovision>` (entitlements come from the profile; icons are compiled by `actool` into `Assets.car`).
   Android: an APK assembled without Gradle (`aapt2 link`, native libraries stored uncompressed and 16 KB aligned, `apksigner`;
   the debug key unless `--keystore`). Linux: a directory `<name>/` with the release runner (`crates/nsh-linux-app`) as
-  the executable, `nsh/bundle.qbc`, `nsh/assets/` and `nsh/app.json` (the window title and the GTK application id,
+  the executable, `nsh/bundle.nsh`, `nsh/assets/` and `nsh/app.json` (the window title and the GTK application id,
   which the runner reads next to itself), `<id>.desktop` (`StartupWMClass` is the id, which GTK makes the window's
   app id) and `<id>.png`, plus the same as `<name>.tar.gz`; GTK 4 and Pango must be installed where it runs.
 - Embedding: iOS apps link `NativeShell.xcframework` and `import NativeShell` (Swift: `NshAppView`, a `UIView`;

@@ -146,7 +146,7 @@ Prefer the environment variable over `--keystore-password` so the password does 
 nsh package App.tsx --target linux --run
 ```
 
-Writes `out/<Name>/` (the executable `<Name>`, `nsh/bundle.qbc`, `nsh/assets/…`, `nsh/app.json` with the window title
+Writes `out/<Name>/` (the executable `<Name>`, `nsh/bundle.nsh`, `nsh/assets/…`, `nsh/app.json` with the window title
 and the application id, `<id>.desktop` and the icon `<id>.png`) and the same as `out/<Name>.tar.gz`. Package on
 Linux: the runner is built for the machine it is built on. GTK 4 (4.14 or later) and Pango must be installed where the
 app runs. Installing it and the desktop entry: [Linux](./linux.md#packaging).
@@ -169,9 +169,9 @@ imports, next to the prebuilt runtime:
 
 | Target | Runtime | Your app |
 |---|---|---|
-| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.qbc`, `nsh/assets/…` |
-| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.qbc`, `assets/nsh/assets/…` |
-| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.qbc`, `nsh/assets/…` |
+| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.nsh`, `nsh/assets/…` |
+| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.nsh`, `assets/nsh/assets/…` |
+| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nsh`, `nsh/assets/…` |
 
 A packaged app registers no [native components](./native-components.md); for those, embed nsh in your own app.
 

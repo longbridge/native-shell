@@ -35,7 +35,7 @@ UIView *nsh_app_view(NshApp *app);
 void nsh_app_destroy(NshApp *_Nullable app);
 
 /// Runs a bundle written by `nsh build`, replacing the running app; assets
-/// are read from `assets` next to it. Bytecode (`bundle.qbc`) only loads from
+/// are read from `assets` next to it. Bytecode (`bundle.nsh`) only loads from
 /// inside the app's own bundle; elsewhere only JS source does. Returns why it
 /// cannot, or NULL.
 char *_Nullable nsh_app_load_bundle(NshApp *app, const char *path);

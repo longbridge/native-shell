@@ -28,7 +28,7 @@ animations stay smooth while JS is busy, why the main thread never waits for you
 3. **rolldown** bundles your modules into one ES module. Imports of nsh's modules (`nsh`, `nsh/list`,
    `nsh/ui/mobile`, ...) stay imports: those modules are native, served by the runtime. **The bundle contains only your
    app's code**; the counter example is under 1 KB of JS.
-4. The bundle is compiled to **QuickJS bytecode** (`bundle.qbc`), which loads faster than source, and a **source map**
+4. The bundle is compiled to **QuickJS bytecode** (`bundle.nsh`), which loads faster than source, and a **source map**
    is composed across all steps so stack traces point at your `.tsx` lines.
 
 Images and fonts you import are collected as assets, and type declarations for your editor are written to

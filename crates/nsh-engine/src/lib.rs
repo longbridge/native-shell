@@ -176,11 +176,11 @@ impl Bundle {
 
     /// Reads a JS source bundle written by `nsh build` (`bundle.js`), plus
     /// `bundle.js.map` and the app's `capabilities.json` next to it if
-    /// present. Bytecode (`bundle.qbc`) is refused: files can be replaced, and
+    /// present. Bytecode (`bundle.nsh`) is refused: files can be replaced, and
     /// only [`Bundle::read_trusted`] (the app's own resources) or a verified
     /// package may load bytecode.
     pub fn read(path: &std::path::Path) -> io::Result<Bundle> {
-        if path.extension().is_some_and(|e| e == "qbc") {
+        if path.extension().is_some_and(|e| e == "nsh") {
             return Err(io::Error::other(
                 "bytecode only loads from the app's own resources or a signed package (.nshpkg); load bundle.js",
             ));
@@ -189,15 +189,15 @@ impl Bundle {
         unsafe { Self::read_trusted(path) }
     }
 
-    /// Like [`Bundle::read`], also reading `bundle.qbc` as bytecode.
+    /// Like [`Bundle::read`], also reading `bundle.nsh` as bytecode.
     ///
     /// # Safety
     ///
-    /// A `.qbc` file must be trusted as [`Bundle::bytecode`] requires (e.g.
+    /// A `.nsh` file must be trusted as [`Bundle::bytecode`] requires (e.g.
     /// inside the app's own signed bundle).
     pub unsafe fn read_trusted(path: &std::path::Path) -> io::Result<Bundle> {
         let bytes = std::fs::read(path)?;
-        let bundle = if path.extension().is_some_and(|e| e == "qbc") {
+        let bundle = if path.extension().is_some_and(|e| e == "nsh") {
             // SAFETY: guaranteed by the caller.
             unsafe { Bundle::bytecode(bytes) }
         } else {

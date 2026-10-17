@@ -91,7 +91,7 @@ lines (`script.rs`), so a change can be checked without touching the screen:
 | `quit` | Closes the window. |
 
 ```sh
-nsh dev examples/gallery &       # or: nsh build examples/gallery and --bundle <path>/bundle.qbc
+nsh dev examples/gallery &       # or: nsh build examples/gallery and --bundle <path>/bundle.nsh
 ./target/debug/nsh-linux-host --size 390x844 --script "wait 800; shot a.png; tap 100 200; wait 300; shot b.png; quit"
 ```
 

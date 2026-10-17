@@ -162,7 +162,7 @@ It writes:
 |---|---|
 | `bundle.js` | The bundle as JavaScript |
 | `bundle.js.map` | Its source map (stack traces are mapped back to your sources) |
-| `bundle.qbc` | The bundle as QuickJS bytecode: what apps load |
+| `bundle.nsh` | The bundle as QuickJS bytecode: what apps load |
 | `capabilities.json` | The `capabilities` of `nsh.json`, if declared (removed otherwise) |
 | `assets/` | Every imported image and font, at its path relative to the app root |
 

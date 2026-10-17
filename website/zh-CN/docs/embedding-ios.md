@@ -56,7 +56,7 @@ nsh build App.tsx --release --out MyApp/nsh
 
 | 文件 | 内容 |
 |---|---|
-| `bundle.qbc` | 编译为 QuickJS 字节码的应用：加载最快。 |
+| `bundle.nsh` | 编译为 QuickJS 字节码的应用：加载最快。 |
 | `bundle.js` | 同一个应用的 JS 源码。 |
 | `bundle.js.map` | 它的 source map（堆栈跟踪会指向你的 `.tsx` 文件）。 |
 | `capabilities.json` | 应用声明的[能力](./sandbox-and-capabilities.md)，仅当 `nsh.json` 中有声明时生成。 |
@@ -122,7 +122,7 @@ final class EmbedController: UIViewController {
 | `static preferredStatusBarStyle`、`prefersStatusBarHidden`、`preferredStatusBarUpdateAnimation` | 正在运行的应用通过 `StatusBar` 请求的状态栏设置：在宿主视图控制器的对应重写中返回它们。 |
 
 > [!IMPORTANT]
-> `bundle.qbc`（字节码）只能从应用包内部加载。QuickJS 不校验字节码，其他来源的字节码可能破坏内存：对于应用包之外的文件，请加载
+> `bundle.nsh`（字节码）只能从应用包内部加载。QuickJS 不校验字节码，其他来源的字节码可能破坏内存：对于应用包之外的文件，请加载
 > `bundle.js`（JS 源码），更好的做法是使用[签名包](./signed-packages.md)。
 
 `limits` 和 `grantCapabilities` 从下一次加载开始生效：请在 `loadBundle` / `run` 之前设置。

@@ -30,7 +30,7 @@ Ctrl-C 会关闭窗口，关闭窗口也会结束 `nsh run`。宿主也可以单
 
 ```sh
 nsh build my-app --release -o build
-dist/nsh/runtime/linux/nsh-linux-host --bundle build/bundle.qbc --size 1024x768   # 源码仓库中：target/debug/nsh-linux-host
+dist/nsh/runtime/linux/nsh-linux-host --bundle build/bundle.nsh --size 1024x768   # 源码仓库中：target/debug/nsh-linux-host
 ```
 
 `--size` 是窗口的默认尺寸；平铺式窗口管理器可能会给窗口另一个尺寸。
@@ -46,7 +46,7 @@ nsh package my-app --target linux [--run]
 ```text
 out/<Name>/
   <Name>                 可执行文件（nsh 的发布版运行器）
-  nsh/bundle.qbc         编译后的应用
+  nsh/bundle.nsh         编译后的应用
   nsh/assets/…           应用导入的资源
   nsh/app.json           窗口标题和应用 id
   <id>.desktop           桌面条目（StartupWMClass 为应用 id）
@@ -90,7 +90,7 @@ fn main() -> gtk::glib::ExitCode {
 ```
 
 `AppView::load` 会替换正在运行的内容；`stop` 结束应用。`asset_base` 指定 `asset:/` URI 从哪里解析（`AssetBase::Directory`
-或 `AssetBase::Http`）。字节码 bundle（`bundle.qbc`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：QuickJS 字节码是受信任的输入，
+或 `AssetBase::Http`）。字节码 bundle（`bundle.nsh`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：QuickJS 字节码是受信任的输入，
 只能从你自己应用的文件中加载。
 
 原生组件通过 `AppView::register_component` 注册，见[原生组件](./native-components.md#在-linux-上注册rust)。

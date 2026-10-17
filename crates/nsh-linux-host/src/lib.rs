@@ -2,7 +2,7 @@
 //!
 //! - `nsh-linux-host --dev-server ws://127.0.0.1:8790/ws [--trace]` loads
 //!   bundles pushed by `nsh dev` / `nsh run` and reloads on every rebuild.
-//! - `nsh-linux-host --bundle <path> [--trace]` runs a built bundle (`.qbc`
+//! - `nsh-linux-host --bundle <path> [--trace]` runs a built bundle (`.nsh`
 //!   is QuickJS bytecode, anything else JS source).
 //!
 //! - `--script "wait 800; shot a.png; tap 100 200; wait 300; shot b.png;

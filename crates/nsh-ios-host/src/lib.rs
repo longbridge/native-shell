@@ -2,7 +2,7 @@
 //!
 //! - `nsh-ios-host --dev-server ws://127.0.0.1:8790/ws [--trace]` loads bundles
 //!   pushed by `nsh dev` / `nsh run` and reloads on every rebuild.
-//! - `nsh-ios-host --bundle <path> [--trace]` runs a built bundle (`.qbc` is
+//! - `nsh-ios-host --bundle <path> [--trace]` runs a built bundle (`.nsh` is
 //!   QuickJS bytecode, anything else JS source).
 //! - `nsh-ios-host --package <app.nshpkg> --root <root.pub>... [--trace]` verifies
 //!   a signed package (`nsh publish`) against the given roots and runs it, as
