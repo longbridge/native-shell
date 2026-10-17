@@ -106,6 +106,7 @@ event mask; unchanged frames are not sent. A frame of scrolling that reveals no 
 |---|---|
 | `✓ bundled App.tsx (3255 B in 14.3 ms)` | Bundling time and bundle size (development settings). |
 | `commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes` | One commit: the operations JS queued, the time the core spent (rendering components, laying out, diffing), JS time spent binding list rows, the mount items produced, and the nodes alive. |
+| `turn: 2640µs (timers and tasks 1964µs)` | A turn that committed: its whole time, and what its JS timers and Rust component tasks took before the commit (a Rust component renders in the commit). |
 | `first frame: eval 271µs, total 1235µs` | Time to evaluate the bundle, and from start to the first batch. |
 | `event Press on view 20` / `event js: 196µs` | An event dispatched, and the time its handler (and what it caused) took in JS. |
 

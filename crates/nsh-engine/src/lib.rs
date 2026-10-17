@@ -916,6 +916,7 @@ impl<M: TextEngine + 'static> Driver<M> {
             ..
         } = self;
         let script = script.as_ref();
+        let turn_start = state.trace.then(Instant::now);
         state.dispatch_touch_move(script);
         state.dispatch_scroll_events(script);
         let hot = std::mem::take(&mut state.hot);
@@ -928,9 +929,20 @@ impl<M: TextEngine + 'static> Driver<M> {
         #[cfg(target_arch = "wasm32")]
         nsh_core::time::fire_timers(Instant::now());
         state.core.run_component_tasks();
+        // What JS timers and Rust component tasks took; a Rust component
+        // renders in the commit.
+        let tasks = turn_start.map(|s| s.elapsed());
         state.load_fonts(script, assets.as_deref(), &**sink);
         if let Some(batch) = state.commit(script) {
             sink.submit(batch);
+            if let (Some(start), Some(tasks)) = (turn_start, tasks) {
+                log::info!(
+                    target: "nsh::perf",
+                    "turn: {}µs (timers and tasks {}µs)",
+                    start.elapsed().as_micros(),
+                    tasks.as_micros(),
+                );
+            }
         }
         if let Some(size) = state.resized.take() {
             sink.resized(size);

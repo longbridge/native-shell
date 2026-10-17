@@ -99,6 +99,7 @@ perf commit: 10 ops, 248µs (list js 6µs), 8 mount items, 24 nodes
 |---|---|
 | `✓ bundled App.tsx (3255 B in 14.3 ms)` | 打包耗时和 bundle 大小（开发配置）。 |
 | `commit: 56 ops, 395µs (list js 6µs), 49 mount items, 21 nodes` | 一次提交：JS 排队的操作数、核心花费的时间（渲染组件、布局、diff）、绑定列表行花费的 JS 时间、产生的 mount item 数，以及存活的节点数。 |
+| `turn: 2640µs (timers and tasks 1964µs)` | 一次带提交的轮次：总时间，以及提交前 JS 定时器和 Rust 组件任务花费的时间（Rust 组件在提交中渲染）。 |
 | `first frame: eval 271µs, total 1235µs` | 执行 bundle 的时间，以及从启动到第一个批次的时间。 |
 | `event Press on view 20` / `event js: 196µs` | 分发了一个事件，以及它的处理函数（及其引起的一切）在 JS 中花费的时间。 |
 
