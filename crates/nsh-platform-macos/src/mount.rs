@@ -3,7 +3,7 @@
 //! [`crate::text_input`], [`crate::navigation`], ...); this file only
 //! keeps the view table and the tree.
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind};
 use rustc_hash::FxHashMap;
@@ -21,6 +21,9 @@ pub(crate) struct Mounter {
     pub(crate) layout_animation: Option<LayoutAnimation>,
     /// The surface lays out right to left.
     pub(crate) rtl: bool,
+    /// Views whose drawing changed while they could not be seen
+    /// ([`Mounter::draw_when_shown`]).
+    stale: RefCell<Vec<NshView>>,
 }
 
 impl Mounter {
@@ -32,6 +35,7 @@ impl Mounter {
             root,
             layout_animation: None,
             rtl: false,
+            stale: RefCell::default(),
         }
     }
 
@@ -48,6 +52,43 @@ impl Mounter {
         }
         self.views.insert(ROOT_ID, root);
         self.layout_animation = None;
+        self.stale.borrow_mut().clear();
+    }
+
+    /// `view`'s drawing changed (on every frame of an animation of a
+    /// canvas's values): it is drawn again now if it can be seen, else when
+    /// it shows ([`Mounter::revisit`]). Lists keep rows out of sight, and a
+    /// pulse on each of them would otherwise redraw them all on every frame.
+    pub(crate) fn draw_when_shown(&self, view: &NshView) {
+        if view.shown() {
+            view.changed();
+        } else {
+            let mut stale = self.stale.borrow_mut();
+            if !stale.contains(view) {
+                stale.push(view.clone());
+            }
+        }
+    }
+
+    /// Draws the views [`Mounter::draw_when_shown`] put off that can be
+    /// seen now (after scrolls, batches and frames). A view taken out of
+    /// the tree is dropped: inserting it again draws it.
+    pub(crate) fn revisit(&self) {
+        let Ok(mut stale) = self.stale.try_borrow_mut() else {
+            return;
+        };
+        if stale.is_empty() {
+            return;
+        }
+        let shown: Vec<NshView> = stale
+            .extract_if(.., |v| !v.has_parent() || v.shown())
+            .collect();
+        drop(stale);
+        for view in shown {
+            if view.has_parent() {
+                view.changed();
+            }
+        }
     }
 
     /// The batch is applied.

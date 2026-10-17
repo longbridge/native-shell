@@ -381,6 +381,7 @@ impl Surface {
             }
             if applied {
                 self.write_animations();
+                self.revisit();
             }
         });
         if let (Some(monitor), Some(start)) = (monitor, start) {
@@ -562,8 +563,16 @@ impl Surface {
         if self.js_frame.replace(false) {
             self.control(|c| c.frame());
         }
+        self.revisit();
     }
 
+    /// Draws views whose drawing changed out of sight and that show now
+    /// ([`Mounter::draw_when_shown`]); after anything that moves views.
+    pub(crate) fn revisit(&self) {
+        if let Ok(mounter) = self.mounter.try_borrow() {
+            mounter.revisit();
+        }
+    }
 }
 
 impl Drop for Surface {

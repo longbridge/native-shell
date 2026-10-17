@@ -44,6 +44,10 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   outside its bounds up to what its ancestors show, and draws it again whenever that changes
   (`NS_viewVisibleRectDidChange`): every text of a scroll view on every scroll step (~150 redraws per wheel event in
   the gallery's Lists demo). `NSView.clipsToBounds` is the layer's `masksToBounds`, so decoration owns it.
+- **Out-of-sight canvases are not redrawn by animations** (`Mounter::draw_when_shown`): a canvas whose animated values
+  change (on every frame while they run) is drawn again only if some of it can be seen (`visibleRect`), else when it
+  shows (after scrolls, batches and frames). Lists keep rows out of sight; the Stocks demo's pulsing sparklines
+  redrew all 22 rows at 120 Hz.
 - **AppKit draws `drawRect:` content twice**: it records the drawing into a display list, then replays it into the
   layer's backing store (half-float on wide-color screens, on several threads). Drawing into a bitmap of our own in
   `updateLayer` instead was measured slower (one thread), and `contentsFormat` / `drawsAsynchronously` changed nothing:

@@ -45,7 +45,7 @@ use objc2_core_foundation::{CGFloat, CGPoint, CGRect, CGSize};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSRect};
 use objc2_quartz_core::CATransform3D;
 
-use crate::surface::Surface;
+use crate::surface::{Surface, quiet};
 
 /// Values native animations set on a view; they win over the style's.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -486,7 +486,10 @@ define_class!(
         fn scroll_wheel(&self, event: &NSEvent) {
             match self.surface() {
                 // Scrolls move views: a frame for the performance monitor.
-                Some(surface) => surface.measure(true, || crate::input::event(&surface, event)),
+                Some(surface) => surface.measure(true, || {
+                    crate::input::event(&surface, event);
+                    quiet(|| surface.revisit());
+                }),
                 // SAFETY: NSResponder's own handling (passes it up).
                 None => unsafe { msg_send![super(self), scrollWheel: event] },
             }
@@ -521,7 +524,12 @@ define_class!(
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
             let handled = self.surface().is_some_and(|surface| {
-                surface.measure(false, || crate::input::key(&surface, event, true))
+                surface.measure(false, || {
+                    let handled = crate::input::key(&surface, event, true);
+                    // Keys scroll too.
+                    quiet(|| surface.revisit());
+                    handled
+                })
             });
             if !handled {
                 // SAFETY: NSResponder's own handling (beeps at the end).
@@ -618,7 +626,12 @@ impl ViewObj {
                     | NSEventType::RightMouseDragged
                     | NSEventType::OtherMouseDragged
             );
-            surface.measure(drag, || crate::input::event(&surface, event));
+            surface.measure(drag, || {
+                crate::input::event(&surface, event);
+                if drag {
+                    quiet(|| surface.revisit());
+                }
+            });
         }
     }
 
@@ -866,6 +879,17 @@ impl NshView {
         if self.state().draws() {
             self.ns().setNeedsDisplay(true);
         }
+    }
+
+    /// Whether any of it can be seen: in a window, not hidden, and not
+    /// entirely outside what its ancestors show (a list row out of sight).
+    pub(crate) fn shown(&self) -> bool {
+        let ns = self.ns();
+        if ns.window().is_none() || ns.isHiddenOrHasHiddenAncestor() {
+            return false;
+        }
+        let visible = ns.visibleRect();
+        visible.size.width > 0.0 && visible.size.height > 0.0
     }
 
     /// Its frame, transform or shift changed: places it again.

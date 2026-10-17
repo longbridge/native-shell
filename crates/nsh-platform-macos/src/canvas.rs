@@ -100,23 +100,22 @@ pub(crate) fn set(surface: &Rc<Surface>, view: &NshView, drawing: Arc<Drawing>) 
     view.changed();
 }
 
-/// Native value slot `k` changed: draws again if the value did.
-pub(crate) fn set_arg(view: &NshView, k: u16, value: AnimationValue) {
-    {
-        let mut state = view.state_mut();
-        let Some(c) = state.canvas.as_mut() else {
-            return;
-        };
-        let k = k as usize;
-        if c.args.len() <= k {
-            c.args.resize(k + 1, None);
-        }
-        if c.args[k] == Some(value) {
-            return;
-        }
-        c.args[k] = Some(value);
+/// Native value slot `k` changed; whether its value did (the canvas is
+/// then drawn again: [`crate::mount::Mounter::draw_when_shown`]).
+pub(crate) fn set_arg(view: &NshView, k: u16, value: AnimationValue) -> bool {
+    let mut state = view.state_mut();
+    let Some(c) = state.canvas.as_mut() else {
+        return false;
+    };
+    let k = k as usize;
+    if c.args.len() <= k {
+        c.args.resize(k + 1, None);
     }
-    view.changed();
+    if c.args[k] == Some(value) {
+        return false;
+    }
+    c.args[k] = Some(value);
+    true
 }
 
 /// Draws a canvas view's drawing (in `drawRect:`; the context is y down,

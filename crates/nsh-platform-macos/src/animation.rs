@@ -195,8 +195,12 @@ impl UiAnimation {
             if moved.is_some() {
                 crate::text_input::animated(view);
             }
+            let mut redraw = false;
             for &(k, value) in canvas.iter() {
-                crate::canvas::set_arg(view, k, value);
+                redraw |= crate::canvas::set_arg(view, k, value);
+            }
+            if redraw {
+                mounter.draw_when_shown(view);
             }
         }
     }
