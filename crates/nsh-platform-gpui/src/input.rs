@@ -906,7 +906,8 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
 /// modal: the views under it never get the focus. The field reached has
 /// its text selected, as in Windows' dialogs. Past the last field (the
 /// first with Shift) the key is not taken: the window's focus moves on to
-/// the embedding app's next tab stop ([`crate::app`]).
+/// the embedding app's next tab stop, or wraps around when there is none
+/// ([`crate::app`], [`tab_to_edge`]).
 fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     let m = event.modifiers;
     if event.vk != VK_TAB || m.ctrl || m.alt || m.meta {
@@ -930,6 +931,23 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     };
     crate::text_input::tab_to(&fields[next]);
     true
+}
+
+/// Focuses the first text field (the last with `shift`), reached with Tab
+/// from outside the fields: from the embedding app's widgets, or past the
+/// last field when the window has no other tab stop (the fields wrap
+/// around, as in the other backends' windows). True when there is one.
+pub(crate) fn tab_to_edge(surface: &Rc<Surface>, shift: bool) -> bool {
+    let mut fields = Vec::new();
+    collect_fields(&crate::navigation::focus_scope(surface), &mut fields);
+    let next = if shift { fields.last() } else { fields.first() };
+    match next {
+        Some(view) => {
+            crate::text_input::tab_to(view);
+            true
+        }
+        None => false,
+    }
 }
 
 /// The enabled text fields shown under `view`, in tree order.
