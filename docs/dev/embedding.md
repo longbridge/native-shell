@@ -45,3 +45,46 @@
   lines become autolink entries of the Swift objects (apps link nothing but the framework). Catalyst frameworks use the
   versioned macOS layout and Swift needs the SDK's `iOSSupport` paths. The C functions return errors as strings
   (`nsh_string_free`) that Swift throws as `NshError`; the error handler's context is released by a callback.
+
+## GPUI and GPUI Kit apps
+
+Desktop apps built with GPUI or GPUI Kit (Longbridge Pro, Allsum Desktop) embed nsh with `nsh-platform-gpui`'s
+`AppView`, a GPUI view; `examples/embed-gpui` is a GPUI Kit window with a sidebar, buttons, an input and two surfaces
+in a resizable split.
+
+- **One GPUI.** nsh draws with GPUI Fast (`gpui-fast` from crates.io); GPUI Kit (`gpui-kit` / `gpui-component`) must
+  use it too: its `gpui-fast` feature. `cargo tree -i gpui-fast` must show one version, else the app has two GPUIs
+  and nsh's views are not the app's elements. `nsh_platform_gpui::gpui` re-exports nsh's.
+- **A view.** `cx.new(|cx| AppView::new(options, window, cx))`, then `view.read(cx).load(App::Js(bundle))` (or a
+  Rust app's root); the app puts the entity wherever it wants as a child element. The surface fills the space its
+  parent gives it and follows it when resized (each layout reports the size to the engine). Several views run at once,
+  in one window or several, each with its own engine thread; the process shares only the main-thread queue (`rt.rs`)
+  and the key bindings. Dropping the view (its last entity handle) stops its engine and joins its thread, as does
+  `AppView::stop`.
+- **Focus.** `AppView` is `Focusable` and a tab stop (a `div` with `track_focus` around the surface element, which
+  registers the stop). A press focuses it; keys reach it only while it is focused, so several surfaces and the host's
+  inputs never share keys. Its key context `NshAppView` binds Tab and Shift + Tab deeper than GPUI Kit's `Root` (which
+  binds them to move the window's focus): the surface's text fields come first, and past the last one (the first
+  with Shift) the field is blurred and `window.focus_next()` / `focus_prev()` move on to the host's widgets.
+- **Overlays.** The surface draws only inside its bounds and takes the mouse only on its hitbox: GPUI Kit's dialogs,
+  sheets, popovers and notifications (drawn by `Root` above the content) cover it and take the input, while its app
+  keeps running.
+- **The host's theme in nsh.** `AppView::set_theme(Some(theme), cx)` gives the surface a `nsh_core::ui::Theme`
+  (re-exported as `nsh_platform_gpui::Theme`) and `set_theme_json(json, cx)` one in gpui-kit's JSON: the components of
+  the UI sets render with it instead of the app's own theme (`Core::set_host_theme`, which wins until cleared with
+  `None`), and the surface is drawn on its `background`. It applies at once and to every app loaded later, in their
+  first frame (the surface starts engines with `Engine::start_with`, sending the theme before the start).
+  `set_appearance(Appearance::Light | Dark, cx)` is the host's mode, standing in for the system's (`System` follows
+  the window again); an app that sets its own appearance still wins, as over the system's. The example's
+  `src/theme.rs` converts GPUI Kit's active `Theme`: both modes from its `light_theme` / `dark_theme` configs (gpui-kit
+  theme JSON, unset colors null, which nsh skips), then the current mode's colors as GPUI Kit resolved them, so nsh's
+  components match GPUI Kit's widgets; it runs on every change (`cx.observe_global::<Theme>`).
+- **nsh's theme in the host.** An nsh theme file is a gpui-kit theme file (same keys, same `themes` / `mode` /
+  `colors` structure): `ThemeRegistry::global_mut(cx).load_themes_from_str(json)` registers its entries by `name`
+  (give each one), and setting `Theme::global_mut(cx).light_theme` / `dark_theme` to them and calling
+  `Theme::change(mode, …)` applies them to GPUI Kit (the example's violet theme, `themes/violet.json`). Share hex
+  colors and Tailwind palette names only: nsh also reads CSS colors (`rgb()`, names) GPUI Kit does not, and GPUI Kit
+  reads gradients and `blue-500/50` that nsh rejects.
+- **From nsh to the host.** The app talks to the embedding app through the native components the latter registers
+  (`AppView::register_component`): their events and commands, as on the other platforms. `AppView::on_error` hears
+  the app's fatal errors (also logged).
