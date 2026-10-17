@@ -375,6 +375,27 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
   text-decoration: none;
 }
 
+.site-nav__projects { position: relative; margin-left: -1rem; flex-shrink: 0; }
+.site-nav__projects summary {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 6px; cursor: pointer; list-style: none;
+  color: var(--muted-foreground);
+}
+.site-nav__projects summary::-webkit-details-marker { display: none; }
+.site-nav__projects summary:hover { background: var(--nav-hover); color: var(--foreground); }
+.site-nav__projects summary svg { width: 1rem; height: 1rem; }
+.site-nav__projects-menu {
+  position: absolute; top: calc(100% + 0.5rem); left: 0; z-index: 50; min-width: 16rem; padding: 0.35rem;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--background);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.site-nav__projects-menu a {
+  display: flex; flex-direction: column; gap: 0.1rem; padding: 0.5rem 0.65rem; border-radius: 8px;
+  color: var(--foreground); text-decoration: none; font-size: 0.8125rem;
+}
+.site-nav__projects-menu a span { color: var(--muted-foreground); font-size: 0.75rem; }
+.site-nav__projects-menu a:hover, .site-nav__projects-menu a.is-current { background: var(--nav-hover); }
+
 .site-nav__logo { width: 1.5rem; height: 1.5rem; }
 
 .site-nav__links { display: flex; align-items: center; gap: 0.15rem; }
@@ -460,6 +481,7 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
 @media (max-width: 860px) {
   .site-nav__inner { gap: 1rem; }
   .site-nav__brand { padding-right: 0; border-right: 0; }
+  .site-nav__projects { margin-left: -0.5rem; }
   .site-nav__burger { display: inline-flex; }
   .site-nav__links {
     display: none;
