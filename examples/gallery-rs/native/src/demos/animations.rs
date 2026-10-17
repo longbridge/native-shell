@@ -520,48 +520,11 @@ fn EasingRace() -> impl IntoElement {
         .right(Badge::new("1.2 s"))
         .child(view().gap(px(2.0)).children(rows))
         .child(api("One group, one start", "Animated.parallel"))
-        .child(race_button(
-            move || if there.get() { "Reverse" } else { "Play" },
-            race,
-        ))
-}
-
-/// The race's button: a secondary [`Button`] with a play icon whose label
-/// follows `label` (a `Button`'s label is fixed; this one stays in place,
-/// among its card's views, as the label changes).
-fn race_button(
-    label: impl Fn() -> &'static str + Copy + 'static,
-    on_press: impl Into<Listener<()>>,
-) -> impl IntoElement {
-    press_with(
-        PressProps {
-            label: Prop::bind(move || Some(SharedString::from(label()))),
-            ..PressProps::default()
-        },
-        on_press,
-    )
-    .child(
-        view()
-            .h(px(44.0))
-            .px(px(18.0))
-            .rounded(px(radius::CONTROL))
-            .border_curve(BorderCurve::Continuous)
-            .flex_row()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .bg(colors::RAISED)
-            .finish(Finish::Raised)
-            .border_1()
-            .border_color(colors::BORDER)
-            .child(icon(IconName::Play, 16.0, colors::TEXT))
-            .child(
-                text(label)
-                    .text_size(px(15.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(colors::TEXT),
-            ),
-    )
+        .child(
+            Button::new(move || if there.get() { "Reverse" } else { "Play" }, race)
+                .variant(ButtonVariant::Secondary)
+                .icon(IconName::Play),
+        )
 }
 
 // --- Composition -------------------------------------------------------------

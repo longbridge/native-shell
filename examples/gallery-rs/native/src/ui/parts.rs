@@ -628,7 +628,7 @@ pub(crate) enum ButtonVariant {
 /// `Secondary` dark, `Accent` citrus. [`Button::color`] fills it with
 /// that color instead.
 pub(crate) struct Button {
-    label: SharedString,
+    label: Label,
     variant: ButtonVariant,
     color: Option<AdaptiveColor>,
     icon: Option<IconName>,
@@ -639,9 +639,12 @@ pub(crate) struct Button {
 
 impl Button {
     /// A primary button `label` calling `on_press`.
-    pub(crate) fn new(label: impl Into<SharedString>, on_press: impl Into<Listener<()>>) -> Self {
+    pub(crate) fn new(
+        label: impl IntoReactive<SharedString>,
+        on_press: impl Into<Listener<()>>,
+    ) -> Self {
         Self {
-            label: label.into(),
+            label: label.into_reactive(),
             variant: ButtonVariant::Primary,
             color: None,
             icon: None,
@@ -693,7 +696,7 @@ impl IntoElement for Button {
         press_with(
             PressProps {
                 disabled: self.disabled,
-                label: Some(self.label.clone()).into(),
+                label: Prop::from(self.label.clone().map(Some)),
                 ..PressProps::default()
             },
             self.on_press,
@@ -812,24 +815,24 @@ fn apply_root<E: Styled>(mut element: E, mut root: View) -> E {
 
 /// A horizontal meter with an optional marker (a limit).
 pub(crate) struct Meter {
-    value: f32,
-    tone: Tone,
+    value: Reactive<f32>,
+    tone: Reactive<Tone>,
     marker: Option<f32>,
 }
 
 impl Meter {
     /// Filled to `value` (0 to 1), in the accent.
-    pub(crate) fn new(value: f32) -> Self {
+    pub(crate) fn new(value: impl IntoReactive<f32>) -> Self {
         Self {
-            value,
-            tone: Tone::Accent,
+            value: value.into_reactive(),
+            tone: Reactive::Static(Tone::Accent),
             marker: None,
         }
     }
 
     /// The fill's tone.
-    pub(crate) fn tone(mut self, tone: Tone) -> Self {
-        self.tone = tone;
+    pub(crate) fn tone(mut self, tone: impl IntoReactive<Tone>) -> Self {
+        self.tone = tone.into_reactive();
         self
     }
 
@@ -848,10 +851,10 @@ impl IntoElement for Meter {
             .bg(colors::RAISED)
             .child(
                 view()
-                    .w(relative(self.value.clamp(0.0, 1.0)))
+                    .w(self.value.map(|v| relative(v.clamp(0.0, 1.0))))
                     .h(px(6.0))
                     .rounded(px(3.0))
-                    .bg(self.tone.color()),
+                    .bg(self.tone.map(Tone::color)),
             )
             .children(self.marker.map(|at| {
                 view()
