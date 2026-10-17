@@ -471,13 +471,16 @@ fn rounded_in_clip(
         f32::from(c.right()),
         f32::from(c.bottom()),
     );
-    // Which of the clip's sides (top, right, bottom, left) the rectangle
-    // reaches, and which it crosses (the cut moves its edge there).
+    // How far inside each of the clip's sides (top, right, bottom, left)
+    // the rectangle is (0 when it reaches or crosses it), and which it
+    // crosses (the cut moves its edge there).
     const EPS: f32 = 0.01;
-    let reach = [t <= ct + EPS, r >= cr - EPS, b >= cb - EPS, l <= cl + EPS];
+    let inset = [t - ct, cr - r, cb - b, l - cl].map(|d| d.max(0.0));
     let cross = [t < ct - EPS, r > cr + EPS, b > cb + EPS, l < cl - EPS];
-    // A corner reaching both sides of a rounded clip corner takes its
-    // radius; one whose edge the cut moves is cut straight.
+    // A corner inside the arc of a rounded clip corner takes its radius,
+    // less how far inside it is (a child inset by its parent's border
+    // follows the parent's curve: the arc's concentric radius); one whose
+    // edge the cut moves is cut straight.
     let mut out = [
         f32::from(radii.top_left),
         f32::from(radii.top_right),
@@ -487,8 +490,9 @@ fn rounded_in_clip(
     let sides = [(0, 3), (0, 1), (2, 1), (2, 3)];
     let mut rounded = [false; 4];
     for (i, &(v, hz)) in sides.iter().enumerate() {
-        if clip.radii[i] > 0.0 && reach[v] && reach[hz] {
-            out[i] = out[i].max(clip.radii[i]);
+        let radius = clip.radii[i] - inset[v].max(inset[hz]);
+        if radius > EPS {
+            out[i] = out[i].max(radius);
             rounded[i] = true;
         }
     }
@@ -788,6 +792,9 @@ mod tests {
         let inside = bounds(30.0, 20.0, 10.0, 10.0);
         let (b, r) = rounded_in_clip(inside, corners([2.0; 4], 1.0), &clip);
         assert_eq!((b, radii(r)), (inside, [2.0; 4]));
+        // Inset by a parent's 1 pt border: the parent's curve, 1 pt in.
+        let (b, r) = rounded_in_clip(bounds(1.0, 1.0, 98.0, 58.0), corners([0.0; 4], 1.0), &clip);
+        assert_eq!((b, radii(r)), (bounds(1.0, 1.0, 98.0, 58.0), [19.0; 4]));
     }
 
     #[test]
