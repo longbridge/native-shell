@@ -7101,4 +7101,35 @@ mod views {
         let batch = c.commit().unwrap();
         assert_eq!(view_style_of(&batch, nested).map(|s| s.opacity), Some(1.0));
     }
+
+    /// Counts back presses while its view lives.
+    #[derive(Default)]
+    struct Catcher;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct CatcherProps {}
+
+    impl Component for Catcher {
+        type Props = CatcherProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: CatcherProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let caught = signal(0);
+            on_back_press(move || {
+                caught.update(|n| *n += 1);
+                true
+            });
+            view().child(text(move || format!("caught {}", caught.get())))
+        }
+    }
+
+    #[test]
+    fn a_views_back_press_listener_hears_the_back_button() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Catcher>(|| CatcherProps {}));
+        assert_eq!(texts(&c.commit().unwrap()), ["caught 0"]);
+        assert!(c.component_event(ROOT_ID, EventKind::BackPress, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["caught 1"]);
+    }
 }

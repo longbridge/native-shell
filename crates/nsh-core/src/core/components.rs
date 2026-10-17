@@ -3466,6 +3466,16 @@ impl<M: TextEngine> Core<M> {
     /// press.
     fn back_pressed(&mut self, host: NodeId, listener: &crate::ui::BackListener) -> bool {
         let mut cx = self.erased_cx(host);
+        // A view's (`on_back_press`): it is no component's, and reaches
+        // its signals itself.
+        if host == 0 {
+            let result = caught(|| listener(&mut (), &(), &mut cx));
+            self.finish_event(host, cx);
+            return result.unwrap_or_else(|message| {
+                log::error!(target: "js", "a back press listener failed: {message}");
+                false
+            });
+        }
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };

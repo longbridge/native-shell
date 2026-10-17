@@ -380,6 +380,12 @@ impl<H: Host> Graph<H> {
         &self.nodes[id as usize].value
     }
 
+    /// Replaces node `id`'s value with `value`, without notifying: the old
+    /// one, to change and write back ([`write`]).
+    pub fn replace_value(&mut self, id: u32, value: H::Value) -> H::Value {
+        std::mem::replace(&mut self.nodes[id as usize].value, value)
+    }
+
     /// Node `id`'s custom comparison, if it has one.
     pub fn custom_equals(&self, id: u32) -> Option<&H::Equals> {
         match &self.nodes[id as usize].equals {

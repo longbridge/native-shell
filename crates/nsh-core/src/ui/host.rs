@@ -273,15 +273,21 @@ pub fn input_accessory_view(native_id: &str) -> InputAccessoryView {
     InputAccessoryView(node)
 }
 
-/// A canvas showing what `painter` recorded (draw again, e.g. from
-/// `on_layout`'s size, to change it; native values in it move natively).
-pub fn canvas(painter: impl Into<Painter>) -> CanvasView {
-    let painter = painter.into();
+/// A canvas showing what `painter` recorded (native values in it move
+/// natively). In a component that runs once, a closure draws in a binding:
+/// `canvas(move || draw(theme()))` draws again when what it read changes
+/// (a size kept from `on_layout`, the appearance); a component that
+/// renders again draws in its render.
+pub fn canvas(painter: impl IntoReactive<Painter>) -> CanvasView {
     let mut node = ElNode::new(Tag::Canvas);
-    node.attrs.drawing = Some(Arc::new(painter.drawing));
-    node.attrs.bound = painter.nodes;
+    node.bind_attr(painter, |attrs, painter: Painter| {
+        attrs.drawing = Some(Arc::new(painter.drawing));
+        attrs.bound = painter.nodes;
+    });
     CanvasView(node)
 }
+
+crate::static_reactive!(Painter: Painter, Drawing);
 
 /// A web view loading `url`.
 pub fn web_view(url: &str) -> WebView {
@@ -519,71 +525,79 @@ impl Screen {
         self
     }
 
-    fn screen(self, prop: ScreenProp) -> Self {
-        self.set(Prop::Screen(prop))
-    }
-
     /// The header's title.
-    pub fn title(self, title: impl Into<Arc<str>>) -> Self {
-        self.screen(ScreenProp::Title(Some(title.into())))
+    pub fn title(self, title: impl IntoReactive<super::SharedString>) -> Self {
+        self.bind_prop(title, |t| {
+            Prop::Screen(ScreenProp::Title(Some(Arc::from(t.as_str()))))
+        })
     }
 
     /// Whether the header shows (default true).
-    pub fn header_shown(self, shown: bool) -> Self {
-        self.screen(ScreenProp::HeaderShown(shown))
+    pub fn header_shown(self, shown: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(shown, |v| Prop::Screen(ScreenProp::HeaderShown(v)))
     }
 
     /// A large title (iOS); the content scrolls under the header.
-    pub fn header_large_title(self, large: bool) -> Self {
-        self.screen(ScreenProp::HeaderLargeTitle(large))
+    pub fn header_large_title(self, large: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(large, |v| Prop::Screen(ScreenProp::HeaderLargeTitle(v)))
     }
 
     /// The content extends under the header.
-    pub fn header_transparent(self, transparent: bool) -> Self {
-        self.screen(ScreenProp::HeaderTransparent(transparent))
+    pub fn header_transparent(self, transparent: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(transparent, |v| {
+            Prop::Screen(ScreenProp::HeaderTransparent(v))
+        })
     }
 
     /// The back button's and bar buttons' color.
-    pub fn header_tint_color(self, color: impl Into<Color>) -> Self {
-        self.screen(ScreenProp::HeaderTintColor(Some(color.into())))
+    pub fn header_tint_color(self, color: impl IntoReactive<Color>) -> Self {
+        self.bind_prop(color, |c| {
+            Prop::Screen(ScreenProp::HeaderTintColor(Some(c)))
+        })
     }
 
     /// The header's background.
-    pub fn header_background_color(self, color: impl Into<Color>) -> Self {
-        self.screen(ScreenProp::HeaderBackgroundColor(Some(color.into())))
+    pub fn header_background_color(self, color: impl IntoReactive<Color>) -> Self {
+        self.bind_prop(color, |c| {
+            Prop::Screen(ScreenProp::HeaderBackgroundColor(Some(c)))
+        })
     }
 
     /// The title's color.
-    pub fn header_title_color(self, color: impl Into<Color>) -> Self {
-        self.screen(ScreenProp::HeaderTitleColor(Some(color.into())))
+    pub fn header_title_color(self, color: impl IntoReactive<Color>) -> Self {
+        self.bind_prop(color, |c| {
+            Prop::Screen(ScreenProp::HeaderTitleColor(Some(c)))
+        })
     }
 
     /// The label of the back button leading back to this screen (iOS).
-    pub fn header_back_title(self, title: impl Into<Arc<str>>) -> Self {
-        self.screen(ScreenProp::HeaderBackTitle(Some(title.into())))
+    pub fn header_back_title(self, title: impl IntoReactive<super::SharedString>) -> Self {
+        self.bind_prop(title, |t| {
+            Prop::Screen(ScreenProp::HeaderBackTitle(Some(Arc::from(t.as_str()))))
+        })
     }
 
     /// Whether the back button shows (default true).
-    pub fn header_back_visible(self, visible: bool) -> Self {
-        self.screen(ScreenProp::HeaderBackVisible(visible))
+    pub fn header_back_visible(self, visible: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(visible, |v| Prop::Screen(ScreenProp::HeaderBackVisible(v)))
     }
 
     /// The interactive back gesture (iOS swipe back, Android predictive
     /// back); the back buttons pop either way (default true).
-    pub fn gesture_enabled(self, enabled: bool) -> Self {
-        self.screen(ScreenProp::GestureEnabled(enabled))
+    pub fn gesture_enabled(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |v| Prop::Screen(ScreenProp::GestureEnabled(v)))
     }
 
     /// The user cannot leave the screen: no swipe back, and the back
     /// buttons report [`Self::on_back_request`] instead of popping. Decided
     /// natively when the system asks, so set it before the user acts.
-    pub fn prevent_back(self, prevent: bool) -> Self {
-        self.screen(ScreenProp::PreventBack(prevent))
+    pub fn prevent_back(self, prevent: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(prevent, |v| Prop::Screen(ScreenProp::PreventBack(v)))
     }
 
     /// How the screen enters and leaves.
-    pub fn animation(self, animation: ScreenAnimation) -> Self {
-        self.screen(ScreenProp::Animation(animation))
+    pub fn animation(self, animation: impl IntoReactive<ScreenAnimation>) -> Self {
+        self.bind_prop(animation, |a| Prop::Screen(ScreenProp::Animation(a)))
     }
 
     /// An element at the header's start (instead of the back button).
@@ -1489,3 +1503,5 @@ impl From<Drawing> for Painter {
         }
     }
 }
+
+crate::static_reactive!(ScreenAnimation: ScreenAnimation);

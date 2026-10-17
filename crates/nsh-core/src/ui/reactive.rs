@@ -517,15 +517,22 @@ impl<T: 'static> Signal<T> {
         true
     }
 
-    /// Changes the value in place (on a clone) and writes it.
+    /// Changes the value in place and writes it: every update notifies.
+    /// The value is cloned only while something else holds it (a reader
+    /// in the middle of `with`).
     #[track_caller]
     pub fn update(&self, f: impl FnOnce(&mut T))
     where
         T: Clone,
     {
-        let mut value = self.get_untracked();
+        let id = self.handle.expect("a signal");
+        let taken = graph().replace_value(id, None);
+        let shared = taken
+            .and_then(|v| v.downcast::<T>().ok())
+            .expect("a signal holds its type");
+        let mut value = Rc::try_unwrap(shared).unwrap_or_else(|shared| (*shared).clone());
         f(&mut value);
-        self.set(value);
+        r::write(Rust, id, Some(Rc::new(value)));
     }
 
     /// Its node.
@@ -872,9 +879,12 @@ macro_rules! bound_handles {
 
 bound_handles!(Signal, Memo, ReadSignal);
 
-/// Static values of `$target` from the types that become one.
+/// Lets values of the types after the colon be passed as static values
+/// where a setter or a builder takes `impl IntoReactive<Target>` (closures,
+/// signals and memos of it are already taken): an app's own types, as
+/// `nsh_core::static_reactive!(Tone: Tone);`. Each type converts with
+/// `Target::from`.
 #[macro_export]
-#[doc(hidden)]
 macro_rules! static_reactive {
     ($target:ty: $($source:ty),* $(,)?) => {$(
         impl $crate::ui::IntoReactive<$target> for $source {
