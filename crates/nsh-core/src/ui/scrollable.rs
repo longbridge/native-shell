@@ -124,7 +124,7 @@ pub trait Scrollable: Element {
 
     /// Dragging dismisses the keyboard (TS: `keyboardDismissMode`).
     fn keyboard_dismiss_mode(mut self, mode: impl IntoReactive<KeyboardDismissMode>) -> Self {
-        host::bind_prop(self.node(), mode, |mode| Prop::KeyboardDismissMode(mode));
+        host::bind_prop(self.node(), mode, Prop::KeyboardDismissMode);
         self
     }
 
@@ -147,7 +147,7 @@ pub trait Scrollable: Element {
     }
 
     /// Follows the scroll offset (along its axis) with a native value:
-    /// headers that shrink or fade, parallax, with no render per frame
+    /// headers that shrink or fade, parallax, with no engine work per frame
     /// (TS: `scrollValue`).
     fn scroll_value(mut self, value: &NativeValue) -> Self {
         host::set(self.node(), Prop::ScrollValue(Some(value.node().id())));

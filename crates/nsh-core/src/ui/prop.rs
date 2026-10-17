@@ -16,15 +16,30 @@ use super::{
 ///
 /// A Rust parent passes a value, a signal, a memo or a closure (`.into()`,
 /// [`Prop::bind`]); JS passes values, one prop at a time. In the
-/// component's instance each prop is a memo of its own, so a new value from
-/// JS or from a parent that renders again reaches only what read it.
+/// component's instance each prop is a signal of its own, so a new value
+/// from JS or from a parent's region making the element again reaches only
+/// what read it.
 pub struct Prop<T: 'static> {
     node: Node,
-    /// Made from a value (its own signal): a parent that renders again
-    /// passes its value on, not the binding.
-    given_value: bool,
+    origin: Origin,
     _t: PhantomData<fn() -> T>,
 }
+
+/// What a prop's node is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    /// A signal made for the value it was given: a parent's region making
+    /// the element again passes the value on, not the node.
+    Value,
+    /// A signal, memo or binding of the parent's, read as it is.
+    Bound,
+    /// An instance's: a signal of its own, which a binding a parent
+    /// passed writes while it is the prop's ([`Forward`]).
+    Held,
+}
+
+/// The binding a held prop follows, by the prop's node.
+struct Forward<T: 'static>(Signal<Option<Prop<T>>>);
 
 impl<T> Clone for Prop<T> {
     fn clone(&self) -> Self {
@@ -94,7 +109,7 @@ macro_rules! from_handles {
     ($($handle:ident),*) => {$(
         impl<T: Clone + PartialEq + 'static> From<$handle<T>> for Prop<T> {
             fn from(value: $handle<T>) -> Self {
-                Self::of(value.node(), false)
+                Self::of(value.node(), Origin::Bound)
             }
         }
     )*};
@@ -114,19 +129,19 @@ impl<T: Clone + PartialEq + 'static> From<Reactive<T>> for Prop<T> {
 impl<T: Clone + PartialEq + 'static> Prop<T> {
     /// A prop given `value` (a signal of the current owner).
     pub fn new(value: T) -> Self {
-        Self::of(signal(value).node(), true)
+        Self::of(signal(value).node(), Origin::Value)
     }
 
     /// A prop bound to `f` (a memo of the current owner): run again when
     /// what it reads changes.
     pub fn bind(f: impl Fn() -> T + 'static) -> Self {
-        Self::of(computed(f).node(), false)
+        Self::of(computed(f).node(), Origin::Bound)
     }
 
-    fn of(node: Node, given_value: bool) -> Self {
+    fn of(node: Node, origin: Origin) -> Self {
         Self {
             node,
-            given_value,
+            origin,
             _t: PhantomData,
         }
     }
@@ -155,83 +170,148 @@ impl<T: Clone + PartialEq + 'static> Prop<T> {
         super::untracked(|| self.with(f))
     }
 
-    /// The prop of an instance: a memo of its own, of a value that JS or a
-    /// parent rendering again replaces, or of a binding a parent passed.
-    /// Made under the current owner (the instance's).
+    /// The prop of an instance, made when its view is: a value it was given
+    /// stays in the signal it was made with (the instance's props are made
+    /// under an owner that lives as long as the instance); a binding is
+    /// followed by a signal of its own, made under the current owner (the
+    /// instance's).
     #[doc(hidden)]
     pub fn __hold(&self) -> Self {
-        let value = signal(self.get_untracked());
-        let binding: Signal<Option<Prop<T>>> = signal((!self.given_value).then_some(*self));
-        let held = computed(move || match binding.get() {
-            Some(prop) => prop.get(),
-            None => value.get(),
-        });
-        let node = held.node();
+        match self.origin {
+            Origin::Held => *self,
+            Origin::Value => Self::of(self.node, Origin::Held),
+            Origin::Bound => {
+                let value = signal(self.get_untracked());
+                let held = Self::of(value.node(), Origin::Held);
+                held.forward(*self);
+                held
+            }
+        }
+    }
+
+    /// Makes held prop `self` follow `binding`, under the current owner (the
+    /// instance's) for the first one.
+    fn forward(self, binding: Prop<T>) {
+        match with_data(|d| {
+            d.held
+                .get(&self.node)
+                .and_then(|f| f.downcast_ref::<Forward<T>>())
+                .map(|f| f.0)
+        }) {
+            Some(forward) => forward.set(Some(binding)),
+            None => {
+                let forward = signal(Some(binding));
+                let node = self.node;
+                super::reactive::render_effect(move || {
+                    if let Some(binding) = forward.get() {
+                        let v = binding.get();
+                        node.set::<T>(v);
+                    }
+                });
+                with_data(|d| {
+                    d.held
+                        .insert(node, Box::new(Forward(forward)) as Box<dyn Any>);
+                });
+                super::cleanup(move || {
+                    with_data(|d| d.held.remove(&node));
+                });
+            }
+        }
+    }
+
+    /// The binding a held prop follows now.
+    fn forwarded(&self) -> Option<Prop<T>> {
         with_data(|d| {
             d.held
-                .insert(node, Box::new(Held { value, binding }) as Box<dyn Any>);
-        });
-        // The registration goes with the instance.
-        super::cleanup(move || {
-            with_data(|d| d.held.remove(&node));
-        });
-        Self::of(node, false)
+                .get(&self.node)
+                .and_then(|f| f.downcast_ref::<Forward<T>>())
+                .map(|f| f.0)
+        })
+        .and_then(|forward| forward.get_untracked())
     }
 
-    /// Takes `value` (a static one, or a binding): an instance's held prop
-    /// replaces what it reads, updating its readers; a prop not held yet (an
-    /// instance's before its view is made) becomes it. Whether it changed.
+    /// Takes `value` (a static one, or a binding): a signal of the prop's
+    /// own takes a static value, updating its readers; a held prop follows
+    /// a binding; otherwise the prop becomes the new one (an instance's,
+    /// before its view is made). Whether it changed.
     #[doc(hidden)]
     pub fn __set(&mut self, value: Reactive<T>) -> bool {
-        match Held::<T>::of(self.node) {
-            Some(held) => match value {
-                Reactive::Static(v) => {
-                    let changed = held.binding.with_untracked(Option::is_some)
-                        || held.value.with_untracked(|old| *old != v);
-                    super::batch(|| {
-                        held.binding.set(None);
-                        held.value.set(v);
-                    });
-                    changed
-                }
-                Reactive::Bound(f) => {
-                    held.binding.set(Some(Self::bind(move || f())));
-                    true
-                }
-            },
-            None => {
-                let new = Self::from(value);
-                let changed = !new.given_value || self.get_untracked() != new.get_untracked();
-                *self = new;
+        match (self.origin, value) {
+            (Origin::Held, Reactive::Static(v)) => {
+                let forwarded = self.forwarded().is_some();
+                let changed = forwarded || self.with_untracked(|old| *old != v);
+                super::batch(|| {
+                    if forwarded {
+                        self.forward_none();
+                    }
+                    self.node.set::<T>(v);
+                });
                 changed
+            }
+            (Origin::Held, Reactive::Bound(f)) => {
+                self.forward(Self::bind(move || f()));
+                true
+            }
+            (Origin::Value, Reactive::Static(v)) => {
+                let changed = self.with_untracked(|old| *old != v);
+                self.node.set::<T>(v);
+                changed
+            }
+            (_, value) => {
+                *self = Self::from(value);
+                true
             }
         }
     }
 
-    /// An instance's held prop takes what `new` gives: its value when it
-    /// was given a value (a parent that renders again makes new props each
-    /// time), else its binding.
+    /// Stops a held prop following its binding.
+    fn forward_none(&self) {
+        if let Some(forward) = with_data(|d| {
+            d.held
+                .get(&self.node)
+                .and_then(|f| f.downcast_ref::<Forward<T>>())
+                .map(|f| f.0)
+        }) {
+            forward.set(None);
+        }
+    }
+
+    /// An instance's prop takes what `new` gives: its value when it was
+    /// given a value (a parent's region making the element again makes new
+    /// props each time), else its binding.
     #[doc(hidden)]
     pub fn __update_from(&mut self, new: &Self) -> bool {
-        if new.given_value {
+        if new.origin == Origin::Value {
             return self.__set(Reactive::Static(new.get_untracked()));
         }
-        let same = Held::<T>::of(self.node)
-            .is_some_and(|h| h.binding.with_untracked(|b| *b == Some(*new)));
-        if same {
-            return false;
-        }
-        let new = *new;
-        match Held::<T>::of(self.node) {
-            Some(held) => {
-                held.binding.set(Some(new));
+        match self.origin {
+            Origin::Held => {
+                if self.forwarded() == Some(*new) {
+                    return false;
+                }
+                self.forward(*new);
                 true
             }
-            None => {
-                *self = new;
+            _ if self == new => false,
+            _ => {
+                *self = *new;
                 true
             }
         }
+    }
+}
+
+/// The app's children placed here, all at one place (`.child(props.children)`).
+impl super::IntoElement for Prop<super::Children> {
+    fn into_element(self) -> super::AnyElement {
+        self.get_untracked().into_element()
+    }
+}
+
+/// The app's children, to wrap one by one (`.children_each(props.children, ..)`).
+impl From<Prop<super::Children>> for super::Children {
+    fn from(children: Prop<super::Children>) -> Self {
+        children.get_untracked()
     }
 }
 
@@ -243,27 +323,6 @@ impl Prop<Option<super::Slot>> {
         style: impl Fn(super::SlotElement) -> super::SlotElement + 'static,
     ) -> super::AnyElement {
         super::dynamic(move || self.get().map(|slot| style(slot.element())))
-    }
-}
-
-/// What a held prop's memo reads: a value and, when a parent passed one, a
-/// binding.
-struct Held<T: 'static> {
-    value: Signal<T>,
-    binding: Signal<Option<Prop<T>>>,
-}
-
-impl<T: 'static> Held<T> {
-    fn of(node: Node) -> Option<Self> {
-        with_data(|d| {
-            d.held
-                .get(&node)
-                .and_then(|h| h.downcast_ref::<Held<T>>())
-                .map(|h| Held {
-                    value: h.value,
-                    binding: h.binding,
-                })
-        })
     }
 }
 

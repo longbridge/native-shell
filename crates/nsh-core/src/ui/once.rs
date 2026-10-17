@@ -2,10 +2,10 @@
 //! and their [`Scope`].
 //!
 //! The instance makes the component's view once, under an owner of its
-//! own, with its props held in signals: a prop from JS or from a parent that
-//! renders again updates what read it. The core mounts the view with its
-//! bindings and never asks for it again; releasing the host disposes the
-//! owner, and with it everything the component made.
+//! own, with its props held in signals: a prop from JS, or from a parent's
+//! region making the element again, updates what read it. The core mounts
+//! the view with its bindings and never asks for it again; releasing the
+//! host disposes the owner, and with it everything the component made.
 
 use std::{any::Any, marker::PhantomData};
 
@@ -38,7 +38,7 @@ impl<E> std::fmt::Debug for Scope<E> {
 
 impl<E: Event> Scope<E> {
     /// Sends `event` to the app (its `on<Event>` handler), or to the
-    /// component that rendered this one.
+    /// component whose view has this one.
     pub fn emit(&self, event: E) {
         super::reactive::emit(self.host, Box::new(event));
     }
@@ -62,8 +62,8 @@ impl<E: Event> Scope<E> {
 pub(crate) struct OnceInstance<C: Component> {
     /// The props: as set before the view is made, held afterwards.
     props: C::Props,
-    /// What owns the props set before the view is made (they go once the
-    /// view holds their values).
+    /// What owns the props' own signals, made with the instance: they hold
+    /// the values JS and parents give for as long as the instance lives.
     initial: Option<Owner>,
     /// The component's owner, once its view is made.
     owner: Option<Owner>,
@@ -97,11 +97,21 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
 
     fn set_props(&mut self, props: &dyn Any) {
         match props.downcast_ref::<C::Props>() {
-            // Before the view: the props it starts with; after: held props
-            // update their readers.
-            Some(p) if self.owner.is_none() => self.props = p.clone(),
+            // Before the view: the props it starts with, values in its own
+            // signals.
+            Some(p) if self.owner.is_none() => {
+                let props = &mut self.props;
+                match self.initial {
+                    Some(initial) => initial.run(|| props.update_from(p)),
+                    None => props.update_from(p),
+                };
+            }
+            // After: held props update their readers; a binding is followed
+            // under the component's owner.
             Some(p) => {
-                if self.props.update_from(p) {
+                let owner = self.owner.expect("the view is made");
+                let props = &mut self.props;
+                if owner.run(|| props.update_from(p)) {
                     log::warn!(
                         target: "js",
                         "{}: a prop that is not a `Prop` changed; it runs once and keeps the first",
@@ -149,9 +159,6 @@ impl<C: Component> super::component::AnyInstance for OnceInstance<C> {
             })
         });
         self.owner = Some(owner);
-        if let Some(initial) = self.initial.take() {
-            initial.dispose();
-        }
         node
     }
 

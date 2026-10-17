@@ -374,6 +374,13 @@ impl Node {
     pub(crate) fn with<T: 'static, R>(self, what: &str, f: impl FnOnce(&T) -> R) -> R {
         read_value(self.0.expect(what), true, f)
     }
+
+    /// Writes `value` to it (a signal's node): what read it runs again,
+    /// unless the signal finds it equal.
+    #[track_caller]
+    pub(crate) fn set<T: 'static>(self, value: T) {
+        r::write(Rust, self.0.expect("a prop"), Some(Rc::new(value)));
+    }
 }
 
 fn read_value<T: 'static, R>(id: u32, tracked: bool, f: impl FnOnce(&T) -> R) -> R {
@@ -947,6 +954,7 @@ static_reactive!(f64: f64);
 static_reactive!(u32: u32);
 static_reactive!(i32: i32);
 static_reactive!(usize: usize);
+static_reactive!((u32, u32): (u32, u32));
 static_reactive!(String: String);
 
 impl IntoReactive<String> for &str {

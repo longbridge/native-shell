@@ -1,8 +1,9 @@
 //! The host elements beyond views, texts and images: inputs, scroll views,
 //! navigation stacks and their screens, modals, canvases, web views, videos
 //! and the embedder's native components, with their props and typed events. Their props are the
-//! core's [`Prop`]s, kept per element and diffed by kind: a prop a render
-//! no longer sets goes back to its default, as when JS clears it.
+//! core's [`Prop`]s, kept per element and diffed by kind: a prop an
+//! element's binding (or a region's element made again) no longer sets
+//! goes back to its default, as when JS clears it.
 
 use std::sync::Arc;
 
@@ -162,7 +163,7 @@ host_element! {
 
 host_element! {
     /// A modal (`<modal>`), made by [`modal`]: presented while it is in the
-    /// render, over everything else; its children are its content.
+    /// view, over everything else; its children are its content.
     Modal
 }
 
@@ -235,8 +236,8 @@ pub fn stack() -> Stack {
     Stack(ElNode::new(Tag::Stack))
 }
 
-/// A screen of a [`stack`]. What it renders reads its insets below the
-/// header ([`super::RenderCx::insets`]).
+/// A screen of a [`stack`]. What it shows reads its insets below the
+/// header ([`super::Scope::insets`]).
 pub fn screen() -> Screen {
     let mut node = ElNode::new(Tag::Screen);
     // Its insets come with this event.
@@ -244,11 +245,11 @@ pub fn screen() -> Screen {
     Screen(node)
 }
 
-/// A modal presenting its children. Put it in the render to present it,
-/// leave it out to dismiss it.
+/// A modal presenting its children. Put it in the view to present it (in
+/// a region: [`super::If`]), leave it out to dismiss it.
 pub fn modal() -> Modal {
     let mut node = ElNode::new(Tag::Modal);
-    // Its insets (`RenderCx::insets` inside it) come with this event.
+    // Its insets (`Scope::insets` inside it) come with this event.
     node.handlers.push((EventKind::Insets, Listener::noop()));
     Modal(node)
 }
@@ -256,7 +257,7 @@ pub fn modal() -> Modal {
 /// A bar shown over the keyboard of the inputs whose
 /// [`Input::input_accessory`] is `native_id` (iOS's `inputAccessoryView`):
 /// as wide as the window and as tall as its content, moving with the
-/// keyboard natively. It takes no room where the render places it; on
+/// keyboard natively. It takes no room where the view places it; on
 /// Android, which has no input accessories, it is an empty hidden view.
 pub fn input_accessory_view(native_id: &str) -> InputAccessoryView {
     let tag = if cfg!(target_os = "android") {
@@ -274,10 +275,9 @@ pub fn input_accessory_view(native_id: &str) -> InputAccessoryView {
 }
 
 /// A canvas showing what `painter` recorded (native values in it move
-/// natively). In a component that runs once, a closure draws in a binding:
-/// `canvas(move || draw(theme()))` draws again when what it read changes
-/// (a size kept from `on_layout`, the appearance); a component that
-/// renders again draws in its render.
+/// natively). A closure draws in a binding: `canvas(move || draw(theme()))`
+/// draws again when what it read changes (a size kept from `on_layout`,
+/// the appearance).
 pub fn canvas(painter: impl IntoReactive<Painter>) -> CanvasView {
     let mut node = ElNode::new(Tag::Canvas);
     node.bind_attr(painter, |attrs, painter: Painter| {
@@ -422,12 +422,14 @@ impl Input {
         })
     }
 
-    /// Selects `start..end` (UTF-16 units; a caret when equal) when the
-    /// value differs from the last render's (TS: the controlled
+    /// Selects `(start, end)` (UTF-16 units; a caret when equal) when the
+    /// input is made and whenever the value changes (TS: the controlled
     /// `selection`); the user moves it on from there
     /// ([`Self::on_selection_change`]).
-    pub fn selection(self, start: u32, end: u32) -> Self {
-        self.set(Prop::Selection(start, end))
+    pub fn selection(self, range: impl IntoReactive<(u32, u32)>) -> Self {
+        self.bind_prop(range, |(start, end): (u32, u32)| {
+            Prop::Selection(start, end)
+        })
     }
 
     /// The text changed (the new text).
@@ -618,7 +620,7 @@ impl Screen {
     }
 
     /// The user popped the screen natively (back button, swipe): leave it
-    /// out of the next render.
+    /// out of the view (its region).
     pub fn on_dismiss(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::Dismiss, listener.into(), events::unit)
     }
@@ -678,7 +680,7 @@ impl Modal {
     }
 
     /// The user asked to close it (back button, swipe down): leave it out
-    /// of the next render to close it.
+    /// of the view (its region) to close it.
     pub fn on_request_close(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::RequestClose, listener.into(), events::unit)
     }
@@ -968,7 +970,7 @@ impl<A: super::Animated> From<&A> for CanvasPaint {
 /// may be native values (the canvas draws again natively as they move);
 /// operations without a method here are built by hand with
 /// [`Painter::num`], [`Painter::paint`] and [`Painter::op`]. Text is
-/// measured with [`super::RenderCx::measure_text`].
+/// measured with [`super::ambient::measure_text`].
 #[derive(Debug, Clone, Default)]
 pub struct Painter {
     drawing: Drawing,
@@ -1029,7 +1031,7 @@ impl Painter {
     /// transform, as recorded so far (TS: `ctx.isPointInPath(x, y, rule)`).
     /// Answered from the geometry here, with no platform round trip; a
     /// number given as a native value counts as 0, as in TS. To find what
-    /// is under a tap, build the render's painter in a method the press
+    /// is under a tap, build the canvas's painter in a function the press
     /// handler calls too.
     pub fn is_point_in_path(&self, x: f32, y: f32, rule: FillRule) -> bool {
         crate::canvas::point_in_path(&self.drawing.ops, None, rule, x, y, |_| 0.0)

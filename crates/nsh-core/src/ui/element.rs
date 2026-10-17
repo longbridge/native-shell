@@ -96,7 +96,7 @@ pub struct Attrs {
     pub(crate) props: Vec<Prop>,
     /// A canvas's drawing.
     pub(crate) drawing: Option<Arc<crate::canvas::Drawing>>,
-    /// The handle the render put on the element (not a prop).
+    /// The handle the view put on the element (not a prop).
     pub(crate) element_ref: Option<super::ElementRef>,
     /// Style properties bound to native animation nodes (kept alive while
     /// bound).
@@ -185,16 +185,16 @@ impl<P: Clone + 'static> AnyProps for P {
     }
 }
 
-/// A nested component of a render.
+/// A nested component of a view.
 pub(crate) struct ComponentEl {
     pub(crate) name: &'static str,
-    /// Makes an instance: a component rendered by Rust need not be
-    /// registered (the registry is what JS can render by name).
+    /// Makes an instance: a component a view makes need not be registered
+    /// (the registry is what JS can make by name).
     pub(crate) make: fn() -> Box<dyn AnyInstance>,
     /// Its spec (made once per type and kept by the core).
     pub(crate) spec: fn() -> ComponentSpec,
     pub(crate) props: Box<dyn AnyProps>,
-    /// The rendering component's handler of its events.
+    /// The handler of its events in the view that has it.
     pub(crate) on_event: Option<Listener<dyn Any>>,
 }
 
@@ -309,7 +309,7 @@ impl ListConfig {
     }
 }
 
-/// A list slot as a render places it.
+/// A list slot as a view places it.
 #[derive(Clone)]
 pub(crate) struct ListEl {
     pub(crate) name: &'static str,
@@ -414,7 +414,7 @@ impl ElNode {
     }
 
     /// Turns the bound parts into static ones, read once, untracked: how a
-    /// component that renders again takes them.
+    /// nested component's element and a slot's node take them.
     pub(crate) fn resolve_once(&mut self) {
         if !self.is_bound() {
             return;
@@ -534,8 +534,8 @@ pub trait Element: IntoElement + Sized {
     #[doc(hidden)]
     fn node(&mut self) -> &mut ElNode;
 
-    /// Identifies the element among its siblings across renders (where
-    /// their order changes).
+    /// Identifies the element among its siblings when they are made again
+    /// (a region's, a list cell's row; where their order changes).
     fn key(mut self, key: impl Into<SharedString>) -> Self {
         self.node().key = Some(key.into());
         self
@@ -709,10 +709,10 @@ pub trait ParentElement: Element {
     /// wraps each (runs again when the children change).
     fn children_each<R: IntoElement>(
         mut self,
-        children: Children,
+        children: impl Into<Children>,
         place: impl Fn(Child, Position) -> R + 'static,
     ) -> Self {
-        let _ = children;
+        let _ = children.into();
         let mut node = ElNode::new(Tag::View);
         node.kind = ElKind::EachChild(Rc::new(move |child, at| place(child, at).into_element()));
         self.node().children.push(node);
@@ -721,9 +721,9 @@ pub trait ParentElement: Element {
 
     /// Places the app's virtualized list of `items` here: `config` lays
     /// the list out (size, columns, padding), `row(content, at)` wraps
-    /// each row the app renders (runs again when a cell shows another row
-    /// or the number of rows changes). Only rows near the viewport exist;
-    /// the core recycles them.
+    /// each row the app renders, once per cell (`at` follows the row the
+    /// cell shows and the number of rows). Only rows near the viewport
+    /// exist; the core recycles them.
     fn list<R: IntoElement>(
         mut self,
         items: Items,
@@ -908,7 +908,7 @@ pub trait Interactive: Element {
     }
 
     /// Drags move these values natively (by the drag's translation from
-    /// where they were), with no render per frame; bind them to its
+    /// where they were), with no engine work per frame; bind them to its
     /// transform to follow the finger. `on_pan_end` reports where they
     /// ended, to spring them on.
     fn pan_values(
@@ -1054,7 +1054,7 @@ pub trait Interactive: Element {
         self
     }
 
-    /// Styles while pressed (native: no render).
+    /// Styles while pressed (native: nothing runs).
     fn active(mut self, f: impl FnOnce(StyleRefinement) -> StyleRefinement) -> Self {
         let s = f(StyleRefinement::default());
         self.style().extend_as(Variant::ACTIVE, s);
@@ -1143,13 +1143,13 @@ element! {
 }
 
 element! {
-    /// A slot's node as a render places it ([`ParentElement::slot`]):
+    /// A slot's node as a view places it ([`ParentElement::slot`]):
     /// style it like a view; its children are the app's.
     SlotElement
 }
 
 element! {
-    /// A list as a render lays it out ([`ParentElement::list`]).
+    /// A list as a view lays it out ([`ParentElement::list`]).
     ListElement
 }
 
@@ -1445,8 +1445,8 @@ pub fn image(src: impl IntoReactive<super::ImageSrc>) -> Image {
     Image(node)
 }
 
-/// The JSX children of a component (a `Children` prop): rendered where the
-/// render puts it, among the render's own children.
+/// The JSX children of a component (a `Children` prop): placed where the
+/// view puts it, among the view's own children.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Children {
     present: bool,
@@ -1471,7 +1471,7 @@ impl IntoElement for Children {
     }
 }
 
-/// Another component in a render ([`Component::element`]). Its styles go
+/// Another component in a view ([`Component::element`]). Its styles go
 /// after the component's own, like an app's classes.
 pub struct ComponentElement<C: Component> {
     node: ElNode,
@@ -1507,7 +1507,7 @@ impl<C: Component> ComponentElement<C> {
         self
     }
 
-    /// Fills its `Items` prop with rows of this render (TS: `each` and the
+    /// Fills its `Items` prop with rows of this view (TS: `each` and the
     /// row renderer, `keyExtractor`, `ListHeaderComponent`, ...): the rows,
     /// their keys, header, footer, empty view, separators, sticky rows,
     /// viewability, the refresh and the end reached are `list`'s, rendered
@@ -1552,7 +1552,7 @@ impl<C: Component> Element for ComponentElement<C> {
 
 /// The content of a nested component: `.child(..)` / `.children(..)` are
 /// its `Children`, [`ComponentElement::fill`] its slots, placed where its
-/// render places the app's.
+/// view places the app's.
 impl<C: Component> ParentElement for ComponentElement<C> {}
 
 impl<C: Component> IntoElement for ComponentElement<C> {

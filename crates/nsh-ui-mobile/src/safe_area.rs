@@ -45,5 +45,5 @@ pub fn SafeAreaView(props: SafeAreaViewProps, cx: Scope<NoEvent>) -> impl IntoEl
                 left: pick(Edge::Left, insets.left),
             }
         })
-        .child(props.children.get_untracked())
+        .child(props.children)
 }

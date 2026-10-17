@@ -2,11 +2,11 @@
 //! their views are mounted with bindings, and what changes later arrives as
 //! patches.
 //!
-//! The view is expanded like a render, under the component's owner, except
-//! that an element's bound parts (a text, props or a style given as a signal
-//! or a closure) become render effects. Each run of one queues a patch with
-//! the part's new value; the core applies it against what it applied last
-//! (the same field diffs as renders), so a change sends only what changed.
+//! The view is expanded once, under the component's owner; an element's
+//! bound parts (a text, props or a style given as a signal or a closure)
+//! become render effects. Each run of one queues a patch with the part's
+//! new value; the core applies it against what it applied last (field by
+//! field), so a change sends only what changed.
 //! A region ([`crate::ui::dynamic`], `If`, `Each`) is an effect queueing its
 //! new elements; the core reconciles that region's nodes alone, in place
 //! among its parent's other children. Patches and the events components emit
@@ -123,8 +123,8 @@ impl Bound {
             text: el.bound_text.take(),
             attrs: std::mem::take(&mut el.bound_attrs),
             style: el.style.is_bound().then(|| {
-                let full = el.style.clone();
-                el.style = el.style.static_part();
+                let full = std::mem::take(&mut el.style);
+                el.style = full.static_part();
                 full
             }),
             list: (
@@ -135,21 +135,109 @@ impl Bound {
     }
 }
 
+/// A binding's runs: the first one's value, or a patch for each later one.
+///
+/// A render effect runs as it is made, so its first value is read while
+/// the node is being made and applied with its static parts, once; only what
+/// changes later goes through the patch queue.
+struct Runs<T> {
+    first: Rc<RefCell<Option<T>>>,
+    started: std::cell::Cell<bool>,
+}
+
+impl<T> Runs<T> {
+    fn new() -> (Self, Rc<RefCell<Option<T>>>) {
+        let first = Rc::new(RefCell::new(None));
+        (
+            Self {
+                first: first.clone(),
+                started: std::cell::Cell::new(false),
+            },
+            first,
+        )
+    }
+
+    /// The value of a run: kept if it is the first, else `patch`ed.
+    fn run(&self, value: T, patch: impl FnOnce(T)) {
+        if self.started.replace(true) {
+            patch(value);
+        } else {
+            *self.first.borrow_mut() = Some(value);
+        }
+    }
+}
+
 impl<M: TextEngine> Core<M> {
-    /// Binds the bound parts of node `id` (of `host`'s view), whose static
-    /// parts were just applied (`attrs`, `style`, `classes`, `text`), under
-    /// the current owner.
-    #[allow(clippy::too_many_arguments, reason = "the parts of one node")]
-    pub(super) fn bind_node(
-        &mut self,
-        host: NodeId,
+    /// Binds the bound parts of node `id` (of `host`'s view) under the
+    /// current owner and puts what they read now into `el`, whose parts are
+    /// then applied together; their later runs queue patches against what
+    /// [`Self::keep_bound`] records.
+    pub(super) fn bind_parts(&mut self, host: NodeId, id: NodeId, bound: Bound, el: &mut ElNode) {
+        let patches = self.components.patches.clone();
+        if let Some(text) = bound.text {
+            let patches = patches.clone();
+            let (runs, first) = Runs::new();
+            render_effect(move || {
+                runs.run(text(), |text| {
+                    patches.borrow_mut().push(Patch::Text { host, id, text });
+                });
+            });
+            if let Some(text) = first.take() {
+                el.text = Some(text);
+            }
+        }
+        if !bound.attrs.is_empty() {
+            let base = el.attrs.clone();
+            let parts = bound.attrs;
+            let patches = patches.clone();
+            let (runs, first) = Runs::new();
+            render_effect(move || {
+                let mut attrs = base.clone();
+                for part in &parts {
+                    part(&mut attrs);
+                }
+                runs.run(attrs, |attrs| {
+                    patches.borrow_mut().push(Patch::Attrs {
+                        host,
+                        id,
+                        attrs: Box::new(attrs),
+                    });
+                });
+            });
+            if let Some(attrs) = first.take() {
+                el.attrs = attrs;
+            }
+        }
+        if let Some(style) = bound.style {
+            let (runs, first) = Runs::new();
+            render_effect(move || {
+                runs.run(style.resolved(), |style| {
+                    patches.borrow_mut().push(Patch::Style { host, id, style });
+                });
+            });
+            if let Some(style) = first.take() {
+                el.style = style;
+            }
+        }
+        let (base, parts) = bound.list;
+        if !parts.is_empty() {
+            let config = self.bind_list_layout(id, base, parts);
+            if let Some(c) = el.list_config() {
+                *c = config;
+            }
+        }
+    }
+
+    /// Records what was applied to node `id` of a view with bindings (its
+    /// parts with the bindings' first values): what their patches apply
+    /// against.
+    pub(super) fn keep_bound(
+        inst: &mut Instance,
         id: NodeId,
-        bound: Bound,
         attrs: &Attrs,
         style: &StyleRefinement,
         classes: Classes,
         text: Option<(SharedString, NodeId)>,
-        inst: &mut Instance,
     ) {
         inst.bound.insert(
             id,
@@ -160,59 +248,47 @@ impl<M: TextEngine> Core<M> {
                 text,
             },
         );
-        let patches = self.components.patches.clone();
-        if let Some(text) = bound.text {
-            let patches = patches.clone();
-            render_effect(move || {
-                let text = text();
-                patches.borrow_mut().push(Patch::Text { host, id, text });
-            });
-        }
-        if !bound.attrs.is_empty() {
-            let base = attrs.clone();
-            let parts = bound.attrs;
-            let patches = patches.clone();
-            render_effect(move || {
-                let mut attrs = base.clone();
-                for part in &parts {
-                    part(&mut attrs);
-                }
-                patches.borrow_mut().push(Patch::Attrs {
-                    host,
-                    id,
-                    attrs: Box::new(attrs),
-                });
-            });
-        }
-        if let Some(style) = bound.style {
-            render_effect(move || {
-                let style = style.resolved();
-                patches.borrow_mut().push(Patch::Style { host, id, style });
-            });
-        }
-        let (base, parts) = bound.list;
-        if !parts.is_empty() {
-            self.bind_list_layout(id, base, parts);
-        }
     }
 
-    /// Binds the bound parts of list `list`'s layout over `base` (applied)
-    /// under the current owner.
+    /// Binds the styles a view gives nested component `host` under the
+    /// current owner: the styles now, to apply; later changes are patches.
+    pub(super) fn bind_nested_style(
+        &mut self,
+        host: NodeId,
+        style: StyleRefinement,
+    ) -> StyleRefinement {
+        let patches = self.components.patches.clone();
+        let (runs, first) = Runs::new();
+        render_effect(move || {
+            runs.run(style.resolved(), |style| {
+                patches.borrow_mut().push(Patch::Nested { host, style });
+            });
+        });
+        first.take().unwrap_or_default()
+    }
+
+    /// Binds the bound parts of list `list`'s layout over `base` under the
+    /// current owner: the layout now, to apply; later changes are patches.
     pub(super) fn bind_list_layout(
         &mut self,
         list: NodeId,
         base: ListConfig,
         parts: Vec<BoundListConfig>,
-    ) {
-        self.components.list_layouts.insert(list, base);
+    ) -> ListConfig {
         let patches = self.components.patches.clone();
+        let (runs, first) = Runs::new();
         render_effect(move || {
             let mut config = base;
             for part in &parts {
                 part(&mut config);
             }
-            patches.borrow_mut().push(Patch::Layout { list, config });
+            runs.run(config, |config| {
+                patches.borrow_mut().push(Patch::Layout { list, config });
+            });
         });
+        let config = first.take().unwrap_or(base);
+        self.components.list_layouts.insert(list, config);
+        config
     }
 
     /// Makes region `region` of `host`'s view in `parent` a binding under
@@ -382,8 +458,8 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// Region `region`'s new elements, matched with the old ones as a
-    /// render's children are (kept rows stay as they are; each element is
+    /// Region `region`'s new elements, matched with the old ones as an
+    /// element's children are (kept rows stay as they are; each element is
     /// applied under its owner), then put in place among the parent's other
     /// children, before the region's anchor.
     fn reconcile_region(&mut self, region: u32, elements: Vec<RegionElement>) {

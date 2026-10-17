@@ -58,7 +58,7 @@ pub fn Card(props: CardProps) -> impl IntoElement {
                         v.p_4()
                     }
                 })
-                .child(props.children.get_untracked()),
+                .child(props.children),
         )
         .child(props.footer.place(|footer| {
             footer

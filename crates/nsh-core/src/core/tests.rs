@@ -6741,6 +6741,57 @@ mod views {
         );
     }
 
+    #[derive(Clone, Copy, PartialEq, Props)]
+    struct ShownProps {
+        value: crate::ui::Prop<SharedString>,
+    }
+
+    /// Shows its prop.
+    #[component]
+    fn Shown(props: ShownProps) -> impl IntoElement {
+        text(props.value)
+    }
+
+    /// Passes `Shown` a binding, then, from the second press, a value: its
+    /// region makes the element again and the instance stays.
+    #[component]
+    fn Passer() -> impl IntoElement {
+        let n = signal(0);
+        let fixed = signal(false);
+        view()
+            .on_press(move |_: &()| {
+                if n.get_untracked() == 1 {
+                    fixed.set(true);
+                }
+                n.update(|n| *n += 1);
+            })
+            .child(dynamic(move || {
+                let value: crate::ui::Prop<SharedString> = if fixed.get() {
+                    "fixed".into()
+                } else {
+                    crate::ui::Prop::bind(move || format!("n {}", n.get()).into())
+                };
+                Shown::element(ShownProps { value })
+            }))
+    }
+
+    #[test]
+    fn a_prop_follows_a_binding_until_it_is_given_a_value() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Passer>(|| ()));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["n 0"]);
+        let host = root_host(&batch);
+        let press = |c: &mut Core<FakeEngine>| {
+            assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+            c.commit().map(|b| texts(&b)).unwrap_or_default()
+        };
+        assert_eq!(press(&mut c), ["n 1"]);
+        assert_eq!(press(&mut c), ["fixed"]);
+        // The binding is no longer followed.
+        assert!(press(&mut c).is_empty());
+    }
+
     /// A leaf in a region of its own.
     #[component]
     fn Leafy() -> impl IntoElement {
