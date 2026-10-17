@@ -185,6 +185,8 @@ pub(crate) struct Surface {
     /// The engine missed the deadline of a resize ([`RESIZE_WAIT`]): later
     /// resizes do not wait until it reports one done.
     resize_late: Cell<bool>,
+    /// The background set under the root ([`crate::system`]).
+    pub(crate) background: Cell<Option<nsh_core::Color>>,
     on_error: RefCell<Option<ErrorHandler>>,
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
@@ -225,6 +227,7 @@ impl Surface {
             last_tick: Cell::new(0.0),
             fallback: Cell::new(false),
             resize_late: Cell::new(false),
+            background: Cell::new(None),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),

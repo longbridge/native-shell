@@ -84,6 +84,8 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   is ~0.1–1.5 ms of engine time; mounting what comes into view is the rest); a live resize takes the same path. A capture still shows a few frames one step behind (2–12 of ~60 per zoom and unzoom), as a plain AppKit window
   does (13): the window server shows the window's new frame before the commit that fills it. An engine that misses
   the deadline (JS busy) is not waited for again until it reports a resize done, so a busy app resizes as before.
+  Where the app has not drawn yet, the surface's background shows: the app's top view's opaque background when it
+  fills the root (`system.rs`), else white / neutral-950 by the scheme.
 - **Text is typeset on the engine thread** by CoreText (`text.rs`, the iOS engine with `NSFont`); the main thread
   draws the finished `CTLine`s.
 - **Frames**: native animations, JS frame requests, scroll glides, transitions and toasts run on the root view's display
