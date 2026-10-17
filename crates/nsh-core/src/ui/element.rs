@@ -376,6 +376,7 @@ pub type BoundListConfig = Rc<dyn Fn(&mut ListConfig)>;
 crate::static_reactive!(AccessibilityState: AccessibilityState);
 crate::static_reactive!(EdgeInsets: EdgeInsets);
 crate::static_reactive!(Style: Style);
+crate::static_reactive!(PointerEvents: PointerEvents);
 
 /// A bound part of an element's props.
 pub(crate) type BoundAttrs = Rc<dyn Fn(&mut Attrs)>;
@@ -1023,8 +1024,8 @@ pub trait Interactive: Element {
 
     /// Shows `color` as the background while pressed, fading the children
     /// to `opacity`.
-    fn underlay(mut self, color: Color, opacity: f32) -> Self {
-        super::host::set(self.node(), Prop::UnderlayColor(Some(color)));
+    fn underlay(mut self, color: impl IntoReactive<Color>, opacity: f32) -> Self {
+        super::host::bind_prop(self.node(), color, |c| Prop::UnderlayColor(Some(c)));
         super::host::set(self.node(), Prop::UnderlayOpacity(opacity));
         self
     }
@@ -1091,8 +1092,9 @@ pub trait Interactive: Element {
     }
 
     /// Which touches it and its children take.
-    fn pointer_events(mut self, pointer_events: PointerEvents) -> Self {
-        self.node().attrs.pointer_events = pointer_events;
+    fn pointer_events(mut self, pointer_events: impl IntoReactive<PointerEvents>) -> Self {
+        self.node()
+            .bind_attr(pointer_events, |a, p| a.pointer_events = p);
         self
     }
 

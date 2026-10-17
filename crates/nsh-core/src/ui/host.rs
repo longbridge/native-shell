@@ -297,7 +297,7 @@ pub fn web_view(url: &str) -> WebView {
 
 /// A web view showing the page `html`, its relative links resolved against
 /// `base_url` (TS: `source={{ html, baseUrl }}`).
-pub fn web_view_html(html: &str, base_url: Option<&str>) -> WebView {
+pub fn web_view_html(html: impl IntoReactive<String>, base_url: Option<&str>) -> WebView {
     WebView(ElNode::new(Tag::WebView)).html(html, base_url)
 }
 
@@ -416,8 +416,10 @@ impl Input {
 
     /// Shows the input accessory with this `nativeID` over the keyboard
     /// ([`input_accessory_view`]; iOS).
-    pub fn input_accessory(self, native_id: &str) -> Self {
-        self.set(Prop::InputAccessoryViewId(Some(native_id.into())))
+    pub fn input_accessory(self, native_id: impl IntoReactive<String>) -> Self {
+        self.bind_prop(native_id, |id: String| {
+            Prop::InputAccessoryViewId(Some(id.into()))
+        })
     }
 
     /// Selects `start..end` (UTF-16 units; a caret when equal) when the
@@ -721,31 +723,37 @@ impl Orientation {
 }
 
 impl WebView {
-    /// Loads `html` (relative links against `base_url`) instead of a URL.
-    pub fn html(self, html: &str, base_url: Option<&str>) -> Self {
-        self.set(Prop::Native(NativeProp::Source(WebSource::Html {
-            html: html.into(),
-            base_url: base_url.map(Into::into),
-        })))
+    /// Loads `html` (relative links against `base_url`) instead of a URL;
+    /// a bound page loads again when it changes.
+    pub fn html(self, html: impl IntoReactive<String>, base_url: Option<&str>) -> Self {
+        let base_url: Option<Arc<str>> = base_url.map(Into::into);
+        self.bind_prop(html, move |html: String| {
+            Prop::Native(NativeProp::Source(WebSource::Html {
+                html: html.into(),
+                base_url: base_url.clone(),
+            }))
+        })
     }
 
     /// Runs after each page loads.
-    pub fn injected_java_script(self, script: &str) -> Self {
-        self.set(Prop::Native(NativeProp::InjectedJavaScript(Some(
-            script.into(),
-        ))))
+    pub fn injected_java_script(self, script: impl IntoReactive<String>) -> Self {
+        self.bind_prop(script, |script: String| {
+            Prop::Native(NativeProp::InjectedJavaScript(Some(script.into())))
+        })
     }
 
     /// Runs before each page's own scripts.
-    pub fn injected_java_script_before_content(self, script: &str) -> Self {
-        self.set(Prop::Native(NativeProp::InjectedJavaScriptBefore(Some(
-            script.into(),
-        ))))
+    pub fn injected_java_script_before_content(self, script: impl IntoReactive<String>) -> Self {
+        self.bind_prop(script, |script: String| {
+            Prop::Native(NativeProp::InjectedJavaScriptBefore(Some(script.into())))
+        })
     }
 
     /// The user agent it sends.
-    pub fn user_agent(self, agent: &str) -> Self {
-        self.set(Prop::Native(NativeProp::UserAgent(Some(agent.into()))))
+    pub fn user_agent(self, agent: impl IntoReactive<String>) -> Self {
+        self.bind_prop(agent, |agent: String| {
+            Prop::Native(NativeProp::UserAgent(Some(agent.into())))
+        })
     }
 
     /// Scrolls (default yes).
