@@ -1447,8 +1447,14 @@ impl TextEngine for GpuiTextEngine {
         if registered.iter().any(|(s, h, _)| (*s, *h) == key) {
             return Ok(());
         }
+        // GPUI's Windows text system keeps a pointer to the bytes of a font
+        // it was given owned (DirectWrite's in-memory font file reference,
+        // made without an owner) and frees them on return: bytes that live
+        // for the process stay valid. A registered font is never
+        // unregistered, and each is registered once per text system.
+        let data: &'static [u8] = Box::leak(data.to_vec().into_boxed_slice());
         self.system
-            .add_fonts(vec![Cow::Owned(data.to_vec())])
+            .add_fonts(vec![Cow::Borrowed(data)])
             .map_err(|e| e.to_string())?;
         registered.push((key.0, key.1, families));
         crate::canvas::font_registered(data);
@@ -2759,8 +2765,29 @@ mod tests {
             .clone()
     }
 
-    fn engine() -> GpuiTextEngine {
-        GpuiTextEngine::new(system(), ui_family())
+    /// An engine over the platform's text system, or `None` where tests
+    /// cannot make one: macOS makes its platform on the main thread only,
+    /// and tests run on others.
+    fn engine() -> Option<GpuiTextEngine> {
+        if cfg!(target_os = "macos") {
+            return None;
+        }
+        Some(GpuiTextEngine::new(system(), ui_family()))
+    }
+
+    /// True when a color emoji font is installed (CI machines may have
+    /// none).
+    fn has_emoji_font() -> bool {
+        const EMOJI: &[&str] = &[
+            "Noto Color Emoji",
+            "Apple Color Emoji",
+            "Segoe UI Emoji",
+            "Twemoji",
+        ];
+        let names = system().all_font_names();
+        names
+            .iter()
+            .any(|n| EMOJI.iter().any(|e| n.eq_ignore_ascii_case(e)))
     }
 
     fn text(parts: &[(&str, ResolvedTextStyle)]) -> AttributedText {
@@ -2818,6 +2845,7 @@ mod tests {
     fn line_texts(t: &AttributedText, layout: &TextLayout) -> Vec<String> {
         let units: Vec<u16> = t.text.encode_utf16().collect();
         engine()
+            .expect("an engine")
             .lines(layout)
             .iter()
             .map(|l| String::from_utf16_lossy(&units[l.start as usize..l.end as usize]))
@@ -2858,7 +2886,9 @@ mod tests {
     /// measured size (the core sizes text views from `measure`).
     #[test]
     fn layout_matches_measure() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let plain = plain(15.0);
         let texts = [
             text(&[(
@@ -2938,7 +2968,9 @@ mod tests {
 
     #[test]
     fn wrapping_widths() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[("The quick brown fox jumps over the lazy dog", plain(15.0))]);
         let prepared = engine.prepare(&t);
         let one = engine.measure(&prepared, None);
@@ -2954,7 +2986,9 @@ mod tests {
 
     #[test]
     fn breaks_at_opportunities() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[("alpha beta gamma delta", plain(15.0))]);
         let prepared = engine.prepare(&t);
         let word = engine.measure(&engine.prepare(&text(&[("alpha beta", plain(15.0))])), None);
@@ -2975,7 +3009,9 @@ mod tests {
 
     #[test]
     fn cjk_lines_keep_closing_punctuation() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let style = plain(16.0);
         let t = text(&[(
             "这是一个测试，看看标点符号会不会出现在行首。再来一句话。",
@@ -3000,7 +3036,9 @@ mod tests {
 
     #[test]
     fn line_heights() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[(
             "Line height on every line of a paragraph that wraps a few times",
             ResolvedTextStyle {
@@ -3039,7 +3077,9 @@ mod tests {
 
     #[test]
     fn letter_spacing_widens() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[("Spacing", plain(15.0))]);
         let spaced = text(&[(
             "Spacing",
@@ -3057,7 +3097,9 @@ mod tests {
 
     #[test]
     fn weights_change_widths() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let w = |weight: u16| {
             let style = ResolvedTextStyle {
                 font_weight: weight,
@@ -3075,7 +3117,9 @@ mod tests {
 
     #[test]
     fn max_lines_and_attachments() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let style = ResolvedTextStyle::default();
         let mut t = text(&[("Before ", style)]);
         t.push_attachment(20.0, 30.0, style);
@@ -3128,7 +3172,9 @@ mod tests {
 
     #[test]
     fn head_and_middle_ellipses() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let long = "Start of a long line of text that will not fit in the box at all, end";
         for (mode, keeps_start, keeps_end) in [
             (EllipsizeMode::Head, false, true),
@@ -3164,7 +3210,9 @@ mod tests {
 
     #[test]
     fn no_wrap_lines_each_get_an_ellipsis() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let mut t = text(&[(
             "A first line that is long enough\nA second one, as long as that",
             plain(14.0),
@@ -3179,7 +3227,9 @@ mod tests {
 
     #[test]
     fn lines_report_metrics() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[("Hx\nsecond line", plain(20.0))]);
         let (_, layout) = layout_of(&engine, &t, None);
         let lines = engine.lines(&layout);
@@ -3198,7 +3248,9 @@ mod tests {
 
     #[test]
     fn alignment() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let mut t = text(&[("Short", plain(15.0))]);
         let size = Size::new(300.0, 30.0);
         let x = |t: &AttributedText| {
@@ -3222,7 +3274,9 @@ mod tests {
 
     #[test]
     fn justified_lines_fill_the_box() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let mut t = text(&[(
             "Justified text spreads the spaces of every line but the last one of a paragraph",
             plain(15.0),
@@ -3240,7 +3294,9 @@ mod tests {
 
     #[test]
     fn right_to_left_text() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = text(&[("שלום עולם", plain(15.0))]);
         let (_, layout) = layout_of(&engine, &t, None);
         let l = layout.downcast::<GpuiLayout>().unwrap();
@@ -3259,7 +3315,9 @@ mod tests {
 
     #[test]
     fn right_to_left_ellipsis_is_on_the_left() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let mut t = text(&[(
             "שלום עולם, זהו טקסט ארוך מאוד בעברית שלא נכנס בשורה אחת",
             plain(15.0),
@@ -3295,7 +3353,9 @@ mod tests {
         assert_eq!(mirrored('a'), None);
         // A bracket in right-to-left text is drawn as its mirror, in a run
         // with letters (the shaper's) and in a span of its own (ours).
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let close = engine.prepare(&text(&[(")", plain(15.0))])).glyphs[0].id;
         let bold = ResolvedTextStyle {
             font_weight: 700,
@@ -3320,21 +3380,28 @@ mod tests {
     fn text_symbols_take_a_text_font() {
         assert!(text_symbol('♥') && text_symbol('✓') && text_symbol('©'));
         assert!(!text_symbol('⭐') && !text_symbol('⚡') && !text_symbol('a'));
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         if engine.fonts().symbols.is_empty() {
             return;
         }
         // In the text's color, not an emoji font's.
         let p = engine.prepare(&text(&[("♥ 3", plain(13.0))]));
         assert!(p.glyphs.iter().all(|g| !g.emoji), "{:?}", p.glyphs);
-        // With VS16 it asks for the emoji.
+        // With VS16 it asks for the emoji (where there is an emoji font).
+        if !has_emoji_font() {
+            return;
+        }
         let p = engine.prepare(&text(&[("♥\u{FE0F}", plain(13.0))]));
         assert!(p.glyphs.iter().any(|g| g.emoji) || p.glyphs.is_empty());
     }
 
     #[test]
     fn carets_and_highlights() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let style = plain(15.0);
         let t = text(&[("First line here\nsecond", style)]);
         let (size, layout) = layout_of(&engine, &t, None);
@@ -3371,7 +3438,9 @@ mod tests {
 
     #[test]
     fn registered_fonts_lay_out() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let data = include_bytes!("../../../examples/gallery/fonts/Pacifico-Regular.ttf");
         let style = ResolvedTextStyle {
             font_family: Some(nsh_core::FontFamily::new("Pacifico")),
@@ -3393,7 +3462,9 @@ mod tests {
 
     #[test]
     fn fallback_fonts_keep_the_line_height() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let h = |s: &str| {
             engine
                 .measure(&engine.prepare(&text(&[(s, plain(16.0))])), None)
@@ -3406,7 +3477,12 @@ mod tests {
 
     #[test]
     fn emoji_are_emoji_glyphs() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
+        if !has_emoji_font() {
+            return;
+        }
         let t = text(&[("a😀", plain(16.0))]);
         let (_, layout) = layout_of(&engine, &t, None);
         let l = layout.downcast::<GpuiLayout>().unwrap();
@@ -3415,7 +3491,9 @@ mod tests {
 
     #[test]
     fn empty_text_has_one_line() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let t = AttributedText::default();
         let (size, layout) = layout_of(&engine, &t, Some(100.0));
         assert_eq!(size.width, 0.0);
@@ -3431,7 +3509,9 @@ mod tests {
     /// character boundaries.
     #[test]
     fn multi_byte_spans() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         let bold = ResolvedTextStyle {
             font_weight: 700,
             ..plain(15.0)
@@ -3509,7 +3589,9 @@ mod tests {
 
     #[test]
     fn shaping_is_bounded() {
-        let engine = engine();
+        let Some(engine) = engine() else {
+            return;
+        };
         for i in 0..(CACHE_LINES + 10) {
             let t = text(&[(&format!("line {i}"), plain(12.0))]);
             engine.prepare(&t);
