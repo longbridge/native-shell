@@ -1,15 +1,19 @@
 //! The window's chrome (`nsh/desktop`): its title, the hidden title bar,
 //! drag regions, full screen, the menu bar and context menus.
 //!
-//! - **Hidden title bar** ([`TitleBarStyle::Hidden`]): the window's title
-//!   bar becomes an empty box, which keeps GTK's client-side decorations
-//!   (shadows, resize edges) without a header; the window buttons are
+//! - **Hidden title bar** ([`TitleBarStyle::Hidden`]): the window's header
+//!   is hidden, which keeps GTK's client-side decorations (shadows, resize
+//!   edges) without it: the title bar its owner set or the one GTK made
+//!   (`default-decoration`). A window the window manager decorates (X11, a
+//!   Wayland compositor that prefers server-side decorations) gets an
+//!   empty, hidden title bar instead, which switches it to client-side
+//!   decorations; showing the title bar again removes it. The buttons are
 //!   `gtk::WindowControls` over the app (in the `AppView`'s overlay), one
 //!   per end, which follow the desktop's decoration layout
 //!   (`gtk-decoration-layout`). Their measured widths and the header's
 //!   height are the environment's `title_bar`. GTK unrealizes and maps the
-//!   window again when it gains or loses a title bar: everything here is
-//!   idempotent and applied again when the root is realized.
+//!   window again when it gains or loses a title bar of its own: everything
+//!   here is idempotent and applied again when the root is realized.
 //! - **Drag regions**: a primary press on a view marked `windowDrag`
 //!   ([`crate::input::window_drag`]) moves the window
 //!   (`gdk::Toplevel::begin_move`); a double press does what
@@ -56,8 +60,10 @@ pub(crate) struct Chrome {
     /// above it that holds the menu bar.
     overlay: RefCell<Option<glib::WeakRef<gtk::Overlay>>>,
     slot: RefCell<Option<glib::WeakRef<gtk::Box>>>,
-    /// The empty title bar that hides the window's.
-    empty: RefCell<Option<gtk::Box>>,
+    /// The header hidden (the window's title bar).
+    header: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    /// The empty title bar given to a window the window manager decorated.
+    empty: RefCell<Option<gtk::Widget>>,
     /// The window buttons at the start and the end, while hidden.
     controls: RefCell<Option<(gtk::WindowControls, gtk::WindowControls)>>,
     /// The application menu.
@@ -197,15 +203,7 @@ fn apply_title_bar(surface: &Rc<Surface>, window: &gtk::Window) {
     let c = &surface.chrome;
     let overlay = c.overlay.borrow().as_ref().and_then(|w| w.upgrade());
     if hidden(surface) {
-        let empty = c
-            .empty
-            .borrow_mut()
-            .get_or_insert_with(|| gtk::Box::new(gtk::Orientation::Horizontal, 0))
-            .clone();
-        // Setting it again would make GTK map the window again.
-        if window.titlebar().as_ref() != Some(empty.upcast_ref::<gtk::Widget>()) {
-            window.set_titlebar(Some(&empty));
-        }
+        hide_header(surface, window);
         let missing = c.controls.borrow().is_none();
         if missing && let Some(overlay) = &overlay {
             let make = |pack: gtk::PackType, align: gtk::Align| {
@@ -229,15 +227,7 @@ fn apply_title_bar(surface: &Rc<Surface>, window: &gtk::Window) {
             *c.controls.borrow_mut() = Some((start, end));
         }
     } else {
-        if window.titlebar().is_some()
-            && window.titlebar().as_ref()
-                == c.empty
-                    .borrow()
-                    .as_ref()
-                    .map(|e| e.upcast_ref::<gtk::Widget>())
-        {
-            window.set_titlebar(gtk::Widget::NONE);
-        }
+        show_header(surface, window);
         let taken = c.controls.borrow_mut().take();
         if let Some((start, end)) = taken
             && let Some(overlay) = &overlay
@@ -254,6 +244,59 @@ fn apply_title_bar(surface: &Rc<Surface>, window: &gtk::Window) {
             update_area(&surface);
         }
     });
+}
+
+/// The header the window shows: the title bar its owner set, or the one
+/// GTK makes for client-side decorations (a `default-decoration` child).
+fn header(window: &gtk::Window) -> Option<gtk::Widget> {
+    window.titlebar().or_else(|| {
+        let mut child = window.first_child();
+        while let Some(widget) = child {
+            if widget.has_css_class("default-decoration") {
+                return Some(widget);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    })
+}
+
+/// Hides the window's header. A shown header is only hidden: giving the
+/// window a title bar of its own once realized makes GTK unrealize and map
+/// it again (with a warning). A window without one is decorated by the
+/// window manager: then an empty, hidden title bar switches it to
+/// client-side decorations without a header, which does map it again.
+fn hide_header(surface: &Surface, window: &gtk::Window) {
+    let c = &surface.chrome;
+    match header(window) {
+        Some(header) if c.empty.borrow().as_ref() != Some(&header) => {
+            header.set_visible(false);
+            *c.header.borrow_mut() = Some(header.downgrade());
+        }
+        Some(_) => {}
+        None => {
+            let empty: gtk::Widget = gtk::Box::new(gtk::Orientation::Horizontal, 0).upcast();
+            empty.set_visible(false);
+            // Realizes the window again, which applies the chrome again.
+            *c.empty.borrow_mut() = Some(empty.clone());
+            window.set_titlebar(Some(&empty));
+        }
+    }
+}
+
+/// Shows the header `hide_header` hid.
+fn show_header(surface: &Surface, window: &gtk::Window) {
+    let c = &surface.chrome;
+    let header = c.header.borrow_mut().take().and_then(|w| w.upgrade());
+    if let Some(header) = header {
+        header.set_visible(true);
+    }
+    let empty = c.empty.borrow_mut().take();
+    if let Some(empty) = empty
+        && window.titlebar().as_ref() == Some(&empty)
+    {
+        window.set_titlebar(gtk::Widget::NONE);
+    }
 }
 
 /// Tells the app the hidden title bar's area, and places the buttons in
