@@ -142,11 +142,14 @@ it reads is `nsh_engine::perf` (`docs/dev/performance.md`):
 - Batches carry when the sink got them (only while measuring), for `HOP`.
 - The engine records its commits (`EngineControl::set_perf_monitor`).
 
-For checking a change: run a release host with `--fps --trace` and `--script` (`wait`, `wheel`, `tap`); the host logs
-the readings once a second (`nsh::perf fps …`, milliseconds as mean/p50/p95/max: `tick` the delivered refresh gaps,
-`frame-gap` the gaps between shown frames, `main` the main-thread time per frame). The script's `wheel` sends an
-event every 16 ms (a real trackpad on ProMotion: every 8 ms). For where the time goes, `sample
-<pid> 5` the host (Instruments' Time Profiler: `xctrace record --template 'Time Profiler' --attach <pid>`).
+For checking a change: run a release host with `--fps --trace` and `--script` (`wait`, `wheel`, `fling`, `tap`); the
+host logs the readings once a second (`nsh::perf fps …`, milliseconds as mean/p50/p95/max: `tick` the delivered
+refresh gaps, `frame-gap` the gaps between shown frames, `main` the main-thread time per frame). The script's `wheel`
+sends an event every 16 ms; `fling` sends them as a ProMotion trackpad does, every 8.33 ms from a timer thread with
+the system's momentum after, stamped when they happen. A frame rate of 120 does not mean a smooth scroll: check how
+far each frame moves (fling a few times with starting times a millisecond apart, as event and display phases differ
+from gesture to gesture). For where the time goes, `sample <pid> 5` the host (Instruments' Time Profiler: `xctrace
+record --template 'Time Profiler' --attach <pid>`).
 
 
 ## Checking a change: `--script`
@@ -154,9 +157,9 @@ event every 16 ms (a real trackpad on ProMotion: every 8 ms). For where the time
 `nsh-macos-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or new
 lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.png>`, `tap [mods] <x> <y> [count]`
 (`tap shift 10 20`: a shift-click), `down` / `up` (a held press, for pressed states), `rtap`,
-`drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `notch` (a mouse wheel),
-`hover`, `type <text>`, `mark <text>` (an input method's marked text), `key <name>` (with modifiers: `cmd+a`,
-`shift+Tab`), `dark` / `light`, `resize <w> <h>`,
+`drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `fling <x> <y> <dx> <dy> [ms]`
+(a 120 Hz trackpad flick with momentum), `notch` (a mouse wheel), `hover`, `type <text>`, `mark <text>` (an input
+method's marked text), `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
 `quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
 `NSApp.currentEvent`).
 
