@@ -645,14 +645,12 @@ fn tab(surface: &Surface, event: &NSEvent) -> bool {
     {
         return false;
     }
-    let Some(window) = surface.root.ns().window() else {
-        return false;
-    };
-    if flags.contains(NSEventModifierFlags::Shift) {
-        window.selectKeyViewPrecedingView(surface.root.ns());
-    } else {
-        window.selectKeyViewFollowingView(surface.root.ns());
-    }
+    // Into the fields of the newest modal, if one is shown.
+    crate::text_input::tab(
+        surface,
+        surface.root.ns(),
+        flags.contains(NSEventModifierFlags::Shift),
+    );
     true
 }
 

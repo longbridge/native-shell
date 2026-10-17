@@ -459,14 +459,15 @@ impl Ctx {
             self.unfocus();
             return true;
         }
-        if multiline && (command == sel!(insertTab:) || command == sel!(insertBacktab:)) {
-            // Tab moves the focus, as in a single-line field.
-            if let Some(window) = text_view.window() {
-                if command == sel!(insertTab:) {
-                    window.selectNextKeyView(None);
-                } else {
-                    window.selectPreviousKeyView(None);
-                }
+        if command == sel!(insertTab:) || command == sel!(insertBacktab:) {
+            // Tab moves the focus (in a text view too, as in a single-line
+            // field), within the newest modal.
+            let from: Retained<NSView> = match &*input.editor.borrow() {
+                Editor::Line { field, .. } => Retained::from(&***field as &NSView),
+                Editor::Area { view, .. } => Retained::from(&***view as &NSView),
+            };
+            if let Some(surface) = self.surface.upgrade() {
+                tab(&surface, &from, command == sel!(insertBacktab:));
             }
             return true;
         }
@@ -480,6 +481,44 @@ impl Ctx {
         }
         false
     }
+}
+
+/// Moves the keyboard focus from `from` to the next (or previous) view of
+/// the window's key view loop inside the focus scope
+/// ([`crate::navigation::focus_scope`]): the window's loop holds every
+/// field, those under a modal too. Wraps around; stays when there is no
+/// other.
+pub(crate) fn tab(surface: &Surface, from: &NSView, backward: bool) -> bool {
+    let Some(window) = from.window() else {
+        return false;
+    };
+    let scope = crate::navigation::focus_scope(surface);
+    // A window that recalculates its loop does so only in its own
+    // `selectNextKeyView:`: the views' links are empty until then.
+    window.recalculateKeyViewLoop();
+    let mut at: Retained<NSView> = Retained::from(from);
+    // Bounded: a loop always comes back, but a broken one must not hang.
+    for _ in 0..512 {
+        // SAFETY: plain getters of the key view loop, on the main thread.
+        let next = unsafe {
+            if backward {
+                at.previousValidKeyView()
+            } else {
+                at.nextValidKeyView()
+            }
+        };
+        let Some(next) = next else {
+            return false;
+        };
+        if &*next == from {
+            return false;
+        }
+        if next.isDescendantOf(&scope) && !crate::view::is_ours(&next) {
+            return window.makeFirstResponder(Some(&next));
+        }
+        at = next;
+    }
+    false
 }
 
 /// Defines a field class: `NSTextField` or `NSSecureTextField` that tells

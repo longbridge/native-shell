@@ -1751,6 +1751,23 @@ impl Nav {
 /// Goes back (the newest modal, the innermost stack or the app's
 /// `onBackPress`): whether something took it. The mouse's back button
 /// calls it too.
+/// Where the keyboard focus may go: the newest presented modal (what is
+/// under it cannot be used), else the whole surface.
+pub(crate) fn focus_scope(surface: &Surface) -> Retained<NSView> {
+    surface
+        .nav
+        .try_borrow()
+        .ok()
+        .and_then(|nav| {
+            nav.order
+                .iter()
+                .rev()
+                .find_map(|id| nav.modals.get(id)?.view.as_ref())
+                .map(|v| Retained::from(v.ns()))
+        })
+        .unwrap_or_else(|| Retained::from(surface.root.ns()))
+}
+
 pub(crate) fn go_back(surface: &Rc<Surface>) -> bool {
     match surface.nav.try_borrow_mut() {
         Ok(mut nav) => crate::surface::quiet(|| nav.go_back(surface)),

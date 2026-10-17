@@ -381,6 +381,8 @@ fn key(window: &NSWindow, name: &str) {
     let (chars, code): (String, u16) = match name {
         "Return" => ("\r".into(), 36),
         "Escape" => ("\u{1b}".into(), 53),
+        // Shift+Tab types a backtab, which is what field editors read.
+        "Tab" if flags.contains(NSEventModifierFlags::Shift) => ("\u{19}".into(), 48),
         "Tab" => ("\t".into(), 48),
         "BackSpace" => ("\u{7f}".into(), 51),
         "space" => (" ".into(), 49),
