@@ -436,6 +436,7 @@ impl Surface {
                 }
                 Message::Error(message) => {
                     log::error!("{message}");
+                    crate::script::app_error();
                     if let Some(f) = &*self.on_error.borrow() {
                         f(&message);
                     }
