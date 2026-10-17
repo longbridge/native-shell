@@ -68,9 +68,11 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   ticked for 100 ms a 60 Hz
   main-queue timer ticks instead, so animations still end (a transition detaches its views when it does).
 - **Embedding**: `AppView` (`app.rs`) is one surface as a view; `run_app` opens one in a window with a standard menu
-  (Hide, Quit; Edit's undo / cut / copy / paste / select all, which fields answer; Minimize, Close). The app ends when
-  its window closes, a minimized one too (AppKit's `applicationShouldTerminateAfterLastWindowClosed:` skips windows
-  that are not on screen, so `windowWillClose:` terminates). `set_ui_sets`
+  (About, Hide, Quit; Edit's undo / redo / cut / copy / paste / select all, which fields answer; Minimize, Zoom, Enter
+  Full Screen, Close), titled with `AppOptions::title`: `name_app` sets the main bundle's `CFBundleName` to it, as the
+  menu bar shows that (the development host has no bundle; `nsh run` passes it the app's name with `--name`). The app
+  ends when its window closes, a minimized one too (AppKit's `applicationShouldTerminateAfterLastWindowClosed:` skips
+  windows that are not on screen, so `windowWillClose:` terminates). `set_ui_sets`
   replaces the default `nsh/ui/mobile` set for apps with Rust components of their own.
 
 ## How each area maps to AppKit

@@ -12,6 +12,8 @@
 //!   costs, CPU, GPU, memory) at the top right.
 //! - `--size 1200x800` sets the window size (1200×800 by default; 390x844
 //!   shows an app's phone layout).
+//! - `--name <name>` names the app (the menu bar, the window title; `nsh
+//!   run` passes the app's name), "nsh" by default.
 //!
 //! Without arguments it connects to the dev server on this machine.
 //!
@@ -28,6 +30,7 @@ pub fn main() -> std::process::ExitCode {
 
     dev::init_logging();
     let mut source = None;
+    // Named "nsh" unless `--name` names the app.
     let mut options = AppOptions::default();
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -51,6 +54,11 @@ pub fn main() -> std::process::ExitCode {
                 source = Some(AppSource::Bundle(bundle));
             }
             "--trace" => options.trace = true,
+            "--name" => {
+                if let Some(name) = args.next().filter(|n| !n.is_empty()) {
+                    options.title = name;
+                }
+            }
             // The performance monitor over the app.
             "--fps" => options.fps = true,
             // Steps run once the window shows (`nsh_platform_macos`'s
@@ -72,7 +80,6 @@ pub fn main() -> std::process::ExitCode {
         use nsh_dev::protocol::{DEFAULT_PORT, WS_PATH};
         AppSource::DevServer(format!("ws://127.0.0.1:{DEFAULT_PORT}{WS_PATH}"))
     });
-    options.title = "nsh".to_owned();
     run_app(source, options)
 }
 

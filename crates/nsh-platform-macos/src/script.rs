@@ -394,6 +394,9 @@ fn key(window: &NSWindow, name: &str) {
         "Page_Down" => ("\u{f72d}".into(), 121),
         "Home" => ("\u{f729}".into(), 115),
         "End" => ("\u{f72b}".into(), 119),
+        // Shift types the shifted character, which menus' key
+        // equivalents match (`cmd+shift+z` is Redo's `Z`).
+        other if flags.contains(NSEventModifierFlags::Shift) => (other.to_uppercase(), 0),
         other => (other.into(), 0),
     };
     key_event(window, &chars, code, flags);

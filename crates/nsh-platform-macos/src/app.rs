@@ -319,12 +319,37 @@ fn stop_running() {
     }
 }
 
+/// Names the app `name` in the menu bar, which shows the bundle's name
+/// as the app menu's title: an executable without a bundle (the
+/// development host) would show its file's name. Before the app finishes
+/// launching.
+fn name_app(name: &str) {
+    use objc2::ClassType;
+    use objc2_foundation::{NSBundle, NSMutableDictionary};
+    let Some(info) = NSBundle::mainBundle().infoDictionary() else {
+        return;
+    };
+    let name = NSString::from_str(name);
+    // A bundle's dictionary is mutable in practice; the dictionary of an
+    // executable without one too.
+    // SAFETY: `isKindOfClass:` takes any class; `setObject:forKey:` is
+    // sent only to a mutable dictionary, with a string key and value.
+    unsafe {
+        let mutable: bool =
+            msg_send![&*info, isKindOfClass: NSMutableDictionary::<NSString, NSString>::class()];
+        if mutable {
+            let _: () = msg_send![&*info, setObject: &*name, forKey: objc2_foundation::ns_string!("CFBundleName")];
+        }
+    }
+}
+
 /// Runs `source` in a window until it is closed. Must be called on the
 /// main thread.
 pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode {
     let mtm = MainThreadMarker::new().expect("run_app must be called on the main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    name_app(&options.title);
     let delegate: Retained<Delegate> = unsafe { msg_send![Delegate::alloc(mtm), init] };
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     app.setMainMenu(Some(&main_menu(mtm, &options.title)));
@@ -374,8 +399,9 @@ pub fn run_app(source: AppSource, options: AppOptions) -> std::process::ExitCode
     std::process::ExitCode::SUCCESS
 }
 
-/// The app menu (Hide, Quit), Edit (the text commands fields answer:
-/// undo, cut, copy, paste, select all) and Window (minimize, close).
+/// The app menu (About, Hide, Quit), Edit (the text commands fields
+/// answer: undo, cut, copy, paste, select all) and Window (minimize, zoom,
+/// full screen, close).
 fn main_menu(mtm: MainThreadMarker, title: &str) -> Retained<NSMenu> {
     let bar = NSMenu::new(mtm);
     let item = |menu: &NSMenu, title: &str, action: Option<objc2::runtime::Sel>, key: &str| {
@@ -399,6 +425,13 @@ fn main_menu(mtm: MainThreadMarker, title: &str) -> Retained<NSMenu> {
         menu
     };
     let app_menu = submenu(title);
+    item(
+        &app_menu,
+        &format!("About {title}"),
+        Some(sel!(orderFrontStandardAboutPanel:)),
+        "",
+    );
+    app_menu.addItem(&NSMenuItem::separatorItem(mtm));
     item(&app_menu, &format!("Hide {title}"), Some(sel!(hide:)), "h");
     let others = item(
         &app_menu,
@@ -418,8 +451,8 @@ fn main_menu(mtm: MainThreadMarker, title: &str) -> Retained<NSMenu> {
 
     let edit = submenu("Edit");
     item(&edit, "Undo", Some(sel!(undo:)), "z");
-    let redo = item(&edit, "Redo", Some(sel!(redo:)), "z");
-    redo.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
+    // An uppercase key equivalent is Shift with it.
+    item(&edit, "Redo", Some(sel!(redo:)), "Z");
     edit.addItem(&NSMenuItem::separatorItem(mtm));
     item(&edit, "Cut", Some(sel!(cut:)), "x");
     item(&edit, "Copy", Some(sel!(copy:)), "c");
@@ -428,6 +461,17 @@ fn main_menu(mtm: MainThreadMarker, title: &str) -> Retained<NSMenu> {
 
     let window = submenu("Window");
     item(&window, "Minimize", Some(sel!(performMiniaturize:)), "m");
+    item(&window, "Zoom", Some(sel!(performZoom:)), "");
+    let full = item(
+        &window,
+        "Enter Full Screen",
+        Some(sel!(toggleFullScreen:)),
+        "f",
+    );
+    full.setKeyEquivalentModifierMask(
+        NSEventModifierFlags::Command | NSEventModifierFlags::Control,
+    );
+    window.addItem(&NSMenuItem::separatorItem(mtm));
     item(&window, "Close", Some(sel!(performClose:)), "w");
     bar
 }

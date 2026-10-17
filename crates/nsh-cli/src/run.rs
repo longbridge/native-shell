@@ -124,9 +124,14 @@ pub(crate) fn run(
         // In place too: the AppKit host makes itself a regular app (menu
         // bar, Dock icon) without an app bundle around it.
         Target::Macos => {
+            // The menu bar and the window show the app's name.
+            let entry = entry.canonicalize()?;
+            let config = crate::package::read_config(&entry).unwrap_or_default();
+            let (name, _) = crate::package::name_and_id(&entry, &config);
             let mut command = Command::new(&host);
             command
                 .args(&args)
+                .args(["--name", &name])
                 .args(["-ApplePersistenceIgnoreState", "YES"]);
             run_local(&session, &mut command, "the macOS host")
         }

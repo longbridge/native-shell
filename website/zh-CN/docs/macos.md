@@ -27,7 +27,7 @@ nsh run my-app --target macos
 ```
 
 应用会在一个 AppKit 窗口（默认 1200×800）中打开，和其他目标一样支持热重载、在终端显示日志并提供错误浮层；Cmd+R 重新加载最新构建。
-在源码仓库中，`nsh run` 会先构建开发宿主（`nsh-macos-host`）。停止 `nsh run` 会关闭窗口，关闭窗口也会结束 `nsh run`。
+菜单栏和窗口显示应用的名称（nsh.json 的 `"name"`，否则是应用目录的名称）。在源码仓库中，`nsh run` 会先构建开发宿主（`nsh-macos-host`）。停止 `nsh run` 会关闭窗口，关闭窗口也会结束 `nsh run`。
 宿主也可以单独运行一个构建好的 bundle：
 
 ```sh
@@ -103,7 +103,7 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 `AppView::load` 会替换正在运行的内容；`stop` 结束应用。`asset_base` 指定 `asset:/` URI 从哪里解析（`AssetBase::Directory`
 或 `AssetBase::Http`）。字节码 bundle（`bundle.qbc`）用 `unsafe { Bundle::bytecode(bytes) }` 加载：QuickJS 字节码是受信任的输入，
 只能从你自己应用的文件中加载。如果应用只是一个 nsh 应用，`run_app(source, options)` 会在窗口中打开一个 `AppView`，带有标准菜单
-（隐藏、退出、编辑、最小化、关闭），并运行到窗口关闭为止。
+（关于、隐藏、退出、编辑、最小化、缩放、进入全屏、关闭），并运行到窗口关闭为止。
 
 原生组件通过 `AppView::register_component` 注册，见[原生组件](./native-components.md#在-macos-上注册rust)。
 

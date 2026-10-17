@@ -30,7 +30,8 @@ nsh run my-app --target macos
 ```
 
 The app opens in an AppKit window (1200×800 by default), with hot reload, logs in the terminal and the error overlay as
-on the other targets; Cmd+R reloads the latest build. In a checkout, `nsh run` builds the development host
+on the other targets; Cmd+R reloads the latest build. The menu bar and the window show the app's name (nsh.json
+`"name"`, else its directory's). In a checkout, `nsh run` builds the development host
 (`nsh-macos-host`) first. Stopping `nsh run` closes the window, and closing the window ends `nsh run`. The host also
 runs a built bundle on its own:
 
@@ -111,7 +112,7 @@ fn show(window: &NSWindow) -> Rc<AppView> {
 (`AssetBase::Directory` or `AssetBase::Http`). Bytecode bundles (`bundle.qbc`) load with
 `unsafe { Bundle::bytecode(bytes) }`: QuickJS bytecode is trusted input, so only load it from your own app's files.
 For an app that is only an nsh app, `run_app(source, options)` opens one `AppView` in a window with a standard menu
-(Hide, Quit, Edit, Minimize, Close) and runs until the window closes.
+(About, Hide, Quit, Edit, Minimize, Zoom, Enter Full Screen, Close) and runs until the window closes.
 
 Native components are registered with `AppView::register_component`; see
 [Native components](./native-components.md#registering-on-macos-rust).
