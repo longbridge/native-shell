@@ -169,6 +169,8 @@ pub(crate) struct Surface {
     /// Keys the window takes before anything focused sees them (the
     /// standalone app's full screen, the dev host's reload).
     pub(crate) shortcuts: RefCell<Vec<ShortcutHandler>>,
+    /// How many batches were applied (scripts wait for the app to settle).
+    pub(crate) batches: Cell<u64>,
 }
 
 impl Surface {
@@ -210,6 +212,7 @@ impl Surface {
             placed: RefCell::default(),
             on_resized: RefCell::default(),
             shortcuts: RefCell::default(),
+            batches: Cell::new(0),
             chrome: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
@@ -409,6 +412,7 @@ impl Surface {
                 Message::Batch(batch) => {
                     self.apply(&batch);
                     applied = true;
+                    self.batches.set(self.batches.get() + 1);
                 }
                 Message::Error(message) => {
                     log::error!("{message}");

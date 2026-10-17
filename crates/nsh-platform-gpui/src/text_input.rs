@@ -53,3 +53,7 @@ pub(crate) fn set_selection(_view: &NshView, _start: u32, _end: u32) {}
 pub(crate) fn tab_to(_view: &NshView) {}
 /// `InputValue`.
 pub(crate) fn value(_view: &NshView, _text: &str, _count: u32) {}
+/// Types `text` into the focused input (committed IME or keyboard text).
+pub(crate) fn char_input(_surface: &Rc<Surface>, _text: &str) {}
+/// Sets the focused input's IME composition (empty: ends it).
+pub(crate) fn mark(_surface: &Rc<Surface>, _text: &str) {}

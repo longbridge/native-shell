@@ -29,10 +29,12 @@ pub(crate) fn window_prepaint(
     window: &mut gpui::Window,
     _cx: &mut gpui::App,
 ) {
-    let system_dark = matches!(
-        window.appearance(),
-        gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
-    );
+    let system_dark = crate::script::simulated_dark().unwrap_or_else(|| {
+        matches!(
+            window.appearance(),
+            gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
+        )
+    });
     let scheme = match surface.appearance.get() {
         Appearance::Dark => ColorScheme::Dark,
         Appearance::Light => ColorScheme::Light,
