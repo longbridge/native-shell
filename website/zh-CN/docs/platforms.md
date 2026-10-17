@@ -25,7 +25,7 @@ nsh 同时运行在手机和桌面上：iOS、Android、macOS、Windows 和 Linu
 
 - **Mac Catalyst** 在 Mac 上用 iPhone 尺寸的窗口（390×844）运行 iOS 后端。它是 macOS 上 `nsh run` 的默认目标，因为不用启动模拟器，就能最快看到模块在手机上的样子。
 - **Web**（[WebAssembly](./web.md)）在浏览器里运行同一个引擎，用 DOM 绘制。本站的在线示例和 [Playground](/playground) 都由它驱动；它不是用来发布应用的目标。
-- **[GPUI](./gpui.md)** 用姊妹项目 GPUI Kit 所基于的 [GPUI](https://gpui-kit.com) 绘制模块，在 macOS、Windows 和 Linux 上表现一致，用于嵌入 GPUI 和 GPUI Kit 应用（`nsh run --target gpui`、`nsh package --target gpui`）。它正在开发：与上面原生后端的功能对齐正在进行，目前发布桌面应用请使用原生后端。
+- **[GPUI](./gpui.md)** 用姊妹项目 GPUI Kit 所基于的 [GPUI](https://gpui-kit.com) 绘制模块，在 macOS、Windows 和 Linux 上表现一致，用于嵌入 GPUI 和 GPUI Kit 应用（`nsh run --target gpui`、`nsh package --target gpui`）。它正在开发：上面原生后端的元素和模块它都已具备，部分绘制效果不同（见[差异](./gpui.md#差异)），目前只在 Linux 上试过；目前发布桌面应用请使用原生后端。
 
 ## 开发与打包
 

@@ -8,19 +8,26 @@ The crate started as a port of the Windows backend (`windows.md`): one retained 
 itself, and the input, scrolling, transition, keymap and editing logic is the Windows backend's, platform-free. Only
 drawing, text, the main-thread queue, events and the window are GPUI's. User-facing page: `website/docs/gpui.md`.
 
-The backend is in development: the sections below say what is ported, and "Not implemented, or different" lists what
-is not yet.
+Every area of the other desktop backends is ported; "Not implemented, or different" lists where GPUI's primitives make
+it draw or behave differently.
 
 ## Building and checking
 
-On Linux GPUI needs the X11, Wayland, xkbcommon, fontconfig and FreeType development packages and a Vulkan driver
-(GPUI Fast's CI list, also in `.github/workflows/gpui.yml`: `libfontconfig-dev libfreetype-dev libwayland-dev
-libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev libvulkan1`, plus `libgtk-3-dev
-libwebkit2gtk-4.1-dev` for web views); macOS needs Xcode (Metal), Windows the MSVC toolchain and LLVM as for the
-Windows backend. Off the three desktops the crates are empty.
+On Linux GPUI needs the X11, Wayland, xkbcommon, fontconfig and FreeType development packages and a Vulkan driver;
+web views (feature `webview`, wry) need GTK 3 and WebKitGTK 4.1, video (feature `video`) GStreamer 1.20 or later with
+its base plug-ins. On Debian / Ubuntu (`.github/workflows/gpui.yml` installs the same):
 
 ```sh
-cargo clippy -p nsh-platform-gpui -p nsh-gpui-host -p nsh-gpui-app --all-targets --features nsh-platform-gpui/dev
+sudo apt-get install clang libclang-dev pkg-config libfontconfig-dev libfreetype-dev libwayland-dev libx11-xcb-dev \
+  libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libzstd-dev libvulkan1 libgtk-3-dev libwebkit2gtk-4.1-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good
+```
+
+macOS needs Xcode (Metal), Windows the MSVC toolchain and LLVM as for the Windows backend (`RUST_MIN_STACK` included).
+Off the three desktops the crates are empty.
+
+```sh
+cargo clippy -p nsh-platform-gpui -p nsh-gpui-host -p nsh-gpui-app --all-targets --features nsh-platform-gpui/dev -- -D warnings
 cargo test -p nsh-platform-gpui -p nsh-gpui-app   # needs no display: tests open no window
 cargo build -p nsh-gpui-host                      # target/debug/nsh-gpui-host
 ```
@@ -30,18 +37,42 @@ in a checkout; `cargo xtask dist` puts them in `dist/nsh/runtime/gpui/` on each 
 `embedding.md`). CI: `.github/workflows/gpui.yml` (Ubuntu 24.04, macOS 15 and Windows: clippy with `-D warnings` and
 tests of the GPUI crates, the CLI and `nsh-dev`).
 
-Features: `js` (default; JS apps; without it the crate only runs Rust apps and links no QuickJS) and `dev` (the dev
-server client, log forwarding, the error overlay: `dev.rs`). The host turns on `dev`, the runner only `js`.
+Features:
 
-To look at a change on Linux without touching the desktop, run the host on a rootful Xwayland display of its own and
-take screenshots with ImageMagick (GPUI draws at the display's scale):
+| Feature | Does | Host | Runner |
+|---|---|---|---|
+| `js` (default) | JS apps; without it the crate only runs Rust apps and links no QuickJS | yes | yes |
+| `webview` (default) | web views with wry (`native/web.rs`; GTK 3 and WebKitGTK on Linux) | yes | yes |
+| `video` | videos with GStreamer (`native/video.rs`); without it a video is a placeholder that reports `onError` | Linux | Linux |
+| `dev` | the dev server client, log forwarding, the error overlay (`dev.rs`) | yes | no |
+| `shot` | `--script` shots on macOS and Windows through GPUI's `test-support` (`Window::render_to_image`) | macOS, Windows | no |
+
+`shot` turns on GPUI's test support: never in the release runner. Cargo unifies features per build, so the
+distribution builds the host and the runner in separate `cargo build` runs (`cargo xtask dist`), never together.
+
+### Looking at a change on Linux
+
+Run the host on a rootful Xwayland display of its own, so nothing touches the desktop, and take screenshots with
+`--script` (`shot`) or ImageMagick:
 
 ```sh
-Xwayland :170 -noreset -geometry 1400x1000 & sleep 1.5
+Xwayland :170 -noreset -shm -geometry 1400x1000 & sleep 1.5
 nsh build examples/gallery -o build
-DISPLAY=:170 WAYLAND_DISPLAY= target/debug/nsh-gpui-host --bundle build/bundle.nshc --size 700x500 &
-sleep 5; import -window root -display :170 a.png
+DISPLAY=:170 WAYLAND_DISPLAY= WEBKIT_DISABLE_DMABUF_RENDERER=1 target/debug/nsh-gpui-host --bundle build/bundle.nshc \
+  --size 700x500 --script "wait 800; shot a.png; tap 100 200; shot b.png; quit"
+import -window root -display :170 whole.png        # the display, if the window's own shot is not enough
 ```
+
+- `WAYLAND_DISPLAY=` empty makes GPUI use X11: `shot` reads the window back from the X server (`GetImage`), and web
+  views only embed in X11 windows.
+- `-shm`: a hidden rootful Xwayland has one vertical blank a second, and a shot waits for the blanks the last frame
+  waits for (about 3 s each); with `-shm` frames are copied in as GPUI presents them.
+- `WEBKIT_DISABLE_DMABUF_RENDERER=1`: where WebKit cannot allocate GBM buffers ("Failed to create GBM buffer" in the
+  log, common under Xwayland), pages stay black without it.
+- A tiling window manager tiles the rootful Xwayland window and its root shrinks with it: make it float at its full
+  size (Hyprland: `hyprctl dispatch` float, resize and move it to a special workspace).
+- GPUI draws at the display's scale: on a scale 2 display screenshot pixels are twice the points the steps take
+  (`shot a.png 2` keeps them).
 
 ## Architecture
 
@@ -53,11 +84,13 @@ sleep 5; import -window root -display :170 a.png
   `NshView` (`view.rs`), a retained view the core placed at its frame, as on Windows.
 - **`DrawCx`** (`render.rs`) is the drawing state GPUI does not keep: GPUI paints primitives (quads, paths, glyphs,
   images) in window coordinates (logical pixels, which are nsh's points) with no world transform and no group
-  opacity, so `DrawCx` keeps the current transform (`geom::Mat4`; translations and scales are exact, rotations and
-  skews draw at their bounds, paths and glyph runs aside) and multiplies the opacity into every color
-  (`DrawCx::color`), as GPUI's own element opacity does. Clips are rectangles in window coordinates (GPUI's content
-  masks), intersected as they nest (`push_clip_rect` / `push_opacity` / `pop`); `paint(|window, app| …)` paints inside
-  the current clip.
+  opacity, so `DrawCx` keeps the current transform (`geom::Mat4`) and applies opacity and color filters
+  (`push_color_matrix`) to every color, as GPUI's own element opacity does. Axis-aligned rectangles are GPUI's quads,
+  exact; under a rotation, skew or perspective they are filled as paths whose points are mapped one by one
+  (`fill_contours`), so they turn and project with the view; glyphs are placed at their mapped origins, upright. Clips
+  are rectangles in window coordinates (GPUI's content masks), intersected as they nest; a rounded or rotated clip is
+  also kept as a convex polygon paths are cut to, and the innermost rounded clip rounds the corners of the quads and
+  images reaching into its corners (`clip_rounded`). `paint(|window, app| …)` paints inside the current clip.
 - **One hop per commit.** The engine runs on its own thread (`nsh_engine::Engine`); its sink queues each commit and
   sends one closure to GPUI's main thread (`rt::invoke`), which applies every queued batch in order (`mount.rs`).
   GPUI's executors are bound to the main thread, so `rt::init` spawns one foreground task per process that drains a
@@ -67,11 +100,12 @@ sleep 5; import -window root -display :170 a.png
   invalid surfaces. Views change outside GPUI's tracked state, so GPUI Fast's retained rendering needs that `notify`.
 - **Text is shaped on the engine thread** (`text.rs`): `GpuiTextEngine` has a `gpui::WindowTextSystem` of its own
   over the app's `gpui::TextSystem` (thread-safe; the fonts are the app's, so the `FontId`s it hands out are the ones
-  the main thread paints with). GPUI shapes one line of one font size at a time, so each style run of each paragraph
-  is shaped on its own into one flat glyph list per paragraph, and nsh breaks the lines (after spaces, around CJK
-  ideographs, after hyphens and slashes, inside a word too long for its line). The final layout is plain data (lines
-  and positioned glyphs); the main thread paints the glyphs (`paint_glyph`, `paint_emoji`) and reads colors and
-  decorations from the spans by UTF-16 offset, as the Linux backend does.
+  the main thread paints with). GPUI shapes one line of one font size at a time and leaves breaking, bidi, line
+  heights and ellipses to its callers, so each paragraph is shaped once, in segments of one bidi level and font size,
+  into clusters; measuring at another width only re-breaks them (UAX #14, `unicode-linebreak`), and the final layout
+  orders each line's clusters by their bidi levels (`unicode-bidi`). Line heights follow Pango's model, as on Linux
+  and Windows. The final layout is plain data (lines, cluster boxes, positioned glyphs); the main thread paints the
+  glyphs (`paint_glyph`, `paint_emoji`) and reads colors and decorations from the spans, as the Linux backend does.
 - **Frames**: native animations, JS frame requests, transitions, scroll glides and navigation transitions tick on the
   window's frames (`Surface::tick`, called while drawing; `window.request_animation_frame()` while something
   animates), and nothing is drawn otherwise.
@@ -85,45 +119,79 @@ sleep 5; import -window root -display :170 a.png
   cx))`, then `load(App::Js(bundle))` or `load(App::Rust(root))`; it renders a `SurfaceElement` and is `Focusable`.
   `open_app_window` opens one in a window of a running GPUI app; `run_app` runs the standalone app (one `AppView`
   filling a window, the process quits when the last window closes). `register_component` registers native
-  components; `set_ui_sets` replaces the default `nsh/ui/mobile` set for apps with Rust components of their own. Several
-  views are several engines; nothing is global but the `rt` queue, which is per process.
+  components (GPUI elements); `set_theme` / `set_appearance` give the surface the host's theme and mode; `set_ui_sets`
+  replaces the default `nsh/ui/mobile` set for apps with Rust components of their own. Several views are several
+  engines; nothing is global but the `rt` queue and the key bindings, which are per process. Embedding in a GPUI Kit
+  app (one GPUI, focus and Tab, overlays, themes): `embedding.md` "GPUI and GPUI Kit apps", `examples/embed-gpui`.
 
 ## How each area maps to GPUI
 
 | Area | Module | GPUI |
 |---|---|---|
-| Text | `text.rs` | GPUI's text system on the engine thread, lines broken by nsh, glyphs painted on the main thread (above). TODO: selection |
-| Decoration | `decor.rs` | Quads (`paint_quad`: background, rounded corners, borders), drop and inset shadows (`paint_drop_shadows`, `paint_inset_shadows`), linear gradients as a quad's `Background`, paths for shapes quads cannot draw. TODO |
-| Images | `image.rs` | Loaded and decoded (the `image` crate) on worker threads into `RenderImage`s (straight BGRA, a frame per animation frame), cached per location, drawn with `paint_image` (its corner radii). GPUI has no color matrix, blur, mipmaps or sprite opacity: a picture keeps a few variants made on the workers (halved when drawn small, blurred, filtered, tinted, opacity in 16 steps) and draws the closest ready one meanwhile. Textures leave the atlases when their last owner drops them |
-| Canvas | `canvas.rs` | TODO |
-| Scroll views | `scroll.rs` | The Windows backend's, unchanged: offsets of their own, deceleration, snapping, paging, sticky cells, the keyboard, the indicator dragged as a scroll bar |
-| Input | `input.rs`, `events.rs` | The Windows backend's hit testing, presses, responder and gestures, fed by GPUI's mouse, wheel and pinch events |
-| Text inputs | `text_input.rs` | TODO (the shared editor model, `text_input/model.rs`; IME through GPUI's `EntityInputHandler`) |
-| Navigation, modals | `navigation.rs` | TODO |
-| Dialogs, toasts | `system.rs` | TODO |
-| Video, web views, native components | `native.rs` | TODO (GPUI's native surface composition, `Hosted::placed`) |
-| Accessibility | `access.rs` | TODO |
-| Environment | `system.rs` | TODO (`window.appearance()`, `observe_window_appearance`, `scale_factor`) |
-| Window chrome (`nsh/desktop`) | `chrome.rs` | TODO (`set_window_title`, `TitlebarOptions`, `start_window_move`, `cx.set_menus`) |
-| Clipboard | `system.rs` | TODO (`cx.write_to_clipboard`, `cx.read_from_clipboard`) |
+| Text | `text.rs` | GPUI's text system on the engine thread, lines broken and ordered by nsh, glyphs painted on the main thread (above). `selectable` text has the desktop range selection of Windows and Linux (Cmd instead of Ctrl on macOS) and a right-click menu (Copy, Select All). A blurred text shadow is the glyphs painted faintly around the blur radius. GPUI loads variable fonts at their default weight only: on Linux the UI font is the first of a list GPUI can set in bold (Adwaita Sans is variable; Noto Sans or DejaVu Sans take its place) |
+| Decoration | `decor.rs` | CSS painting order. Axis-aligned views: GPUI's blurred rounded-box shadows (`paint_drop_shadows`, `paint_inset_shadows`), quads for the background and one-color borders (per-side widths, per-corner radii, dashes), gradients (`decor/gradient.rs`). Paths of polygons for what quads cannot draw: borders whose sides differ in color, dotted lines, and every decoration of a rotated, skewed or projected view (a rotated view's shadow is a stack of translucent outlines). React Native's content shadow is the shadows of the filled descendants' boxes and the glyphs. Color filters are color matrices on every color the subtree draws |
+| Images | `image.rs` | Loaded and decoded (the `image` crate: PNG, JPEG, GIF, WebP, BMP, ICO, TIFF, EXIF orientation) on worker threads into `RenderImage`s (straight BGRA, a frame per animation frame), cached per location by bytes, drawn with `paint_image`. GPUI has no color matrix, blur, mipmaps or sprite opacity: a picture keeps variants made on the workers (halved when drawn small, blurred, filtered, tinted, opacity in 16 steps) and draws the closest ready one meanwhile. Animated GIF / WebP advance on timers at their delays, paused while not drawn |
+| Canvas | `canvas.rs` | Rasterized with tiny-skia at the window's resolution of the view's whole transform (made again when its linear part changes, moved along with translations), uploaded as a GPUI image; canvas' model kept as on Windows (paths, strokes, anti-aliased clip masks, exact linear / radial / conic gradients, box-blurred shadows, composite operations in layers). Text is GPUI glyphs above the pixmap (GPUI gives no outlines), in the fonts `measureText` uses |
+| Scroll views | `scroll.rs` | The Windows backend's: offsets of their own, UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags, the keyboard, mirrored horizontal lists, the indicator dragged as a scroll bar; touchpad scrolls carry GPUI's phases, touchpad pinches go to pinch gestures |
+| Input | `input.rs`, `events.rs` | The Windows backend's hit testing, presses, responder and gestures, fed by GPUI's mouse, wheel and pinch events; the cursor is set from the frame (`set_cursor_style`) |
+| Text inputs | `text_input.rs` | The editor shared with the Windows backend (`text_input/model.rs`), laid out with GPUI's text system and hosted in the input's view; text arrives through GPUI's input handler (`Window::handle_input`, the `AppView` as `EntityInputHandler`), IME compositions underlined at the caret and the candidate window placed with `bounds_for_range`; the caret blinks on a timer; Cmd on macOS where Ctrl is used elsewhere |
+| Navigation, modals | `navigation.rs` | As on Windows: screens slide in and out, headers drawn natively as hosted items with a fixed height reported to the core, back natively (Escape, Alt+Left, Cmd+[ on macOS, Browser Back, the mouse's back button), sheets as cards over a scrim. GPUI has no offscreen pictures, so a departing screen or modal keeps its views (their detaching deferred) in a layer drawn moving out |
+| Dialogs, toasts | `system.rs` | Drawn in the surface as items the root hosts (the Windows backend's content dialogs), so they stay with an embedded surface and never block the main loop |
+| Video | `native/video.rs` | Feature `video` (Linux): GStreamer `playbin` with an `appsink` of BGRA frames, each frame a `RenderImage` painted as view content (clipped, transformed at its bounds, covered like any view); `controls` draws nsh's own bar |
+| Web views | `native/web.rs` | Feature `webview`: wry. Linux: WebKitGTK 4.1 on GTK 3 (X11 only: GPUI must run on X11 or Xwayland) in a GPUI Fast native composition surface (an X11 child window) sized to the visible part of its view, GTK's loop pumped from GPUI's; macOS / Windows: wry's `WKWebView` / WebView2 child at the view's box |
+| Native components | `native.rs` | `AppView::register_component`; a component renders any GPUI or GPUI Kit element, laid out and prepainted at its box every frame, clipped to its clipping ancestors, painted where the tree draws its box; its hitboxes take the pointer there (`embedding.md`) |
+| Accessibility | `access.rs` | AccessKit nodes in GPUI's accessibility tree (NSAccessibility, UI Automation, AT-SPI through AccessKit's adapters), rebuilt while an assistive technology is attached: the views as synthetic children of the surface element, folded as on Windows and Linux, with roles, names, states, values and actions; the accessibility focus is a real element tracking the view's focus handle; announcements are live nodes |
+| Environment | `system.rs` | Color scheme from the app or the window's appearance (`observe_window_appearance`); locale, font scale, reduce motion, right to left, screen reader and OS version read as each native backend reads them (the settings portal and AT-SPI over D-Bus on Linux, `zbus`); pixel ratio the window's scale factor; safe area and keyboard height 0 |
+| Window chrome (`nsh/desktop`) | `chrome.rs` | Windows open with a transparent title bar (macOS, Windows) so both styles can be drawn later: a title row drawn above the app, or the hidden style with the traffic lights / caption buttons over the app (`WindowControlArea` on Windows); Linux uses the window manager's decorations, or client-side ones when asked and granted. The application menu is GPUI's native menu bar on macOS, a menu bar drawn above the app elsewhere; context menus are popups drawn over the window with keyboard access |
+| Clipboard | `system.rs` | GPUI's (`write_to_clipboard` / `read_from_clipboard`) |
 | Networking | `net.rs` | ureq, as on Windows and Linux |
-| Dev | `dev.rs` | TODO (the dev server client, the status pill and error overlay) |
+| Dev | `dev.rs` | The dev client on its own thread (reconnecting with a backoff); its events, runtime errors and the reload key drained by a foreground task of the view; the status line and the error overlay are GPUI elements over the surface |
 
 ## Checking a change: `--script`
 
-TODO: `nsh-gpui-host --script "<steps>"` (`script.rs`), ported from the Windows backend's (`windows.md`).
+`nsh-gpui-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or
+new lines: `wait`, `shot <file.png> [scale]`, `tap`, `drag`, `touch`, `wheel`, `pad`, `hover`, `type`, `mark`, `key`,
+`selectall`, `dark` / `light`, `resize`, `quit`, as on Windows (`windows.md`; the reference is `script.rs`). The whole
+script is parsed first; a step that fails, an app that shows nothing or an error the app reports makes the host exit
+with a failure. Input and shots first wait for the app to settle (no batch for 100 ms, at most 2 s), so a shot after
+a tap shows the response; timers, animations and network images still need a `wait`.
+
+Shots: on macOS and Windows with feature `shot` (the host's), GPUI renders the window's last frame offscreen again,
+whatever covers it (not yet tried on those systems). On Linux GPUI cannot read a frame back, so the window is read
+from the X server: scripts run under X11 or Xwayland (see "Looking at a change on Linux"), and on a bare X server a
+window covering this one shows in the shot. Under Wayland proper there are no shots. Web views are not in the offscreen
+shots of macOS and Windows.
 
 ## Not implemented, or different
 
-- **Transforms**: GPUI has no transform for quads and glyphs, so rotated and skewed views draw at their bounds (paths
-  and glyph runs aside); perspective is not drawn.
-- **Opacity** is multiplied into each color rather than drawn as a group: overlapping translucent children show
-  through each other.
-- **Clips** are rectangles (GPUI's content masks): rounded `overflow: hidden` clips are not rounded yet.
-- **Image opacity** (a view's, a fade-in) steps in sixteenths: each step is a variant of the image's pixels.
-- TODO: canvas, text selection, text inputs, navigation and modals, dialogs, video, web views, native
-  components, accessibility, the environment, window chrome and menus, the clipboard, the dev client and `--script`
-  are being ported (each area's section above says how).
+- **Transforms**: rotated, skewed and projected views turn as paths (backgrounds, borders, shadows), but glyphs stay
+  upright at their mapped origins, and images, videos and canvases draw at their bounds (GPUI has no transform for
+  sprites or glyphs).
+- **Opacity** is applied to each color rather than to a group, so overlapping translucent children show through each
+  other; an image's opacity (a view's, a fade-in) steps in sixteenths, each step a variant of its pixels.
+- **Clips** are rectangles (GPUI's content masks): a rounded clip rounds the backgrounds and images that reach into its
+  corners, but glyphs, borders, videos and native components are cut by its rectangle.
+- **Effects GPUI cannot draw**: `filter: blur()`, `backdropFilter` and `mixBlendMode` are not drawn (no offscreen
+  passes); shadows are not cut out of a translucent fill; `borderCurve: "continuous"` draws circular corners.
+- **Canvas text** is approximated: clipped to its clip's bounds, upright under rotations, made smaller rather than
+  narrower for `maxWidth`, gradients paint it in their middle color, `strokeText` fills, its shadows are not blurred,
+  composite operations and `clearRect` do not apply to it.
+- **Zooming scroll views**: `zoomTo` and the zoom props are ignored.
+- **Video** needs feature `video`, which is built on Linux only (GStreamer); on macOS and Windows a video is a neutral
+  placeholder reporting `onError`. Rounded clips do not cut the picture; audio-only sources show nothing.
+- **Web views** sit above everything GPUI draws at their place (nsh content drawn over one is under it) and are
+  missing from the offscreen shots of macOS and Windows. On Linux they need X11 (a Wayland window shows a placeholder,
+  logged once) and may need `WEBKIT_DISABLE_DMABUF_RENDERER=1`; on macOS and Windows clipping ancestors do not cut
+  them. `source.baseUrl` for HTML, `scrollEnabled` and `allowsBackForwardNavigationGestures` are not supported; failed
+  loads report no `onError` on macOS and Windows.
+- **Accessibility** (AccessKit 0.24, as GPUI Fast 0.1.8 uses it): the adapters pass on only `Click`, `Focus`,
+  `SetValue` and `ScrollIntoView` everywhere, `Increment` / `Decrement` on macOS and `Expand` / `Collapse` on
+  Windows; custom actions, `ShowContextMenu` and scroll actions are in the nodes but not called yet.
+- **Text inputs**: input accessory views are never shown (no software keyboard).
+- **No desktop equivalent**: the status bar; the safe area and the keyboard height are 0.
+- **Not yet tried** on macOS and Windows: the backend was built and checked on Linux (X11 / Xwayland); `shot`'s
+  offscreen rendering, wry's macOS / Windows web views and the chrome's macOS / Windows title bars have not run there.
 - **Packaged apps** are laid out as the native backend's of the machine they are made on (a directory and `.tar.gz`
   on Linux, an ad hoc signed `.app` on macOS, a directory and `.zip` on Windows; `embedding.md`), with
-  `nsh-gpui-app` as the executable.
+  `nsh-gpui-app` as the executable (features `js` and `webview`, plus `video` on Linux: GStreamer must be installed
+  where a Linux package runs).

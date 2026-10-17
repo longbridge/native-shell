@@ -82,7 +82,9 @@ crates/
                        scrolling and editing logic, painted by one GPUI element per surface (`render.rs`: `SurfaceElement`,
                        `DrawCx` with the transform and opacity GPUI lacks), text shaped by GPUI's text system on the engine
                        thread, the main-thread queue (`rt.rs`), GPUI events (`events.rs`, keys as Windows VK codes);
-                       `AppView` is a GPUI view for GPUI / GPUI Kit apps; feature `dev` as above (docs/dev/gpui.md)
+                       `AppView` is a GPUI view for GPUI / GPUI Kit apps; features `webview` (wry), `video` (GStreamer),
+                       `dev` as above, `shot` (`--script` shots on macOS / Windows: GPUI's test support, never in the runner)
+                       (docs/dev/gpui.md)
   nsh-gpui-host/       Development host on GPUI (`nsh run --target gpui`): connects to a dev server or runs a bundle
   nsh-gpui-app/        Release runner on GPUI: the executable of apps built by `nsh package --target gpui`
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
@@ -303,5 +305,6 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
    simulates input (taps, drags, wheels, typing, keys, dark / light), without touching the screen (`docs/dev/linux.md`).
    Windows: `nsh-windows-host --script "…"` does the same (also `touch` drags, precision touchpad `pad` scrolls,
    `resize`); web views are child windows and missing from its screenshots (`docs/dev/windows.md`).
-   GPUI on Linux: run `nsh-gpui-host --bundle …` on a rootful Xwayland display of its own (`DISPLAY=:N WAYLAND_DISPLAY=`)
-   and screenshot it with ImageMagick's `import` (`docs/dev/gpui.md`).
+   GPUI on Linux: `nsh-gpui-host --bundle … --script "…"` (the same steps) on a rootful Xwayland display of its own
+   started with `-shm` (`DISPLAY=:N WAYLAND_DISPLAY=`, `WEBKIT_DISABLE_DMABUF_RENDERER=1` for web views); shots are read
+   from the X server (`docs/dev/gpui.md`).

@@ -196,8 +196,6 @@ pub(crate) struct ViewState {
     pub(crate) overflow: Option<Rect>,
     /// Running layout / style transitions and keyframes.
     pub(crate) live: Option<Box<crate::transition::Live>>,
-    /// What accessibility last exposed.
-    pub(crate) access: crate::access::Applied,
 }
 
 impl ViewState {
@@ -223,7 +221,6 @@ impl ViewState {
             natives: Vec::new(),
             overflow: None,
             live: None,
-            access: Default::default(),
         }
     }
 

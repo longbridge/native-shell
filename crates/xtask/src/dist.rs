@@ -84,6 +84,8 @@ pub(crate) fn dist() -> anyhow::Result<()> {
         }
     }
 
+    // One build each: built together, cargo would unify the host's `dev`
+    // and `shot` (GPUI's test support) into the release runner.
     if cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         for (package, what) in [
             ("nsh-gpui-host", "the development host for GPUI"),

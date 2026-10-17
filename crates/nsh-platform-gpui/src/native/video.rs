@@ -679,7 +679,11 @@ mod player {
                 );
             } else {
                 cx.fill_contours(
-                    &[vec![(bx - 5.0, cy - 8.0), (bx + 8.0, cy), (bx - 5.0, cy + 8.0)]],
+                    &[vec![
+                        (bx - 5.0, cy - 8.0),
+                        (bx + 8.0, cy),
+                        (bx - 5.0, cy + 8.0),
+                    ]],
                     white,
                 );
             }
