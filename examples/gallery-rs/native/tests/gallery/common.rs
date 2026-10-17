@@ -159,8 +159,13 @@ impl Screen {
     }
 }
 
+/// Applies batches until none comes for 300 ms, or for 2 s at most (a
+/// live feed never goes quiet).
 pub fn drain(rx: &Receiver<MountBatch>, screen: &mut Screen) {
-    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
+    let end = std::time::Instant::now() + Duration::from_secs(2);
+    while std::time::Instant::now() < end
+        && let Ok(batch) = rx.recv_timeout(Duration::from_millis(300))
+    {
         screen.apply(&batch);
     }
 }

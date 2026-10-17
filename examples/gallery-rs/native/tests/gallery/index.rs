@@ -25,7 +25,14 @@ fn every_demo_opens_from_the_index() {
     ] {
         // `open` checks that the demo's screen is pushed with its title.
         let (_engine, _rx, screen) = crate::common::open(name);
-        if matches!(name, "Stocks" | "AI Chat") {
+        if name == "Stocks" {
+            assert!(
+                crate::common::shows(&screen, "Composite"),
+                "{name}: {:?}",
+                screen.texts
+            );
+        }
+        if name == "AI Chat" {
             assert!(
                 crate::common::shows(&screen, "Being ported to Rust"),
                 "{name}: {:?}",
