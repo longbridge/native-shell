@@ -141,6 +141,10 @@ pub(crate) fn emit(host: crate::NodeId, event: Box<dyn super::element::AnyEvent>
 
 thread_local! {
     /// The graph entered on this thread ([`Runtime::enter`]).
+    #[allow(
+        clippy::missing_const_for_thread_local,
+        reason = "it is const; clippy misreads Android's expansion"
+    )]
     static CURRENT: Cell<*mut r::Graph<Rust>> = const { Cell::new(std::ptr::null_mut()) };
 }
 
