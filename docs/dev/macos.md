@@ -43,7 +43,7 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   it. AppKit's input and in-process rendering do not follow the layers: the root's `hitTest:` decides with nsh's
   picking (Input, below), a page under a transformed ancestor is drawn transformed but gets mouse positions as if it
   were not, and `renderInContext:` leaves pages and videos out (leaving screens and modals take the live views
-  along; `--script`'s `shot` shows them blank). `NSAlert` sheets are windows of their own, above everything.
+  along; `--script`'s `shot` shows pages, which WebKit draws for `cacheDisplayInRect:`, but not videos). `NSAlert` sheets are windows of their own, above everything.
 - **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
   `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
   contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
@@ -180,7 +180,8 @@ nsh build examples/gallery -o /tmp/gallery
 `shot` renders the window's content in process (`cacheDisplayInRect:`), so it needs no Screen Recording permission and
 works while the screen is locked. That rendering is not Core Animation's own: it ignores `maskedCorners`, cuts masks at
 their layer's bounds, ignores `shadowPath` and Core Image filters, flattens 3D transforms (perspective, `rotateX`,
-`rotateY`), and does not show backdrop blur, sheets, `AVPlayerLayer` or `WKWebView` content. `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
+`rotateY`), and does not show backdrop blur, sheets or `AVPlayerLayer` content (`WKWebView` pages show: WebKit draws
+them for `cacheDisplayInRect:`, as of macOS 27). `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
 shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them.
 
 ## Not implemented, or different
