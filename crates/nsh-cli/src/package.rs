@@ -153,7 +153,7 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
     fs::create_dir_all(&resources)?;
     fs::copy(&runner, app.join(&executable))
         .with_context(|| format!("copy {}", runner.display()))?;
-    fs::write(resources.join("bundle.nsh"), &built.bytecode)?;
+    fs::write(resources.join("bundle.nshc"), &built.bytecode)?;
     if let Some(json) = built.capabilities_json() {
         fs::write(resources.join("capabilities.json"), json)?;
     }
@@ -221,7 +221,7 @@ pub(crate) fn package(options: PackageOptions<'_>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// An APK with the release runtime: `AppActivity` runs `assets/nsh/bundle.nsh`.
+/// An APK with the release runtime: `AppActivity` runs `assets/nsh/bundle.nshc`.
 fn package_android(
     options: &PackageOptions<'_>,
     config: &AppConfig,
@@ -232,7 +232,7 @@ fn package_android(
     use crate::android::{self, Apk, Signing};
     let sdk = android::Sdk::find()?;
     let runtime = runtime::android(false)?;
-    let mut assets = vec![("nsh/bundle.nsh".to_owned(), built.bytecode.clone())];
+    let mut assets = vec![("nsh/bundle.nshc".to_owned(), built.bytecode.clone())];
     if let Some(json) = built.capabilities_json() {
         assets.push(("nsh/capabilities.json".to_owned(), json.into_bytes()));
     }
@@ -320,7 +320,7 @@ fn package_linux(
     fs::create_dir_all(&resources)?;
     fs::copy(&runner, dir.join(executable))
         .with_context(|| format!("copy {}", runner.display()))?;
-    fs::write(resources.join("bundle.nsh"), &built.bytecode)?;
+    fs::write(resources.join("bundle.nshc"), &built.bytecode)?;
     if let Some(json) = built.capabilities_json() {
         fs::write(resources.join("capabilities.json"), json)?;
     }
@@ -408,7 +408,7 @@ fn package_macos(
     fs::create_dir_all(&nsh)?;
     fs::copy(&runner, macos.join(executable))
         .with_context(|| format!("copy {}", runner.display()))?;
-    fs::write(nsh.join("bundle.nsh"), &built.bytecode)?;
+    fs::write(nsh.join("bundle.nshc"), &built.bytecode)?;
     if let Some(json) = built.capabilities_json() {
         fs::write(nsh.join("capabilities.json"), json)?;
     }
@@ -832,7 +832,7 @@ mod tests {
         let app = dir.join("Demo.app");
         fs::create_dir_all(app.join("nsh")).unwrap();
         fs::write(app.join("Demo"), b"binary").unwrap();
-        fs::write(app.join("nsh/bundle.nsh"), b"code").unwrap();
+        fs::write(app.join("nsh/bundle.nshc"), b"code").unwrap();
         let ipa = dir.join("Demo.ipa");
         make_ipa(&app, &ipa).unwrap();
         let listing = Command::new("unzip").arg("-Z1").arg(&ipa).output().unwrap();
@@ -846,7 +846,7 @@ mod tests {
                 "Payload/Demo.app/",
                 "Payload/Demo.app/Demo",
                 "Payload/Demo.app/nsh/",
-                "Payload/Demo.app/nsh/bundle.nsh"
+                "Payload/Demo.app/nsh/bundle.nshc"
             ]
         );
         fs::remove_dir_all(&dir).unwrap();

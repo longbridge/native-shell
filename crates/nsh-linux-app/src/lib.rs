@@ -1,5 +1,5 @@
 //! The executable of a packaged nsh app (`nsh package --target linux`):
-//! runs the bundle shipped next to it (`nsh/bundle.nsh`, assets in
+//! runs the bundle shipped next to it (`nsh/bundle.nshc`, assets in
 //! `nsh/assets`, the app's name, id and appearance in `nsh/app.json`).
 //!
 //! A library so that an app with Rust components of its own (`nsh.json`
@@ -35,7 +35,7 @@ pub fn main() -> std::process::ExitCode {
         .and_then(|exe| exe.parent().map(|d| d.join("nsh")))
         .unwrap_or_default();
     // SAFETY: the bytecode is a resource of this app's own package.
-    let bundle = match unsafe { Bundle::read_trusted(&dir.join("bundle.nsh")) } {
+    let bundle = match unsafe { Bundle::read_trusted(&dir.join("bundle.nshc")) } {
         Ok(bundle) => bundle,
         Err(err) => {
             log::error!("cannot read the app bundle in {}: {err}", dir.display());

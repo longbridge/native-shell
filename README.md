@@ -64,7 +64,7 @@ host it needs.
 nsh dev examples/gallery                                    # dev server only; prints the URLs for hosts on this machine and the LAN
 nsh trace examples/counter                                  # headless: prints the native view operations and timings
 nsh package examples/gallery --target ios-simulator --run   # an installable app (.app / .ipa / .apk)
-nsh build examples/counter --release                        # bundle.js / bundle.nsh for embedding
+nsh build examples/counter --release                        # bundle.js / bundle.nshc for embedding
 nsh publish --key release.secret --cert release.cert        # a signed package (.nshpkg) for apps to download and verify
 ```
 

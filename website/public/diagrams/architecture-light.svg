@@ -109,7 +109,7 @@
 
   <!-- flow -->
   <path class="flow" d="M272,136 L272,178" marker-end="url(#arrow)"/>
-  <text class="note mono" x="284" y="151">bundle.nsh</text>
+  <text class="note mono" x="284" y="151">bundle.nshc</text>
   <path class="flow" d="M368,219 L406,219" marker-end="url(#arrow)"/>
   <path class="flow" d="M600,219 L638,219" marker-end="url(#arrow)"/>
   <text class="edge" x="388" y="210" text-anchor="middle">set</text>

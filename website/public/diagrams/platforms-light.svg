@@ -2,7 +2,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      viewBox="0 0 880 480" width="100%" role="img" aria-labelledby="t d">
   <title id="t">One module, many hosts</title>
-  <desc id="d">One module, App.tsx, is built once into bundle.nsh. The same Rust runtime runs it everywhere: QuickJS, the reactive graph, the renderer, Taffy layout, text and the components. iOS draws UIKit views and is supported from iOS 15.0, embedded as NshAppView. Android draws Android views and is supported from API 28, Android 9, embedded as NshView. Linux draws GTK 4 widgets and is supported. macOS draws AppKit views and is supported from macOS 14. Windows with Win32 and Direct2D is in development. Web, WebAssembly rendering to the DOM, runs the live demos of these docs only and is not a target to ship to.</desc>
+  <desc id="d">One module, App.tsx, is built once into bundle.nshc. The same Rust runtime runs it everywhere: QuickJS, the reactive graph, the renderer, Taffy layout, text and the components. iOS draws UIKit views and is supported from iOS 15.0, embedded as NshAppView. Android draws Android views and is supported from API 28, Android 9, embedded as NshView. Linux draws GTK 4 widgets and is supported. macOS draws AppKit views and is supported from macOS 14. Windows with Win32 and Direct2D is in development. Web, WebAssembly rendering to the DOM, runs the live demos of these docs only and is not a target to ship to.</desc>
 
   <defs>
     <style>
@@ -98,7 +98,7 @@
   <text class="layer"     x="24" y="360">Backends</text>
   <text class="layer-sub" x="24" y="376">native views</text>
 
-  <text class="band-name mono" x="192" y="105">App.tsx → bundle.nsh</text>
+  <text class="band-name mono" x="192" y="105">App.tsx → bundle.nshc</text>
   <text class="note" x="192" y="123">your code only, built by nsh build</text>
   <text class="note" x="832" y="105" text-anchor="end">no per-platform code</text>
 

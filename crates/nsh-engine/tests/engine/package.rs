@@ -123,9 +123,9 @@ fn a_verified_package_runs_and_older_builds_are_refused() {
 fn bytecode_files_are_refused_by_read() {
     let dir = std::env::temp_dir().join(format!("nsh-read-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("bundle.nsh"), [0u8; 16]).unwrap();
+    std::fs::write(dir.join("bundle.nshc"), [0u8; 16]).unwrap();
     std::fs::write(dir.join("bundle.js"), "1").unwrap();
-    assert!(nsh_engine::Bundle::read(&dir.join("bundle.nsh")).is_err());
+    assert!(nsh_engine::Bundle::read(&dir.join("bundle.nshc")).is_err());
     assert!(nsh_engine::Bundle::read(&dir.join("bundle.js")).is_ok());
     let _ = std::fs::remove_dir_all(&dir);
 }

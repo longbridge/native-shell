@@ -147,7 +147,7 @@ Prefer the environment variable over `--keystore-password` so the password does 
 nsh package App.tsx --target macos --run
 ```
 
-Writes `out/<Name>.app`: the executable in `Contents/MacOS/`, and `nsh/bundle.nsh`, `nsh/assets/…` and `nsh/app.json`
+Writes `out/<Name>.app`: the executable in `Contents/MacOS/`, and `nsh/bundle.nshc`, `nsh/assets/…` and `nsh/app.json`
 (the window title and the app's appearance) in `Contents/Resources/`. The app is signed ad hoc and needs macOS 14 or
 later; to distribute it, sign it with a Developer ID and notarize it. See [macOS](./macos.md#packaging).
 
@@ -157,7 +157,7 @@ later; to distribute it, sign it with a Developer ID and notarize it. See [macOS
 nsh package App.tsx --target linux --run
 ```
 
-Writes `out/<Name>/` (the executable `<Name>`, `nsh/bundle.nsh`, `nsh/assets/…`, `nsh/app.json` with the window title
+Writes `out/<Name>/` (the executable `<Name>`, `nsh/bundle.nshc`, `nsh/assets/…`, `nsh/app.json` with the window title
 and the application id, `<id>.desktop` and the icon `<id>.png`) and the same as `out/<Name>.tar.gz`. Package on
 Linux: the runner is built for the machine it is built on. GTK 4 (4.14 or later) and Pango must be installed where the
 app runs. Installing it and the desktop entry: [Linux](./linux.md#packaging).
@@ -181,10 +181,10 @@ imports, next to the prebuilt runtime:
 
 | Target | Runtime | Your app |
 |---|---|---|
-| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.nsh`, `nsh/assets/…` |
-| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.nsh`, `assets/nsh/assets/…` |
-| macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nsh`, `nsh/assets/…` |
-| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nsh`, `nsh/assets/…` |
+| iOS | the `nsh-ios-app` executable | `<Name>.app/nsh/bundle.nshc`, `nsh/assets/…` |
+| Android | `classes.dex`, `lib/<abi>/libnsh.so` (stored uncompressed, 16 KB aligned) | `assets/nsh/bundle.nshc`, `assets/nsh/assets/…` |
+| macOS | the `nsh-macos-app` executable, renamed `<Name>` | `<Name>.app/Contents/Resources/nsh/bundle.nshc`, `nsh/assets/…` |
+| Linux | the `nsh-linux-app` executable, renamed `<Name>` | `<Name>/nsh/bundle.nshc`, `nsh/assets/…` |
 
 A packaged app registers no [native components](./native-components.md); for those, embed nsh in your own app.
 

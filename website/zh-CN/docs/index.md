@@ -98,7 +98,7 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 
 ## 你能得到什么
 
-- **嵌入。** `NshAppView`（Swift）、`NshView`（Java/Kotlin）和 Linux 的 GTK `AppView` 可以把模块放进原生应用，数量不限（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[Linux](./linux.md#embedding-in-a-gtk-app)）。
+- **嵌入。** `NshAppView`（Swift）、`NshView`（Java/Kotlin）和 Linux 的 GTK `AppView` 可以把模块放进原生应用，数量不限（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[Linux](./linux.md)）。
 - **签名、可吊销的下发。** Ed25519 签名的包，发布密钥由离线根密钥认证，支持吊销列表（[签名包](./signed-packages.md)）。
 - **由宿主配置的沙箱。** 每个视图单独设置虚拟机限制和授予的能力（[沙箱与能力](./sandbox-and-capabilities.md)）。
 - **模块可以使用宿主的视图。** 用 Swift、Java 或 Rust 注册原生组件（[原生组件](./native-components.md)）。

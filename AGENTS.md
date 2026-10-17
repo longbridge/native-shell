@@ -137,7 +137,7 @@ cargo build -p nsh-macos-host                                                   
 cargo xtask android [--release] [--dev]                                            # Android runtime into target/android/<profile>[-dev]
 cargo xtask dist                                                                   # the distribution in dist/nsh
 ./target/debug/nsh dev examples/counter                                    # dev server only (for simulators / devices); prints local and LAN URLs
-./target/debug/nsh build examples/counter --release                        # writes bundle.js / bundle.nsh
+./target/debug/nsh build examples/counter --release                        # writes bundle.js / bundle.nshc
 ./target/debug/nsh keygen keys/root && ./target/debug/nsh keygen keys/release      # signing keys (.secret / .pub)
 ./target/debug/nsh certify --root keys/root.secret --key keys/release.pub --apps 'com.example.*' -o keys/release.cert
 ./target/debug/nsh publish examples/counter --key keys/release.secret --cert keys/release.cert --build 2

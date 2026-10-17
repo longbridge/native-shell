@@ -183,7 +183,7 @@ pub(crate) fn compile_hot(entry: &Path) -> Result<(Built, nsh_bundler::HotBundle
 }
 
 /// Bundles `entry` into `out/bundle.js`, `out/bundle.js.map` and
-/// `out/bundle.nsh`.
+/// `out/bundle.nshc`.
 pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<()> {
     let built = compile(entry, release).map_err(|e| e.into_error(entry))?;
     fs::create_dir_all(out).with_context(|| format!("create {}", out.display()))?;
@@ -191,7 +191,7 @@ pub(crate) fn build(entry: &Path, out: &Path, release: bool) -> anyhow::Result<(
     for (name, bytes) in [
         ("bundle.js", built.code.as_bytes()),
         ("bundle.js.map", map.as_bytes()),
-        ("bundle.nsh", &built.bytecode),
+        ("bundle.nshc", &built.bytecode),
     ] {
         let path = out.join(name);
         fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))?;

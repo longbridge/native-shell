@@ -47,7 +47,7 @@ dependencies {
 nsh build App.tsx --release --out app/src/main/assets/nsh
 ```
 
-这会写出 `bundle.nsh`（字节码）、`bundle.js`（源码）、`bundle.js.map`、`capabilities.json`（当 `nsh.json`
+这会写出 `bundle.nshc`（字节码）、`bundle.js`（源码）、`bundle.js.map`、`capabilities.json`（当 `nsh.json`
 声明了[能力](./sandbox-and-capabilities.md)时）以及 `assets/`（应用导入的图片和字体）。
 
 ## 显示应用
@@ -67,7 +67,7 @@ public final class MainActivity extends Activity {
         nsh = new NshView(this);
         nsh.setErrorListener(message -> Log.e("nsh", message));
         setContentView(nsh);
-        nsh.loadAssetBundle("nsh");   // runs assets/nsh/bundle.nsh
+        nsh.loadAssetBundle("nsh");   // runs assets/nsh/bundle.nshc
     }
 
     @Override
@@ -120,8 +120,8 @@ setContentView(column);
 | `setErrorListener(ErrorListener listener)` | 在 UI 线程上接收应用的致命错误（加载失败、未捕获的 JS 异常、VM 因触及限制而停止）。错误总会写入日志。 |
 | `setLimits(int memoryMb, int stackKb, int loadMs, int callMs, int maxNodes)` | 接下来加载的应用的 VM 限制；传 0 表示使用默认值。 |
 | `setGrantedCapabilities(String json)` | 接下来加载的应用最多能做什么，JSON 格式与 `nsh.json` 的 `capabilities` 相同；`null` 表示授予每个应用所声明的能力。授权无效时返回 `false`（并被忽略）。 |
-| `loadAssetBundle(String dir)` | 运行 APK assets 中的 `dir/bundle.nsh`；应用资源取自 `dir/assets/`。无法读取时返回 `false`（也会报告给错误监听器）。 |
-| `loadBundleFile(File file)` | 运行一个 `bundle.js` 文件；资源取自同目录下的 `assets/`。拒绝 `.nsh` 文件。 |
+| `loadAssetBundle(String dir)` | 运行 APK assets 中的 `dir/bundle.nshc`；应用资源取自 `dir/assets/`。无法读取时返回 `false`（也会报告给错误监听器）。 |
+| `loadBundleFile(File file)` | 运行一个 `bundle.js` 文件；资源取自同目录下的 `assets/`。拒绝 `.nshc` 文件。 |
 | `runPackage(NshPackage pkg)` | 运行一个已验证的签名包，替换正在运行的应用。一个包只能运行一次。 |
 | `registerComponent(String name, NshComponent.Factory factory)` | 注册一个[原生组件](./native-components.md)。 |
 | `connectDevServer(String url)` | 开发用：从 `nsh dev` 服务器加载，每次修改后重新加载。使用 release 版 AAR 时返回 `false`。 |
@@ -129,7 +129,7 @@ setContentView(column);
 | `destroy()` | 停止应用。此后该视图不能再使用。 |
 
 > [!IMPORTANT]
-> 字节码（`.nsh`）只能从 APK 自身的 assets 或签名包中加载。存储上的文件可能被替换，而 QuickJS 不校验字节码，所以
+> 编译字节码（`.nshc`）只能从 APK 自身的 assets 或签名包中加载。存储上的文件可能被替换，而 QuickJS 不校验字节码，所以
 > `loadBundleFile` 只接受 JS 源码。应用下载的代码应以[签名包](./signed-packages.md)的形式提供。
 
 `setLimits` 和 `setGrantedCapabilities` 从下一次加载开始生效：请在 `loadAssetBundle` 等方法之前调用。
