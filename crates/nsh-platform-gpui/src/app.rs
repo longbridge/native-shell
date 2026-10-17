@@ -9,17 +9,53 @@ use std::{
 };
 
 use gpui::{
-    App as GpuiApp, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, Render,
-    Window,
+    App as GpuiApp, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, ParentElement, Render, Styled, Window,
 };
-use nsh_core::platform::Appearance;
-use nsh_engine::{App, Bundle, ColorScheme, EngineConfig, Environment, Idiom, Limits, Os, Root};
+use nsh_core::{platform::Appearance, ui::ThemeError};
+use nsh_engine::{
+    App, Bundle, ColorScheme, EngineConfig, Environment, Idiom, Limits, Os, Root, Theme,
+};
 
 use crate::{
     image::{AssetBase, AssetReader},
     render::SurfaceElement,
     surface::Surface,
 };
+
+gpui::actions!(
+    nsh,
+    [
+        /// Tab in a surface: its next text field, or the window's next tab
+        /// stop.
+        FocusNext,
+        /// Shift + Tab in a surface: its previous text field, or the
+        /// window's previous tab stop.
+        FocusPrev
+    ]
+);
+
+/// The key context of [`AppView`]: its Tab bindings are deeper than an
+/// embedding app's (GPUI Kit's `Root` binds Tab to move the window's
+/// focus), so the surface's text fields come first.
+const KEY_CONTEXT: &str = "NshAppView";
+
+/// Marks the app whose key bindings are set ([`bind_keys`]).
+struct KeysBound;
+
+impl gpui::Global for KeysBound {}
+
+/// Binds Tab and Shift + Tab in surfaces, once per app.
+fn bind_keys(cx: &mut GpuiApp) {
+    if cx.has_global::<KeysBound>() {
+        return;
+    }
+    cx.set_global(KeysBound);
+    cx.bind_keys([
+        gpui::KeyBinding::new("tab", FocusNext, Some(KEY_CONTEXT)),
+        gpui::KeyBinding::new("shift-tab", FocusPrev, Some(KEY_CONTEXT)),
+    ]);
+}
 
 static UI_SETS: RwLock<Option<Vec<nsh_core::ui::Registry>>> = RwLock::new(None);
 
@@ -92,7 +128,24 @@ impl Default for AppOptions {
 
 /// One nsh surface as a GPUI view: an engine running one app, drawn by
 /// GPUI wherever the embedding app puts the view (it fills the space its
-/// parent element gives it).
+/// parent element gives it, and follows it when it is resized).
+///
+/// Embedded in a GPUI or GPUI Kit app:
+///
+/// - Several views can run at once, in one window or several: each has
+///   its own engine thread. Dropping the view (its last `Entity` handle)
+///   stops its engine; so does [`AppView::stop`].
+/// - The view is [`Focusable`] and a tab stop: Tab moves the window's
+///   focus into it (and through its text fields), and on out of it after
+///   the last one. A press on it focuses it.
+/// - [`AppView::set_theme`] / [`AppView::set_theme_json`] give the app the
+///   embedding app's theme (gpui-kit's theme format) and
+///   [`AppView::set_appearance`] its light or dark mode.
+/// - What the app tells the embedding app goes through the native
+///   components the latter registers ([`AppView::register_component`]):
+///   their events and commands. [`AppView::on_error`] hears fatal errors.
+/// - The view draws only inside its bounds: the host's overlays (GPUI
+///   Kit's dialogs, popovers, notifications) draw above it.
 ///
 /// ```no_run
 /// use gpui::{AppContext, Application, WindowOptions};
@@ -120,16 +173,38 @@ pub struct AppView {
 
 impl AppView {
     /// A view with no app yet (in `cx.new(|cx| AppView::new(...))`).
-    pub fn new(options: AppOptions, _window: &mut Window, cx: &mut Context<Self>) -> AppView {
+    pub fn new(options: AppOptions, window: &mut Window, cx: &mut Context<Self>) -> AppView {
         crate::rt::init(cx);
+        // The focused field's caret follows the window's activation
+        // (`text_input::window_focus`, checked as the view is drawn).
+        cx.observe_window_activation(window, |_, _, cx| cx.notify())
+            .detach();
+        bind_keys(cx);
         let surface = Surface::new(initial_environment());
         surface.appearance.set(options.appearance);
         surface.entity.set(Some(cx.entity_id()));
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
+        crate::system::watch_environment(&surface, window, cx);
+        // The open menu's keys come before anything focused sees them.
+        let weak = Rc::downgrade(&surface);
+        surface.shortcuts.borrow_mut().push(Box::new(move |event| {
+            weak.upgrade()
+                .is_some_and(|s| crate::chrome::window_key(&s, event))
+        }));
+        // The chrome follows the window: full screen, maximized, active.
+        cx.observe_window_bounds(window, |_, _, cx| cx.notify())
+            .detach();
+        cx.observe_window_activation(window, |view: &mut AppView, window, cx| {
+            if !window.is_window_active() {
+                crate::keymap::window_deactivated(&view.surface);
+            }
+            cx.notify();
+        })
+        .detach();
         AppView {
             surface,
-            focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
             options: RefCell::new(options),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
@@ -175,8 +250,86 @@ impl AppView {
         self.surface.stop();
     }
 
+    /// Gives the app the embedding app's theme: the components of the UI
+    /// sets (`nsh/ui/mobile`) render with it instead of the app's own
+    /// (`nsh.json` `"theme"`), and the surface is drawn on its
+    /// `background`. `None` gives the app its own theme back. It applies
+    /// at once to what runs and to every app loaded later, from its first
+    /// frame on.
+    pub fn set_theme(&self, theme: Option<Theme>, cx: &mut GpuiApp) {
+        *self.surface.host_theme.borrow_mut() = theme.clone();
+        self.surface.control(|c| c.set_theme(theme));
+        self.surface.invalidate();
+        crate::rt::flush(cx);
+    }
+
+    /// [`AppView::set_theme`] with a theme in gpui-kit's JSON format
+    /// (`{ "themes": [{ "mode": "light", "colors": { … } }, …] }`: a
+    /// gpui-kit theme file, or `ThemeConfig`s serialized; null colors are
+    /// left as they are), over nsh's default theme.
+    pub fn set_theme_json(&self, json: &str, cx: &mut GpuiApp) -> Result<(), ThemeError> {
+        let theme = Theme::from_json(json)?;
+        self.set_theme(Some(theme), cx);
+        Ok(())
+    }
+
+    /// The embedding app's appearance, which stands in for the system's:
+    /// [`Appearance::Light`] or [`Appearance::Dark`] (the host's own light
+    /// or dark mode), or [`Appearance::System`] to follow the window's
+    /// again. An appearance the app sets itself (`nsh.json`
+    /// `"appearance"`, `setColorScheme`) still wins, as it does over the
+    /// system's.
+    pub fn set_appearance(&self, appearance: Appearance, cx: &mut GpuiApp) {
+        self.surface.host_dark.set(match appearance {
+            Appearance::Light => Some(false),
+            Appearance::Dark => Some(true),
+            _ => None,
+        });
+        crate::system::host_appearance_changed(&self.surface);
+        crate::rt::flush(cx);
+    }
+
+    /// Calls `f` with the message of every fatal error of the app (an
+    /// uncaught exception at the start, a VM limit reached), which is also
+    /// logged.
+    pub fn on_error(&self, f: impl Fn(&str) + 'static) {
+        self.surface.set_error_handler(Box::new(f));
+    }
+
     pub(crate) fn surface(&self) -> &Rc<Surface> {
         &self.surface
+    }
+
+    /// Tab: the surface's next text field; past its last one, the window's
+    /// next tab stop (the embedding app's widgets).
+    fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab(false, window, cx);
+    }
+
+    /// Shift + Tab, the other way.
+    fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab(true, window, cx);
+    }
+
+    fn tab(&self, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let event = crate::input::KeyEvent {
+            vk: crate::keys::VK_TAB,
+            down: true,
+            repeat: false,
+            modifiers: crate::input::Modifiers {
+                shift,
+                ..Default::default()
+            },
+        };
+        if !crate::input::key(&self.surface, event) {
+            crate::text_input::blur_all(&self.surface);
+            if shift {
+                window.focus_prev(cx);
+            } else {
+                window.focus_next(cx);
+            }
+        }
+        crate::rt::flush(cx);
     }
 }
 
@@ -192,13 +345,137 @@ impl Focusable for AppView {
     }
 }
 
+/// The window's input handler while a field of the surface has the focus
+/// (registered by the surface's element): text and input methods go to
+/// that field ([`crate::text_input::ime`]).
+impl gpui::EntityInputHandler for AppView {
+    fn text_for_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        adjusted: &mut Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<String> {
+        crate::text_input::ime::text_for_range(&self.surface, range, adjusted)
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _ignore_disabled_input: bool,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::UTF16Selection> {
+        crate::text_input::ime::selected_text_range(&self.surface)
+    }
+
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<std::ops::Range<usize>> {
+        crate::text_input::ime::marked_text_range(&self.surface)
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        crate::text_input::ime::unmark_text(&self.surface);
+        crate::rt::flush(cx);
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::replace_text_in_range(&self.surface, range, text);
+        crate::rt::flush(cx);
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        selected: Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::replace_and_mark_text_in_range(
+            &self.surface,
+            range,
+            text,
+            selected,
+        );
+        crate::rt::flush(cx);
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        _element_bounds: gpui::Bounds<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::Bounds<gpui::Pixels>> {
+        crate::text_input::ime::bounds_for_range(&self.surface, range)
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        point: gpui::Point<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        crate::text_input::ime::character_index_for_point(&self.surface, point)
+    }
+
+    fn set_selected_text_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::text_input::ime::set_selected_text_range(&self.surface, range);
+        crate::rt::flush(cx);
+    }
+
+    fn text_length_utf16(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        crate::text_input::ime::text_length_utf16(&self.surface)
+    }
+
+    fn text_input_configuration(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> gpui::TextInputConfiguration {
+        crate::text_input::ime::configuration(&self.surface)
+    }
+}
+
 impl Render for AppView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        SurfaceElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let surface = SurfaceElement {
             surface: self.surface.clone(),
             focus: self.focus.clone(),
             view: cx.entity().downgrade(),
-        }
+        };
+        // A dev session draws its status line and error overlay above.
+        #[cfg(feature = "dev")]
+        let surface = crate::dev::wrap(self, surface.into_any_element(), cx);
+        // The window's chrome (title bar, menu bar) goes around the surface.
+        let content = crate::chrome::render(&self.surface, surface, window, cx);
+        // The div registers the view's tab stop, which only GPUI's own
+        // elements can.
+        gpui::div()
+            .key_context(KEY_CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(Self::focus_next))
+            .on_action(cx.listener(Self::focus_prev))
+            .size_full()
+            .child(content)
     }
 }
 
@@ -232,16 +509,18 @@ pub fn open_app_window(
     let bounds = gpui::Bounds::centered(None, size, cx);
     let window_options = gpui::WindowOptions {
         window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-        titlebar: Some(gpui::TitlebarOptions {
-            title: Some(options.title.clone().into()),
-            ..Default::default()
-        }),
+        titlebar: Some(crate::chrome::titlebar_options(&options.title)),
         app_id: Some(options.app_id.clone()),
+        // Linux: the window manager's decorations until the app hides the
+        // title bar (`crate::chrome`).
+        window_decorations: Some(gpui::WindowDecorations::Server),
         ..Default::default()
     };
     let script = options.script.clone();
     let handle = cx.open_window(window_options, move |window, cx| {
+        let title = options.title.clone();
         let view: Entity<AppView> = cx.new(|cx| AppView::new(options, window, cx));
+        crate::chrome::set_standalone(view.read(cx).surface(), &title);
         match source {
             AppSource::Rust(root) => view.read(cx).load(App::Rust(root)),
             AppSource::Bundle(bundle) => view.read(cx).load(App::Js(bundle)),
@@ -249,6 +528,7 @@ pub fn open_app_window(
             AppSource::DevServer(url) => crate::dev::start(&view, url, cx),
         }
         let focus = view.read(cx).focus.clone();
+        crate::system::own_window(view.read(cx).surface());
         window.focus(&focus, cx);
         view
     })?;

@@ -156,6 +156,8 @@ pub(crate) struct Surface {
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
+    /// What the running app may reach (checked for image redirects).
+    pub(crate) access: RefCell<Arc<nsh_core::access::Access>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
     /// The app's keyboard shortcuts ([`crate::keymap`]).
@@ -169,6 +171,14 @@ pub(crate) struct Surface {
     /// Keys the window takes before anything focused sees them (the
     /// standalone app's full screen, the dev host's reload).
     pub(crate) shortcuts: RefCell<Vec<ShortcutHandler>>,
+    /// How many batches were applied (scripts wait for the app to settle).
+    pub(crate) batches: Cell<u64>,
+    /// The embedding app's theme ([`crate::AppView::set_theme`]): sent to
+    /// every engine the surface starts, before its first frame.
+    pub(crate) host_theme: RefCell<Option<nsh_engine::Theme>>,
+    /// The embedding app's appearance (dark or not), standing in for the
+    /// window's ([`crate::AppView::set_appearance`]).
+    pub(crate) host_dark: Cell<Option<bool>>,
 }
 
 impl Surface {
@@ -205,12 +215,16 @@ impl Surface {
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
+            access: RefCell::new(Arc::default()),
             native: Default::default(),
             keymap: Default::default(),
             placed: RefCell::default(),
             on_resized: RefCell::default(),
             shortcuts: RefCell::default(),
+            batches: Cell::new(0),
             chrome: Default::default(),
+            host_theme: RefCell::new(None),
+            host_dark: Cell::new(None),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         let weak = Rc::downgrade(&surface);
@@ -256,6 +270,10 @@ impl Surface {
     /// Starts `config`'s app, replacing what ran.
     pub(crate) fn start(self: &Rc<Self>, mut config: EngineConfig) {
         self.stop();
+        *self.access.borrow_mut() = Arc::new(match &config.app {
+            nsh_engine::App::Js(bundle) => bundle.policy.access(),
+            nsh_engine::App::Rust(_) => nsh_engine::Policy::default().access(),
+        });
         let env = self.environment.get();
         config.viewport = Size::new(env.window.0, env.window.1);
         config.environment = env;
@@ -273,10 +291,16 @@ impl Surface {
             return;
         };
         let family = crate::text::ui_family();
-        match Engine::start(
+        let theme = self.host_theme.borrow().clone();
+        match Engine::start_with(
             config,
             move || GpuiTextEngine::new(text_system, family),
             sink,
+            |control| {
+                if theme.is_some() {
+                    control.set_theme(theme);
+                }
+            },
         ) {
             Ok(engine) => {
                 *self.control.borrow_mut() = Some(engine.control());
@@ -321,8 +345,7 @@ impl Surface {
         self.views.get(id)
     }
 
-    /// Shows fatal app errors with `f` (development hosts).
-    #[cfg(feature = "dev")]
+    /// Shows fatal app errors with `f` (development hosts, embedding apps).
     pub(crate) fn set_error_handler(&self, f: ErrorHandler) {
         *self.on_error.borrow_mut() = Some(f);
     }
@@ -420,6 +443,7 @@ impl Surface {
                 Message::Batch(batch) => {
                     self.apply(&batch);
                     applied = true;
+                    self.batches.set(self.batches.get() + 1);
                 }
                 Message::Error(message) => {
                     log::error!("{message}");

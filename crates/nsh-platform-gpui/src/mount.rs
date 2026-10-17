@@ -81,6 +81,9 @@ impl Mounter {
     /// The batch is applied.
     pub(crate) fn end_batch(&mut self, surface: &Rc<Surface>) {
         self.layout_animation = None;
+        for view in crate::navigation::take_deferred(surface) {
+            self.detach(surface, &view);
+        }
         crate::navigation::end_batch(surface);
         crate::system::end_batch(surface);
     }
@@ -352,6 +355,10 @@ impl Mounter {
 
     /// Takes `view` out of its parent (a modal is dismissed).
     pub(crate) fn detach(&self, surface: &Rc<Surface>, view: &NshView) {
+        // A departing screen or modal keeps its views (navigation.rs).
+        if crate::navigation::defer_detach(surface, view) {
+            return;
+        }
         match view.kind() {
             ViewKind::Modal => return crate::navigation::dismiss(surface, view),
             ViewKind::HeaderItem => return crate::navigation::header_item_removed(surface, view),
@@ -411,6 +418,8 @@ impl Mounter {
                     crate::native::command(surface, view, command);
                 }
             }
+            Command::Back => crate::navigation::default_back(surface),
+            Command::Desktop(command) => crate::chrome::command(surface, command),
             other => crate::system::command(surface, id, other),
         }
     }
