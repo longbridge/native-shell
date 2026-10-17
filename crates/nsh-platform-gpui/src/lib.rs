@@ -54,7 +54,10 @@ mod transition;
 mod view;
 
 pub use gpui;
-pub use nsh_core::platform::Appearance;
+pub use nsh_core::{
+    platform::Appearance,
+    ui::{AdaptiveColor, Color, Theme, ThemeColors, ThemeError},
+};
 pub use nsh_engine::{App, Bundle, Root};
 
 pub use crate::{

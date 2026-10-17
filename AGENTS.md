@@ -97,7 +97,7 @@ docs/                 Documentation; `docs/dev/`: for developers of nsh (archite
 website/              The documentation site (Astro; guides, element / component / API reference in English and zh-CN) and its
                       runnable demos (`website/demos/*.tsx`, live on the site through the WebAssembly runtime); see its README
 examples/             Example apps (gallery: a demo index, one module per demo; gallery-rs: the same in Rust, the app's crate in
-                      `native/`; counter), embedding samples (embed-ios, embed-android)
+                      `native/`; counter), embedding samples (embed-ios, embed-android; embed-gpui: a GPUI Kit app, its own workspace)
                       and the app they run (embedded: uses a native component the samples register); bench: component benchmarks
 ```
 
