@@ -258,20 +258,9 @@ fn java(sdk: &Sdk, out: &Path, sources: &[PathBuf]) -> anyhow::Result<()> {
             .arg(&classes)
             .args(sources),
     )?;
-    let mut class_files = Vec::new();
-    collect_ext(&classes, "class", &mut class_files)?;
-    term::run(
-        Command::new(
-            sdk.build_tools
-                .join(if cfg!(windows) { "d8.bat" } else { "d8" }),
-        )
-        .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
-        .arg(sdk.android_jar())
-        .arg("--output")
-        .arg(out)
-        .args(&class_files),
-    )?;
-    // `classes.jar` for the AAR (Gradle projects dex it themselves).
+    // One jar for d8 rather than every class file: on Windows `d8.bat` runs
+    // through cmd.exe, whose command line ends at 8191 characters. It is
+    // also the AAR's `classes.jar` (Gradle projects dex it themselves).
     let jar = out.join("classes.jar");
     let _ = fs::remove_file(&jar);
     term::run(
@@ -281,6 +270,17 @@ fn java(sdk: &Sdk, out: &Path, sources: &[PathBuf]) -> anyhow::Result<()> {
             .arg("-C")
             .arg(&classes)
             .arg("."),
+    )?;
+    term::run(
+        Command::new(
+            sdk.build_tools
+                .join(if cfg!(windows) { "d8.bat" } else { "d8" }),
+        )
+        .args(["--min-api", &MIN_SDK.to_string(), "--lib"])
+        .arg(sdk.android_jar())
+        .arg("--output")
+        .arg(out)
+        .arg(&jar),
     )
 }
 

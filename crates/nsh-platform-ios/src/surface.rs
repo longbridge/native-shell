@@ -202,6 +202,8 @@ impl RootView {
                 bottom: insets.bottom as f32,
                 left: insets.left as f32,
             },
+            // UIKit draws no title bar an app could hide.
+            title_bar: Insets::default(),
             keyboard_height,
             keyboard_duration,
             color_scheme: if style == UIUserInterfaceStyle::Dark {

@@ -1023,7 +1023,7 @@ fn update_overlays(view: &NshView) {
     } else {
         (-s.y / REFRESH_PULL).min(1.0)
     };
-    let cy = inset.top - s.y - REFRESH_SPACE / 2.0;
+    let cy = s.behavior.content_inset.top - s.y - REFRESH_SPACE / 2.0;
     layer.setBounds(rect(0.0, 0.0, 0.0, 0.0));
     layer.setPosition(CGPoint::new((w / 2.0) as f64, cy as f64));
     let shown = ((progress * SPOKES as f32).ceil() as usize).min(SPOKES);

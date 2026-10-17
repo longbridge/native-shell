@@ -148,6 +148,10 @@ final class TextLayouts {
         final TextPaint paint;
         final Layout.Alignment alignment;
         final boolean justify;
+        /** A paragraph is aligned to its end (`textAlign: "right"` on left to
+         * right text): an {@code AlignmentSpan}, which {@link #alignment}
+         * does not show. */
+        final boolean endAligned;
         final int maxLines;
         final TextUtils.TruncateAt ellipsize;
         final float density;
@@ -160,12 +164,14 @@ final class TextLayouts {
         final TextDirectionHeuristic direction;
 
         Prepared(CharSequence text, TextPaint paint, Layout.Alignment alignment, boolean justify,
-                 int maxLines, TextUtils.TruncateAt ellipsize, float density, TextDirectionHeuristic direction) {
+                 boolean endAligned, int maxLines, TextUtils.TruncateAt ellipsize, float density,
+                 TextDirectionHeuristic direction) {
             this.direction = direction;
             this.text = text;
             this.paint = paint;
             this.alignment = alignment;
             this.justify = justify;
+            this.endAligned = endAligned;
             this.maxLines = maxLines;
             this.ellipsize = ellipsize;
             this.density = density;
@@ -285,6 +291,7 @@ final class TextLayouts {
         // `auto` is the right side right to left (as on iOS).
         if (align == 0 && rtlLayout) align = 3;
         Layout.Alignment alignment = align == 2 ? Layout.Alignment.ALIGN_CENTER : Layout.Alignment.ALIGN_NORMAL;
+        boolean endAligned = false;
         if (align == 1 || align == 3) {
             // Left and right are absolute, while Android's alignments follow
             // each paragraph's direction: align each paragraph by its own.
@@ -294,6 +301,7 @@ final class TextLayouts {
                 if (end < 0) end = text.length();
                 boolean rtl = direction.isRtl(text, start, end - start);
                 boolean normal = (align == 1) != rtl;
+                endAligned |= !normal;
                 int spanEnd = Math.min(end + 1, text.length());
                 if (spanEnd > start) {
                     s.setSpan(new AlignmentSpan.Standard(normal ? Layout.Alignment.ALIGN_NORMAL : Layout.Alignment.ALIGN_OPPOSITE),
@@ -316,7 +324,8 @@ final class TextLayouts {
                 .setTextDirection(direction)
                 .build();
         CharSequence measured = PrecomputedText.create(s, params);
-        return new Prepared(measured, paint, alignment, align == 4, maxLines, truncate, density, direction);
+        return new Prepared(measured, paint, alignment, align == 4, endAligned, maxLines, truncate, density,
+                direction);
     }
 
     /** Size in dp, packed as two float bit patterns (width high). */
@@ -334,7 +343,10 @@ final class TextLayouts {
         if (p.maxLines > 0) lines = Math.min(lines, p.maxLines);
         float max = 0;
         for (int i = 0; i < lines; i++) max = Math.max(max, layout.getLineWidth(i));
-        float w = (float) Math.ceil(Math.min(max, width)) / p.density;
+        // The negative letter spacing `desired()` adds back is not in the
+        // lines' widths: without it the box is too narrow for the line, and
+        // the final layout breaks it.
+        float w = (float) Math.ceil(Math.min(max + p.negativeSpacing(), width)) / p.density;
         float h = layout.getLineTop(lines) / p.density;
         return ((long) Float.floatToRawIntBits(w) << 32) | (Float.floatToRawIntBits(h) & 0xffffffffL);
     }
@@ -344,8 +356,10 @@ final class TextLayouts {
         Prepared p = (Prepared) prepared;
         int width = (int) Math.ceil(widthDp * p.density);
         // Left-aligned LTR text that fits draws the same in a wider box:
-        // keep the measured layout.
-        if (p.alignment == Layout.Alignment.ALIGN_NORMAL && !p.justify && width >= p.desired()) {
+        // keep the measured layout. Not text a paragraph span aligns to the
+        // right: laid out at its natural width, it would stay on the left.
+        if (p.alignment == Layout.Alignment.ALIGN_NORMAL && !p.justify && !p.endAligned
+                && width >= p.desired()) {
             StaticLayout natural = p.layout(p.desired());
             if (natural.getParagraphDirection(0) == Layout.DIR_LEFT_TO_RIGHT) return natural;
         }
