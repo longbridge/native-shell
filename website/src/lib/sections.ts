@@ -31,8 +31,8 @@ export const SECTIONS: Section[] = [
     id: 'components',
     label: { en: 'Components', 'zh-CN': '组件' },
     blurb: {
-      en: 'nsh/ui/mobile: buttons, cards, sheets and the rest, written in Rust and identical on iOS and Android.',
-      'zh-CN': 'nsh/ui/mobile：按钮、卡片、弹层等组件，用 Rust 编写，在 iOS 与 Android 上表现一致。',
+      en: 'nsh/ui/mobile: buttons, cards, sheets and the rest, written in Rust and drawn by nsh, so they look the same on every platform.',
+      'zh-CN': 'nsh/ui/mobile：按钮、卡片、弹层等组件，用 Rust 编写、由 nsh 绘制，在每个平台上表现一致。',
     },
   },
   {
@@ -45,6 +45,19 @@ export const SECTIONS: Section[] = [
   },
 ];
 
+/**
+ * Sidebar groups, by the `group` frontmatter key. A section's pages are
+ * sorted by `order`, so a group is a run of consecutive pages; the Guide
+ * uses them to give every platform its own entry next to the others.
+ */
+export const GROUPS: Record<string, Record<Lang, string>> = {
+  start: { en: 'Start here', 'zh-CN': '入门' },
+  platforms: { en: 'Platforms', 'zh-CN': '平台' },
+  delivery: { en: 'Delivery and security', 'zh-CN': '下发与安全' },
+  ui: { en: 'Building UI', 'zh-CN': '构建界面' },
+  tools: { en: 'Tools and internals', 'zh-CN': '工具与原理' },
+};
+
 export interface Page {
   section: SectionId;
   lang: Lang;
@@ -54,6 +67,8 @@ export interface Page {
   description: string;
   order?: number;
   demo?: string;
+  /** The sidebar group (a key of `GROUPS`), taken from the English page. */
+  group?: string;
   /** Route without the base: `/docs`, `/zh-CN/elements/view`. */
   route: string;
   /** Link to the page, base included. */
@@ -99,6 +114,7 @@ async function load(lang: Lang): Promise<Page[]> {
         title: entry.data.title,
         description: entry.data.description,
         order: entry.data.order,
+        group: (english.find((e) => e.id === entry.id) ?? entry).data.group,
         demo: entry.data.demo,
         route,
         href: url(route),

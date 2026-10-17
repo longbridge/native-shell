@@ -2,8 +2,9 @@
 
 Two layers. `nsh` and `nsh/<module>` are the primitives and the environment that every UI set builds on. `nsh/ui/<set>`
 is a whole UI for one form factor: `nsh/ui/mobile` has everything that is mobile UI or interaction (navigation stacks,
-modals, the status bar, system dialogs, and its components, one look on iOS and Android, written in Rust in
-`crates/nsh-ui-mobile`); a desktop set will be a separate one (`nsh/ui/desktop`), not an abstraction over both.
+modals, the status bar, system dialogs, and its components, one look on every platform, written in Rust in
+`crates/nsh-ui-mobile`); a desktop set is planned as a separate one (`nsh/ui/desktop`), not an abstraction over both,
+and does not exist yet.
 Shared vs one form factor decides the layer, not JS vs native.
 
 Every module is native: `nsh-js` serves it (`modules.rs`: nsh's own modules by `nsh_core::js::NATIVE_MODULES`, then the
@@ -41,6 +42,7 @@ globals.
 | `nsh/native` | `nativeComponent(name, { props, events })`: a component for a native component the embedding app registered | `platform_modules.rs` |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | `platform_modules.rs` |
 | `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` native, `exitApp` Rust), `setStatusBarBackgroundColor` (the status bar's base layer) | `platform_modules.rs` + its registry |
+| `nsh/desktop` | `isAvailable`, `titleBar()` (the environment's `title_bar`), `Menu.setApplicationMenu` / `Menu.popup` (decoded natively into `nsh_core::desktop::MenuItem`s, the items' functions kept by id, called on the root's `onMenu`), `Window` (Rust: `setTitle`, `setTitleBar`, `minimize`, `toggleMaximize`, `toggleFullScreen`, `close`); all of it is `Command::Desktop` on the root, which mobile platforms ignore | `desktop.rs` + its registry |
 | `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; the Rust components and modules of `nsh-ui-mobile`: `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `Alert.alert` and `ActionSheet.show` (promises of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Button`, `Card`, `Group`, `ListView`, `Stepper`, `TextField`, `Sheet`, `SelectList`; re-exported from the runtime: `safeArea()`, `keyboard()`, `useSafeAreaInsets()` | `navigation.rs`; the registry (`components.rs`), `env.rs` |
 
 `nsh:hot` (hot module replacement, `hot.rs`) is only imported by development bundles.

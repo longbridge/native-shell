@@ -324,6 +324,13 @@ pub trait MountSink: Send + 'static {
     /// A development update ([`EngineControl::hot_update`]) could not be
     /// applied in place: reload the latest full bundle.
     fn hot_update_failed(&self) {}
+
+    /// The engine laid the app out at `size` ([`EngineControl::resize`]):
+    /// called after the commit of the turn that applied the resize (if it
+    /// changed anything, its batch came before), once per turn, with the
+    /// latest size. A platform that waits for the layout at a new size, to
+    /// show it in the frame the window takes the size, stops waiting here.
+    fn resized(&self, _size: Size) {}
 }
 
 /// Receives what happens to a request started by [`Network::fetch`], in
@@ -806,6 +813,7 @@ impl<M: TextEngine + 'static> Driver<M> {
             hot: Vec::new(),
             scroll_events: FxHashMap::default(),
             touch_move: None,
+            resized: None,
             net: Net {
                 network: config.network.clone(),
                 tx,
@@ -924,6 +932,9 @@ impl<M: TextEngine + 'static> Driver<M> {
         if let Some(batch) = state.commit(script) {
             sink.submit(batch);
         }
+        if let Some(size) = state.resized.take() {
+            sink.resized(size);
+        }
         state.net.pump(script);
         state.request_frame(script, &**sink);
         self.check_stopped();
@@ -993,6 +1004,8 @@ struct State<M: TextEngine> {
     scroll_events: FxHashMap<NodeId, ScrollEvent>,
     /// Touch moves not delivered yet: those queued in one frame become one.
     touch_move: Option<(NodeId, Box<nsh_core::TouchEvent>)>,
+    /// The viewport size a resize set this turn ([`MountSink::resized`]).
+    resized: Option<Size>,
 }
 
 /// Requests between JS and the platform's network stack.
@@ -1427,7 +1440,10 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
                 script.animations_finished(&finished);
             }
         }
-        Message::Resize(size) => state.core.set_viewport(size),
+        Message::Resize(size) => {
+            state.core.set_viewport(size);
+            state.resized = Some(size);
+        }
         Message::Wake => {}
         Message::Environment(env) => {
             state.core.set_font_scale(env.font_scale);

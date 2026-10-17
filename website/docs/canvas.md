@@ -1,7 +1,8 @@
 ---
 title: Canvas
 description: Drawing with Canvas from nsh/canvas - the 2D context subset, paths and Path2D, gradients, text, images, redrawing from signals, and animating drawings with native values.
-order: 20
+order: 44
+group: ui
 demo: guide-canvas
 ---
 

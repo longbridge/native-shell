@@ -1,7 +1,8 @@
 ---
 title: Web view and video
 description: Showing web pages with WebView and playing video with Video - sources, messaging between the page and the app, navigation, playback control, refs and capabilities.
-order: 21
+order: 45
+group: ui
 ---
 
 # Web view and video

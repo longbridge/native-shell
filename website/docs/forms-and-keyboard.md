@@ -1,7 +1,8 @@
 ---
 title: Forms and the keyboard
 description: Text input with the input element - controlled and uncontrolled values, keyboard types, the return key, focus, selection, growing multiline inputs - and keeping content clear of the software keyboard.
-order: 18
+order: 42
+group: ui
 demo: guide-forms
 ---
 

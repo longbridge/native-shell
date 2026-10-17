@@ -1,7 +1,8 @@
 ---
 title: 开发服务器与调试
 description: 用 nsh run 和 nsh dev 运行应用，连接模拟器、Android 模拟器和真机，并使用模块热替换、日志、错误浮层和经 source map 映射的调用栈。
-order: 32
+order: 60
+group: tools
 ---
 
 # 开发服务器与调试

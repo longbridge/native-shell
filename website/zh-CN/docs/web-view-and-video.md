@@ -1,7 +1,8 @@
 ---
 title: 网页视图与视频
 description: 用 WebView 显示网页、用 Video 播放视频：来源、页面与应用之间的消息、导航、播放控制、ref 以及能力声明。
-order: 21
+order: 45
+group: ui
 ---
 
 # 网页视图与视频

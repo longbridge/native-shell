@@ -1324,8 +1324,13 @@ impl Nav {
             && root.focus().is_none()
             && widget.is_ancestor(&surface.root)
         {
-            // Refused while another modal still covers it.
-            widget.grab_focus();
+            // Refused while another modal still covers it. A text field
+            // would select all its text otherwise, and the next key typed
+            // would replace it.
+            match widget.downcast_ref::<gtk::Text>() {
+                Some(text) => text.grab_focus_without_selecting(),
+                None => widget.grab_focus(),
+            };
         }
         match (motion, image) {
             (Some((duration, fade)), Some(node)) => {
@@ -1383,9 +1388,21 @@ impl Nav {
     }
 
     /// Going back: a stack inside the newest modal pops, else the modal
-    /// asks to close, else the innermost stack pops, else the app's
-    /// `onBackPress` hears it. Whether something took it.
+    /// asks to close; without a modal the app's `onBackPress` hears it
+    /// first when it listens (it sends `Command::Back` when no listener
+    /// takes it), else the innermost stack pops. Whether something took it.
     fn go_back(&mut self, surface: &Rc<Surface>) -> bool {
+        if self.order.is_empty() && surface.root.state().events.contains(EventKind::BackPress) {
+            surface.event(ROOT_ID, EventKind::BackPress, EventPayload::None);
+            return true;
+        }
+        self.default_back(surface)
+    }
+
+    /// Going back as without the app's listeners (`Command::Back`): a
+    /// stack inside the newest modal pops, else the modal asks to close,
+    /// else the innermost stack pops. Whether something took it.
+    fn default_back(&mut self, surface: &Rc<Surface>) -> bool {
         if let Some(&id) = self.order.last() {
             let view = self.modals.get(&id).and_then(|m| m.view.clone());
             match self.back_stack(view.as_ref()) {
@@ -1396,10 +1413,6 @@ impl Nav {
         }
         if let Some(stack) = self.back_stack(None) {
             self.back(surface, stack);
-            return true;
-        }
-        if surface.root.state().events.contains(EventKind::BackPress) {
-            surface.event(ROOT_ID, EventKind::BackPress, EventPayload::None);
             return true;
         }
         false
@@ -1605,6 +1618,19 @@ pub(crate) fn go_back(surface: &Rc<Surface>) -> bool {
         Ok(mut nav) => nav.go_back(surface),
         Err(_) => false,
     }
+}
+
+/// `Command::Back`: goes back as without the app's listeners, once the
+/// batch being applied is in.
+pub(crate) fn default_back(surface: &Rc<Surface>) {
+    let surface = Rc::downgrade(surface);
+    glib::idle_add_local_once(move || {
+        if let Some(surface) = surface.upgrade()
+            && let Ok(mut nav) = surface.nav.try_borrow_mut()
+        {
+            nav.default_back(&surface);
+        }
+    });
 }
 
 /// The back button of `screen`'s header.

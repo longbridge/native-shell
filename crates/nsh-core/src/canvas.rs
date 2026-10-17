@@ -5,11 +5,15 @@
 //! reads them while replaying, so animations redraw on the UI thread
 //! without JS.
 
+mod damage;
 mod hit;
 
 use std::sync::Arc;
 
-pub use self::hit::{point_in_path, point_in_stroke};
+pub use self::{
+    damage::{Damage, DamageScan},
+    hit::{point_in_path, point_in_stroke},
+};
 use crate::{
     js::{canvas::*, ops::JsOps},
     style::{Color, FontVariant},

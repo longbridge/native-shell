@@ -158,13 +158,17 @@ current platform's object is sent; the others are ignored.
 |---|---|
 | `ios={{…}}` | iOS and Mac Catalyst. `<Input>`, `Modal` and `WebView` add their own keys. |
 | `android={{…}}` | Android. Every element takes `ripple`, `elevation` and `accessibilityLiveRegion` (below). |
-| `desktop={{…}}` | Desktop platforms; ignored on mobile. |
+| `desktop={{…}}` | Desktop platforms; ignored on mobile. Every element takes `windowDrag` (below). |
 
 | `android` key | Type | Description |
 |---|---|---|
 | `ripple` | `{ color?, borderless?, radius?, foreground? }` | The material ripple while pressed. |
 | `elevation` | `number` | The material shadow (points), from the view's shape. |
 | `accessibilityLiveRegion` | `"none" \| "polite" \| "assertive"` | How changes of the view are announced to TalkBack. |
+
+| `desktop` key | Type | Description |
+|---|---|---|
+| `windowDrag` | `boolean` | Pressing the view drags the window, as its title bar would; `false` keeps a part of a draggable view clickable. See [a title bar of your own](../modules/nsh-desktop.md#a-title-bar-of-your-own). |
 
 ```tsx
 <View onPress={save} android={{ ripple: { color: "#00000022" }, elevation: 2 }} class="rounded-lg bg-white p-4">

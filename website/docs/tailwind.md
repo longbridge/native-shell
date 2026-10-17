@@ -1,7 +1,8 @@
 ---
 title: Tailwind
 description: Style elements with Tailwind CSS classes resolved natively - class and classList, variants for pressed states, dark mode and breakpoints, the theme in nsh.json, and the build-time class check.
-order: 9
+order: 33
+group: ui
 demo: guide-tailwind
 ---
 
@@ -51,7 +52,7 @@ Components from `nsh/ui/mobile` accept `class` and `classList` too; your classes
 | `disabled:`, `enabled:` | The element's `disabled` prop is true / false |
 | `group-active:`, `group-hover:`, `group-focus:`, `group-focus-within:`, `group-disabled:` | The nearest ancestor with the `group` class is in that state |
 | `group-active/name:` ... | The same, for an ancestor marked `group/name` |
-| `first:`, `last:`, `odd:`, `even:`, `only:` | The view's position among its siblings |
+| `first:`, `last:`, `odd:`, `even:`, `only:` | The element's own position among its siblings. To color a row's label by the row's position, put `last:text-*` on the row: the label inherits it |
 | `placeholder:` | Styles an input's placeholder (`placeholder:text-zinc-400`) |
 | `dark:` | The system appearance is dark |
 | `sm:`, `md:`, `lg:`, `xl:`, `2xl:` | The window is at least 640, 768, 1024, 1280, 1536 points wide |

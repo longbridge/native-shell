@@ -277,29 +277,29 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
 
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-/* Every scroll area gets the custom scrollbar: the standard properties where
-   supported (Chrome 121+, Firefox), the WebKit pseudo-elements elsewhere
-   (Safari), which Chrome ignores once the standard properties are set. */
-* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
-*:hover { scrollbar-color: var(--scrollbar-thumb-hover) transparent; }
-@supports not (scrollbar-width: thin) {
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-corner { background: transparent; }
-  ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: var(--scrollbar-thumb); background-clip: padding-box; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: padding-box; }
-}
+/* Scrollbars. Chromium (Chrome, Edge) and Safari style them with the
+   ::-webkit-scrollbar pseudo-elements, Firefox only with the standard
+   scrollbar-width / scrollbar-color. Chromium 121+ ignores the pseudo-elements
+   on any element whose scrollbar-width or scrollbar-color is not `auto`
+   (scrollbar-color inherits) and draws the platform's own scrollbar instead,
+   which on Windows is the default bar with arrow buttons. So the standard
+   properties are only set where the pseudo-elements are not supported. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: var(--scrollbar-thumb); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: padding-box; }
 
-/* Scroll areas inside the page (sidebar, TOC, code) use thin overlay
-   scrollbars: no track, a faint thumb that shows on hover. */
-.docs-sidebar, .toc, pre, pre code, .demo__code, .playground__log {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+/* Scroll areas inside the page (sidebar, code, logs) use thin scrollbars:
+   no track, a faint thumb that shows on hover. */
+:is(.docs-sidebar, pre, pre code, .demo__code, .playground__log)::-webkit-scrollbar { width: 6px; height: 6px; }
+:is(.docs-sidebar, pre, pre code, .demo__code, .playground__log)::-webkit-scrollbar-thumb { border: 0; background: transparent; }
+:is(.docs-sidebar, pre, pre code, .demo__code, .playground__log):hover::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
+
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+  :is(.docs-sidebar, pre, pre code, .demo__code, .playground__log) { scrollbar-color: transparent transparent; }
+  :is(.docs-sidebar, pre, pre code, .demo__code, .playground__log):hover { scrollbar-color: var(--scrollbar-thumb) transparent; }
 }
-:is(.docs-sidebar, .toc, pre, pre code, .demo__code, .playground__log):hover { scrollbar-color: var(--scrollbar-thumb) transparent; }
-:is(.docs-sidebar, .toc, pre, pre code, .demo__code, .playground__log)::-webkit-scrollbar { width: 6px; height: 6px; }
-:is(.docs-sidebar, .toc, pre, pre code, .demo__code, .playground__log)::-webkit-scrollbar-thumb { border: 0; background: transparent; }
-:is(.docs-sidebar, .toc, pre, pre code, .demo__code, .playground__log):hover::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
@@ -596,6 +596,13 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
 }
 
 .sidebar-group__items { margin: 0; padding: 0; list-style: none; }
+.sidebar-subgroup {
+  margin: 1.1rem 0 0.3rem;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+.sidebar-subgroup:first-child { margin-top: 0.25rem; }
 
 .sidebar-item {
   display: block;
@@ -819,7 +826,7 @@ html[lang^="zh"] .toc__label { letter-spacing: 0.05em; }
      gpui-kit.com: an SVG behind <img> cannot follow the page's theme class. */
   /* Never upscaled; on narrow screens it scrolls inside its paragraph
      rather than shrink its text below about 11 px. */
-  .diagram-scroll { margin-block: 1.75rem; overflow-x: auto; scrollbar-width: thin; }
+  .diagram-scroll { margin-block: 1.75rem; overflow-x: auto; }
   img.diagram { display: block; width: 100%; max-width: 880px; min-width: 640px; margin-inline: auto; border-radius: 0; }
   img.diagram-dark { display: none; }
   :where(.dark) & img.diagram-light { display: none; }

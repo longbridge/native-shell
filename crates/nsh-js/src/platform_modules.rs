@@ -176,7 +176,8 @@ unsafe extern "C" fn remove_back_listener(
 }
 
 /// The back button: the newest listener first; when none handles it (`true`
-/// handles), the app exits.
+/// handles), the platform goes back as without listeners (a stack pops, or
+/// the app leaves).
 unsafe extern "C" fn on_back_press(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -215,17 +216,15 @@ unsafe extern "C" fn on_back_press(
     if handled {
         return UNDEFINED;
     }
-    let exit = crate::components::runtime_function(ctx, "nsh/android", "BackHandler", "exitApp");
-    match exit {
-        Some(f) => {
-            // SAFETY: calls and frees the function.
-            unsafe {
-                let r = qjs::JS_Call(ctx, f, UNDEFINED, 0, ptr::null_mut());
-                qjs::JS_FreeValue(ctx, f);
-                r
-            }
-        }
-        None => UNDEFINED,
+    match dom::push_op(
+        ctx,
+        nsh_core::Op::Command {
+            id: 1,
+            command: nsh_core::Command::Back,
+        },
+    ) {
+        Ok(()) => UNDEFINED,
+        Err(e) => e,
     }
 }
 
@@ -250,8 +249,8 @@ pub(crate) const ANDROID_EXPORTS: &[Item] = &[
 pub(crate) const ANDROID_TYPES: &str = r#"/** The back button's listeners. */
 export interface BackListeners {
   /** `listener` returns true when it handled the press; the most recently
-   * added listener runs first. Without a listener that handles it, the app
-   * exits. */
+   * added listener runs first, after modals and before stacks. Without a
+   * listener that handles it, the top stack pops, else the app exits. */
   addEventListener(event: "hardwareBackPress", listener: () => boolean | void): { remove(): void };
 }
 "#;

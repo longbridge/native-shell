@@ -581,10 +581,11 @@ impl<'a, C: Component> Context<'a, C> {
 
     /// Listens to the Android back button (TS:
     /// `BackHandler.addEventListener("hardwareBackPress", f)`): when no modal
-    /// or stack takes it, `f` runs, newest listener first, and returns true
-    /// when it handled the press; when no listener does, the app exits.
-    /// Dropping the subscription removes the listener; while one exists
-    /// the system's default does not run.
+    /// is shown, `f` runs before the stack pops, newest listener first, and
+    /// returns true when it handled the press; when no listener does, the
+    /// innermost stack pops, else the app exits. Dropping the subscription
+    /// removes the listener; while one exists, a back gesture does not
+    /// preview the pop.
     pub fn on_back_press(
         &mut self,
         f: impl Fn(&mut C, &mut Context<'_, C>) -> bool + 'static,

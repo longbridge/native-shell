@@ -31,8 +31,8 @@ impl Component for Gallery {
     type Event = NoEvent;
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        // The stack pops first: this hears the Android back button on the
-        // index, where it would leave the app.
+        // The Android back button comes here before the stack pops; the
+        // Navigation demo switches whether the gallery takes it.
         self._back = Some(cx.on_back_press(|_: &mut Self, cx| {
             cx.update_global::<demos::BackIntercept, _>(|intercept, _| {
                 if intercept.on {

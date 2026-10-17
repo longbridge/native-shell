@@ -1,7 +1,8 @@
 ---
 title: 文字
 description: 用 text 元素显示文字：嵌套 span 与链接、行内视图、字体与装饰线、截断、系统字号、选择以及 onTextLayout。
-order: 11
+order: 35
+group: ui
 ---
 
 # 文字

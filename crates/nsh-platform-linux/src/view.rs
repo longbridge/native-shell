@@ -454,6 +454,12 @@ mod imp {
                     );
                     continue;
                 }
+                // Popovers (context menus) size and place themselves, on
+                // their parent's allocation.
+                if let Some(popover) = widget.downcast_ref::<gtk::Popover>() {
+                    popover.present();
+                    continue;
+                }
                 let Some(view) = widget.downcast_ref::<super::NshView>() else {
                     continue;
                 };

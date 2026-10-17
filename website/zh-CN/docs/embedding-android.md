@@ -1,10 +1,40 @@
 ---
-title: 嵌入 Android 应用
-description: 把 nsh.aar 加入现有 Android 应用，在 NshView 中显示 nsh 应用，并加载 bundle、签名包或连接开发服务器。
-order: 3.2
+title: Android
+description: 在 Android 上用 Android 视图运行 nsh 应用（模拟器或真机），打包成 .apk，并通过 nsh.aar 和 NshView 嵌入现有 Android 应用。
+order: 12
+group: platforms
 ---
 
-# 嵌入 Android 应用
+# Android
+
+nsh 应用在 Android 上用普通的 Android 视图和 `StaticLayout` 文本运行，要求 Android 9（API 28）及以上，支持 `arm64-v8a`
+和 `x86_64`。现有应用在 `NshView` 中嵌入模块，加载它下载的签名包，并按自己设定的限制和能力运行它们，这是主要用途。也可以运行和打包完整应用，方式与其他平台相同。在
+Android 上，`Platform.OS` 是 `"android"`，`android={{…}}` 属性生效。
+
+## 环境要求
+
+- **Android SDK**（包括 `platforms;android-35`、build tools 和 `platform-tools`）和 **JDK**，可在 macOS、Windows 或 Linux
+  上使用。见[安装](./installation.md#android)。
+- 一个模拟器，或通过 `adb` 连接的设备。
+
+## 运行应用
+
+```sh
+nsh run my-app --target android
+```
+
+先启动模拟器或连接设备（`adb devices` 会列出它们；nsh 使用第一个）。`nsh` 会安装一个开发宿主 APK（只在运行时变化时重新构建），并通过
+`adb reverse` 转发开发服务器的端口，因此通过 USB 即可工作，无需共享网络；你保存时应用会更新，日志显示在终端中。
+
+## 打包
+
+```sh
+nsh package my-app --target android --run     # out/<Name>.apk，安装并启动
+```
+
+APK 用 SDK 的 build tools 构建，不需要 Gradle；除非传入发布用的 keystore，否则用调试密钥签名。发布签名和图标见[打包](./packaging.md#android)。
+
+## 嵌入 Android 应用
 
 现有的 Android 应用可以在自己的界面中显示 nsh 应用。运行时以 Android 库 `nsh.aar` 的形式提供：创建一个
 `com.longbridge.nsh.NshView`（一个 `FrameLayout`），把它加到任意布局中，再往里加载一个应用即可。nsh 应用用普通的 Android

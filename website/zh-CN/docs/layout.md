@@ -1,7 +1,8 @@
 ---
 title: 布局
 description: 默认纵向排列的 Flexbox、CSS 网格、尺寸与百分比、宽高比、绝对定位、用 onLayout 测量、响应式布局以及从右到左布局。
-order: 10
+order: 34
+group: ui
 demo: guide-layout
 ---
 

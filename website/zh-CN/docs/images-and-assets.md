@@ -1,7 +1,8 @@
 ---
 title: 图片与资源
 description: 用 Image 元素显示图片：导入的资源与 @2x 文件、远程 URL、缩放模式、占位图、模糊、着色、加载事件，以及 Image.getSize / Image.prefetch。
-order: 12
+order: 36
+group: ui
 ---
 
 # 图片与资源

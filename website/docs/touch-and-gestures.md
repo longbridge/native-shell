@@ -1,7 +1,8 @@
 ---
 title: Touch and gestures
 description: Presses and press feedback, hit areas, pointerEvents, raw touches, the responder system, PanResponder, and native pan, pinch and rotation gestures.
-order: 14
+order: 38
+group: ui
 demo: guide-gestures
 ---
 

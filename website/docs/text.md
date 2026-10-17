@@ -1,7 +1,8 @@
 ---
 title: Text
 description: Showing text with the text element - nested spans and links, inline views, fonts and decorations, truncation, system text size, selection and onTextLayout.
-order: 11
+order: 35
+group: ui
 ---
 
 # Text

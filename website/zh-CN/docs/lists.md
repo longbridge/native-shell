@@ -1,7 +1,8 @@
 ---
 title: 列表
 description: 用 nsh/list 的 List 渲染长列表和无限列表：复用、条目标识、多列、吸顶标题、倒置的聊天列表、横向列表、加载更多、可见性，以及滚动到指定条目。
-order: 16
+order: 40
+group: ui
 demo: guide-lists
 ---
 

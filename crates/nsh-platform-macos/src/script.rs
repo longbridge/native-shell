@@ -13,6 +13,7 @@
 //! | `rtap <x> <y>` | Presses and releases the right button (a secondary click). |
 //! | `drag <x0> <y0> <x1> <y1> [ms]` | Moves the pointer to the start, presses, moves in steps a frame apart over `ms` (default 300), releases. |
 //! | `wheel <x> <y> <dx> <dy> [ms]` | A trackpad scroll gesture by `(dx, dy)` points over `ms` (default 100): phase began, changed events a frame apart, ended; no momentum. Positive moves the content up / left. |
+//! | `fling <x> <y> <dx> <dy> [ms]` | A trackpad flick as a ProMotion Mac sends it: phase began, changed events 8 ms apart carrying `(dx, dy)` over `ms` (default 150), ended, then the system's momentum (began, changed events 8 ms apart decaying from the flick's speed, ended). |
 //! | `notch <x> <y> <dx> <dy>` | A mouse wheel: one event of `(dx, dy)` lines, without phases. Positive moves the content up / left. |
 //! | `hover <x> <y>` | Moves the pointer. |
 //! | `type <text>` | Types into the focused field. |
@@ -20,6 +21,8 @@
 //! | `key <name>` | Presses a key: `Return`, `Escape`, `Tab`, `BackSpace`, `Up`, `Down`, `Left`, `Right`, `Page_Up`, `Page_Down`, `Home`, `End`, `space`, or one character; with modifiers before it, as in `cmd+a`, `shift+Tab` (`cmd`, `shift`, `alt`, `ctrl`). Keys with `cmd` go through the application (menus, key monitors). |
 //! | `dark` / `light` | Switches the app's window to that appearance (as the system's would). |
 //! | `resize <w> <h>` | Resizes the window's content. |
+//! | `zoom` | Zooms the window, or unzooms it (the green button, Window > Zoom): AppKit's animated resize. |
+//! | `fullscreen` | Enters full screen, or leaves it (Window > Enter Full Screen). |
 //! | `quit` | Closes the window. |
 //!
 //! Mouse button and move events go through the application's event queue
@@ -57,6 +60,7 @@ enum Step {
     RightTap(f64, f64),
     Drag(f64, f64, f64, f64, u64),
     Wheel(f64, f64, f64, f64, u64),
+    Fling(f64, f64, f64, f64, u64),
     Notch(f64, f64, f64, f64),
     Hover(f64, f64),
     /// A drag's move (internal: [`Step::Drag`] queues them).
@@ -64,14 +68,17 @@ enum Step {
     /// A drag's release (internal).
     Release(f64, f64),
     /// One event of a wheel gesture (internal: [`Step::Wheel`] queues
-    /// them): a point delta and a `CGScrollPhase`.
-    WheelEvent(f64, f64, i32, i32, i64),
+    /// them): a point delta, a `CGScrollPhase`, a `CGMomentumScrollPhase`
+    /// and the delay before the next step.
+    WheelEvent(f64, f64, i32, i32, i64, i64, u64),
     Type(String),
     /// Marked text: an input method's composition in progress.
     Mark(String),
     Key(String),
     Appearance(bool),
     Resize(f64, f64),
+    Zoom,
+    FullScreen,
     Quit,
 }
 
@@ -110,6 +117,8 @@ fn parse(script: &str) -> Vec<Step> {
             ("drag", [x0, y0, x1, y1, ms]) => Some(Step::Drag(*x0, *y0, *x1, *y1, *ms as u64)),
             ("wheel", [x, y, dx, dy]) => Some(Step::Wheel(*x, *y, *dx, *dy, 100)),
             ("wheel", [x, y, dx, dy, ms]) => Some(Step::Wheel(*x, *y, *dx, *dy, *ms as u64)),
+            ("fling", [x, y, dx, dy]) => Some(Step::Fling(*x, *y, *dx, *dy, 150)),
+            ("fling", [x, y, dx, dy, ms]) => Some(Step::Fling(*x, *y, *dx, *dy, *ms as u64)),
             ("notch", [x, y, dx, dy]) => Some(Step::Notch(*x, *y, *dx, *dy)),
             ("hover", [x, y]) => Some(Step::Hover(*x, *y)),
             ("type", _) => Some(Step::Type(rest.to_owned())),
@@ -118,6 +127,8 @@ fn parse(script: &str) -> Vec<Step> {
             ("dark", []) => Some(Step::Appearance(true)),
             ("light", []) => Some(Step::Appearance(false)),
             ("resize", [w, h]) => Some(Step::Resize(*w, *h)),
+            ("zoom", []) => Some(Step::Zoom),
+            ("fullscreen", []) => Some(Step::FullScreen),
             ("quit", []) => Some(Step::Quit),
             _ => None,
         };
@@ -250,23 +261,66 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
             // CGScrollPhase: began, then changed events a frame apart
             // carrying the distance, then ended (with no momentum after).
             let frames = (ms / 16).max(1) as i64;
-            let mut queued = vec![Step::WheelEvent(x, y, 0, 0, 1)];
-            // Whole points (as the event carries them) that add up to the
-            // distance.
-            let (mut sent_x, mut sent_y) = (0i32, 0i32);
-            for i in 1..=frames {
-                let t = i as f64 / frames as f64;
-                let (to_x, to_y) = ((dx * t).round() as i32, (dy * t).round() as i32);
-                queued.push(Step::WheelEvent(x, y, to_x - sent_x, to_y - sent_y, 2));
-                (sent_x, sent_y) = (to_x, to_y);
-            }
-            queued.push(Step::WheelEvent(x, y, 0, 0, 4));
+            let mut queued = vec![Step::WheelEvent(x, y, 0, 0, 1, 0, 16)];
+            gesture_events(&mut queued, x, y, dx, dy, frames, 16);
+            queued.push(Step::WheelEvent(x, y, 0, 0, 4, 0, 16));
             let mut steps = runner.steps.borrow_mut();
             for s in queued.into_iter().rev() {
                 steps.push_front(s);
             }
         }
-        Step::WheelEvent(x, y, dx, dy, phase) => wheel(window, x, y, dx, dy, Some(phase)),
+        Step::Fling(x, y, dx, dy, ms) => {
+            // 120 Hz, as trackpads report on ProMotion Macs; the momentum
+            // starts at the flick's speed and decays as AppKit's does
+            // (about 0.95 per 8 ms). The events are timed by a thread of
+            // their own, as the system's come, whatever the main thread
+            // does meanwhile.
+            let frames = (ms / 8).max(1) as i64;
+            let mut queued = vec![Step::WheelEvent(x, y, 0, 0, 1, 0, 8)];
+            gesture_events(&mut queued, x, y, dx, dy, frames, 8);
+            queued.push(Step::WheelEvent(x, y, 0, 0, 4, 0, 8));
+            let (mut vx, mut vy) = (dx / frames as f64, dy / frames as f64);
+            let (mut fx, mut fy) = (0.0, 0.0);
+            let mut momentum = 1;
+            while vx.abs() + vy.abs() > 0.5 {
+                fx += vx;
+                fy += vy;
+                let (sx, sy) = (fx.round(), fy.round());
+                (fx, fy) = (fx - sx, fy - sy);
+                queued.push(Step::WheelEvent(x, y, sx as i32, sy as i32, 0, momentum, 8));
+                momentum = 2;
+                vx *= 0.95;
+                vy *= 0.95;
+            }
+            queued.push(Step::WheelEvent(x, y, 0, 0, 0, 3, 8));
+            std::thread::spawn(move || {
+                let start = std::time::Instant::now();
+                let period = Duration::from_micros(8333);
+                for (i, step) in queued.into_iter().enumerate() {
+                    let at = start + period * i as u32;
+                    if let Some(wait) = at.checked_duration_since(std::time::Instant::now()) {
+                        std::thread::sleep(wait);
+                    }
+                    let Step::WheelEvent(x, y, dx, dy, phase, momentum, _) = step else {
+                        continue;
+                    };
+                    // Stamped when it happens, as the system stamps its
+                    // events, whenever the main thread gets to it.
+                    let at = timestamp();
+                    DispatchQueue::main().exec_async(move || {
+                        if let Some(runner) = RUNNER.with(|r| r.borrow().clone()) {
+                            wheel_with(&runner.window, x, y, dx, dy, Some(phase), momentum, at);
+                        }
+                    });
+                }
+                DispatchQueue::main().exec_async(next);
+            });
+            return None;
+        }
+        Step::WheelEvent(x, y, dx, dy, phase, momentum, delay) => {
+            wheel_with(window, x, y, dx, dy, Some(phase), momentum, timestamp());
+            return Some(delay);
+        }
         Step::Notch(x, y, dx, dy) => {
             wheel(window, x, y, dx.round() as i32, dy.round() as i32, None)
         }
@@ -283,6 +337,8 @@ fn run_step(runner: &Runner, step: Step) -> Option<u64> {
             window.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
         }
         Step::Resize(w, h) => window.setContentSize(NSSize::new(w, h)),
+        Step::Zoom => window.performZoom(None),
+        Step::FullScreen => window.toggleFullScreen(None),
         Step::Quit => {
             window.close();
             return None;
@@ -335,9 +391,54 @@ fn timestamp() -> f64 {
     objc2_foundation::NSProcessInfo::processInfo().systemUptime()
 }
 
+/// Queues the changed events of a gesture by `(dx, dy)` over `frames`
+/// events `delay` ms apart: whole points (as the event carries them) that
+/// add up to the distance.
+fn gesture_events(
+    queued: &mut Vec<Step>,
+    x: f64,
+    y: f64,
+    dx: f64,
+    dy: f64,
+    frames: i64,
+    delay: u64,
+) {
+    let (mut sent_x, mut sent_y) = (0i32, 0i32);
+    for i in 1..=frames {
+        let t = i as f64 / frames as f64;
+        let (to_x, to_y) = ((dx * t).round() as i32, (dy * t).round() as i32);
+        queued.push(Step::WheelEvent(
+            x,
+            y,
+            to_x - sent_x,
+            to_y - sent_y,
+            2,
+            0,
+            delay,
+        ));
+        (sent_x, sent_y) = (to_x, to_y);
+    }
+}
+
 /// A scroll of `(dx, dy)`: points of a trackpad gesture in `phase` (a
 /// `CGScrollPhase`), or lines of a mouse wheel (`None`).
 fn wheel(window: &NSWindow, x: f64, y: f64, dx: i32, dy: i32, phase: Option<i64>) {
+    wheel_with(window, x, y, dx, dy, phase, 0, timestamp());
+}
+
+/// [`wheel`], in a `CGMomentumScrollPhase` (`0`: none), stamped `at`
+/// (seconds since the system started).
+#[allow(clippy::too_many_arguments)]
+fn wheel_with(
+    window: &NSWindow,
+    x: f64,
+    y: f64,
+    dx: i32,
+    dy: i32,
+    phase: Option<i64>,
+    momentum: i64,
+    at: f64,
+) {
     use objc2_core_graphics::{CGEvent, CGEventField, CGScrollEventUnit};
     // Content follows the fingers (or the wheel), so a positive `dy`
     // (content up) is a negative delta.
@@ -365,8 +466,36 @@ fn wheel(window: &NSWindow, x: f64, y: f64, dx: i32, dy: i32, phase: Option<i64>
             phase,
         );
     }
-    if let Some(ns) = NSEvent::eventWithCGEvent(&event) {
+    if momentum != 0 {
+        CGEvent::set_integer_value_field(
+            Some(&event),
+            CGEventField::ScrollWheelEventMomentumPhase,
+            momentum,
+        );
+    }
+    // Nanoseconds, as `NSEvent.timestamp` reads it.
+    CGEvent::set_timestamp(Some(&event), (at * 1e9) as u64);
+    let Some(ns) = NSEvent::eventWithCGEvent(&event) else {
+        return;
+    };
+    if momentum == 0 {
         crate::view::scripted(&ns, || window.sendEvent(&ns));
+        return;
+    }
+    // The window drops synthesized momentum events (the system's go to
+    // the view that took the gesture): hand them to the view under the
+    // pointer, as AppKit would.
+    let view = window.contentView().and_then(|content| {
+        let local = content.convertPoint_fromView(ns.locationInWindow(), None);
+        // SAFETY: a superview's point, as hitTest: takes.
+        let outer = unsafe { content.superview() };
+        let p = outer.map_or(local, |o| {
+            o.convertPoint_fromView(ns.locationInWindow(), None)
+        });
+        content.hitTest(p)
+    });
+    if let Some(view) = view {
+        crate::view::scripted(&ns, || view.scrollWheel(&ns));
     }
 }
 
@@ -514,7 +643,7 @@ mod tests {
         assert_eq!(
             parse(
                 "wait 500; shot a.png\ntap 10 20; drag 1 2 3 4 100; key Return; quit; nope; \
-                 tap 1 2 2; rtap 3 4; wheel 1 2 0 50; notch 1 2 0 -3"
+                 tap 1 2 2; rtap 3 4; wheel 1 2 0 50; notch 1 2 0 -3; fling 1 2 0 300 200"
             ),
             vec![
                 Step::Wait(500),
@@ -527,6 +656,7 @@ mod tests {
                 Step::RightTap(3.0, 4.0),
                 Step::Wheel(1.0, 2.0, 0.0, 50.0, 100),
                 Step::Notch(1.0, 2.0, 0.0, -3.0),
+                Step::Fling(1.0, 2.0, 0.0, 300.0, 200),
             ]
         );
     }

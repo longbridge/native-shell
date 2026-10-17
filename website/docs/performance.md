@@ -1,7 +1,8 @@
 ---
 title: Performance
 description: How nsh keeps apps fast (native runtime, batched crossings, native animations, virtualized lists), what that means for your code, and how to measure with nsh trace.
-order: 34
+order: 62
+group: tools
 ---
 
 # Performance

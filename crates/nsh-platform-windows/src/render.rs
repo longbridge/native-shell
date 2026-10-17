@@ -953,6 +953,8 @@ fn draw_into(
     });
     let root = surface.root.clone();
     draw_view(&mut cx, &root, Mat4::new(), (0.0, 0.0));
+    // The caption buttons, last: in the topmost layer, above web views.
+    crate::chrome::draw(surface, dc, scale);
     let items = std::mem::take(&mut cx.drawn);
     let composed = std::mem::take(&mut cx.composed);
     let (layers, error) = match cx.split.take() {

@@ -2610,13 +2610,14 @@ impl<M: TextEngine> Core<M> {
                         return true;
                     }
                 }
-                // JS's listeners run next (and exit when none handles it).
+                // JS's listeners run next (and go back when none handles
+                // it).
                 if self.components.js_back {
                     return false;
                 }
                 let _ = self.apply_op(Op::Command {
                     id: crate::ROOT_ID,
-                    command: Command::ExitApp,
+                    command: Command::Back,
                 });
                 true
             }

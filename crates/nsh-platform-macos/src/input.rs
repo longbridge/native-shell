@@ -344,7 +344,11 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
     let id = {
         let mut s = view.state_mut();
         s.tracked = states;
-        s.states = 0;
+        // The core keeps the states still tracked and forgets the rest
+        // (`Core::update_tracking`): so do we, or a change it was not told
+        // about (the pointer leaving a view whose hover was tracked
+        // throughout) would never reach it.
+        s.states &= states;
         s.id
     };
     let mut tracked = surface.input.hover_tracked.borrow_mut();
@@ -352,6 +356,9 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
         tracked.insert(id);
     } else {
         tracked.remove(&id);
+        // Not hovered as far as anyone knows: picked again if it tracks
+        // hovers again under the pointer.
+        surface.input.hovered.borrow_mut().retain(|v| v != view);
     }
 }
 
@@ -560,6 +567,10 @@ pub(crate) fn event(surface: &Rc<Surface>, event: &NSEvent) {
     let input = &surface.input;
     match ty {
         NSEventType::LeftMouseDown => {
+            // A title bar of the app's own moves the window.
+            if crate::chrome::mouse_down(surface, event, x, y) {
+                return;
+            }
             input.last.set(Some((x, y)));
             let shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             down(
@@ -1222,6 +1233,14 @@ fn up(surface: &Rc<Surface>, x: f32, y: f32, time: f64) {
     finish(surface, p, false);
 }
 
+/// Cancels the press in progress, whose release will not come: a menu
+/// that popped up during it tracked the mouse and took the release.
+pub(crate) fn cancel_pointer(surface: &Rc<Surface>) {
+    if let Some(p) = take(surface) {
+        finish(surface, p, true);
+    }
+}
+
 /// The button lifted (or the press was cancelled): ends what it did.
 fn finish(surface: &Rc<Surface>, mut p: Pointer, cancelled: bool) {
     if p.reporting {
@@ -1786,7 +1805,7 @@ fn scroll_event(surface: &Rc<Surface>, event: &NSEvent, x: f32, y: f32, time: f6
     let phase = event.phase();
     let momentum = event.momentumPhase();
     if !momentum.is_empty() {
-        return momentum_event(surface, momentum, dx, dy);
+        return momentum_event(surface, momentum, dx, dy, time);
     }
     if phase.is_empty() {
         if !precise {
@@ -1835,7 +1854,7 @@ fn wheel_step(surface: &Rc<Surface>, x: f32, y: f32, dx: f32, dy: f32, time: f64
     *input.latch.borrow_mut() = Some((view.clone(), horizontal, time));
     // Without a begin, the scroll module takes it as a mouse wheel: it
     // settles (and snaps) by itself once the steps stop.
-    crate::scroll::wheel(surface, &view, dx, dy);
+    crate::scroll::wheel(surface, &view, dx, dy, time);
 }
 
 fn new_wheel(view: Option<NshView>, time: f64) -> Wheel {
@@ -1943,7 +1962,7 @@ fn gesture_event(
             w.view.clone()
         };
         if let Some(view) = view {
-            crate::scroll::wheel(surface, &view, dx, dy);
+            crate::scroll::wheel(surface, &view, dx, dy, time);
         }
     }
     if phase.intersects(NSEventPhase::Ended | NSEventPhase::Cancelled) {
@@ -1959,7 +1978,7 @@ fn gesture_event(
 }
 
 /// The system's momentum after a gesture: it goes to the gesture's view.
-fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32) {
+fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32, time: f64) {
     let input = &surface.input;
     let Some(view) = input.momentum.borrow().clone() else {
         return;
@@ -1970,7 +1989,7 @@ fn momentum_event(surface: &Rc<Surface>, phase: NSEventPhase, dx: f32, dy: f32) 
         return;
     }
     if phase.intersects(NSEventPhase::Began | NSEventPhase::Changed) && (dx != 0.0 || dy != 0.0) {
-        crate::scroll::momentum(surface, &view, dx, dy);
+        crate::scroll::momentum(surface, &view, dx, dy, time);
     }
     if phase.intersects(NSEventPhase::Ended | NSEventPhase::Cancelled) {
         end_momentum(surface);
@@ -1984,6 +2003,36 @@ fn end_momentum(surface: &Rc<Surface>) {
     if let Some(view) = view {
         crate::scroll::momentum_end(surface, &view);
     }
+}
+
+/// Pressing `(x, y)` (root coordinates) drags the window: the nearest view
+/// that sets `windowDrag` says so, unless a text field, a hosted AppKit
+/// view (header buttons, fields) or a view with press or touch handlers is
+/// nearer.
+pub(crate) fn window_drag(surface: &Surface, x: f32, y: f32) -> bool {
+    let Some(hit) = pick(&surface.root, x, y) else {
+        return false;
+    };
+    if hit.native {
+        return false;
+    }
+    let mut view = Some(hit.view);
+    while let Some(v) = view {
+        {
+            let s = v.state();
+            if let Some(drag) = s.props.window_drag {
+                return drag;
+            }
+            if s.kind == ViewKind::Input
+                || has_press(s.events)
+                || s.events.contains(EventKind::Touch)
+            {
+                return false;
+            }
+        }
+        view = v.parent_view();
+    }
+    false
 }
 
 /// The hosted AppKit view (a text field, a web view) under `(x, y)` (root

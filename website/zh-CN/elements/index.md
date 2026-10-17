@@ -146,13 +146,17 @@ stopPropagation() }`）；`…ShouldSetResponder` 回调还会收到 `gestureSta
 |---|---|
 | `ios={{…}}` | iOS 和 Mac Catalyst。`<Input>`、`Modal` 和 `WebView` 有各自的键。 |
 | `android={{…}}` | Android。所有元素都支持 `ripple`、`elevation` 和 `accessibilityLiveRegion`（见下表）。 |
-| `desktop={{…}}` | 桌面平台；在移动端被忽略。 |
+| `desktop={{…}}` | 桌面平台；在移动端被忽略。所有元素都支持 `windowDrag`（见下表）。 |
 
 | `android` 键 | 类型 | 说明 |
 |---|---|---|
 | `ripple` | `{ color?, borderless?, radius?, foreground? }` | 按下时的 Material 水波纹。 |
 | `elevation` | `number` | 根据视图形状生成的 Material 阴影（单位为点）。 |
 | `accessibilityLiveRegion` | `"none" \| "polite" \| "assertive"` | 视图变化如何播报给 TalkBack。 |
+
+| `desktop` 键 | 类型 | 说明 |
+|---|---|---|
+| `windowDrag` | `boolean` | 按住视图拖动窗口，像按住标题栏一样；`false` 让可拖动视图中的一部分保持可点击。见[自定义标题栏](../modules/nsh-desktop.md#自定义标题栏)。 |
 
 ```tsx
 <View onPress={save} android={{ ripple: { color: "#00000022" }, elevation: 2 }} class="rounded-lg bg-white p-4">

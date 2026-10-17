@@ -1,7 +1,8 @@
 ---
 title: 样式
 description: style 属性：camelCase 属性，支持 flexbox、grid 和 CSS 效果，包括颜色、边框、圆角、阴影、渐变、滤镜、变换和过渡，以及各平台的差异。
-order: 8
+order: 32
+group: ui
 demo: guide-styling
 ---
 

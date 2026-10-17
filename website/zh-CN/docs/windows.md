@@ -1,14 +1,16 @@
 ---
 title: Windows
 description: 在 Windows 上用 Direct2D 绘制的 Win32 窗口运行 nsh 应用、打包应用、用 AppView 嵌入 Win32 应用，以及 Windows 后端不支持的功能。
-order: 3.26
+order: 14
+group: platforms
 ---
 
 # Windows
 
 nsh 应用也能在 Windows 上运行。Windows 后端在 Win32 窗口中用 Direct2D 绘制应用，用 DirectWrite 排版文字；核心、响应式图、
 渲染器、Taffy 布局和 `nsh/ui/mobile` 组件与 iOS、Android 上完全相同，因此同一个 bundle 可以在所有平台上运行。在 Windows 上，
-`Platform.OS` 为 `"windows"`，并会应用 `desktop={{…}}` 属性。
+`Platform.OS` 为 `"windows"`，并会应用 `desktop={{…}}` 属性。窗口标题、自定义标题栏、
+菜单栏和右键菜单由 [`nsh/desktop`](../modules/nsh-desktop.md) 提供。
 
 ## 环境要求
 
@@ -131,7 +133,8 @@ QuickJS 字节码是受信任的输入，只能从你自己应用的文件中加
 - **`mixBlendMode` 和 `backdropFilter`** 会绘制，但在带 `filter` 或 3D 变换的视图内部不生效；`borderCurve: "continuous"`
   绘制为圆形圆角。
 - **文本**：头部和中间省略号只用于单行（多行时改为尾部省略号）；彩色 emoji 只支持 COLR 字体；小型大写字母只在字体提供时可用。
-- **文本输入**：没有上下文菜单；键盘类型和自动填充不适用；Tab 在文本框之间切换。
+- **文本输入**：键盘类型和自动填充不适用（没有软键盘）；Tab 在文本框之间切换。右键打开编辑菜单（撤销、剪切、复制、粘贴、删除、
+  全选），可选中的文本右键也有菜单（复制、全选）。
 - **无障碍**（UI Automation）：导航栏的标题和按钮、对话框和 toast 不会暴露出来；标题（heading）的级别都报告为 1。
 - **输入辅助视图**和**状态栏**（桌面上没有对应物）。
 

@@ -18,15 +18,15 @@ const copy = zh
   ? {
       eyebrow: '为 AI 生成界面而设计',
       title: ['AI 生成的界面，', '原生地运行在你的应用里'],
-      lead: 'Native Shell 支持 iOS、Android、Linux、macOS 和 Windows 应用在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用真正的平台原生视图渲染。',
+      lead: 'Native Shell 让 iOS、Android、macOS、Windows 和 Linux 上的应用在运行时加载用 TSX 编写的模块——由模型或你的团队编写——经过签名校验，运行在宿主配置的沙箱里，并用每个平台自己的原生界面技术绘制。',
       start: '阅读简介',
       try: '在线试用',
       meta: [
-        ['phone', 'iOS · Android · Linux · macOS · Windows 已支持'],
         ['scale', '开源 · Apache-2.0'],
         ['building', '由长桥（Longbridge）构建'],
       ],
-      snippetLang: 'Swift',
+      runsOn: '一个模块，手机和桌面都能运行',
+      snippetLang: 'CLI',
       demo: {
         title: 'Chat.tsx',
         badge: '运行中',
@@ -45,7 +45,8 @@ const copy = zh
       howTitle: '在服务器上生成，在设备上被信任',
       howLead: '服务器负责生成、检查和签名；设备负责校验、隔离和渲染。信任边界清清楚楚。',
       platKicker: '平台',
-      platTitle: '从手机扩展到桌面',
+      platTitle: '每个平台，都用它自己的原生界面',
+      platLead: '同一个 bundle 和同一个 Rust 运行时：在每个平台上，模块都可以嵌入已有的原生应用、借助热更新开发，也可以打包成可安装的应用。GPUI 桌面后端正在规划中。',
       principleKicker: '原则',
       principle: ['模型负责编写界面，', '宿主决定它能做什么'],
       principleBody: '模块只能看到宿主授予的能力，只占用宿主允许的资源，只在签名校验通过后运行。剩下的——文本、输入、无障碍、动画——交给系统的原生视图。',
@@ -54,15 +55,15 @@ const copy = zh
   : {
       eyebrow: 'Built for AI-generated UI',
       title: ['AI-generated UI,', 'native in your app.'],
-      lead: 'Native Shell lets iOS, Android, Linux, macOS and Windows apps load modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with real native views.',
+      lead: 'Native Shell lets apps on iOS, Android, macOS, Windows and Linux load modules written in TSX — by a model or by your team — at run time: signature-checked, sandboxed by rules the host sets, and drawn with each platform’s own native UI.',
       start: 'Read the introduction',
       try: 'Try the playground',
       meta: [
-        ['phone', 'iOS · Android · Linux · macOS · Windows supported'],
         ['scale', 'Open source · Apache-2.0'],
         ['building', 'Built at Longbridge'],
       ],
-      snippetLang: 'Swift',
+      runsOn: 'One module, on phones and desktops',
+      snippetLang: 'CLI',
       demo: {
         title: 'Chat.tsx',
         badge: 'Live',
@@ -81,7 +82,8 @@ const copy = zh
       howTitle: 'Generated on the server, trusted on the device.',
       howLead: 'The server generates, checks and signs; the device verifies, confines and renders. The trust boundary stays explicit.',
       platKicker: 'Platforms',
-      platTitle: 'From phones to desktop.',
+      platTitle: 'Every platform, in its own native UI.',
+      platLead: 'One bundle and one Rust runtime: on each platform, modules embed in an existing native app, develop with hot reload, and can also be packaged as an installable app. A GPUI desktop backend is planned.',
       principleKicker: 'Principle',
       principle: ['Models write the interface.', 'The host decides what it may do.'],
       principleBody: 'A module sees only the capabilities the host grants, uses only the resources it allows, and runs only after its signature checks out. Everything else — text, input, accessibility, animation — belongs to the system’s native views.',
@@ -90,7 +92,7 @@ const copy = zh
 
 const caps = zh
   ? [
-      { id: 'native', icon: 'phone', title: '真正的原生视图', body: '模块由 UIKit 与 Android 视图组成，地图、网页视图这类原生组件可以直接嵌入，没有图层问题；系统的文本选区、拷贝与翻译菜单、输入法和无障碍都原样可用。', chips: ['UIView', 'android.view.View'] },
+      { id: 'native', icon: 'devices', title: '真正的原生界面', body: '模块在手机上由 UIKit 与 Android 视图组成，在桌面上由 AppKit、GTK 4 以及用 Direct2D 绘制的 Win32 窗口呈现。地图、网页视图这类原生组件可以直接嵌入，没有图层问题；系统的文本、输入法和无障碍都原样可用。', chips: ['UIView', 'android.view.View', 'NSView', 'GtkWidget', 'Direct2D'] },
       { id: 'tsx', icon: 'file', title: '模型擅长的格式', body: '一个模块就是一个 TSX 文件：信号、少量宿主元素和 Tailwind 类。没有构建配置，无需 NPM。', chips: ['TSX', 'signal()', 'class'] },
       { id: 'types', icon: 'braces', title: '精确的生成式契约', body: '每个元素、属性和模块都有从 Rust 源码生成的 TypeScript 声明，文档也以 llms.txt 提供给模型。', chips: ['.nsh/types', 'llms.txt'] },
       { id: 'check', icon: 'check', title: '无需设备即可验证', body: 'nsh trace 无界面地运行模块并报告错误；编译器还能在进程内或浏览器里运行。生成、检查、重试。', chips: ['nsh trace', 'compile_module'] },
@@ -98,7 +100,7 @@ const caps = zh
       { id: 'signed', icon: 'shield', title: '签名下发，可吊销', body: '模块以 Ed25519 签名的 .nshpkg 到达；发布密钥由离线根密钥认证，设备端检查吊销列表。', chips: ['nsh publish', 'NshTrust'] },
     ]
   : [
-      { id: 'native', icon: 'phone', title: 'Real native views', body: 'Modules are made of UIKit and Android views: native components such as maps and web views embed with no layering problems, and the system’s text selection, Copy and Translate menu, input and accessibility just work.', chips: ['UIView', 'android.view.View'] },
+      { id: 'native', icon: 'devices', title: 'Real native UI', body: 'Modules are UIKit and Android views on phones, and AppKit views, GTK 4 widgets and Win32 windows drawn with Direct2D on the desktop. Native components such as maps and web views embed with no layering problems, and the system’s text, input and accessibility just work.', chips: ['UIView', 'android.view.View', 'NSView', 'GtkWidget', 'Direct2D'] },
       { id: 'tsx', icon: 'file', title: 'A format models write well', body: 'A module is one TSX file: signals, a few host elements and Tailwind classes. No build configuration, no NPM.', chips: ['TSX', 'signal()', 'class'] },
       { id: 'types', icon: 'braces', title: 'An exact, generated contract', body: 'Every element, prop and module has TypeScript declarations generated from the Rust sources; the docs are served to models as llms.txt.', chips: ['.nsh/types', 'llms.txt'] },
       { id: 'check', icon: 'check', title: 'Checked without a device', body: 'nsh trace runs a module headless and reports errors; the compiler also runs in-process or in a browser. Generate, check, retry.', chips: ['nsh trace', 'compile_module'] },
@@ -109,31 +111,33 @@ const caps = zh
 const uses = zh
   ? [
       { tag: '设计初衷', label: 'AI 生成的界面', title: '用界面而不是文字回答', body: '模型为每次请求写一个模块，服务器检查并签名，应用在沙箱里原生地显示它。', code: 'ai', checks: ['每个回答一个 TSX 文件', '下发前完成类型检查与 trace', '只拥有宿主授予的能力'], cta: '为什么做 nsh', href: 'docs' },
-      { tag: '', label: '原生应用插件', title: '发布之后再扩展应用', body: '在任意页面嵌入 NshAppView 或 NshView，承载团队、合作方或用户之后编写的功能。', code: 'host', checks: ['一个页面可以放多个模块', '宿主注册自己的原生组件', '更新无需发版与审核'], cta: '在 iOS 应用中嵌入', href: 'docs/embedding-ios' },
-      { tag: '', label: '独立应用', title: '也能组成完整的应用', body: '同样的模块可以用 nsh package 打成可安装的 iOS、Android 或 Linux 应用，适合试用和小工具。', code: 'app', checks: ['使用预编译的运行时', '不需要 Xcode 工程或 Gradle', '保存即热更新开发'], cta: '打包', href: 'docs/packaging' },
+      { tag: '', label: '原生应用插件', title: '发布之后再扩展应用', body: '在任意页面嵌入 NshAppView（iOS）、NshView（Android）或 AppView（macOS、Windows、Linux），承载团队、合作方或用户之后编写的功能。', code: 'host', checks: ['一个页面可以放多个模块', '宿主注册自己的原生组件', '更新无需发版与审核'], cta: '各平台的嵌入方式', href: 'docs/platforms' },
+      { tag: '', label: '独立应用', title: '也能组成完整的应用', body: '同样的模块可以用 nsh package 打成可安装的 iOS、Android、macOS、Windows 或 Linux 应用，适合试用和小工具。', code: 'app', checks: ['使用预编译的运行时', '不需要 Xcode 工程、Gradle 或 Visual Studio 工程', '保存即热更新开发'], cta: '打包', href: 'docs/packaging' },
     ]
   : [
       { tag: 'Designed for', label: 'AI-generated UI', title: 'Answer with an interface', body: 'A model writes a module per request, your server checks and signs it, and the app shows it natively, in a sandbox.', code: 'ai', checks: ['One TSX file per answer', 'Type-checked and traced before it ships', 'Only the capabilities the host grants'], cta: 'Why nsh exists', href: 'docs' },
-      { tag: '', label: 'Plugins for native apps', title: 'Extend the app after release', body: 'Embed an NshAppView or NshView on any screen and host features your team, partners or users write later.', code: 'host', checks: ['Several modules on one screen', 'The host’s own native components', 'Updates without a release or review'], cta: 'Embedding in iOS apps', href: 'docs/embedding-ios' },
-      { tag: '', label: 'Standalone apps', title: 'Or a whole app', body: 'The same modules can become an installable iOS, Android or Linux app with nsh package — for trying nsh and for small tools.', code: 'app', checks: ['The prebuilt runtime', 'No Xcode project or Gradle build', 'Hot reload while you develop'], cta: 'Packaging', href: 'docs/packaging' },
+      { tag: '', label: 'Plugins for native apps', title: 'Extend the app after release', body: 'Embed an NshAppView (iOS), NshView (Android) or AppView (macOS, Windows, Linux) on any screen and host features your team, partners or users write later.', code: 'host', checks: ['Several modules on one screen', 'The host’s own native components', 'Updates without a release or review'], cta: 'Embedding, per platform', href: 'docs/platforms' },
+      { tag: '', label: 'Standalone apps', title: 'Or a whole app', body: 'The same modules can become an installable iOS, Android, macOS, Windows or Linux app with nsh package — for trying nsh and for small tools.', code: 'app', checks: ['The prebuilt runtime', 'No Xcode project, Gradle or Visual Studio build', 'Hot reload while you develop'], cta: 'Packaging', href: 'docs/packaging' },
     ];
 
+// Platforms in the order the docs list them: phones, then desktops; the
+// web build only runs this site's demos.
 const platforms = zh
   ? [
-      { name: 'iOS', detail: 'UIKit · iOS 15+', status: '已支持', kind: 'ok' },
-      { name: 'Android', detail: 'Android View · API 28+', status: '已支持', kind: 'ok' },
-      { name: 'Linux', detail: 'GTK 4', status: '已支持', kind: 'ok' },
-      { name: 'macOS', detail: 'AppKit · macOS 14+', status: '已支持', kind: 'ok' },
-      { name: 'Windows', detail: 'Win32 · Direct2D', status: '已支持', kind: 'ok' },
-      { name: 'Web', detail: 'WebAssembly → DOM', status: '仅用于演示', kind: 'demo' },
+      { name: 'iOS', detail: 'UIKit · iOS 15+', cmd: '--target ios', status: '已支持', kind: 'ok' },
+      { name: 'Android', detail: 'Android View · API 28+', cmd: '--target android', status: '已支持', kind: 'ok' },
+      { name: 'macOS', detail: 'AppKit · macOS 14+', cmd: '--target macos', status: '已支持', kind: 'ok' },
+      { name: 'Windows', detail: 'Win32 · Direct2D · Windows 10 1809+', cmd: '--target windows', status: '已支持', kind: 'ok' },
+      { name: 'Linux', detail: 'GTK 4.14+', cmd: '--target linux', status: '已支持', kind: 'ok' },
+      { name: 'Web', detail: 'WebAssembly → DOM', cmd: '本站的在线示例', status: '仅用于演示', kind: 'demo' },
     ]
   : [
-      { name: 'iOS', detail: 'UIKit · iOS 15+', status: 'Supported', kind: 'ok' },
-      { name: 'Android', detail: 'Android View · API 28+', status: 'Supported', kind: 'ok' },
-      { name: 'Linux', detail: 'GTK 4', status: 'Supported', kind: 'ok' },
-      { name: 'macOS', detail: 'AppKit · macOS 14+', status: 'Supported', kind: 'ok' },
-      { name: 'Windows', detail: 'Win32 · Direct2D', status: 'Supported', kind: 'ok' },
-      { name: 'Web', detail: 'WebAssembly → DOM', status: 'Demos only', kind: 'demo' },
+      { name: 'iOS', detail: 'UIKit · iOS 15+', cmd: '--target ios', status: 'Supported', kind: 'ok' },
+      { name: 'Android', detail: 'Android View · API 28+', cmd: '--target android', status: 'Supported', kind: 'ok' },
+      { name: 'macOS', detail: 'AppKit · macOS 14+', cmd: '--target macos', status: 'Supported', kind: 'ok' },
+      { name: 'Windows', detail: 'Win32 · Direct2D · Windows 10 1809+', cmd: '--target windows', status: 'Supported', kind: 'ok' },
+      { name: 'Linux', detail: 'GTK 4.14+', cmd: '--target linux', status: 'Supported', kind: 'ok' },
+      { name: 'Web', detail: 'WebAssembly → DOM', cmd: 'this site’s live demos', status: 'Demos only', kind: 'demo' },
     ];
 
 // Hand-colored snippets: real API, coloured with the site's code tokens.
@@ -158,15 +162,16 @@ const snippets: Record<string, string> = {
     `${k('let')} info = ${k('try await')} app`,
     `  .${fn('loadPackage')}(at: file, trust: trust)`,
     `${cm('// verified, sandboxed, running')}`,
+    `${cm('// NshView on Android, AppView on desktops')}`,
   ].join('\n'),
   app: [
     `${cm('$')} nsh init my-app`,
-    `${cm('$')} nsh run my-app`,
-    `${cm('$')} nsh package my-app --target ios`,
-    `${cm('$')} nsh package my-app --target android`,
+    `${cm('$')} nsh run my-app --target macos`,
+    `${cm('$')} nsh package my-app --target windows`,
+    `${cm('# ios · android · macos · windows · linux')}`,
   ].join('\n'),
 };
-const heroSnippet = `${k('try await')} app.${fn('loadPackage')}(at: url, trust: trust)`;
+const heroSnippet = `nsh run App.tsx ${k('--target')} ${st('ios | android | macos | windows | linux')}`;
 
 const icons: Record<string, string> = {
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9.5 13l-2 2 2 2M14.5 13l2 2-2 2"/>',
@@ -174,7 +179,7 @@ const icons: Record<string, string> = {
   check: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
-  phone: '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 18.5h3"/>',
+  devices: '<rect x="2" y="4" width="15" height="11" rx="1.5"/><path d="M6 19h7M9.5 15v4"/><rect x="16" y="9" width="6" height="11" rx="1.5"/>',
   scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1ZM2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1ZM7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
   building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
@@ -196,6 +201,10 @@ const icon = (name: string, size = 16) =>
         <div class="hero__actions">
           <a href={link('docs')} class="btn btn--primary">{copy.start}<Fragment set:html={icon('arrow')} /></a>
           <a href={link('playground')} class="btn">{copy.try}</a>
+        </div>
+        <div class="hero__platforms">
+          <span><Fragment set:html={icon('devices', 14)} />{copy.runsOn}</span>
+          <ul>{platforms.filter((p) => p.kind === 'ok').map((p) => <li>{p.name}</li>)}</ul>
         </div>
         <ul class="hero__meta">
           {copy.meta.map(([i, text]) => <li><Fragment set:html={icon(i, 14)} />{text}</li>)}
@@ -349,12 +358,14 @@ const icon = (name: string, size = 16) =>
       <header class="section-head section-head--side">
         <span class="kicker">{copy.platKicker}</span>
         <h2>{copy.platTitle}</h2>
+        <p>{copy.platLead}</p>
       </header>
       <ul class="platforms">
         {platforms.map((p) => (
           <li class={`platform platform--${p.kind}`}>
             <span class="platform__name">{p.name}</span>
             <span class="platform__detail">{p.detail}</span>
+            <code class="platform__cmd">{p.cmd}</code>
             <span class="platform__status"><i></i>{p.status}</span>
           </li>
         ))}
@@ -436,7 +447,12 @@ const icon = (name: string, size = 16) =>
   html[lang^="zh"] h1 { letter-spacing: -0.01em; line-height: 1.16; font-size: clamp(1.9rem, 4.2vw, 2.9rem); }
   .hero__lead { margin: 1.25rem 0 0; color: var(--muted-foreground); font-size: 1.1rem; line-height: 1.6; }
   .hero__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.75rem; }
-  .hero__meta { display: grid; gap: 0.45rem; margin: 1.75rem 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 0.85rem; }
+  .hero__platforms { display: grid; gap: 0.6rem; margin-top: 1.75rem; }
+  .hero__platforms > span { display: flex; align-items: center; gap: 0.55rem; color: var(--muted-foreground); font-size: 0.85rem; }
+  .hero__platforms > span :global(svg) { flex-shrink: 0; color: var(--faint); }
+  .hero__platforms ul { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+  .hero__platforms li { padding: 0.25rem 0.65rem; border: 1px solid var(--border); border-radius: 999px; background: var(--finish-raised-bg); box-shadow: var(--finish-raised); font-size: 0.8rem; font-weight: 600; }
+  .hero__meta { display: grid; gap: 0.45rem; margin: 1.25rem 0 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 0.85rem; }
   .hero__meta li { display: flex; align-items: center; gap: 0.55rem; }
   .hero__meta :global(svg) { flex-shrink: 0; color: var(--faint); }
   .hero__snippet { display: inline-flex; align-items: stretch; margin-top: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--code-bg); box-shadow: var(--finish-inset); font: 0.78rem/1 var(--font-mono); overflow: hidden; max-width: 100%; }
@@ -540,10 +556,12 @@ const icon = (name: string, size = 16) =>
   .platforms-band { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); gap: 3rem; align-items: start; }
   .section-head--side { margin-bottom: 0; }
   .platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-surface); overflow: hidden; background: var(--finish-card-bg); box-shadow: var(--finish-card); }
-  .platform { display: grid; gap: 0.35rem; padding: 1.25rem 1.25rem 1.4rem; border-right: 1px solid var(--line); }
-  .platform:last-child { border-right: 0; }
+  .platform { display: grid; align-content: start; gap: 0.35rem; padding: 1.25rem 1.25rem 1.4rem; border-right: 1px solid var(--line); }
+  .platform:nth-child(3n) { border-right: 0; }
+  .platform:nth-child(-n + 3) { border-bottom: 1px solid var(--line); }
   .platform__name { font-size: 1.05rem; font-weight: 650; }
   .platform__detail { font: 0.75rem/1.4 var(--font-mono); color: var(--muted-foreground); }
+  .platform__cmd { font: 0.72rem/1.4 var(--font-mono); color: var(--faint); }
   .platform__status { display: inline-flex; align-items: center; justify-self: start; gap: 0.45rem; margin-top: 0.6rem; padding: 0.2rem 0.55rem; border-radius: 999px; background: color-mix(in srgb, var(--tone, var(--faint)) 13%, transparent); color: var(--tone, var(--muted-foreground)); font-size: 0.75rem; font-weight: 600; }
   .platform--ok { --tone: var(--success); }
   .platform--wip { --tone: var(--warning); }
@@ -580,8 +598,9 @@ const icon = (name: string, size = 16) =>
     .band__inner { width: calc(100% - 2rem); }
     .caps { grid-template-columns: minmax(0, 1fr); }
     .platforms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .platform:nth-child(2) { border-right: 0; }
-    .platform:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+    .platform:nth-child(n) { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .platform:nth-child(2n) { border-right: 0; }
+    .platform:nth-last-child(-n + 2) { border-bottom: 0; }
     .stage { --w: min(392px, calc(100vw - 2rem)); }
   }
 </style>

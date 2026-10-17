@@ -1,12 +1,13 @@
 ---
 title: Platform-specific code
-description: Writing one app for iOS and Android - platform-only props in ios={{}} / android={{}} / desktop={{}}, the nsh/ios and nsh/android modules, Platform.OS and Platform.select, and platform Tailwind variants.
-order: 25
+description: Writing one app for phones and desktops - platform-only props in ios={{}} / android={{}} / desktop={{}}, the nsh/ios and nsh/android modules, Platform.OS and Platform.select, and platform Tailwind variants.
+order: 17
+group: platforms
 ---
 
 # Platform-specific code
 
-One nsh bundle runs on iOS, Android and Mac Catalyst. Most of an app needs no platform checks at all: elements, styles, layout, components and modules behave the same everywhere, and the components of `nsh/ui/mobile` are drawn by nsh rather than borrowed from each platform, so they look the same on both. When something really is specific to one platform, nsh gives it a clear place, so platform code stays visible and contained:
+One nsh bundle runs on iOS, Android, macOS, Windows and Linux (and in Mac Catalyst). Most of an app needs no platform checks at all: elements, styles, layout, components and modules behave the same everywhere, and the components of `nsh/ui/mobile` are drawn by nsh rather than borrowed from each platform, so they look the same everywhere. When something really is specific to one platform, nsh gives it a clear place, so platform code stays visible and contained:
 
 | Where | For |
 |---|---|
@@ -58,6 +59,7 @@ What exists today:
 | `desktop={{ headerLargeTitle }}`, `desktop={{ headerBackTitle }}` | `Screen` | A large title; the back button's label. |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`: a card centered in the window. |
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history; Windows: touchscreen swipes; Linux: touchpad swipes. |
+| `desktop={{ windowDrag }}` | every element | Pressing it drags the window, as the system's title bar would (see [nsh/desktop](../modules/nsh-desktop.md#a-title-bar-of-your-own)). |
 
 `desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 
@@ -65,14 +67,14 @@ Cross-platform props whose effect differs slightly are not grouped: `Alert.alert
 
 ## Platform modules
 
-`nsh/ios` and `nsh/android` hold the APIs only one platform has. Both can be imported on every platform, so one bundle runs everywhere: on the other platform their functions do nothing and their components render nothing. Each exports `isAvailable`, which is `true` only on its own platform.
+`nsh/ios` and `nsh/android` hold the APIs only one platform has, `nsh/desktop` those only desktops have. All can be imported on every platform, so one bundle runs everywhere: elsewhere their functions do nothing and their components render nothing. Each exports `isAvailable`, which is `true` only on its own platforms.
 
 ### nsh/android
 
 | Export | Description |
 |---|---|
 | `Toast.show(message, duration?)` | A toast at the bottom of the screen; `"short"` (default) or `"long"`. |
-| `BackHandler.addEventListener("hardwareBackPress", listener)` | Listens to the back button after modals and stacks; return `true` when handled. Returns `{ remove() }`. |
+| `BackHandler.addEventListener("hardwareBackPress", listener)` | Listens to the back button after modals, before stacks; return `true` when handled. Returns `{ remove() }`. |
 | `BackHandler.exitApp()` | Leaves the app. |
 | `setStatusBarBackgroundColor(color, animated?)` | The status bar's color under what `StatusBar` components set (before edge-to-edge, API 35). |
 | `isAvailable` | `true` on Android. |
@@ -100,7 +102,7 @@ function Player() {
 }
 ```
 
-The back button is handled by the top modal first, then the top navigation stack, then `BackHandler` listeners (most recent first), and the app exits when nothing handled it. See [Navigation](./navigation.md#the-android-back-button).
+The back button is handled by the top modal first, then `BackHandler` listeners (most recent first), then the top navigation stack, and the app exits when nothing handled it. See [Navigation](./navigation.md#the-android-back-button).
 
 ### nsh/ios
 
@@ -110,6 +112,17 @@ The back button is handled by the top modal first, then the top navigation stack
 | `isAvailable` | `true` on iOS and Mac Catalyst. |
 
 See [Forms and the keyboard](./forms-and-keyboard.md#a-bar-over-the-keyboard-ios-inputaccessoryview).
+
+### nsh/desktop
+
+| Export | Description |
+|---|---|
+| `Window` | The window: `setTitle`, `setTitleBar("hidden")` for a title bar of the app's own, `minimize`, `toggleMaximize`, `toggleFullScreen`, `close`. |
+| `titleBar` | The hidden title bar's height and the room the system's window controls take (reactive). |
+| `Menu` | `setApplicationMenu(items)` (the menu bar, with shortcuts) and `popup(items, at?)` (context menus). |
+| `isAvailable` | `true` on macOS, Windows and Linux. |
+
+See [nsh/desktop](../modules/nsh-desktop.md).
 
 ### The status bar
 

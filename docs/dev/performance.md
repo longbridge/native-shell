@@ -95,4 +95,12 @@ draw a panel.
   ~150 per wheel event in Lists, ~3.5 ms each event in a debug build), and canvases out of sight are not redrawn by
   their animations.
 
+  Partial canvas redraws (`nsh_core::canvas::DamageScan`, `docs/dev/canvas.md`): an animation of a canvas's native
+  values redraws only what the operations reading them cover (Stocks: the chart's ring ~31×31 pt of its 524×340, the
+  sparklines' ~23×25 of 124×58; whole only on the ticks). With `drawRect:` this halved the main-thread frame (Stocks
+  idle `main` p50 ~3.0 → ~2.0 ms, CPU ~62% → ~44%). On top of content layers drawn asynchronously the gain is within
+  noise (four runs each, ABBA, presented frames by screen capture): Stocks idle window updates 75–96 /s both, `main`
+  p50 ~1.9 → ~1.7 ms, CPU ~38–40% both; a test canvas (524×340: a 400-point area and line, 400 bars, a pulsing ring,
+  a moving square) presented 86–117 fps before and 92–119 after, `main` p50 ~1.2 → ~1.0 ms, CPU ~17% both.
+
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

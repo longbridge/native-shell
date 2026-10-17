@@ -26,6 +26,7 @@ mod access;
 mod animation;
 mod app;
 mod canvas;
+mod chrome;
 mod compose;
 mod decor;
 #[cfg(feature = "dev")]

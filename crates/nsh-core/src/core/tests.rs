@@ -2629,6 +2629,34 @@ fn press_and_group_states() {
 }
 
 #[test]
+fn untracked_states_are_forgotten() {
+    use crate::tailwind::state::{HOVERED, PRESSED};
+    // A sidebar row: `hover:` while not selected, plain once selected.
+    let mut c = core();
+    view_with_classes(&mut c, 2, "bg-white hover:bg-zinc-200");
+    c.commit().unwrap();
+    c.set_states(2, HOVERED | PRESSED);
+    c.commit().unwrap();
+    // Selected: nothing reads the states, so the platform stops reporting
+    // them and the pointer leaves unreported.
+    apply(&mut c, vec![class_op(2, "bg-zinc-500")]);
+    let batch = c.commit().unwrap();
+    assert!(
+        batch
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::TrackStates { id: 2, states: 0 }))
+    );
+    // Not selected again: no stale hover.
+    apply(&mut c, vec![class_op(2, "bg-white hover:bg-zinc-200")]);
+    let batch = c.commit().unwrap();
+    assert_eq!(
+        view_style_of(&batch, 2).unwrap().background_color,
+        Color(0xffff_ffff)
+    );
+}
+
+#[test]
 fn text_inherits_from_views_and_classes_set_props() {
     let mut c = core();
     view_with_classes(&mut c, 2, "text-white text-lg text-center");
@@ -2718,6 +2746,63 @@ fn sibling_positions() {
         view_style_of(&batch, 4).unwrap().background_color,
         Color(0x2b7f_ffff)
     );
+}
+
+#[test]
+fn text_inherits_a_rows_positional_classes() {
+    let mut c = core();
+    view_with_classes(&mut c, 2, "");
+    let add_row = |c: &mut Core<FakeEngine>, row: NodeId| {
+        apply(
+            c,
+            vec![
+                Op::Create {
+                    id: row,
+                    tag: Tag::View,
+                },
+                class_op(row, "text-black last:text-white"),
+                Op::Create {
+                    id: row + 1,
+                    tag: Tag::Text,
+                },
+                Op::CreateText {
+                    id: row + 2,
+                    text: "label".into(),
+                },
+                Op::Insert {
+                    parent: row + 1,
+                    child: row + 2,
+                    before: None,
+                },
+                Op::Insert {
+                    parent: row,
+                    child: row + 1,
+                    before: None,
+                },
+                Op::Insert {
+                    parent: 2,
+                    child: row,
+                    before: None,
+                },
+            ],
+        );
+    };
+    let color = |batch: &MountBatch, id: NodeId| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::Text { id: t, text, .. } if *t == id => Some(text.spans[0].style.color),
+            _ => None,
+        })
+    };
+    add_row(&mut c, 10);
+    add_row(&mut c, 20);
+    let batch = c.commit().unwrap();
+    assert_eq!(color(&batch, 11), Some(Color(0x0000_00ff)));
+    assert_eq!(color(&batch, 21), Some(Color(0xffff_ffff)));
+    // A row after it: the label of the row that was last turns back.
+    add_row(&mut c, 30);
+    let batch = c.commit().unwrap();
+    assert_eq!(color(&batch, 21), Some(Color(0x0000_00ff)));
+    assert_eq!(color(&batch, 31), Some(Color(0xffff_ffff)));
 }
 
 #[test]
@@ -5929,4 +6014,39 @@ fn measures_in_root_coordinates() {
     c.commit();
     assert_eq!(c.measure(6), None);
     assert_eq!(c.measure(1000), None);
+}
+
+/// `desktop={{ windowDrag }}` reaches the platform in the view's props, and
+/// clearing it sends them again.
+#[test]
+fn window_drag_is_a_view_prop() {
+    let mut c = core();
+    let drag = |value| Op::SetProp {
+        id: 2,
+        prop: Prop::WindowDrag(value),
+    };
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            drag(Some(true)),
+            Op::Insert {
+                parent: crate::ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ViewProps { id: 2, props } if props.window_drag == Some(true))
+    ));
+    apply(&mut c, vec![drag(None)]);
+    let batch = c.commit().unwrap();
+    assert!(batch.items.iter().any(
+        |i| matches!(i, MountItem::ViewProps { id: 2, props } if props.window_drag.is_none())
+    ));
 }

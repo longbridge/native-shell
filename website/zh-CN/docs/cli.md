@@ -1,7 +1,8 @@
 ---
 title: 命令行
 description: nsh 的全部子命令与参数：init、build、trace、dev、run、package，以及签名相关的 keygen、certify、publish、verify 和 revoke。
-order: 5
+order: 6
+group: start
 ---
 
 # 命令行

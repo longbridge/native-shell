@@ -1,7 +1,8 @@
 ---
 title: Scrolling
 description: The scroll element, paging and snapping, zooming, pull to refresh, scroll events, scroll-linked effects with scrollValue, the keyboard in scroll views, and scrolling from code.
-order: 15
+order: 39
+group: ui
 demo: guide-scrolling
 ---
 

@@ -1,7 +1,8 @@
 ---
 title: Reactivity
 description: Signals, computed values, effects, batch, untracked, cleanup and context - how nsh updates exactly what changed, and the mistakes to avoid.
-order: 7
+order: 31
+group: ui
 demo: guide-reactivity
 ---
 

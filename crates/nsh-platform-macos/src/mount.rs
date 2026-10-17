@@ -5,7 +5,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind};
+use nsh_core::{Command, LayoutAnimation, MountItem, NodeId, ROOT_ID, ViewKind, canvas::Damage};
 use rustc_hash::FxHashMap;
 
 use crate::{surface::Surface, view::NshView};
@@ -55,24 +55,26 @@ impl Mounter {
         self.stale.borrow_mut().clear();
     }
 
-    /// `view`'s drawing changed (on every frame of an animation of a
-    /// canvas's values): it is drawn again now if it can be seen, else when
-    /// it shows ([`Mounter::revisit`]). Lists keep rows out of sight, and a
-    /// pulse on each of them would otherwise redraw them all on every frame.
-    pub(crate) fn draw_when_shown(&self, view: &NshView) {
+    /// `view`'s drawing changed in `damage` (on every frame of an animation
+    /// of a canvas's values): that is drawn again now if it can be seen,
+    /// else the whole view when it shows ([`Mounter::revisit`]). Lists keep
+    /// rows out of sight, and a pulse on each of them would otherwise
+    /// redraw them all on every frame.
+    pub(crate) fn draw_when_shown(&self, view: &NshView, damage: Damage) {
         if view.shown() {
-            view.changed();
-        } else {
-            let mut stale = self.stale.borrow_mut();
-            if !stale.contains(view) {
-                stale.push(view.clone());
+            match damage {
+                Damage::Rect(r) => view.redraw_rect(r),
+                _ => view.redraw(),
             }
+        } else if view.set_stale(true) {
+            self.stale.borrow_mut().push(view.clone());
         }
     }
 
     /// Draws the views [`Mounter::draw_when_shown`] put off that can be
-    /// seen now (after scrolls, batches and frames). A view taken out of
-    /// the tree is dropped: inserting it again draws it.
+    /// seen now (after scrolls, batches and frames). Views out of the tree
+    /// wait (their content is drawn once they show); deleted ones are
+    /// dropped.
     pub(crate) fn revisit(&self) {
         let Ok(mut stale) = self.stale.try_borrow_mut() else {
             return;
@@ -81,14 +83,20 @@ impl Mounter {
             return;
         }
         let shown: Vec<NshView> = stale
-            .extract_if(.., |v| !v.has_parent() || v.shown())
+            .extract_if(.., |v| !self.alive(v) || v.shown())
             .collect();
         drop(stale);
         for view in shown {
-            if view.has_parent() {
-                view.changed();
+            view.set_stale(false);
+            if self.alive(&view) {
+                view.redraw();
             }
         }
+    }
+
+    /// Whether `view` is still mounted (not deleted).
+    fn alive(&self, view: &NshView) -> bool {
+        self.views.get(&view.state().id) == Some(view)
     }
 
     /// The batch is applied.
@@ -229,6 +237,7 @@ impl Mounter {
             } => {
                 if let Some(view) = self.get(*id) {
                     crate::text::set(view, text, layout, *content);
+                    self.draw_when_shown(view, Damage::All);
                     crate::access::text_changed(view);
                 }
             }
@@ -302,6 +311,7 @@ impl Mounter {
             MountItem::Canvas { id, drawing } => {
                 if let Some(view) = self.get(*id) {
                     crate::canvas::set(surface, view, drawing.clone());
+                    self.draw_when_shown(view, Damage::All);
                 }
             }
             MountItem::Gestures { id, values } => {

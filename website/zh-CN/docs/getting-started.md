@@ -1,16 +1,17 @@
 ---
 title: 快速开始
-description: 用 nsh init 编写一个模块，借助热重载开发，把它承载到你的 iOS 或 Android 应用里，并以签名包下发更新；也可以打包成独立应用。
-order: 3
+description: 用 nsh init 编写一个模块，借助热重载在 iOS、Android、macOS、Windows 或 Linux 上运行，把它承载到你的应用里，并以签名包下发更新；也可以打包成独立应用。
+order: 4
+group: start
 demo: guide-getting-started
 ---
 
 # 快速开始
 
-nsh 的主要用途是在原生应用里承载模块（见[简介](./index.md)）。本指南沿着这条路线走：编写一个模块，借助热重载开发，在你的 iOS 或 Android 应用里显示它，再以签名包下发一次更新。前提是已经安装 `nsh` 并加入 `PATH`（[安装](./installation.md)）；在源码仓库中请改用 `./target/debug/nsh`。
+nsh 的主要用途是在原生应用里承载模块（见[简介](./index.md)）。本指南沿着这条路线走：编写一个模块，在你面向的平台上借助热重载开发，在你的应用里显示它，再以签名包下发一次更新。前提是已经安装 `nsh` 并加入 `PATH`（[安装](./installation.md)）；在源码仓库中请改用 `./target/debug/nsh`。
 
 > [!TIP]
-> 手头没有应用工程？前两节都不需要：`nsh run` 会在 nsh 自带的开发宿主（Mac、iOS 模拟器或 Android）里显示模块。你可以到此为止，或者把它[打包成独立应用](#或者作为独立应用发布)。
+> 手头没有应用工程？前两节都不需要：`nsh run` 会在 nsh 自带的开发宿主里显示模块：你电脑上的一个窗口、iOS 模拟器或 Android 设备。你可以到此为止，或者把它[打包成独立应用](#或者作为独立应用发布)。
 
 ## 创建模块
 
@@ -59,7 +60,7 @@ mount(App);
 逐行来看：
 
 - **`import { mount, signal, Text, View } from "nsh"`**：`nsh` 是核心模块，提供 [signals](./reactivity.md)、`mount`、其他响应式原语，以及宿主元素 `View` 和 `Text`。它由原生运行时提供，不会被打包。
-- **`import { SafeAreaView } from "nsh/ui/mobile"`**：移动端 UI 组件集。[`SafeAreaView`](../components/safe-area-view.md) 会为内容加上内边距，使其避开刘海、状态栏和 Home 指示条。
+- **`import { SafeAreaView } from "nsh/ui/mobile"`**：移动端 UI 组件集。[`SafeAreaView`](../components/safe-area-view.md) 会为内容加上内边距，使其避开刘海、状态栏和 Home 指示条；桌面上安全区域为 0，它不会加内边距。
 - **`function App()`** 是一个组件：返回 JSX 的函数。它只运行**一次**。`signal(0)` 创建一个会随时间变化的值。
 - **`{count()}`** 在 JSX 中读取 signal。编译器看到这是一次调用，就让这段文本跟随该 signal：`count` 变化时，运行时只更新这一段文本，其他什么都不动。
 - **`<View onPress>`** 是一个响应按压的原生视图；`activeOpacity` 让它在按下时以原生方式变淡。`View`、`Text`、`Image`、`Scroll`、`Input` 等[宿主元素](../elements/index.md)和其他组件一样从 nsh 的模块导入；只有 `If` 和 `Each` 无需导入。
@@ -75,13 +76,16 @@ mount(App);
 
 `nsh run` 会启动开发服务器、构建应用、启动加载该应用的开发宿主，并在你编辑时持续重新构建。应用的日志（`console.log`、错误）会显示在终端中。
 
-#### Mac Catalyst（macOS 上默认）
+不传 `--target` 时，`nsh run` 使用你所在的机器：Windows 上是一个 Win32 窗口，Linux 上是一个 GTK 窗口，macOS 上是一个以 iPhone 的样子显示应用的 Mac Catalyst 窗口。用 `--target` 选择其他平台：
 
-```sh
-nsh run my-app/App.tsx
-```
-
-应用会在 Mac 上一个 iPhone 尺寸（390×844 点）的窗口中打开。这是最快的开发循环：不需要启动模拟器。它和 iOS 一样使用 UIKit，所以看到的效果就是 iPhone 上的效果，只有 Mac 特有的行为除外，例如用鼠标滚轮滚动。
+| 目标 | 命令 | 在哪里运行 |
+|---|---|---|
+| iOS 模拟器 | `nsh run my-app/App.tsx --target ios` | 装有 Xcode 的 macOS |
+| Android | `nsh run my-app/App.tsx --target android` | macOS、Windows、Linux |
+| macOS（AppKit） | `nsh run my-app/App.tsx --target macos` | macOS |
+| Windows | `nsh run my-app/App.tsx` | Windows（默认） |
+| Linux（GTK 4） | `nsh run my-app/App.tsx` | Linux（默认） |
+| Mac Catalyst | `nsh run my-app/App.tsx` | macOS（默认） |
 
 #### iOS 模拟器
 
@@ -109,14 +113,6 @@ nsh run my-app/App.tsx --target macos
 应用会作为桌面 Mac 应用打开（AppKit，窗口可调整大小），使用鼠标、触控板和键盘输入而不是触摸。需要 macOS 14 及以上；见
 [macOS](./macos.md)。
 
-#### Linux（Linux 上默认）
-
-```sh
-nsh run my-app/App.tsx
-```
-
-应用会在一个 GTK 窗口（390×844 点）中打开。需要 GTK 4.14 及以上；见 [Linux](./linux.md)。
-
 #### Windows（Windows 上默认）
 
 ```sh
@@ -125,6 +121,22 @@ nsh run my-app/App.tsx
 
 应用会在一个桌面窗口（1200×800 点）中打开，使用鼠标、触控板、触摸和键盘输入。需要 Windows 10 1809 及以上；见
 [Windows](./windows.md)。
+
+#### Linux（Linux 上默认）
+
+```sh
+nsh run my-app/App.tsx
+```
+
+应用会在一个 GTK 窗口（390×844 点）中打开。需要 GTK 4.14 及以上；见 [Linux](./linux.md)。
+
+#### Mac Catalyst（macOS 上默认）
+
+```sh
+nsh run my-app/App.tsx
+```
+
+应用会在 Mac 上一个 iPhone 尺寸（390×844 点）的窗口中打开。这是查看模块在手机上效果最快的方式：不需要启动模拟器。它和 iOS 一样使用 UIKit，所以看到的效果就是 iPhone 上的效果，只有 Mac 特有的行为除外，例如用鼠标滚轮滚动。要运行 Mac 应用本身，请用 `--target macos`。
 
 ### 用热重载编辑
 
@@ -156,7 +168,7 @@ function TapButton(props: { onPress: () => void }) {
 
 ## 承载到你的应用里
 
-应用用一个专门的视图显示模块：iOS 上是 `NshAppView`（一个 `UIView`），Android 上是 `NshView`（一个 Android `View`）。像其他视图一样摆放即可，可以放在任何页面，数量不限。开发时让它连接开发服务器；发布时加载构建好的 bundle 或下载的包。
+应用用一个专门的视图显示模块：iOS 上是 `NshAppView`（一个 `UIView`），Android 上是 `NshView`（一个 Android `View`），macOS、Windows 和 Linux 上是 `AppView`。像其他视图一样摆放即可，可以放在任何页面，数量不限。开发时让它连接开发服务器；发布时加载构建好的 bundle 或下载的包。
 
 ### iOS
 
@@ -194,7 +206,13 @@ if (BuildConfig.DEBUG) {
 }
 ```
 
-加载之前，由宿主决定模块能做什么：`grantCapabilities` 设置它能访问的网络主机和其他能力，各项限制约束它的内存、调用时长和节点数（[沙箱与能力](./sandbox-and-capabilities.md)）。要让模块使用你自己的原生视图（地图、图表、设计系统组件），把它们注册为[原生组件](./native-components.md)。
+### macOS、Windows 和 Linux
+
+用 Rust 编写的桌面应用通过 `AppView` 嵌入模块，它来自 `nsh-platform-macos`、`nsh-platform-windows` 和 `nsh-platform-linux` 这几个 crate：一个 `NSView`、一个子窗口或一个 GTK 控件，加载构建好的 bundle。见 [macOS](./macos.md#嵌入-mac-应用)、[Windows](./windows.md#嵌入-win32-应用) 和 [Linux](./linux.md#嵌入-gtk-应用)；桌面宿主目前还缺少什么，见[平台](./platforms.md#嵌入原生应用)。
+
+### 模块能做什么
+
+在 iOS 和 Android 上，由宿主在加载之前决定模块能做什么：`grantCapabilities` 设置它能访问的网络主机和其他能力，各项限制约束它的内存、调用时长和节点数（[沙箱与能力](./sandbox-and-capabilities.md)）。要让模块使用你自己的原生视图（地图、图表、设计系统组件），把它们注册为[原生组件](./native-components.md)。
 
 ## 以签名包下发更新
 
@@ -229,7 +247,7 @@ nsh package my-app --target linux
 nsh package my-app --target windows
 ```
 
-这是受支持的用法，也是把模块装到设备上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。
+这在每个平台上都是受支持的用法，也是把模块装到设备或桌面上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。
 
 ## 在终端中试运行
 
@@ -243,7 +261,7 @@ nsh trace my-app/App.tsx
 
 ## 下一步
 
-- [在 iOS 应用中嵌入](./embedding-ios.md)和[在 Android 应用中嵌入](./embedding-android.md)：完整的宿主 API。
+- [平台](./platforms.md)：每个平台支持什么，以及各平台自己的页面（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[macOS](./macos.md)、[Windows](./windows.md)、[Linux](./linux.md)）。
 - [签名包](./signed-packages.md)和[沙箱与能力](./sandbox-and-capabilities.md)：下发方式，以及模块能做什么。
 - [JSX 与组件](./jsx-and-components.md)和[响应式](./reactivity.md)：编写模块。
 - [项目结构](./project-structure.md)：`nsh.json`、资源和文件。

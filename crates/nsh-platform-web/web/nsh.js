@@ -28,6 +28,16 @@ const KEYFRAMES = `
 .nsh-root * { box-sizing: border-box; }
 .nsh-v { position: absolute; margin: 0; padding: 0; min-width: 0; min-height: 0; }
 .nsh-scroll { overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* Scroll indicators: a thin, translucent thumb with no track, as on phones,
+   rather than the platform's scrollbar (with arrow buttons on Windows).
+   Chromium ignores the pseudo-elements once scrollbar-width / scrollbar-color
+   are set, so those are only for browsers without them (Firefox). */
+.nsh-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.nsh-scroll::-webkit-scrollbar-track, .nsh-scroll::-webkit-scrollbar-corner { background: transparent; }
+.nsh-scroll::-webkit-scrollbar-thumb { border-radius: 3px; background: rgba(128,128,128,.45); }
+@supports not selector(::-webkit-scrollbar) {
+  .nsh-scroll { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,.45) transparent; }
+}
 .nsh-noindicator { scrollbar-width: none; }
 .nsh-noindicator::-webkit-scrollbar { display: none; }
 .nsh-run { position: absolute; white-space: pre; }

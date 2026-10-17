@@ -600,7 +600,11 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
     let id = {
         let mut s = view.state_mut();
         s.tracked = states;
-        s.states = 0;
+        // The core keeps the states still tracked and forgets the rest
+        // (`Core::update_tracking`): so do we, or a change it was not told
+        // about (the pointer leaving a view whose hover was tracked
+        // throughout) would never reach it.
+        s.states &= states;
         s.id
     };
     let mut tracked = surface.input.hover_tracked.borrow_mut();
@@ -608,6 +612,9 @@ pub(crate) fn track_states(surface: &Rc<Surface>, view: &NshView, states: u8) {
         tracked.insert(id);
     } else {
         tracked.remove(&id);
+        // Not hovered as far as anyone knows: picked again if it tracks
+        // hovers again under the pointer.
+        surface.input.hovered.borrow_mut().retain(|v| v != view);
     }
 }
 
@@ -759,6 +766,60 @@ pub(crate) fn cursor(surface: &Rc<Surface>, x: f32, y: f32) -> Cursor {
     Cursor::Arrow
 }
 
+/// Pressing `(x, y)` (root coordinates) drags the window: the nearest view
+/// that sets `windowDrag` says so, unless a text field, a hosted item
+/// (header buttons, editors) or a view with press or touch handlers is
+/// nearer.
+pub(crate) fn window_drag(surface: &Surface, x: f32, y: f32) -> bool {
+    let Some(hit) = pick(&surface.root, x, y, true) else {
+        return false;
+    };
+    if hit.item.is_some() {
+        return false;
+    }
+    let mut view = Some(hit.view);
+    while let Some(v) = view {
+        {
+            let s = v.state();
+            if let Some(drag) = s.props.window_drag {
+                return drag;
+            }
+            if s.kind == ViewKind::Input
+                || has_press(s.events)
+                || s.events.contains(EventKind::Touch)
+            {
+                return false;
+            }
+        }
+        view = v.parent_view();
+    }
+    false
+}
+
+/// A right click at `(x, y)`: the edit menu of the text field or the
+/// selectable text under it.
+fn context_menu(surface: &Rc<Surface>, x: f32, y: f32) {
+    let Some(hit) = pick(&surface.root, x, y, true) else {
+        return;
+    };
+    let mut view = Some(hit.view);
+    while let Some(v) = view {
+        let (input, selectable) = {
+            let s = v.state();
+            (s.kind == ViewKind::Input, crate::text::selectable(&s))
+        };
+        if input {
+            crate::text_input::context_menu(surface, &v);
+            return;
+        }
+        if selectable {
+            crate::text::context_menu(surface, &v);
+            return;
+        }
+        view = v.parent_view();
+    }
+}
+
 // --- Events from the window ---------------------------------------------------------
 
 /// A pointer event from the window.
@@ -776,6 +837,10 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     let mouse = key == Key::Mouse;
     match event.kind {
         PointerKind::Down => {
+            if mouse && event.button == 1 {
+                context_menu(surface, x, y);
+                return;
+            }
             // Any press elsewhere clears a text selection.
             crate::text::window_pressed(surface, x, y);
             if mouse {
@@ -952,6 +1017,7 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     let shortcut = surface.shortcuts.borrow().iter().any(|f| f(&event));
     let handled = shortcut
         || crate::system::key(surface, &event)
+        || crate::chrome::shortcut(surface, &event)
         || crate::text_input::key(surface, &event)
         || crate::text::key(surface, &event)
         || crate::navigation::key_pressed(surface, &event)

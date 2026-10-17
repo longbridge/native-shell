@@ -1,7 +1,8 @@
 ---
 title: CLI
 description: Every nsh subcommand and flag - init, build, trace, check, dev, run, package, and the signing commands keygen, certify, publish, verify and revoke.
-order: 5
+order: 6
+group: start
 ---
 
 # CLI

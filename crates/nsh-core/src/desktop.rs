@@ -1,0 +1,695 @@
+//! What only desktops have: the window's title and title bar, the
+//! application menu, context menus and keyboard shortcuts (TS
+//! `nsh/desktop`). The platforms get them as [`DesktopCommand`]s on the
+//! root and report a chosen menu item as [`crate::EventKind::Menu`];
+//! mobile platforms ignore them.
+
+use std::sync::Arc;
+
+use crate::ui::PropEnum;
+
+/// How the window's title bar looks (`Window.setTitleBar`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
+pub enum TitleBarStyle {
+    /// The system's title bar, above the app.
+    #[default]
+    Default,
+    /// No system title bar: the app fills the window up to its top edge
+    /// and draws its own title bar, which views with `windowDrag` make
+    /// draggable. The system's window controls stay (macOS's traffic
+    /// lights, Windows' caption buttons, GTK's window buttons) in the area
+    /// the environment's `title_bar` reports.
+    Hidden,
+}
+
+/// A key of a [`Shortcut`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Key {
+    /// A character key, lowercase (`a`, `1`, `,`, `=`).
+    Char(char),
+    /// Enter / Return.
+    Enter,
+    /// Escape.
+    Escape,
+    /// Tab.
+    Tab,
+    /// Backspace.
+    Backspace,
+    /// Delete (forward).
+    Delete,
+    /// Insert.
+    Insert,
+    /// The space bar.
+    Space,
+    /// Arrow up.
+    Up,
+    /// Arrow down.
+    Down,
+    /// Arrow left.
+    Left,
+    /// Arrow right.
+    Right,
+    /// Home.
+    Home,
+    /// End.
+    End,
+    /// Page up.
+    PageUp,
+    /// Page down.
+    PageDown,
+    /// A function key, F1 to F24.
+    F(u8),
+}
+
+impl Key {
+    /// The key named `name`: a key name (`"enter"`, `"f5"`, `"plus"`) or
+    /// the character the key types on the US layout without Shift (`"n"`,
+    /// `"1"`, `","`), in any case ([`Shortcut::parse`]).
+    pub fn parse(name: &str) -> Option<Key> {
+        parse_key(name, &name.to_ascii_lowercase()).ok()
+    }
+
+    /// Its name in a shortcut's label (`N`, `Enter`, `F5`).
+    pub fn label(self) -> String {
+        match self {
+            Key::Char(c) => c.to_uppercase().collect(),
+            Key::Enter => "Enter".into(),
+            Key::Escape => "Esc".into(),
+            Key::Tab => "Tab".into(),
+            Key::Backspace => "Backspace".into(),
+            Key::Delete => "Del".into(),
+            Key::Insert => "Ins".into(),
+            Key::Space => "Space".into(),
+            Key::Up => "Up".into(),
+            Key::Down => "Down".into(),
+            Key::Left => "Left".into(),
+            Key::Right => "Right".into(),
+            Key::Home => "Home".into(),
+            Key::End => "End".into(),
+            Key::PageUp => "PgUp".into(),
+            Key::PageDown => "PgDn".into(),
+            Key::F(n) => format!("F{n}"),
+        }
+    }
+}
+
+/// A keyboard shortcut of a menu item (`"mod+shift+n"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Shortcut {
+    /// The key.
+    pub key: Key,
+    /// Control.
+    pub ctrl: bool,
+    /// Alt / Option.
+    pub alt: bool,
+    /// Shift.
+    pub shift: bool,
+    /// Command (macOS) / the Windows key / Super.
+    pub meta: bool,
+}
+
+impl Shortcut {
+    /// A shortcut of `key` alone.
+    pub const fn key(key: Key) -> Shortcut {
+        Shortcut {
+            key,
+            ctrl: false,
+            alt: false,
+            shift: false,
+            meta: false,
+        }
+    }
+
+    /// Parses `"mod+shift+n"`: modifiers and one key joined by `+`, in any
+    /// case (lowercase is the style; a capital letter is the same key, not
+    /// Shift). `mod` (`cmdorctrl`, `commandorcontrol`) is Command when
+    /// `mod_is_meta` (macOS), else Control; `cmd` (`command`, `meta`,
+    /// `super`, `win`) is Command, the Windows key or Super; then `ctrl`
+    /// (`control`), `alt` (`option`, `opt`) and `shift`. The key is a name
+    /// or the US layout's unshifted character ([`Key::parse`]); `plus` is
+    /// the `=` key. `nsh/keymap` (`crate::keymap`) reads the same
+    /// keystrokes, with the same messages for those that are not.
+    pub fn parse(text: &str, mod_is_meta: bool) -> Result<Shortcut, ShortcutError> {
+        // Case does not matter; messages quote the text as written and
+        // suggest lowercase.
+        let lower = text.to_ascii_lowercase();
+        let (mods, key) = split(text, &lower)?;
+        // Modifiers first, as `nsh/keymap` reads them (so are its errors).
+        let mut shortcut = Shortcut::key(Key::Space);
+        for name in mods {
+            let flag =
+                modifier(&mut shortcut, name, mod_is_meta).map_err(|why| error(text, why))?;
+            if *flag {
+                return Err(error(text, format_args!("{name:?} twice")));
+            }
+            *flag = true;
+        }
+        shortcut.key = parse_key(text, key)?;
+        Ok(shortcut)
+    }
+
+    /// Its label on Windows and Linux (`Ctrl+Shift+N`).
+    pub fn label(&self) -> String {
+        let mut out = String::new();
+        for (on, name) in [
+            (self.ctrl, "Ctrl+"),
+            (self.alt, "Alt+"),
+            (self.shift, "Shift+"),
+            (self.meta, "Win+"),
+        ] {
+            if on {
+                out.push_str(name);
+            }
+        }
+        out.push_str(&self.key.label());
+        out
+    }
+}
+
+/// Why a shortcut's text is not one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShortcutError(pub String);
+
+impl std::fmt::Display for ShortcutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ShortcutError {}
+
+fn error(text: &str, reason: impl std::fmt::Display) -> ShortcutError {
+    ShortcutError(format!("invalid keystroke {text:?}: {reason}"))
+}
+
+/// Characters typed with Shift on the US layout, and the key typing them.
+const SHIFTED: &[(char, char)] = &[
+    ('~', '`'),
+    ('!', '1'),
+    ('@', '2'),
+    ('#', '3'),
+    ('$', '4'),
+    ('%', '5'),
+    ('^', '6'),
+    ('&', '7'),
+    ('*', '8'),
+    ('(', '9'),
+    (')', '0'),
+    ('_', '-'),
+    ('+', '='),
+    ('{', '['),
+    ('}', ']'),
+    ('|', '\\'),
+    (':', ';'),
+    ('"', '\''),
+    ('<', ','),
+    ('>', '.'),
+    ('?', '/'),
+];
+
+/// Named keys, by their (lowercase) names.
+const NAMED: &[(&str, Key)] = &[
+    ("enter", Key::Enter),
+    ("return", Key::Enter),
+    ("escape", Key::Escape),
+    ("esc", Key::Escape),
+    ("tab", Key::Tab),
+    ("space", Key::Space),
+    ("backspace", Key::Backspace),
+    ("delete", Key::Delete),
+    ("del", Key::Delete),
+    ("insert", Key::Insert),
+    ("up", Key::Up),
+    ("arrowup", Key::Up),
+    ("down", Key::Down),
+    ("arrowdown", Key::Down),
+    ("left", Key::Left),
+    ("arrowleft", Key::Left),
+    ("right", Key::Right),
+    ("arrowright", Key::Right),
+    ("home", Key::Home),
+    ("end", Key::End),
+    ("pageup", Key::PageUp),
+    ("pagedown", Key::PageDown),
+    // The plus key is the one typing `=`, as on the US layout.
+    ("plus", Key::Char('=')),
+    ("minus", Key::Char('-')),
+];
+
+/// The modifiers and the key of `text` (`"mod+shift+n"`).
+fn split<'a>(text: &str, lower: &'a str) -> Result<(Vec<&'a str>, &'a str), ShortcutError> {
+    if text.is_empty() {
+        return Err(error(text, "empty"));
+    }
+    if text.contains(char::is_whitespace) {
+        return Err(error(
+            text,
+            "one keystroke per binding (key sequences such as \"mod+k mod+s\" are not supported)",
+        ));
+    }
+    if lower == "+" || lower.ends_with("++") {
+        let mods = lower.strip_suffix("++").unwrap_or("");
+        let plus = if mods.is_empty() {
+            "plus".to_owned()
+        } else {
+            format!("{mods}+plus")
+        };
+        return Err(error(
+            text,
+            format_args!("write the plus key as \"plus\": {plus:?}"),
+        ));
+    }
+    let (mods, key) = match lower.rsplit_once('+') {
+        Some((mods, key)) => (mods.split('+').collect(), key),
+        None => (Vec::new(), lower),
+    };
+    if key.is_empty() {
+        return Err(error(text, "no key after the modifiers"));
+    }
+    Ok((mods, key))
+}
+
+/// The flag of modifier `name` in `shortcut`, or why it is none.
+fn modifier<'a>(
+    shortcut: &'a mut Shortcut,
+    name: &str,
+    mod_is_meta: bool,
+) -> Result<&'a mut bool, String> {
+    Ok(match name {
+        "ctrl" | "control" => &mut shortcut.ctrl,
+        "alt" | "option" | "opt" => &mut shortcut.alt,
+        "shift" => &mut shortcut.shift,
+        "cmd" | "command" | "meta" | "super" | "win" => &mut shortcut.meta,
+        "mod" | "cmdorctrl" | "commandorcontrol" if mod_is_meta => &mut shortcut.meta,
+        "mod" | "cmdorctrl" | "commandorcontrol" => &mut shortcut.ctrl,
+        "" => return Err("an empty modifier".into()),
+        other => {
+            return Err(format!(
+                "unknown modifier {other:?} (ctrl, alt, shift, cmd or mod)"
+            ));
+        }
+    })
+}
+
+fn parse_key(text: &str, key: &str) -> Result<Key, ShortcutError> {
+    if let Some(&(_, named)) = NAMED.iter().find(|(name, _)| *name == key) {
+        return Ok(named);
+    }
+    if let Some(n) = key
+        .strip_prefix('f')
+        .filter(|n| !n.starts_with('0'))
+        .and_then(|n| n.parse::<u8>().ok())
+        && (1..=24).contains(&n)
+    {
+        return Ok(Key::F(n));
+    }
+    let mut chars = key.chars();
+    let (Some(c), None) = (chars.next(), chars.next()) else {
+        let hint = if let Some((first, _)) = key.split_once('-')
+            && modifier(&mut Shortcut::key(Key::Space), first, false).is_ok()
+        {
+            // `mod--` is `mod+-`.
+            let joined = match key.strip_suffix("--") {
+                Some(mods) => format!("{}+-", mods.replace('-', "+")),
+                None => key.replace('-', "+"),
+            };
+            format!(" (join modifiers and the key with \"+\": {joined:?})")
+        } else {
+            String::new()
+        };
+        return Err(error(text, format_args!("unknown key {key:?}{hint}")));
+    };
+    if let Some(&(_, base)) = SHIFTED.iter().find(|(shifted, _)| *shifted == c) {
+        return Err(error(
+            text,
+            format_args!("{c:?} is typed with Shift: write \"shift+{base}\""),
+        ));
+    }
+    if !c.is_ascii_graphic() {
+        return Err(error(
+            text,
+            "keys are named by the US layout's characters (they match on any layout)",
+        ));
+    }
+    Ok(Key::Char(c))
+}
+
+/// A standard menu item: the platform carries it out (and labels it when
+/// the item has no label of its own).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PropEnum)]
+pub enum MenuRole {
+    /// The about panel (macOS).
+    About,
+    /// Hides the app (macOS).
+    Hide,
+    /// Hides the other apps (macOS).
+    HideOthers,
+    /// Shows all apps (macOS).
+    ShowAll,
+    /// Quits the app.
+    Quit,
+    /// Undo in the focused text field.
+    Undo,
+    /// Redo in the focused text field.
+    Redo,
+    /// Cut the focused text field's selection.
+    Cut,
+    /// Copy the selection.
+    Copy,
+    /// Paste into the focused text field.
+    Paste,
+    /// Select all of the focused text field.
+    SelectAll,
+    /// Minimizes the window.
+    Minimize,
+    /// Maximizes (zooms) or restores the window.
+    Zoom,
+    /// Enters or leaves full screen.
+    ToggleFullScreen,
+    /// Closes the window.
+    Close,
+}
+
+impl MenuRole {
+    /// Every role.
+    pub const ALL: &[MenuRole] = &[
+        MenuRole::About,
+        MenuRole::Hide,
+        MenuRole::HideOthers,
+        MenuRole::ShowAll,
+        MenuRole::Quit,
+        MenuRole::Undo,
+        MenuRole::Redo,
+        MenuRole::Cut,
+        MenuRole::Copy,
+        MenuRole::Paste,
+        MenuRole::SelectAll,
+        MenuRole::Minimize,
+        MenuRole::Zoom,
+        MenuRole::ToggleFullScreen,
+        MenuRole::Close,
+    ];
+
+    /// The label of an item with this role and no label of its own.
+    pub fn label(self) -> &'static str {
+        match self {
+            MenuRole::About => "About",
+            MenuRole::Hide => "Hide",
+            MenuRole::HideOthers => "Hide Others",
+            MenuRole::ShowAll => "Show All",
+            MenuRole::Quit => "Quit",
+            MenuRole::Undo => "Undo",
+            MenuRole::Redo => "Redo",
+            MenuRole::Cut => "Cut",
+            MenuRole::Copy => "Copy",
+            MenuRole::Paste => "Paste",
+            MenuRole::SelectAll => "Select All",
+            MenuRole::Minimize => "Minimize",
+            MenuRole::Zoom => "Zoom",
+            MenuRole::ToggleFullScreen => "Toggle Full Screen",
+            MenuRole::Close => "Close",
+        }
+    }
+
+    /// The shortcut of an item with this role and no shortcut of its own,
+    /// on a Mac (`mac`) or elsewhere.
+    pub fn shortcut(self, mac: bool) -> Option<Shortcut> {
+        let primary = |key: char| Shortcut {
+            ctrl: !mac,
+            meta: mac,
+            ..Shortcut::key(Key::Char(key))
+        };
+        Some(match self {
+            MenuRole::About | MenuRole::ShowAll => return None,
+            MenuRole::Hide if mac => primary('h'),
+            MenuRole::HideOthers if mac => Shortcut {
+                alt: true,
+                ..primary('h')
+            },
+            MenuRole::Hide | MenuRole::HideOthers => return None,
+            MenuRole::Quit if mac => primary('q'),
+            MenuRole::Quit => Shortcut {
+                alt: true,
+                ..Shortcut::key(Key::F(4))
+            },
+            MenuRole::Undo => primary('z'),
+            MenuRole::Redo if mac => Shortcut {
+                shift: true,
+                ..primary('z')
+            },
+            MenuRole::Redo => primary('y'),
+            MenuRole::Cut => primary('x'),
+            MenuRole::Copy => primary('c'),
+            MenuRole::Paste => primary('v'),
+            MenuRole::SelectAll => primary('a'),
+            MenuRole::Minimize if mac => primary('m'),
+            MenuRole::Minimize | MenuRole::Zoom => return None,
+            MenuRole::ToggleFullScreen if mac => Shortcut {
+                ctrl: true,
+                ..primary('f')
+            },
+            MenuRole::ToggleFullScreen => Shortcut::key(Key::F(11)),
+            MenuRole::Close => primary('w'),
+        })
+    }
+
+    /// The role edits the focused text field (its shortcut is the field's
+    /// own: a menu does not take it from the field).
+    pub fn edits_text(self) -> bool {
+        matches!(
+            self,
+            MenuRole::Undo
+                | MenuRole::Redo
+                | MenuRole::Cut
+                | MenuRole::Copy
+                | MenuRole::Paste
+                | MenuRole::SelectAll
+        )
+    }
+}
+
+/// An item of a menu that does something.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MenuAction {
+    /// Reported as [`crate::EventKind::Menu`] when chosen (0: never
+    /// reported, a role-only item).
+    pub id: u32,
+    /// What it shows.
+    pub label: String,
+    /// Its keyboard shortcut.
+    pub shortcut: Option<Shortcut>,
+    /// It can be chosen.
+    pub enabled: bool,
+    /// A check mark: `Some` makes it a checkable item.
+    pub checked: Option<bool>,
+    /// What the platform does with it (the app is not told).
+    pub role: Option<MenuRole>,
+}
+
+/// An item of a menu.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MenuItem {
+    /// A line between groups of items.
+    Separator,
+    /// An item that does something.
+    Action(MenuAction),
+    /// An item opening a menu of its own (the top-level menus of a menu
+    /// bar).
+    Submenu {
+        /// What it shows.
+        label: String,
+        /// It can be opened.
+        enabled: bool,
+        /// Its items.
+        items: Vec<MenuItem>,
+    },
+}
+
+impl MenuItem {
+    /// Calls `f` with every action of `items`, submenus' too.
+    pub fn each_action<'a>(items: &'a [MenuItem], f: &mut impl FnMut(&'a MenuAction)) {
+        for item in items {
+            match item {
+                MenuItem::Action(action) => f(action),
+                MenuItem::Submenu { items, .. } => MenuItem::each_action(items, f),
+                MenuItem::Separator => {}
+            }
+        }
+    }
+
+    /// The action of `items` (or their submenus) that `shortcut` chooses:
+    /// enabled, with an id or a role that is not a text field's own.
+    pub fn find_shortcut<'a>(items: &'a [MenuItem], shortcut: &Shortcut) -> Option<&'a MenuAction> {
+        for item in items {
+            match item {
+                MenuItem::Action(action)
+                    if action.enabled
+                        && action.shortcut.as_ref() == Some(shortcut)
+                        && !action.role.is_some_and(MenuRole::edits_text) =>
+                {
+                    return Some(action);
+                }
+                MenuItem::Submenu {
+                    enabled: true,
+                    items,
+                    ..
+                } => {
+                    if let Some(found) = MenuItem::find_shortcut(items, shortcut) {
+                        return Some(found);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
+/// A desktop command (on the root).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DesktopCommand {
+    /// The window's title.
+    SetTitle(String),
+    /// The title bar's style.
+    SetTitleBar {
+        /// Shown or hidden.
+        style: TitleBarStyle,
+        /// The height of the app's own title bar, in points: the window
+        /// controls are centered in it (Windows' caption buttons fill it);
+        /// `None` for the platform's height.
+        height: Option<f32>,
+    },
+    /// Minimizes the window.
+    Minimize,
+    /// Maximizes the window, or restores it when it is maximized.
+    ToggleMaximize,
+    /// Enters or leaves full screen.
+    ToggleFullScreen,
+    /// Closes the window (the app ends with its last window).
+    Close,
+    /// The application menu (macOS's menu bar, the window's menu bar on
+    /// Windows and Linux; not shown there while the title bar is hidden,
+    /// its shortcuts still work); `None` restores the platform's default.
+    SetMenu(Option<Arc<[MenuItem]>>),
+    /// Shows a context menu at `at` (root coordinates, points) or at the
+    /// pointer.
+    PopupMenu {
+        /// Its items.
+        items: Arc<[MenuItem]>,
+        /// Where its top left corner goes.
+        at: Option<(f32, f32)>,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortcuts_parse() {
+        let s = Shortcut::parse("mod+shift+n", false).unwrap();
+        assert_eq!(
+            s,
+            Shortcut {
+                ctrl: true,
+                shift: true,
+                ..Shortcut::key(Key::Char('n'))
+            }
+        );
+        // Labels stay the platform's style.
+        assert_eq!(s.label(), "Ctrl+Shift+N");
+        let mac = Shortcut::parse("cmdorctrl+,", true).unwrap();
+        assert!(mac.meta && !mac.ctrl);
+        assert_eq!(mac.key, Key::Char(','));
+        assert_eq!(
+            Shortcut::parse("meta+k", false),
+            Shortcut::parse("cmd+k", false)
+        );
+        // Case does not matter, and a capital letter is not Shift.
+        assert_eq!(Shortcut::parse("Mod+Shift+N", false), Ok(s));
+        assert_eq!(
+            Shortcut::parse("CMD+K", false),
+            Shortcut::parse("cmd+k", false)
+        );
+        assert_eq!(
+            Shortcut::parse("mod+N", false),
+            Shortcut::parse("mod+n", false)
+        );
+        assert_eq!(
+            Shortcut::parse("Escape", false),
+            Shortcut::parse("escape", false)
+        );
+        assert_eq!(Shortcut::parse("F5", false), Shortcut::parse("f5", false));
+        assert_eq!(
+            Shortcut::parse("Ctrl+Plus", false),
+            Shortcut::parse("ctrl+=", false)
+        );
+        assert_eq!(Key::parse("PageUp"), Some(Key::PageUp));
+        // The plus key is the `=` key.
+        assert_eq!(
+            Shortcut::parse("ctrl+plus", false),
+            Shortcut::parse("ctrl+=", false)
+        );
+        assert_eq!(
+            Shortcut::parse("ctrl+minus", false),
+            Shortcut::parse("ctrl+-", false)
+        );
+        assert_eq!(
+            Shortcut::parse("arrowup", false),
+            Shortcut::parse("up", false)
+        );
+        assert_eq!(Shortcut::parse("alt+f4", false).unwrap().key, Key::F(4));
+        assert_eq!(
+            Shortcut::parse("f11", false).unwrap(),
+            Shortcut::key(Key::F(11))
+        );
+        let win = Shortcut::parse("win+option+pagedown", true).unwrap();
+        assert!(win.meta && win.alt && win.key == Key::PageDown);
+    }
+
+    #[test]
+    fn shortcuts_explain_errors() {
+        // The same messages as `nsh/keymap`'s.
+        let err = |t| Shortcut::parse(t, false).unwrap_err().0;
+        assert_eq!(err(""), "invalid keystroke \"\": empty");
+        assert!(err("mod+k mod+s").contains("one keystroke per binding"));
+        assert!(err("mod+").contains("no key after the modifiers"));
+        assert!(err("hyper+k").contains("unknown modifier \"hyper\""));
+        assert!(err("ctrl+ctrl+k").contains("\"ctrl\" twice"));
+        assert!(err("mod-k").contains("join modifiers and the key with \"+\": \"mod+k\""));
+        // Hints suggest lowercase, whatever case the text was written in.
+        assert!(err("Mod-N").contains("join modifiers and the key with \"+\": \"mod+n\""));
+        assert!(err("CTRL++").contains("\"ctrl+plus\""));
+        assert!(err("mod+?").contains("write \"shift+/\""));
+        assert!(err("ctrl++").contains("write the plus key as \"plus\": \"ctrl+plus\""));
+        assert!(err("ctrl+f25").contains("unknown key"));
+    }
+
+    #[test]
+    fn shortcuts_find_items() {
+        let copy = Shortcut::parse("ctrl+c", false).unwrap();
+        let new = Shortcut::parse("ctrl+n", false).unwrap();
+        let action = |id, shortcut, role| {
+            MenuItem::Action(MenuAction {
+                id,
+                label: String::new(),
+                shortcut: Some(shortcut),
+                enabled: true,
+                checked: None,
+                role,
+            })
+        };
+        let menu = vec![MenuItem::Submenu {
+            label: "File".into(),
+            enabled: true,
+            items: vec![
+                action(1, new, None),
+                MenuItem::Separator,
+                action(0, copy, Some(MenuRole::Copy)),
+            ],
+        }];
+        assert_eq!(MenuItem::find_shortcut(&menu, &new).map(|a| a.id), Some(1));
+        // Text fields keep their own shortcuts.
+        assert!(MenuItem::find_shortcut(&menu, &copy).is_none());
+    }
+}

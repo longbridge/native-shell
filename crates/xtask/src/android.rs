@@ -121,11 +121,24 @@ pub(crate) fn build(release: bool, dev: bool, abis: &[String]) -> anyhow::Result
         let so = cargo_lib(&sdk, triple, abi, release, dev)?;
         let dest = out.join("lib").join(abi);
         fs::create_dir_all(&dest)?;
-        fs::copy(&so, dest.join("libnsh.so"))?;
+        // Unchanged files keep their times: `nsh run` rebuilds and
+        // reinstalls the development host when they change.
+        let dest = dest.join("libnsh.so");
+        if !up_to_date(&dest, std::slice::from_ref(&so)) {
+            fs::copy(&so, &dest)?;
+        }
     }
-    let step = term::Step::start("compiling the Java runtime");
-    java(&sdk, &out)?;
-    step.done("compiled the Java runtime");
+    let java_dir = root().join("crates/nsh-platform-android/java");
+    let mut sources = Vec::new();
+    collect(&java_dir, &mut sources)?;
+    // The directories too: removing a source changes its directory.
+    let mut inputs = sources.clone();
+    collect_dirs(&java_dir, &mut inputs)?;
+    if !up_to_date(&out.join("classes.dex"), &inputs) || !out.join("classes.jar").exists() {
+        let step = term::Step::start("compiling the Java runtime");
+        java(&sdk, &out, &sources)?;
+        step.done("compiled the Java runtime");
+    }
     term::note(out.strip_prefix(root()).unwrap_or(&out).display());
     Ok(out)
 }
@@ -202,11 +215,19 @@ fn cargo_lib(
         .join("libnsh.so"))
 }
 
-/// Compiles the Java runtime to `out/classes.dex`.
-fn java(sdk: &Sdk, out: &Path) -> anyhow::Result<()> {
-    let src = root().join("crates/nsh-platform-android/java");
-    let mut sources = Vec::new();
-    collect(&src, &mut sources)?;
+/// Whether `file` exists and is newer than each of `sources`.
+fn up_to_date(file: &Path, sources: &[PathBuf]) -> bool {
+    let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    let Some(built) = modified(file) else {
+        return false;
+    };
+    sources
+        .iter()
+        .all(|s| modified(s).is_some_and(|m| m <= built))
+}
+
+/// Compiles the Java runtime (`sources`) to `out/classes.dex`.
+fn java(sdk: &Sdk, out: &Path, sources: &[PathBuf]) -> anyhow::Result<()> {
     let classes = out.join("classes");
     if classes.exists() {
         fs::remove_dir_all(&classes)?;
@@ -226,7 +247,7 @@ fn java(sdk: &Sdk, out: &Path) -> anyhow::Result<()> {
             .arg(sdk.android_jar())
             .arg("-d")
             .arg(&classes)
-            .args(&sources),
+            .args(sources),
     )?;
     let mut class_files = Vec::new();
     collect_ext(&classes, "class", &mut class_files)?;
@@ -256,6 +277,18 @@ fn java(sdk: &Sdk, out: &Path) -> anyhow::Result<()> {
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     collect_ext(dir, "java", out)
+}
+
+/// `dir` and the directories in it.
+fn collect_dirs(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    out.push(dir.to_owned());
+    for entry in fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_dirs(&path, out)?;
+        }
+    }
+    Ok(())
 }
 
 fn collect_ext(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {

@@ -1,7 +1,8 @@
 ---
 title: JSX 与组件
 description: nsh 如何编译 JSX、组件是什么，props、children、控制流、ref 和展开如何工作，以及标签如何对应元素与组件。
-order: 6
+order: 30
+group: ui
 demo: guide-components
 ---
 

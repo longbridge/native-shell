@@ -1,7 +1,8 @@
 ---
 title: Layout
 description: Flexbox with a column default, CSS grid, sizes and percentages, aspect ratio, absolute positioning, measuring with onLayout, responsive layouts and right-to-left.
-order: 10
+order: 34
+group: ui
 demo: guide-layout
 ---
 

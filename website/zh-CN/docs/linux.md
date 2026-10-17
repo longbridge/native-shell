@@ -1,14 +1,16 @@
 ---
 title: Linux
 description: 在 Linux 上用 GTK 4 窗口运行 nsh 应用、打包应用、用 AppView 嵌入 GTK 应用，以及 Linux 后端不支持的功能。
-order: 3.25
+order: 15
+group: platforms
 ---
 
 # Linux
 
 nsh 应用也能在 Linux 上运行。Linux 后端用 GTK 4 控件渲染应用，用 Pango 排版文字；核心、响应式图、渲染器、Taffy 布局和
 `nsh/ui/mobile` 组件与 iOS、Android 上完全相同，因此同一个 bundle 可以在所有平台上运行。在 Linux 上，`Platform.OS` 为
-`"linux"`，并会应用 `desktop={{…}}` 属性。
+`"linux"`，并会应用 `desktop={{…}}` 属性。窗口标题、自定义标题栏、
+菜单栏和右键菜单由 [`nsh/desktop`](../modules/nsh-desktop.md) 提供。
 
 ## 环境要求
 

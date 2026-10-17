@@ -14,7 +14,10 @@
 //! Every user edit increments the input's edit count and reports
 //! `onChangeText` with it (always, as the engine keeps the text); a value
 //! from JS based on an older count is stale and dropped, so fast typing
-//! is never overwritten. Programmatic changes (JS values, swapping
+//! is never overwritten. The report waits until the main loop is idle (or
+//! the input submits or loses the focus), so an edit GTK makes in steps
+//! reports its result once: a text view replaces a selection (a paste,
+//! undo, redo) by a deletion and an insertion, each a `changed` signal. Programmatic changes (JS values, swapping
 //! editors) report nothing. Lengths and offsets JS sees are UTF-16 units;
 //! GTK counts characters.
 //!
@@ -177,6 +180,9 @@ pub(crate) struct InputState {
     clipping: Cell<bool>,
     /// The key press being handled, until the main loop is idle again.
     key: Cell<Option<(gtk::gdk::Key, gtk::gdk::ModifierType)>>,
+    /// A user edit's `onChangeText` (and the selection after it) waits for
+    /// the main loop to be idle.
+    pending: Cell<bool>,
     /// A paste was asked for: its insertion (and the deletion of the
     /// selection it replaces) types no key.
     pasting: Cell<bool>,
@@ -262,7 +268,7 @@ impl Ctx {
 
     /// The text changed.
     fn changed(&self) {
-        let Some((surface, view, input)) = self.get() else {
+        let Some((_, view, input)) = self.get() else {
             return;
         };
         input.update_placeholder();
@@ -271,16 +277,35 @@ impl Ctx {
         if input.applying.get() {
             return;
         }
-        let count = input.count.get() + 1;
-        input.count.set(count);
+        // Counted now, so JS values based on the text before it are stale.
+        input.count.set(input.count.get() + 1);
+        if !input.pending.replace(true) {
+            let c = self.clone();
+            glib::idle_add_local_once(move || c.flush_change());
+        }
+    }
+
+    /// Reports the user's edits not reported yet, and the selection after
+    /// them.
+    fn flush_change(&self) {
+        let Some((surface, view, input)) = self.get() else {
+            return;
+        };
+        if !input.pending.replace(false) {
+            return;
+        }
         let text = input.editor.borrow().text();
         // Always reported: the engine keeps the text for layout and for
         // dropping stale values, whether JS listens or not.
         surface.event(
             view.id(),
             EventKind::ChangeText,
-            EventPayload::Text { text, count },
+            EventPayload::Text {
+                text,
+                count: input.count.get(),
+            },
         );
+        self.selection_changed();
     }
 
     /// The caret or selection may have moved.
@@ -289,8 +314,11 @@ impl Ctx {
             return;
         };
         // A programmatic change moves the caret in steps; it is reported
-        // once, where it ends.
-        if input.applying.get() || !view.state().events.contains(EventKind::SelectionChange) {
+        // once, where it ends. After a user edit, with its change.
+        if input.applying.get()
+            || input.pending.get()
+            || !view.state().events.contains(EventKind::SelectionChange)
+        {
             return;
         }
         let editor = input.editor.borrow().clone();
@@ -353,6 +381,7 @@ impl Ctx {
         if input.focused.replace(focused) == focused {
             return;
         }
+        self.flush_change();
         crate::input::set_state(&surface, &view, state::FOCUSED, focused);
         let kind = if focused {
             EventKind::Focus
@@ -369,6 +398,7 @@ impl Ctx {
             return;
         };
         self.key_press("Enter");
+        self.flush_change();
         let text = input.editor.borrow().text();
         let count = input.count.get();
         self.send(EventKind::SubmitEditing, || EventPayload::Text {
@@ -462,6 +492,7 @@ pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
         clipping: Cell::new(false),
         key: Cell::new(None),
         pasting: Cell::new(false),
+        pending: Cell::new(false),
         focused: Cell::new(false),
         selection: Cell::new((0, 0)),
         ctx: std::cell::OnceCell::new(),

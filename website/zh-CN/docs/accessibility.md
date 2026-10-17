@@ -1,7 +1,8 @@
 ---
 title: 无障碍
 description: 让应用配合 VoiceOver 和 TalkBack 使用：标签、角色、状态、值、自定义操作、分组与隐藏、播报与焦点、文字大小以及减少动态效果。
-order: 24
+order: 48
+group: ui
 ---
 
 # 无障碍

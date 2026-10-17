@@ -1,7 +1,8 @@
 ---
 title: 用 nsh trace 测试
 description: 用 nsh trace 无界面运行应用，读懂它打印的原生视图操作和耗时，模拟点击和滚动，并在 CI 中使用；以及用于 UI 测试的 testID。
-order: 33
+order: 61
+group: tools
 ---
 
 # 用 nsh trace 测试

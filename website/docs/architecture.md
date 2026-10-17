@@ -1,7 +1,8 @@
 ---
 title: Architecture
 description: "How an nsh app runs: the build pipeline, the engine and main threads, the path from a signal change to native views, the native reactive graph, text layout and the crates."
-order: 35
+order: 63
+group: tools
 ---
 
 # Architecture

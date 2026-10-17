@@ -1538,6 +1538,78 @@ pub(crate) fn wheel(view: &NshView, dy: f32) -> bool {
     moved
 }
 
+/// A right click on field `view`: it takes the focus (keeping its
+/// selection) and shows Windows' edit menu, each item the field's own key.
+pub(crate) fn context_menu(surface: &Rc<Surface>, view: &NshView) {
+    use nsh_core::desktop::MenuRole;
+
+    use crate::chrome::LocalItem;
+    let Some(input) = input_of(view) else {
+        return;
+    };
+    if focused(surface).as_ref() != Some(view) {
+        set_focus(surface, Some(view));
+    }
+    let (editable, secure) = {
+        let c = input.config.borrow();
+        (c.editable, c.secure)
+    };
+    let (selected, can_undo, empty, all) = {
+        let m = input.model.borrow();
+        let (s, e) = m.selection();
+        (
+            m.has_selection(),
+            m.can_undo(),
+            m.text().is_empty(),
+            s == 0 && e == m.text().len(),
+        )
+    };
+    let item = |role: Option<MenuRole>, label: &'static str, enabled: bool, vk: u16, ctrl: bool| {
+        LocalItem::Item {
+            role,
+            label,
+            enabled,
+            action: Rc::new(move |s: &Rc<Surface>| {
+                let event = KeyEvent {
+                    vk,
+                    down: true,
+                    repeat: false,
+                    modifiers: crate::input::Modifiers {
+                        ctrl,
+                        ..Default::default()
+                    },
+                };
+                key(s, &event);
+            }),
+        }
+    };
+    crate::chrome::popup_actions(
+        surface,
+        vec![
+            item(Some(MenuRole::Undo), "", editable && can_undo, 0x5A, true),
+            LocalItem::Separator,
+            item(
+                Some(MenuRole::Cut),
+                "",
+                editable && selected && !secure,
+                0x58,
+                true,
+            ),
+            item(Some(MenuRole::Copy), "", selected && !secure, 0x43, true),
+            item(
+                Some(MenuRole::Paste),
+                "",
+                editable && crate::system::clipboard_has_text(),
+                0x56,
+                true,
+            ),
+            item(None, "Delete", editable && selected, 0x2E, false),
+            LocalItem::Separator,
+            item(Some(MenuRole::SelectAll), "", !empty && !all, 0x41, true),
+        ],
+    );
+}
+
 /// A key for the focused field; true when handled.
 pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     if !event.down {

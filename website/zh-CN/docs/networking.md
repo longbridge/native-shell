@@ -1,7 +1,8 @@
 ---
 title: 网络
 description: 用 fetch 发起 HTTP 请求：JSON、请求头、用 FormData 上传、流式响应与请求体、用 AbortController 取消、错误处理，以及应用声明的网络能力。
-order: 22
+order: 46
+group: ui
 ---
 
 # 网络

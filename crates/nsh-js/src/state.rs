@@ -25,6 +25,7 @@ pub(crate) struct State {
     pub(crate) components: Components,
     pub(crate) lists: Lists,
     pub(crate) platform: crate::platform_modules::PlatformModules,
+    pub(crate) menus: crate::desktop::Menus,
     pub(crate) touches: crate::touch::Touches,
     pub(crate) animations: crate::animated::Animations,
     pub(crate) canvases: crate::canvas::Canvases,
@@ -71,6 +72,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
             components: Components::default(),
             lists: Lists::default(),
             platform: Default::default(),
+            menus: Default::default(),
             touches: Default::default(),
             animations: Default::default(),
             canvases: Default::default(),
@@ -107,6 +109,7 @@ pub(crate) fn uninstall(ctx: &Ctx<'_>) {
         state.canvases.free_all(raw);
         state.animations.free_all(raw);
         state.platform.free_all(raw);
+        state.menus.free_all(raw);
         state.lists.free_all(raw);
         state.components.free_all(raw);
         state.env.free_all(raw);

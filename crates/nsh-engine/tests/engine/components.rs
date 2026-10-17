@@ -301,13 +301,13 @@ fn frame_of(batches: &[MountBatch], id: u32) -> Option<nsh_core::Rect> {
 }
 
 #[test]
-fn unhandled_back_presses_exit_through_rust() {
-    unhandled_back_presses_exit_through_rust_on(start(BACK));
+fn unhandled_back_presses_go_back_natively() {
+    unhandled_back_presses_go_back_natively_on(start(BACK));
 }
 
-fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<MountBatch>)) {
+fn unhandled_back_presses_go_back_natively_on((engine, rx): (Engine, Receiver<MountBatch>)) {
     until(&rx, |b| shows(b, "presses 0"));
-    let exits = |batches: &[MountBatch]| {
+    let backs = |batches: &[MountBatch]| {
         batches
             .iter()
             .flat_map(|b| &b.items)
@@ -316,7 +316,7 @@ fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<M
                     i,
                     MountItem::Command {
                         id: ROOT_ID,
-                        command: Command::ExitApp
+                        command: Command::Back
                     }
                 )
             })
@@ -325,10 +325,14 @@ fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<M
     let control = engine.control();
     control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
     let first = until(&rx, |b| shows(b, "presses 1"));
-    assert_eq!(exits(&first), 0, "handled");
+    assert_eq!(backs(&first), 0, "handled");
     control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
-    let second = until(&rx, |b| exits(std::slice::from_ref(b)) > 0);
-    assert_eq!(exits(&second), 1, "not handled: the app exits");
+    let second = until(&rx, |b| backs(std::slice::from_ref(b)) > 0);
+    assert_eq!(
+        backs(&second),
+        1,
+        "not handled: the platform goes back (a stack pops, or the app exits)"
+    );
 }
 
 #[test]
@@ -1097,4 +1101,131 @@ fn the_apps_appearance_overrides_the_systems() {
     let later = until(&rx, |b| shows(b, "scheme light"));
     assert!(later.iter().any(|b| shows(b, "scheme light")), "{later:?}");
     assert_eq!(background(&later), Some(nsh_core::Color(0xffff_ffff)));
+}
+
+const MENU: &str = r#"import { mount, signal, Text } from "nsh";
+import { Menu } from "nsh/desktop";
+
+const chosen = signal("none");
+Menu.setApplicationMenu([
+  false,
+  {
+    label: "File",
+    submenu: [
+      { label: "New", shortcut: "mod+n", onSelect: () => chosen.set("new") },
+      { type: "separator" },
+      { role: "quit" },
+    ],
+  },
+]);
+
+Menu.popup([{ label: "Copy link", onSelect: () => chosen.set("copied") }]).then(() =>
+  chosen.set(`${chosen()} closed`),
+);
+
+mount(() => <Text>{chosen()}</Text>);
+"#;
+
+/// `Menu.setApplicationMenu` reaches the platform as items with ids and
+/// shortcuts (a role's by default), and the platform's `onMenu` calls the
+/// chosen item's function; mobile platforms get nothing.
+#[test]
+fn menus_reach_the_platform_and_call_back() {
+    use nsh_core::desktop::{DesktopCommand, Key, MenuAction, MenuItem, MenuRole, Shortcut};
+
+    let (engine, rx) = start_in(
+        MENU,
+        Environment {
+            os: nsh_engine::Os::Windows,
+            ..Environment::default()
+        },
+    );
+    let mut menu = None;
+    until(&rx, |batch| {
+        for item in &batch.items {
+            if let MountItem::Command {
+                id: ROOT_ID,
+                command: Command::Desktop(command),
+            } = item
+                && let DesktopCommand::SetMenu(Some(items)) = &**command
+            {
+                menu = Some(items.clone());
+            }
+        }
+        shows(batch, "none")
+    });
+    let menu = menu.expect("the menu");
+    let new = MenuAction {
+        id: 1,
+        label: "New".into(),
+        shortcut: Some(Shortcut {
+            ctrl: true,
+            ..Shortcut::key(Key::Char('n'))
+        }),
+        enabled: true,
+        checked: None,
+        role: None,
+    };
+    let quit = MenuAction {
+        id: 0,
+        label: String::new(),
+        shortcut: MenuRole::Quit.shortcut(false),
+        enabled: true,
+        checked: None,
+        role: Some(MenuRole::Quit),
+    };
+    assert_eq!(
+        &*menu,
+        [MenuItem::Submenu {
+            label: "File".into(),
+            enabled: true,
+            items: vec![
+                MenuItem::Action(new),
+                MenuItem::Separator,
+                MenuItem::Action(quit)
+            ],
+        }]
+    );
+    engine.control().dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![("id", PayloadValue::Number(1.0))]),
+    );
+    assert!(
+        until(&rx, |batch| shows(batch, "new"))
+            .iter()
+            .any(|b| shows(b, "new"))
+    );
+
+    // A context menu: its item, then its promise once it closes.
+    let control = engine.control();
+    control.dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![("id", PayloadValue::Number(2.0))]),
+    );
+    control.dispatch_event(
+        ROOT_ID,
+        EventKind::Menu,
+        EventPayload::Map(vec![
+            ("id", PayloadValue::Number(0.0)),
+            ("closed", PayloadValue::Bool(true)),
+        ]),
+    );
+    assert!(
+        until(&rx, |batch| shows(batch, "copied closed"))
+            .iter()
+            .any(|b| shows(b, "copied closed"))
+    );
+
+    // On a phone, nothing is sent.
+    let (_engine, rx) = start(MENU);
+    let batches = until(&rx, |batch| shows(batch, "none"));
+    assert!(!batches.iter().flat_map(|b| &b.items).any(|i| matches!(
+        i,
+        MountItem::Command {
+            command: Command::Desktop(_),
+            ..
+        }
+    )));
 }

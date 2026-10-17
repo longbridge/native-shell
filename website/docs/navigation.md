@@ -1,7 +1,8 @@
 ---
 title: Navigation
 description: Native navigation stacks with createNavigator, Stack and Screen, header options, keeping the user on a screen with preventBack, modals, and the Android back button.
-order: 17
+order: 41
+group: ui
 ---
 
 # Navigation
@@ -266,11 +267,13 @@ Inside a modal, `SafeAreaView` and `useSafeAreaInsets()` give the modal's own in
 On Android, the back button (or gesture) is handled in this order:
 
 1. The top modal: `onRequestClose` (or it closes, with `dismissible`).
-2. The top stack: it pops its top screen, or calls `onBackRequest` with `preventBack`.
-3. Your `BackHandler` listeners from `nsh/android`, most recently added first.
+2. Your `BackHandler` listeners from `nsh/android`, most recently added first.
+3. The top stack: it pops its top screen, or calls `onBackRequest` with `preventBack`.
 4. Nothing handled it: the app exits.
 
-A listener returns `true` when it handled the press:
+A listener returns `true` when it handled the press, which keeps the stack from popping. While a listener is registered,
+Android's back gesture does not preview the pop (the app answers only once the gesture ends), so add listeners only
+while they may take the press:
 
 ```tsx
 import { cleanup, signal } from "nsh";

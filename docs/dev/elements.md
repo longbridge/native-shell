@@ -7,7 +7,7 @@ Every tag is a component in scope, imported from its one home (`native-pipeline.
 
 | JSX | Native (Apple) | Notes |
 |---|---|---|
-| `<View>` | `NshView` (UIView) | `onPress` / `onLongPress` / `onPressIn` / `onPressOut`, `activeOpacity`, `pan={{x, y}}` + `onPanStart` / `onPanEnd`, `pinch` / `rotation` |
+| `<View>` | `NshView` (UIView) | `onPress` / `onLongPress` / `onPressIn` / `onPressOut`, `activeOpacity`, `pan={{x, y}}` + `onPanStart` / `onPanEnd`, `pinch` / `rotation`; `desktop={{ windowDrag }}` (any element: pressing it drags the window; the platforms decide on the main thread from `ViewProps::window_drag`, the nearest view that sets it decides, inputs and views with press / touch handlers nearer than it stay clickable; `nsh/desktop`) |
 | `<Text>` | `TextView` (CTFrame) | nested `<Text>` is a span, other elements are inline attachments ([text.md](text.md)); `numberOfLines`, `ellipsizeMode`, `allowFontScaling`, `maxFontSizeMultiplier`, `adjustsFontSizeToFit` + `minimumFontScale`, `selectable` (range selection) + `selectionColor`, `onTextLayout` |
 | `<Image src>` | UIView + image CALayer | `src` is a URL or `import img from "./a.png"` (an asset descriptor with its size); `resizeMode`; `defaultSource` (placeholder), `blurRadius`, `fadeDuration`; `onLoadStart` / `onProgress` (`loaded` / `total` bytes) / `onLoad` (the source's pixel size) / `onError` / `onLoadEnd`; `tintColor`; animated GIF / WebP / APNG; `Image.getSize(uri)` / `Image.prefetch(uri)` |
 | `<Scroll>` | UIScrollView | `horizontal`, `contentContainerStyle` / `contentContainerClass`, `refreshing` + `onRefresh`, `scrollValue`, `onScrollEnd`, `keyboardDismissMode`, zooming, see [scrolling-and-lists.md](scrolling-and-lists.md) |
@@ -43,7 +43,7 @@ in one of them.
 ## Primitives only
 
 nsh's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui-mobile`,
-`docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on iOS and Android. Do not
+`docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on every platform. Do not
 add platform-styled widgets (UISwitch / SeekBar wrappers and the like), and do not add compositions of existing
 primitives to the runtime (section lists, touchables, drawers, ...): they belong to a UI set. React Native is a
 reference for which capabilities exist, not an API to be compatible with. Components that need core or native support
@@ -65,6 +65,10 @@ and reorders fast input). Events tell JS afterwards. Existing answers: input `ma
 `cancelable`. A new capability with such a callback gets a prop (a menu's items, a rule, a flag); what a prop cannot
 express is let through and corrected in the event afterwards (a controlled `value` in `onChangeText`). `BackHandler` is
 of that kind: with a listener the press is taken, and JS exits the app when no listener handles it.
+
+One exception, bounded: on macOS a window resize waits up to 16 ms for the engine's layout at the new size, so the
+window never grows around stale content (AppKit's zoom animation would otherwise show none of it); an engine that
+misses the deadline is not waited for again until it catches up (`docs/dev/macos.md`, Architecture).
 
 ## Interaction and the environment
 

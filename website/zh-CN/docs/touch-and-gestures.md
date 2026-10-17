@@ -1,7 +1,8 @@
 ---
 title: 触摸与手势
 description: 按压与按压反馈、点击区域、pointerEvents、原始触摸事件、手势响应者系统、PanResponder，以及原生的拖动、捏合与旋转手势。
-order: 14
+order: 38
+group: ui
 demo: guide-gestures
 ---
 

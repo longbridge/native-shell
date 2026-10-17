@@ -1,13 +1,13 @@
 //! The Android back button for Rust components ([`super::Context::on_back_press`];
 //! TS: `BackHandler.addEventListener("hardwareBackPress", ...)`).
 //!
-//! The button first goes to what is mounted (the newest modal, then a stack
-//! that can pop or prevents back), natively. Only when none of those takes
-//! it does the root's `BackPress` event come: the components' listeners run
-//! newest first until one returns true; then JS's, if it listens; when no
-//! one handles it, the app exits. The root listens while a listener of
-//! either side exists, which is what tells Android the app wants the button
-//! (`Mounter.wantsBack`), so with none the system's default runs on the spot.
+//! The newest modal takes the button first, natively. Without one, the
+//! root's `BackPress` event comes when the app listens: the components'
+//! listeners run newest first until one returns true; then JS's, if it
+//! listens. When no one handles it, the core sends [`crate::Command::Back`]:
+//! the innermost stack pops (or asks, with `preventBack`), else the app
+//! exits. The root listens while a listener of either side exists, so with
+//! none the platform goes back on the spot, as `Command::Back` would.
 
 use std::{any::Any, cell::RefCell, rc::Rc};
 

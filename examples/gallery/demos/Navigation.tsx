@@ -350,12 +350,16 @@ export function Navigation() {
   const intercept = signal(false);
   const backs = signal(0);
   const close = () => sheet.set(null);
-  const back = BackHandler.addEventListener("hardwareBackPress", () => {
-    if (!intercept()) return false;
-    backs.set(backs() + 1);
-    return true;
+  // A listener hears the button before the stack pops it; listening only
+  // while intercepting keeps Android's back gesture previewing the pop.
+  effect(() => {
+    if (!intercept()) return;
+    const back = BackHandler.addEventListener("hardwareBackPress", () => {
+      backs.set(backs() + 1);
+      return true;
+    });
+    cleanup(() => back.remove());
   });
-  cleanup(() => back.remove());
   const push = (page: () => JSX.Element) => () => nav.push({ name: "page", page });
   // The dialog springs up from a little smaller each time it opens.
   const pop = createNativeValue(0);

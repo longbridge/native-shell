@@ -1,7 +1,8 @@
 ---
 title: Device and environment
 description: Reading the window size, color scheme, font scale, safe areas, the platform, pixel density and layout direction, and reacting when they change.
-order: 23
+order: 47
+group: ui
 demo: guide-device
 ---
 

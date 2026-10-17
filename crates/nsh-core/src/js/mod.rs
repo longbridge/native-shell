@@ -24,6 +24,7 @@ pub const NATIVE_MODULES: &[&str] = &[
     "nsh/accessibility",
     "nsh/android",
     "nsh/ios",
+    "nsh/desktop",
     "nsh/webview",
     "nsh/video",
     "nsh/native",

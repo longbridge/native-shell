@@ -1,7 +1,8 @@
 ---
 title: Dev Server and Debugging
 description: Run apps with nsh run and nsh dev, connect simulators, emulators and devices, and use hot module replacement, logs, the error overlay and source-mapped stacks.
-order: 32
+order: 60
+group: tools
 ---
 
 # Dev Server and Debugging

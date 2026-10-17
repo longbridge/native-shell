@@ -45,28 +45,57 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   were not, and `renderInContext:` leaves pages and videos out (leaving screens and modals take the live views
   along; `--script`'s `shot` shows pages, which WebKit draws for `cacheDisplayInRect:`, but not videos). `NSAlert` sheets are windows of their own, above everything.
 - **Drawing**: Core Animation draws backgrounds, borders, corners, shadows, gradients and images (`decor.rs`,
-  `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw in `drawRect:` (their layer's
-  contents, below sublayers: they keep their background on the layer itself); other views use `updateLayer` and get no
-  backing store. Implicit animations are off for every change nsh makes (`surface::quiet`).
-- **Drawing views clip to their bounds** (`decor.rs`, as UIKit's `drawRect:` does), unless a shadow or outline is drawn
-  outside them. Since macOS 14 views do not clip by default, and AppKit then backs what a `drawRect:` view could draw
-  outside its bounds up to what its ancestors show, and draws it again whenever that changes
-  (`NS_viewVisibleRectDidChange`): every text of a scroll view on every scroll step (~150 redraws per wheel event in
-  the gallery's Lists demo). `NSView.clipsToBounds` is the layer's `masksToBounds`, so decoration owns it.
-- **Out-of-sight canvases are not redrawn by animations** (`Mounter::draw_when_shown`): a canvas whose animated values
-  change (on every frame while they run) is drawn again only if some of it can be seen (`visibleRect`), else when it
-  shows (after scrolls, batches and frames). Lists keep rows out of sight; the Stocks demo's pulsing sparklines
-  redrew all 22 rows at 120 Hz.
-- **AppKit draws `drawRect:` content twice**: it records the drawing into a display list, then replays it into the
-  layer's backing store (half-float on wide-color screens, on several threads). Drawing into a bitmap of our own in
-  `updateLayer` instead was measured slower (one thread), and `contentsFormat` / `drawsAsynchronously` changed nothing:
-  the lever is drawing less. Rendering canvases into bitmaps on a background queue was measured too (Stocks:
-  main-thread frame 2.7 → 0.3 ms) and left out: the process' CPU went from ~53% to ~140% (Core Graphics on the CPU
-  instead of AppKit's display-list replay), and the canvas showed a frame late.
+  `visual.rs`, `image.rs`, the iOS backend's design). Text and canvas views draw into a **content layer** of their own
+  (`NshView::redraw`: a plain `CALayer` sublayer whose delegate draws in `drawLayer:inContext:`, above the decoration
+  behind the view and below its children); no view uses `drawRect:`, every view uses `updateLayer` and gets no backing
+  store. Implicit animations are off for every change nsh makes (`surface::quiet`; the content layer's delegate
+  answers no action).
+- **Why not `drawRect:`**: scrolling moves a container's bounds origin, and `setBoundsOrigin:` walks the subtree
+  (`NSViewHierarchyInvalidateVisibleRect`) and marks every `drawRect:` view's layer for display
+  (`NS_viewVisibleRectDidChange`), clipped or not: every text of a scroll view went through AppKit's display pass on
+  every frame of a scroll (~165 `viewWillDraw` and backing-store checks per frame in the gallery's Lists demo, ~70% of
+  the frame's main-thread time). Plain sublayers are not visible-rect managed. A content layer is drawn again when
+  its content changes and when its size does (`needsDisplayOnBoundsChange`), not when the view moves (transitions
+  redrew every moving text on every frame before). Canvases draw asynchronously (`drawsAsynchronously`: Core
+  Animation replays the drawing on its threads; Stocks idle, main-thread time per frame ~3.3 → ~1.8 ms, process CPU
+  ~60% → ~30%); text draws at once, which measured faster than asynchronously.
+- **No masks on what scrolls, where avoidable** (`visual.rs`): the window server pays for a mask on every frame its
+  layer moves. Outer box shadows under an opaque background (a fill layer, or an opaque gradient, both above them)
+  are plain `shadowPath` casters, masked only under translucent ones; inset shadows are clipped by their holder's
+  rounded bounds (`masksToBounds`), masked only for differing corners. Measured by screen capture, a scroll of the
+  gallery's Lists (a shadow and an inset highlight on every card) was composited at ~55 of 120 Hz with the masks and
+  ~107 without, although the app committed every frame in time (Instruments' Animation Hitches: every frame one
+  refresh late).
+- **Out-of-sight content is not drawn** (`Mounter::draw_when_shown`): text and canvases whose content changes (a
+  canvas's animated values on every frame while they run) are drawn only if some of the view can be seen
+  (`visibleRect`), else when it shows (after scrolls, batches and frames; a view out of the tree waits until it is
+  inserted and shows). Lists keep rows out of sight, hidden screens stay mounted, and a content layer, unlike AppKit's
+  lazy `drawRect:`, would otherwise draw them all at once (the Stocks demo's pulsing sparklines redrew all 22 rows at
+  120 Hz). A canvas in sight redraws only the area its changed values cover (`NshView::redraw_rect`:
+  `setNeedsDisplayInRect:` on the content layer; `docs/dev/canvas.md`, "Partial redraws").
+- **Trackpad scrolls are shown in step with the display** (`scroll.rs`, `Resampled`): gesture and momentum events come
+  at about the display's rate (120 Hz) but not in step with it, so applied as they come some frames moved twice and
+  some not at all (up to a quarter of a fling's frames, depending on how the events fell; the frame rate still read
+  120). Events record where they put the offset at their timestamp; each display frame shows that path one event
+  interval (+2 ms) back, interpolated. It adds ~10 ms of latency, and the main thread does the move once per frame
+  instead of once per event (each event committed a Core Animation transaction of its own). Mouse wheels (no phases)
+  still move at once. Anything else that moves the view (a drag, an animated scroll, a spring back) first shows where
+  the events got to (`settle`).
 - **One hop per commit.** The engine runs on its own thread; its sink queues each commit and wakes the main queue once
   (`DispatchQueue::main`), and the main thread applies every queued batch in order (`surface.rs`, `mount.rs`).
   Dispatched closures must be `Send`, so they find their surface by key in a thread-local map; no globals are shared
   between surfaces.
+- **Resizes are shown at once** (`Surface::resized`, the one place the main thread waits for the engine): when the
+  window resizes the root, the main thread waits for the layout at the new size (the engine reports it after its
+  commit: `MountSink::resized`), at most 16 ms, and applies it before AppKit draws the window. AppKit's animated
+  resizes (zoom, the green button, a double click on the title bar) run the run loop in a private mode
+  (`_NSMoveTimerRunLoopMode`) where the main queue does not drain: the window grew around the old content for the
+  whole animation (~360 ms, 41 of 41 captured frames), its new area white. Now it is laid out on every step (the wait
+  is ~0.1–1.5 ms of engine time; mounting what comes into view is the rest); a live resize takes the same path. A capture still shows a few frames one step behind (2–12 of ~60 per zoom and unzoom), as a plain AppKit window
+  does (13): the window server shows the window's new frame before the commit that fills it. An engine that misses
+  the deadline (JS busy) is not waited for again until it reports a resize done, so a busy app resizes as before.
+  Where the app has not drawn yet, the surface's background shows: the app's top view's opaque background when it
+  fills the root (`system.rs`), else white / neutral-950 by the scheme.
 - **Text is typeset on the engine thread** by CoreText (`text.rs`, the iOS engine with `NSFont`); the main thread
   draws the finished `CTLine`s.
 - **Frames**: native animations, JS frame requests, scroll glides, transitions and toasts run on the root view's display
@@ -95,7 +124,7 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 | Scroll views | `scroll.rs` | Offsets of their own, shown by the container's bounds origin; trackpad scrolls follow the system's phases and momentum (rubber banding while the fingers are down, a spring back after), notched wheels move 10 points per line and stay on their view for 200 ms; mouse drags scroll as on Catalyst; snapping and paging glide from where the fingers lift; sticky cells; the indicator and refresh spinner in an overlay view that lets the mouse through; the keyboard scrolls as on Linux; a field that gets the focus is scrolled into view |
 | Input | `input.rs` | The root's `hitTest:` takes every mouse event inside it, and nsh picks the view itself (transforms inverted, `overflow`, `pointerEvents`, hit slop, hidden screens, views animating out); a hosted view gets the event from AppKit only where nsh's picking lands on it, even below `pointerEvents: none` overlays (`native_at`): AppKit's own picking would give a web view the clicks on what nsh draws over it (a menu outside its parent's frame, transformed views) and on web views that are hidden, animating out or under `pointerEvents: none`. Touches for the responder system, `panActivation` gates, presses, long presses, pressed and hovered states, cursors (`NSCursor`), native pans, trackpad pinch and rotation (Control + wheel pinches), the mouse's back button goes back |
 | Text inputs | `text_input.rs` | `NSTextField` / `NSSecureTextField`, multiline `NSTextView` in an `NSScrollView`, hosted at the content box in a view that fills the input (`InputPad`: a click on the padding, or beside a field's line, goes to the editor at the nearest point), borderless (the view draws the decoration); edit counts drop stale JS values; offsets are `NSString`'s UTF-16; a click outside a field that edits leaves the focus in it (the root refuses first responder during a mouse press), `blur()` and Escape hand it over; return does what `submitBehavior` says (see "Keyboard") |
-| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) visible; headers are AppKit views (an `NSButton` back button with `chevron.left`, `NSTextField` titles, large titles, header items) of a fixed height reported to the core; a screen the app removes leaves as an image (`renderInContext`), since the core empties it in the next batches, and so does a modal; the rendering has no web page or video in it (other processes draw them), so their live views are lent to the image where they were, clipped to a rectangle (`native::lend`), and given back or let go when it is gone; Escape (unless a field or a web view has the focus: then it hands the keyboard to the root), Option+Left, Cmd+[ and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close); a focused page sees these keys first, and they reach the root only when it does not use them (WebKit sends unused keys up the responder chain) |
+| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) visible; headers are AppKit views (an `NSButton` back button with `chevron.left`, `NSTextField` titles, large titles, header items) of a fixed height reported to the core; a screen the app removes leaves as an image (`renderInContext`), since the core empties it in the next batches, and so does a modal; the rendering has no web page or video in it (other processes draw them), so their live views are lent to the image where they were, clipped to a rectangle (`native::lend`), and given back or let go when it is gone; Escape (unless a field or a web view has the focus: then it hands the keyboard to the root), Option+Left, Cmd+[ and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close; without a modal, the app's back listeners hear it before the stacks, and `Command::Back` goes on when none takes it); a focused page sees these keys first, and they reach the root only when it does not use them (WebKit sends unused keys up the responder chain) |
 | Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close |
 | Transitions | `transition.rs` | `LayoutAnimation`, style transitions and keyframes on frame callbacks (Linux's) |
 | Dialogs, toasts | `system.rs` | `NSAlert` as a sheet on the window. NSAlert puts two buttons in a row, its first rightmost, and stacks more, its first on top but the Return button moved above all: up to two alert buttons are added in reverse with the cancel button last (they read in order, cancel leftmost) and the last regular one is the default; more, and action sheets' options, are added in order with the cancel button last and no default (iOS's order). Cancel is Escape; destructive buttons have `hasDestructiveAction`. Toasts are a view the root hosts at its bottom |
@@ -104,6 +133,7 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
 | Native components | `native.rs` | `AppView::register_component(name, factory)`; a `NativeComponent`'s `NSView` fills the node's view; `ComponentContext::emit` / `set_size` from any thread |
 | Accessibility | `access.rs` | `NSAccessibility` setters on the views: roles and subroles, labels, values, states, `testID` as the identifier; `accessible={true}` hides the children; live regions announced |
 | Environment | `system.rs` | Color scheme: the app's appearance when it forces one, else the root's effective appearance (the root's appearance is set to the app's, so hosted controls follow); locale and RTL from `NSLocale`, reduce motion and VoiceOver from `NSWorkspace` (live), the backing scale factor, the OS version; `Platform.OS` `"macos"`, idiom `desktop`, font scale 1, safe area and keyboard height 0 |
+| Window chrome (`nsh/desktop`) | `chrome.rs` | `setTitle`; a hidden title bar is `FullSizeContentView` with a transparent, untitled title bar (the traffic lights stay), its area (the frame above `contentLayoutRect`, the zoom button's right edge + 8) reported as the environment's `title_bar`, 0 in full screen; a left press on a `windowDrag` view calls `performWindowDragWithEvent:` and a double click does what `AppleActionOnDoubleClick` says (zoom by default), the press never reaching the app; the application menu replaces the main menu (its first submenu is the app menu; the replaced one comes back with `null`), context menus are `popUpMenuPositioningItem:atLocation:inView:` from the main queue (they track the mouse in a loop of their own); role items send AppKit's standard actions down the responder chain and are not reported, the others target an `NshMenuTarget` that reports their tag; AppKit validates the items (roles are enabled and titled by the responder chain: `Undo Typing`, `Exit Full Screen`), a disabled item's action is one nothing answers; the traffic lights are centered again whenever AppKit lays the title bar out (frame change notifications of the buttons and their container) |
 | Clipboard | `system.rs` | `NSPasteboard` |
 | Networking | `net.rs` | `NSURLSession` (the iOS backend's) |
 | Dev | `dev.rs` | The dev server client on its own thread; a status line and the error overlay above the surface (opaque; code frames keep their lines and scroll sideways; a click that selects no text dismisses it, in an inactive window too); Cmd+R reloads the latest build |
@@ -151,11 +181,14 @@ it reads is `nsh_engine::perf` (`docs/dev/performance.md`):
 - Batches carry when the sink got them (only while measuring), for `HOP`.
 - The engine records its commits (`EngineControl::set_perf_monitor`).
 
-For checking a change: run a release host with `--fps --trace` and `--script` (`wait`, `wheel`, `tap`); the host logs
-the readings once a second (`nsh::perf fps …`, milliseconds as mean/p50/p95/max: `tick` the delivered refresh gaps,
-`frame-gap` the gaps between shown frames, `main` the main-thread time per frame). The script's `wheel` sends an
-event every 16 ms (a real trackpad on ProMotion: every 8 ms). For where the time goes, `sample
-<pid> 5` the host (Instruments' Time Profiler: `xctrace record --template 'Time Profiler' --attach <pid>`).
+For checking a change: run a release host with `--fps --trace` and `--script` (`wait`, `wheel`, `fling`, `tap`); the
+host logs the readings once a second (`nsh::perf fps …`, milliseconds as mean/p50/p95/max: `tick` the delivered
+refresh gaps, `frame-gap` the gaps between shown frames, `main` the main-thread time per frame). The script's `wheel`
+sends an event every 16 ms; `fling` sends them as a ProMotion trackpad does, every 8.33 ms from a timer thread with
+the system's momentum after, stamped when they happen. A frame rate of 120 does not mean a smooth scroll: check how
+far each frame moves (fling a few times with starting times a millisecond apart, as event and display phases differ
+from gesture to gesture). For where the time goes, `sample <pid> 5` the host (Instruments' Time Profiler: `xctrace
+record --template 'Time Profiler' --attach <pid>`).
 
 
 ## Checking a change: `--script`
@@ -163,13 +196,13 @@ event every 16 ms (a real trackpad on ProMotion: every 8 ms). For where the time
 `nsh-macos-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or new
 lines (`script.rs`, whose module doc lists them all): `wait <ms>`, `shot <file.png>`, `tap [mods] <x> <y> [count]`
 (`tap shift 10 20`: a shift-click), `down` / `up` (a held press, for pressed states), `rtap`,
-`drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `notch` (a mouse wheel),
-`hover`, `type <text>`, `mark <text>` (an input method's marked text), `key <name>` (with modifiers: `cmd+a`,
-`shift+Tab`), `dark` / `light`, `resize <w> <h>`,
-`quit`. Mouse events are posted to the application's queue, so they take the path real ones take (and become
-`NSApp.currentEvent`); wheels are handed to the window, and the root's `hitTest:` sees them as the current event (it
-keeps them from pages with `scrollEnabled={false}`). Presses make the app active first: WebKit takes left clicks only
-in the active app (in another, a click into a page only activates it).
+`drag <x0> <y0> <x1> <y1> [ms]`, `wheel <x> <y> <dx> <dy> [ms]` (a trackpad gesture), `fling <x> <y> <dx> <dy> [ms]`
+(a 120 Hz trackpad flick with momentum), `notch` (a mouse wheel), `hover`, `type <text>`, `mark <text>` (an input
+method's marked text), `key <name>` (with modifiers: `cmd+a`, `shift+Tab`), `dark` / `light`, `resize <w> <h>`,
+`zoom` (AppKit's animated zoom), `fullscreen` (enter or leave), `quit`. Mouse events are posted to the application's
+queue, so they take the path real ones take (and become `NSApp.currentEvent`); wheels are handed to the window, and the root's
+`hitTest:` sees them as the current event (it keeps them from pages with `scrollEnabled={false}`). Presses make the app
+active first: WebKit takes left clicks only in the active app (in another, a click into a page only activates it).
 
 ```sh
 nsh build examples/gallery -o /tmp/gallery
@@ -182,7 +215,8 @@ works while the screen is locked. That rendering is not Core Animation's own: it
 their layer's bounds, ignores `shadowPath` and Core Image filters, flattens 3D transforms (perspective, `rotateX`,
 `rotateY`), and does not show backdrop blur, sheets or `AVPlayerLayer` content (`WKWebView` pages show: WebKit draws
 them for `cacheDisplayInRect:`, as of macOS 27). `decor.rs` avoids the first three (shape layers for differing corners, masked holders for box
-shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them.
+shadows), so screenshots match the window closely, except that spread rings of box shadows are missing from them, and
+so are outer box shadows under an opaque background (unmasked `shadowPath` casters, `visual.rs`).
 
 ## Not implemented, or different
 

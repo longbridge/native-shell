@@ -1,7 +1,8 @@
 ---
 title: Web (WebAssembly)
 description: Run nsh apps in a browser with the WebAssembly build of the runtime, which renders to the DOM; it powers the live demos on this site.
-order: 28.5
+order: 16
+group: platforms
 demo: counter
 ---
 
@@ -11,7 +12,7 @@ The nsh runtime also compiles to WebAssembly. The same engine runs in a browser 
 
 ## What runs where
 
-On iOS and Android the engine has its own thread and hands one `MountBatch` per commit to the main thread. A browser page has one thread, so the web build drives the same engine step by step from the page's event loop (`nsh_engine::LocalEngine`):
+On every native platform the engine has its own thread and hands one `MountBatch` per commit to the main thread. A browser page has one thread, so the web build drives the same engine step by step from the page's event loop (`nsh_engine::LocalEngine`):
 
 ```text
 pointer / keyboard / scroll events ─┐
@@ -20,7 +21,7 @@ requestAnimationFrame ──────────────┘             
                                                           native animation outputs ───┘
 ```
 
-- **Layout is the core's.** Every view is an absolutely positioned element at the frame Taffy computed, so flexbox, grid, `aspectRatio` and percentages behave exactly as on the phone. The browser's own layout is not involved.
+- **Layout is the core's.** Every view is an absolutely positioned element at the frame Taffy computed, so flexbox, grid, `aspectRatio` and percentages behave exactly as on devices. The browser's own layout is not involved.
 - **Styles are turned into CSS in Rust.** Background, borders, radii, shadows (`shadow*` and `boxShadow`), gradients, filters, `backdropFilter`, transforms, `transformOrigin`, `outline`, `mixBlendMode`, transitions and the built-in keyframe animations become CSS properties. Tailwind classes, `active:`, `hover:` and `focus:` states and `dark:` all resolve natively, as they do on devices.
 - **Text is laid out in Rust** with font measurements from the browser (`CanvasRenderingContext2D.measureText`) and drawn run by run at the positions the layout chose, so what was measured is what is drawn. Lines break after spaces, around CJK characters and at `\n`; `numberOfLines` truncates with an ellipsis.
 - **Native animations run in Rust** on `requestAnimationFrame`: `Animated` timing, spring and decay, `interpolate`, native values bound to `opacity`, `transform` and `backgroundColor`, drags bound with `pan`, scroll-linked values and canvas arguments. JS is not involved per frame, as on devices.

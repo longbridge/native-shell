@@ -1,12 +1,13 @@
 ---
 title: 平台特定代码
-description: 为 iOS 和 Android 编写同一个应用：ios={{}} / android={{}} / desktop={{}} 中的平台专属属性，nsh/ios 与 nsh/android 模块，Platform.OS 与 Platform.select，以及平台相关的 Tailwind 变体。
-order: 25
+description: 为手机和桌面编写同一个应用：ios={{}} / android={{}} / desktop={{}} 中的平台专属属性，nsh/ios 与 nsh/android 模块，Platform.OS 与 Platform.select，以及平台相关的 Tailwind 变体。
+order: 17
+group: platforms
 ---
 
 # 平台特定代码
 
-同一个 nsh 包可以在 iOS、Android 和 Mac Catalyst 上运行。应用的大部分代码根本不需要判断平台：元素、样式、布局、组件和模块在各处的行为都相同，`nsh/ui/mobile` 的组件由 nsh 自己绘制而不是借用各平台的控件，所以两边看起来一样。当某样东西确实只属于一个平台时，nsh 给它安排了明确的位置，让平台代码一目了然、范围可控：
+同一个 nsh 包可以在 iOS、Android、macOS、Windows 和 Linux 上运行（也可以在 Mac Catalyst 中运行）。应用的大部分代码根本不需要判断平台：元素、样式、布局、组件和模块在各处的行为都相同，`nsh/ui/mobile` 的组件由 nsh 自己绘制而不是借用各平台的控件，所以在各处看起来都一样。当某样东西确实只属于一个平台时，nsh 给它安排了明确的位置，让平台代码一目了然、范围可控：
 
 | 位置 | 用途 |
 |---|---|
@@ -58,6 +59,7 @@ order: 25
 | `desktop={{ headerLargeTitle }}`、`desktop={{ headerBackTitle }}` | `Screen` | 大标题；返回按钮上的文字。 |
 | `desktop={{ presentationStyle }}` | `Modal` | `"pageSheet"` / `"formSheet"`：窗口中居中的卡片。 |
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS：双指在触控板上轻扫，在页面历史中前进后退；Windows：在触摸屏上轻扫；Linux：在触控板上轻扫。 |
+| `desktop={{ windowDrag }}` | 所有元素 | 按住它拖动窗口，像系统标题栏一样（见 [nsh/desktop](../modules/nsh-desktop.md#自定义标题栏)）。 |
 
 `desktop={{…}}` 在所有地方都可以使用；上面列出的是目前仅限桌面的属性。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
 
@@ -65,14 +67,14 @@ order: 25
 
 ## 平台模块
 
-`nsh/ios` 和 `nsh/android` 存放只有一个平台才有的 API。两者在所有平台上都可以导入，因此同一个包可以到处运行：在另一个平台上，它们的函数什么都不做，组件什么都不渲染。每个模块都导出 `isAvailable`，只在自己的平台上为 `true`。
+`nsh/ios` 和 `nsh/android` 存放只有一个平台才有的 API，`nsh/desktop` 存放只有桌面才有的 API。它们在所有平台上都可以导入，因此同一个包可以到处运行：在其他平台上，它们的函数什么都不做，组件什么都不渲染。每个模块都导出 `isAvailable`，只在自己的平台上为 `true`。
 
 ### nsh/android
 
 | 导出 | 说明 |
 |---|---|
 | `Toast.show(message, duration?)` | 在屏幕底部显示 toast；`"short"`（默认）或 `"long"`。 |
-| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图和导航栈之后监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
+| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图之后、导航栈之前监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
 | `BackHandler.exitApp()` | 退出应用。 |
 | `setStatusBarBackgroundColor(color, animated?)` | `StatusBar` 组件所设置内容之下的状态栏颜色（全面屏之前，API 35）。 |
 | `isAvailable` | Android 上为 `true`。 |
@@ -100,7 +102,7 @@ function Player() {
 }
 ```
 
-返回键先由最上层的模态视图处理，然后是最上层的导航栈，再然后是 `BackHandler` 监听器（最近添加的最先），都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
+返回键先由最上层的模态视图处理，然后是 `BackHandler` 监听器（最近添加的最先），再然后是最上层的导航栈，都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
 
 ### nsh/ios
 
@@ -110,6 +112,17 @@ function Player() {
 | `isAvailable` | iOS 和 Mac Catalyst 上为 `true`。 |
 
 见[表单与键盘](./forms-and-keyboard.md#键盘上方的工具栏inputaccessoryview)。
+
+### nsh/desktop
+
+| 导出 | 说明 |
+|---|---|
+| `Window` | 窗口：`setTitle`、`setTitleBar("hidden")`（自定义标题栏）、`minimize`、`toggleMaximize`、`toggleFullScreen`、`close`。 |
+| `titleBar` | 隐藏的标题栏的高度，以及系统窗口按钮占用的空间（响应式）。 |
+| `Menu` | `setApplicationMenu(items)`（菜单栏，带快捷键）和 `popup(items, at?)`（右键菜单）。 |
+| `isAvailable` | 在 macOS、Windows 和 Linux 上为 `true`。 |
+
+见 [nsh/desktop](../modules/nsh-desktop.md)。
 
 ### 状态栏
 

@@ -1,7 +1,8 @@
 ---
 title: 字体
 description: 系统字体与通用字体族、导入 .ttf 和 .otf 文件、含多个字重和斜体的字体族，以及在 Tailwind 类中使用字体。
-order: 13
+order: 37
+group: ui
 ---
 
 # 字体

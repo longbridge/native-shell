@@ -20,8 +20,8 @@ use nsh_core::{
     Color, FontVariant,
     canvas::{
         CanvasFont, CanvasGradient, CanvasOp, CanvasTextAlign, CanvasTextBaseline, Composite,
-        Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp, arc_sweep,
-        fit_radii,
+        Damage, DamageScan, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint,
+        PathOp, arc_sweep, fit_radii,
     },
 };
 use objc2_core_foundation::{
@@ -50,6 +50,10 @@ pub(crate) struct CanvasState {
     /// The images the drawing names, by URI: `None` while loading (or
     /// when they failed to load).
     images: FxHashMap<Arc<str>, Option<CFRetained<CGImage>>>,
+    /// Finds what a change of slots redraws ([`set_args`]).
+    scan: DamageScan,
+    /// The slots that changed (scratch space of [`set_args`]).
+    changed: Vec<u16>,
 }
 
 /// Sets up a canvas view.
@@ -97,30 +101,65 @@ pub(crate) fn set(surface: &Rc<Surface>, view: &NshView, drawing: Arc<Drawing>) 
             view.changed();
         });
     }
-    view.changed();
+    // The mounter draws it, when it shows.
+    view.restyle();
 }
 
-/// Native value slot `k` changed; whether its value did (the canvas is
-/// then drawn again: [`crate::mount::Mounter::draw_when_shown`]).
-pub(crate) fn set_arg(view: &NshView, k: u16, value: AnimationValue) -> bool {
+/// Native value slots changed (`(slot, value)`, every bound slot on each
+/// frame): what has to be drawn again ([`crate::mount::Mounter::draw_when_shown`]).
+/// Only the operations reading a slot whose value changed are redrawn,
+/// where they were and where they are now ([`DamageScan`]).
+pub(crate) fn set_args(view: &NshView, values: &[(u16, AnimationValue)]) -> Damage {
     let mut state = view.state_mut();
-    let Some(c) = state.canvas.as_mut() else {
-        return false;
+    let Some(CanvasState {
+        drawing,
+        args,
+        scan,
+        changed,
+        ..
+    }) = state.canvas.as_mut()
+    else {
+        return Damage::None;
     };
-    let k = k as usize;
-    if c.args.len() <= k {
-        c.args.resize(k + 1, None);
+    changed.clear();
+    for &(k, value) in values {
+        let i = k as usize;
+        if args.get(i).copied().flatten() != Some(value) {
+            changed.push(k);
+        }
     }
-    if c.args[k] == Some(value) {
-        return false;
+    if changed.is_empty() {
+        return Damage::None;
     }
-    c.args[k] = Some(value);
-    true
+    let ops = drawing.as_ref().map_or(&[][..], |d| &d.ops[..]);
+    let is_changed = |s: u16| changed.contains(&s);
+    let before = scan.damage(ops, |s| slot_number(args, s), is_changed);
+    for &(k, value) in values {
+        let i = k as usize;
+        if args.len() <= i {
+            args.resize(i + 1, None);
+        }
+        args[i] = Some(value);
+    }
+    if before == Damage::All {
+        return before;
+    }
+    let after = scan.damage(ops, |s| slot_number(args, s), is_changed);
+    before.union(after)
 }
 
-/// Draws a canvas view's drawing (in `drawRect:`; the context is y down,
-/// in points).
-pub(crate) fn draw(ctx: &CGContext, state: &ViewState) {
+/// The number in slot `s` (0 while unset).
+fn slot_number(args: &[Option<AnimationValue>], s: u16) -> f32 {
+    args.get(s as usize)
+        .copied()
+        .flatten()
+        .map_or(0.0, AnimationValue::number)
+}
+
+/// Draws a canvas view's drawing (in its content layer's
+/// `drawLayer:inContext:`; the context is y down, in points) where it is
+/// `dirty`: Core Graphics skips the rest.
+pub(crate) fn draw(ctx: &CGContext, state: &ViewState, dirty: CGRect) {
     let Some(canvas) = state.canvas.as_ref() else {
         return;
     };
@@ -146,6 +185,9 @@ pub(crate) fn draw(ctx: &CGContext, state: &ViewState) {
             || matches!(op, CanvasOp::Composite(c) if *c != Composite::SourceOver)
     });
     CGContext::save_g_state(Some(ctx));
+    // Core Animation clips to what it redraws already; said again for the
+    // transparency layer, which takes the clip's size.
+    CGContext::clip_to_rect(Some(ctx), dirty);
     if isolated {
         // SAFETY: no auxiliary info.
         unsafe { CGContext::begin_transparency_layer(Some(ctx), None) };
@@ -270,13 +312,7 @@ impl<'a> Replay<'a> {
     }
 
     fn n(&self, n: Num) -> f64 {
-        n.get(|s| {
-            self.args
-                .get(s as usize)
-                .copied()
-                .flatten()
-                .map_or(0.0, AnimationValue::number)
-        }) as f64
+        n.get(|s| slot_number(self.args, s)) as f64
     }
 
     fn color(&self, paint: &Paint) -> Option<Color> {

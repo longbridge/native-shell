@@ -126,7 +126,11 @@ pub struct AppView {
     surface: Rc<Surface>,
     /// Hosts the surface and, in development, the status line and error
     /// overlay above it.
+    #[cfg_attr(not(feature = "dev"), allow(dead_code))]
     overlay: gtk::Overlay,
+    /// The widget put in a window: the menu bar's slot above the overlay
+    /// ([`crate::chrome`]).
+    outer: gtk::Box,
     options: RefCell<AppOptions>,
     #[cfg(feature = "dev")]
     pub(crate) dev: RefCell<Option<crate::dev::DevSession>>,
@@ -139,11 +143,18 @@ impl AppView {
         surface.appearance.set(options.appearance);
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&crate::surface::widget(&surface)));
+        overlay.set_vexpand(true);
+        let slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let outer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        outer.append(&slot);
+        outer.append(&overlay);
+        crate::chrome::attach(&surface, &overlay, &slot);
         surface.native.set_components(options.components.clone());
         surface.native.set_app_id(&options.app_id);
         let view = Rc::new(AppView {
             surface,
             overlay,
+            outer,
             options: RefCell::new(options),
             #[cfg(feature = "dev")]
             dev: RefCell::new(None),
@@ -154,7 +165,7 @@ impl AppView {
 
     /// The widget to put in a window.
     pub fn widget(&self) -> gtk::Widget {
-        self.overlay.clone().upcast()
+        self.outer.clone().upcast()
     }
 
     /// Runs `app`, replacing what ran.

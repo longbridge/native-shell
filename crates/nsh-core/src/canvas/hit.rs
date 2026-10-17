@@ -19,12 +19,12 @@ const TOLERANCE: f32 = 0.25;
 
 /// An affine transform `[a, b, c, d, e, f]` (canvas order: `x' = a x + c y
 /// + e`, `y' = b x + d y + f`).
-type Matrix = [f32; 6];
+pub(super) type Matrix = [f32; 6];
 
-const IDENTITY: Matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+pub(super) const IDENTITY: Matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
 /// `m` after `n` (`n` applies first): what `ctx.transform(n)` makes of `m`.
-fn mul(m: Matrix, n: Matrix) -> Matrix {
+pub(super) fn mul(m: Matrix, n: Matrix) -> Matrix {
     [
         m[0] * n[0] + m[2] * n[1],
         m[1] * n[0] + m[3] * n[1],
@@ -35,11 +35,11 @@ fn mul(m: Matrix, n: Matrix) -> Matrix {
     ]
 }
 
-fn apply(m: &Matrix, x: f32, y: f32) -> [f32; 2] {
+pub(super) fn apply(m: &Matrix, x: f32, y: f32) -> [f32; 2] {
     [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
 }
 
-fn invert(m: &Matrix) -> Option<Matrix> {
+pub(super) fn invert(m: &Matrix) -> Option<Matrix> {
     let det = m[0] * m[3] - m[1] * m[2];
     if det == 0.0 || !det.is_finite() {
         return None;
@@ -393,7 +393,7 @@ fn dist(a: [f32; 2], b: [f32; 2]) -> f32 {
     (a[0] - b[0]).hypot(a[1] - b[1])
 }
 
-fn norm(v: [f32; 2]) -> Option<[f32; 2]> {
+pub(super) fn norm(v: [f32; 2]) -> Option<[f32; 2]> {
     let l = v[0].hypot(v[1]);
     (l > 1e-9).then(|| [v[0] / l, v[1] / l])
 }
