@@ -54,6 +54,12 @@ use crate::{
     view::{NshView, ViewState},
 };
 
+/// A drawing pass starts: decoration images drawn lately stay in GPUI's
+/// atlas ([`gradient`]).
+pub(crate) fn new_pass() {
+    gradient::new_pass();
+}
+
 /// `c` with its alpha multiplied by `a`.
 fn faded(c: Color, a: f32) -> Color {
     let alpha = ((c.0 & 0xff) as f32 * a.clamp(0.0, 1.0)).round() as u32;

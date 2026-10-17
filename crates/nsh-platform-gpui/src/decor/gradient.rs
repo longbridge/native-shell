@@ -31,14 +31,51 @@ use crate::{
 /// Most pixels along a side of a gradient's image.
 const MAX_SIDE: f32 = 768.0;
 
-/// Most images kept.
+/// How many images are kept before those not drawn lately are let go.
 const MAX_KEPT: usize = 96;
 
-/// Gradient images by content, with the tick they were last drawn at.
+/// How many drawing passes an image stays after it was last drawn. An
+/// image drawn in the current pass (or one GPUI may still show from a
+/// recent frame) must stay in the atlas: freeing it would let an image
+/// made later reuse its tile, which the earlier sprite then shows.
+const KEEP_PASSES: u64 = 120;
+
+/// Gradient images by content, with the drawing pass they were last drawn
+/// in.
 #[derive(Default)]
 struct Kept {
-    tick: u64,
+    pass: u64,
     images: FxHashMap<u64, (Arc<RenderImage>, u64)>,
+}
+
+impl Kept {
+    /// The image kept under `key`, marked drawn in this pass.
+    fn get(&mut self, key: u64) -> Option<Arc<RenderImage>> {
+        let pass = self.pass;
+        self.images.get_mut(&key).map(|(image, used)| {
+            *used = pass;
+            image.clone()
+        })
+    }
+
+    /// Keeps `image` under `key`; returns the images let go to make room
+    /// (none drawn in the last [`KEEP_PASSES`] passes: over the limit
+    /// while all are recent, more are kept).
+    fn insert(&mut self, key: u64, image: Arc<RenderImage>) -> Vec<Arc<RenderImage>> {
+        let mut dropped = Vec::new();
+        if self.images.len() >= MAX_KEPT {
+            let pass = self.pass;
+            self.images.retain(|_, (image, used)| {
+                let keep = *used + KEEP_PASSES >= pass;
+                if !keep {
+                    dropped.push(image.clone());
+                }
+                keep
+            });
+        }
+        self.images.insert(key, (image, self.pass));
+        dropped
+    }
 }
 
 thread_local! {
@@ -170,6 +207,11 @@ fn straight(c: [f32; 4]) -> Color {
     Color(u32::from_be_bytes([r, g, b, a]))
 }
 
+/// A drawing pass starts (images drawn in recent passes are kept).
+pub(crate) fn new_pass() {
+    KEPT.with_borrow_mut(|kept| kept.pass += 1);
+}
+
 /// Draws gradient `g` over the view's `w` x `h` box with corner `radii`
 /// (current coordinates).
 pub(crate) fn draw(cx: &mut DrawCx<'_>, g: &Gradient, w: f32, h: f32, radii: [f32; 4]) {
@@ -209,28 +251,11 @@ fn draw_image(
     );
     let key = image_key(ramp, geometry, w, h, size);
     let image = KEPT.with_borrow_mut(|kept| {
-        kept.tick += 1;
-        let tick = kept.tick;
-        if let Some((image, used)) = kept.images.get_mut(&key) {
-            *used = tick;
-            return Some((image.clone(), Vec::new()));
+        if let Some(image) = kept.get(key) {
+            return Some((image, Vec::new()));
         }
         let image = Arc::new(rasterize(ramp, geometry, w, h, size)?);
-        let mut dropped = Vec::new();
-        if kept.images.len() >= MAX_KEPT {
-            // Let the least recently drawn half go.
-            let mut ticks: Vec<u64> = kept.images.values().map(|v| v.1).collect();
-            ticks.sort_unstable();
-            let cut = ticks[ticks.len() / 2];
-            kept.images.retain(|_, (image, used)| {
-                let keep = *used > cut;
-                if !keep {
-                    dropped.push(image.clone());
-                }
-                keep
-            });
-        }
-        kept.images.insert(key, (image.clone(), tick));
+        let dropped = kept.insert(key, image.clone());
         Some((image, dropped))
     });
     let Some((image, dropped)) = image else {
@@ -551,6 +576,30 @@ mod tests {
         let ramp = Ramp::new(&g, rgba);
         assert_eq!(straight(ramp.at(0.25 + 0.1)), straight(ramp.at(0.1)));
         assert_eq!(straight(ramp.at(-0.15)), straight(ramp.at(0.1)));
+    }
+
+    #[test]
+    fn recent_images_are_kept() {
+        let image = || {
+            Arc::new(RenderImage::new(vec![image::Frame::new(
+                image::RgbaImage::new(1, 1),
+            )]))
+        };
+        let mut kept = Kept::default();
+        for key in 0..MAX_KEPT as u64 {
+            assert!(kept.insert(key, image()).is_empty());
+        }
+        // Full, but all drawn in this pass: nothing goes.
+        assert!(kept.insert(1000, image()).is_empty());
+        assert_eq!(kept.images.len(), MAX_KEPT + 1);
+        // Later, the images not drawn since go; one drawn again stays.
+        kept.pass += KEEP_PASSES;
+        assert!(kept.get(5).is_some());
+        kept.pass += 1;
+        let dropped = kept.insert(2000, image());
+        assert_eq!(dropped.len(), MAX_KEPT);
+        assert!(kept.get(5).is_some() && kept.get(2000).is_some());
+        assert!(kept.get(6).is_none());
     }
 
     #[test]
