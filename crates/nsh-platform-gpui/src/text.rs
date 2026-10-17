@@ -2106,13 +2106,14 @@ pub(crate) fn draw_silhouette(
         return;
     }
     let k = cx.transform_scale();
-    let c = drawn.content;
-    let tint = cx.color(color);
+    let (ox, oy) = (drawn.content.x, drawn.content.y);
+    let tint = Some(cx.color(color));
     let mut glyphs = Vec::with_capacity(layout.glyphs.len() * offsets.len());
-    for g in &layout.glyphs {
-        let (x, y) = (c.x + g.x, c.y + g.y);
+    // Emoji draw in their own colors: they cast no silhouette.
+    for g in layout.glyphs.iter().filter(|g| !g.emoji) {
         for &(dx, dy) in offsets {
-            glyphs.push((cx.map(x + dx, y + dy), g.font, g.id, px(g.size * k), Some(tint)));
+            let o = cx.map(ox + g.x + dx, oy + g.y + dy);
+            glyphs.push((o, g.font, g.id, px(g.size * k), tint));
         }
     }
     paint_glyphs(cx, glyphs);
