@@ -93,7 +93,7 @@
   <text class="layer"     x="24" y="273">Build machine</text>
   <text class="layer-sub" x="24" y="289">your server or CI</text>
   <text class="layer"     x="24" y="481">The device</text>
-  <text class="layer-sub" x="24" y="497">your iOS / Android app</text>
+  <text class="layer-sub" x="24" y="497">your native app</text>
 
   <!-- the trust boundary -->
   <path class="seam" d="M160,368 Q160,356 172,356 L836,356 Q848,356 848,368 L848,396 L160,396 Z"/>

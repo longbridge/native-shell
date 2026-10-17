@@ -1,7 +1,8 @@
 ---
 title: Accessibility
 description: Making apps work with VoiceOver and TalkBack - labels, roles, states, values, custom actions, grouping and hiding, announcements and focus, text size, and reduced motion.
-order: 24
+order: 48
+group: ui
 ---
 
 # Accessibility

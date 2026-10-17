@@ -1,10 +1,43 @@
 ---
-title: Embedding in Android Apps
-description: Add nsh.aar to an existing Android app, show nsh apps in an NshView, and load bundles, signed packages or a dev server.
-order: 3.2
+title: Android
+description: Run nsh apps on Android with Android views, on an emulator or a device, package them as an .apk, and embed them in an existing Android app with nsh.aar and NshView.
+order: 12
+group: platforms
 ---
 
-# Embedding in Android Apps
+# Android
+
+nsh apps run on Android with ordinary Android views and `StaticLayout` text, from Android 9 (API 28), on `arm64-v8a`
+and `x86_64`. An existing app embeds modules in an `NshView` and loads signed packages it downloads, under limits and
+capabilities it sets: that is the main use. Running and packaging whole apps work too, as on the other platforms. On Android, `Platform.OS` is
+`"android"` and the `android={{…}}` props apply.
+
+## Requirements
+
+- **The Android SDK** (with `platforms;android-35`, build tools and `platform-tools`) and **a JDK**, on macOS, Windows
+  or Linux. See [Installation](./installation.md#android).
+- An emulator, or a device connected over `adb`.
+
+## Running an app
+
+```sh
+nsh run my-app --target android
+```
+
+Start an emulator or connect a device first (`adb devices` lists them; nsh uses the first one). `nsh` installs a
+development host APK (rebuilt only when the runtime changes) and forwards the dev server's port with `adb reverse`, so
+it works over USB without a shared network; the app updates as you save, with logs in the terminal.
+
+## Packaging
+
+```sh
+nsh package my-app --target android --run     # out/<Name>.apk, installed and launched
+```
+
+The APK is built with the SDK's build tools, without Gradle, and signed with the debug key unless you pass a release
+keystore. Signing for release and icons: [Packaging](./packaging.md#android).
+
+## Embedding in an Android app
 
 An existing Android app can show nsh apps inside its own UI. The runtime ships as an Android library, `nsh.aar`: you
 create a `com.longbridge.nsh.NshView` (a `FrameLayout`), add it to any layout and load an app into it. The nsh app

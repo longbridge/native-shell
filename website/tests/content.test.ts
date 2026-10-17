@@ -9,7 +9,10 @@ import { join } from 'node:path';
 const ROOT = join(import.meta.dir, '..');
 const SECTIONS = ['docs', 'elements', 'components', 'modules'];
 
-interface Front { title?: unknown; description?: unknown; order?: unknown; demo?: unknown }
+interface Front { title?: unknown; description?: unknown; order?: unknown; demo?: unknown; group?: unknown }
+
+// The keys of `GROUPS` in src/lib/sections.ts (which imports astro:content, so it is not imported here).
+const GROUPS = ['start', 'platforms', 'delivery', 'ui', 'tools'];
 
 function pagesOf(dir: string): Map<string, Front | Error> {
   const out = new Map<string, Front | Error>();
@@ -41,6 +44,7 @@ test('frontmatter parses and has a title and description', () => {
           if (typeof front.title !== 'string' || !front.title) problems.push(`${file}: missing title`);
           if (typeof front.description !== 'string' || !front.description) problems.push(`${file}: missing description`);
           if (front.order !== undefined && typeof front.order !== 'number') problems.push(`${file}: order is not a number`);
+          if (front.group !== undefined && !GROUPS.includes(front.group as string)) problems.push(`${file}: unknown group ${String(front.group)}`);
         }
       }
     }
@@ -48,7 +52,7 @@ test('frontmatter parses and has a title and description', () => {
   expect(problems).toEqual([]);
 });
 
-test('every English page has a Chinese counterpart with the same order and demo', () => {
+test('every English page has a Chinese counterpart with the same order, group and demo', () => {
   const problems: string[] = [];
   for (const section of SECTIONS) {
     for (const [name, en] of english[section]) {
@@ -59,6 +63,7 @@ test('every English page has a Chinese counterpart with the same order and demo'
       }
       if (en instanceof Error || zh instanceof Error) continue;
       if (en.order !== zh.order) problems.push(`zh-CN/${section}/${name}: order ${zh.order} ≠ ${en.order}`);
+      if (en.group !== zh.group) problems.push(`zh-CN/${section}/${name}: group ${zh.group} ≠ ${en.group}`);
       if (en.demo !== zh.demo) problems.push(`zh-CN/${section}/${name}: demo ${zh.demo} ≠ ${en.demo}`);
     }
     for (const name of chinese[section].keys()) {

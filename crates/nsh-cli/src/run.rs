@@ -278,8 +278,15 @@ fn run_android(
     let apk_path = work.join("android/NshDev.apk");
     fs::create_dir_all(apk_path.parent().context("apk dir")?)?;
     let stamp = work.join("android/runtime.stamp");
+    // Every app's development host is the same package: another app's run
+    // (an app with its own Rust crate has its own runtime) or another
+    // device replaces what this app installed. The device's install time
+    // tells whether the host there is still the one this app installed.
+    let installed = work.join("android/installed");
     let version = runtime_version(&runtime)?;
-    if !apk_path.exists() || fs::read_to_string(&stamp).ok().as_deref() != Some(version.as_str()) {
+    let built =
+        apk_path.exists() && fs::read_to_string(&stamp).ok().as_deref() == Some(version.as_str());
+    if !built {
         let step = ui::Step::start("building the Android development host");
         android::build_apk(
             &sdk,
@@ -299,6 +306,14 @@ fn run_android(
             &apk_path,
         )?;
         step.done("built the Android development host");
+        // Until it is installed, no device has this build.
+        let _ = fs::remove_file(&installed);
+        fs::write(&stamp, &version)?;
+    }
+    let on_device =
+        |sdk: &android::Sdk| installed_host(sdk, &serial).map(|time| format!("{serial} {time}"));
+    let current = fs::read_to_string(&installed).ok();
+    if current.is_none() || current != on_device(&sdk) {
         let step = ui::Step::start(format!("installing it on {serial}"));
         android::adb(
             &sdk,
@@ -308,7 +323,12 @@ fn run_android(
         step.done(format!(
             "installed the Android development host on {serial}"
         ));
-        fs::write(&stamp, &version)?;
+        match on_device(&sdk) {
+            Some(record) => fs::write(&installed, record)?,
+            None => {
+                let _ = fs::remove_file(&installed);
+            }
+        }
     }
     // The device reaches the dev server on its own 127.0.0.1, until the
     // run ends.
@@ -334,6 +354,16 @@ fn run_android(
     let result = session.watch(|| Ok(false));
     let _ = android::adb(&sdk, &serial, &["shell", "am", "force-stop", BUNDLE_ID]);
     result
+}
+
+/// When the development host on device `serial` was installed or last
+/// updated (`dumpsys package`), if it is there.
+fn installed_host(sdk: &crate::android::Sdk, serial: &str) -> Option<String> {
+    let text =
+        crate::android::adb(sdk, serial, &["shell", "dumpsys", "package", BUNDLE_ID]).ok()?;
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("lastUpdateTime="))
+        .map(str::to_owned)
 }
 
 /// Identifies a runtime build: the sizes and times of its files.

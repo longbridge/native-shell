@@ -1,7 +1,8 @@
 ---
 title: Testing with nsh trace
 description: Run an app headless with nsh trace, read the native view operations and timings it prints, simulate taps and scrolling, and use it in CI; testID for UI tests.
-order: 33
+order: 61
+group: tools
 ---
 
 # Testing with nsh trace

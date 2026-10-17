@@ -18,7 +18,7 @@ platform-styled widgets). A change that only adds React Native compatibility, su
 accepted.
 
 The runtime (`nsh`, `nsh/<module>`) provides primitives and capabilities; components belong to a UI set
-(`nsh/ui/mobile`) and are drawn with those primitives so they look the same on iOS and Android. See "Where new things
+(`nsh/ui/mobile`) and are drawn with those primitives so they look the same on every platform. See "Where new things
 go" in [docs/dev/js-modules.md](docs/dev/js-modules.md).
 
 ## AI-Assisted Contributions

@@ -1,7 +1,8 @@
 ---
 title: 架构
 description: nsh 应用是如何运行的：构建流程、引擎线程与主线程、从 signal 变化到原生视图的路径、原生响应式图、文本布局以及各个 crate。
-order: 35
+order: 63
+group: tools
 ---
 
 # 架构

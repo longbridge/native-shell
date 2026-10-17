@@ -1,7 +1,8 @@
 ---
 title: 打包
-description: 用 nsh package 为 iOS 真机、iOS 模拟器和 Android 构建可安装的应用，包括应用元数据、图标和签名。
-order: 29
+description: 用 nsh package 为 iOS 真机、iOS 模拟器、Android、macOS、Windows 和 Linux 构建可安装的应用，包括应用元数据、图标和签名。
+order: 19
+group: platforms
 ---
 
 # 打包
@@ -22,7 +23,7 @@ nsh package App.tsx --target ios --sign "Apple Development: Jane Doe (ABCDE12345
 `out/`。
 
 > [!NOTE]
-> 如果想把 nsh 放*进*现有的原生应用，请参阅[嵌入 iOS 应用](./embedding-ios.md)和[嵌入 Android 应用](./embedding-android.md)。如果想发布由应用下载并验证的更新，请参阅[签名包](./signed-packages.md)。
+> 如果想把 nsh 放*进*现有的原生应用，请参阅[平台](./platforms.md#嵌入原生应用)。如果想发布由应用下载并验证的更新，请参阅[签名包](./signed-packages.md)。
 
 ## 应用元数据：`nsh.json`
 

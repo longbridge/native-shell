@@ -1,7 +1,8 @@
 ---
 title: macOS
 description: 在 macOS 上用 AppKit 窗口运行 nsh 应用、打包为 .app、用 AppView 嵌入 Mac 应用，以及 macOS 后端不支持的功能。
-order: 3.24
+order: 13
+group: platforms
 ---
 
 # macOS

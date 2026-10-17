@@ -1,7 +1,8 @@
 ---
 title: 滚动
 description: scroll 元素、分页与吸附、缩放、下拉刷新、滚动事件、用 scrollValue 实现滚动联动效果、滚动视图中的键盘，以及从代码滚动。
-order: 15
+order: 39
+group: ui
 demo: guide-scrolling
 ---
 

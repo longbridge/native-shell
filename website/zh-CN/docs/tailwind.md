@@ -1,7 +1,8 @@
 ---
 title: Tailwind
 description: 用原生解析的 Tailwind CSS 类给元素加样式：class 与 classList，按下状态、深色模式和断点等变体，nsh.json 中的主题，以及构建时的类名检查。
-order: 9
+order: 33
+group: ui
 demo: guide-tailwind
 ---
 
@@ -51,7 +52,7 @@ demo: guide-tailwind
 | `disabled:`、`enabled:` | 元素的 `disabled` 属性为 true / false |
 | `group-active:`、`group-hover:`、`group-focus:`、`group-focus-within:`、`group-disabled:` | 最近的带 `group` 类的祖先处于该状态 |
 | `group-active/name:` ... | 同上，针对标记为 `group/name` 的祖先 |
-| `first:`、`last:`、`odd:`、`even:`、`only:` | 视图在兄弟节点中的位置 |
+| `first:`、`last:`、`odd:`、`even:`、`only:` | 元素自身在兄弟节点中的位置。要按行的位置给行内标签上色，把 `last:text-*` 写在行上，标签会继承它 |
 | `placeholder:` | 设置输入框占位文字的样式（`placeholder:text-zinc-400`） |
 | `dark:` | 系统外观为深色 |
 | `sm:`、`md:`、`lg:`、`xl:`、`2xl:` | 窗口宽度至少为 640、768、1024、1280、1536 点 |

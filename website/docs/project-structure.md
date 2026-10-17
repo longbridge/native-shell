@@ -1,7 +1,8 @@
 ---
 title: Project structure
 description: The files of an nsh app, every key of nsh.json, the TypeScript setup in .nsh/types, assets, and how modules and packages are imported.
-order: 4
+order: 5
+group: start
 ---
 
 # Project structure

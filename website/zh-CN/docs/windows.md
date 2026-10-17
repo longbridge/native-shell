@@ -1,7 +1,8 @@
 ---
 title: Windows
 description: 在 Windows 上用 Direct2D 绘制的 Win32 窗口运行 nsh 应用、打包应用、用 AppView 嵌入 Win32 应用，以及 Windows 后端不支持的功能。
-order: 3.26
+order: 14
+group: platforms
 ---
 
 # Windows

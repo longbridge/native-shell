@@ -1,7 +1,8 @@
 ---
 title: Fonts
 description: The system font and generic families, importing .ttf and .otf files, families with several weights and italics, and using fonts from Tailwind classes.
-order: 13
+order: 37
+group: ui
 ---
 
 # Fonts

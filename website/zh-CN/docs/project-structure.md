@@ -1,7 +1,8 @@
 ---
 title: 项目结构
 description: nsh 应用包含的文件、nsh.json 的每个键、.nsh/types 中的 TypeScript 配置、资源，以及模块和包的导入方式。
-order: 4
+order: 5
+group: start
 ---
 
 # 项目结构

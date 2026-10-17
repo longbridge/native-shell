@@ -1,14 +1,25 @@
 ---
 title: 安装
-description: 从预构建的发行包或源码仓库获取 nsh 命令，以及各目标平台所需的 Xcode、Android 和 GTK 工具。
-order: 2
+description: 从预构建的发行包或源码仓库获取 nsh 命令，以及每个平台（iOS、Android、macOS、Windows 和 Linux）所需的工具。
+order: 3
+group: start
 ---
 
 # 安装
 
 nsh 的所有操作都通过一个命令 `nsh` 完成：打包和编译应用、运行开发服务器、启动开发宿主、打包可安装的应用。你可以使用无需 Rust 的预构建发行包，也可以从仓库源码构建。
 
-除了 `nsh` 本身，每个目标平台还需要平台自己的工具：iOS 和 Mac Catalyst 需要 Xcode，macOS 需要 Xcode 命令行工具，Android 需要 Android SDK，Linux 需要 GTK 4，Windows 需要 Windows 10 1809 及以上。
+除了 `nsh` 本身，每个平台还需要自己的工具：
+
+| 平台 | 在哪里开发和打包 | 需要 |
+|---|---|---|
+| iOS | macOS | Xcode 和一个 iOS 模拟器运行时 |
+| Android | macOS、Windows 或 Linux | Android SDK 和 JDK；一个模拟器或设备 |
+| macOS | macOS | Xcode 命令行工具；应用运行在 macOS 14+ |
+| Windows | Windows | Windows 10 1809+；网页视图需要 WebView2 Runtime |
+| Linux | Linux | GTK 4.14+（构建运行时还需要它的开发包） |
+
+macOS 上 `nsh run` 的默认目标 Mac Catalyst 和 iOS 一样需要 Xcode。详见[平台工具](#平台工具)。
 
 ## 预构建发行包
 

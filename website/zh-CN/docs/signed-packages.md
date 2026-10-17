@@ -1,7 +1,8 @@
 ---
 title: 签名包
 description: 发布由宿主应用下载并验证的应用代码：密钥、证书、nsh publish、验证、吊销与回滚保护。
-order: 3.4
+order: 20
+group: delivery
 ---
 
 # 签名包

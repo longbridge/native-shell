@@ -1,7 +1,8 @@
 ---
 title: 画布
 description: 用 nsh/canvas 的 Canvas 绘图：2D 上下文子集、路径与 Path2D、渐变、文字、图片、根据 signal 重绘，以及用原生值驱动绘制动画。
-order: 20
+order: 44
+group: ui
 demo: guide-canvas
 ---
 

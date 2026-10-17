@@ -1,7 +1,8 @@
 ---
 title: Windows
 description: Run nsh apps on Windows in Win32 windows drawn with Direct2D, package them, embed them in a Win32 app with AppView, and what the Windows backend does not support.
-order: 3.26
+order: 14
+group: platforms
 ---
 
 # Windows

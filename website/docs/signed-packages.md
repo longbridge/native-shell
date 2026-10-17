@@ -1,7 +1,8 @@
 ---
 title: Signed Packages
 description: "Ship app code that host apps download and verify: keys, certificates, nsh publish, verification, revocation and rollback protection."
-order: 3.4
+order: 20
+group: delivery
 ---
 
 # Signed Packages

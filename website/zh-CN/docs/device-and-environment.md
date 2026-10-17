@@ -1,7 +1,8 @@
 ---
 title: 设备与环境
 description: 读取窗口尺寸、配色方案、字体缩放、安全区域、平台、像素密度和布局方向，并在它们变化时作出响应。
-order: 23
+order: 47
+group: ui
 demo: guide-device
 ---
 

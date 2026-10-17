@@ -307,9 +307,9 @@ enum Presented {
     Dismissible,
 }
 
-/// Whether the gallery takes the Android back button where it would leave
-/// the app (its index), and how often it did: the gallery listens
-/// (`Gallery::setup`), this demo switches it.
+/// Whether the gallery takes the Android back button (before the stack
+/// pops), and how often it did: the gallery listens (`Gallery::setup`),
+/// this demo switches it.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct BackIntercept {
     pub(crate) on: bool,

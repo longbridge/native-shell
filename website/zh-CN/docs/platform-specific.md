@@ -1,12 +1,13 @@
 ---
 title: 平台特定代码
-description: 为 iOS 和 Android 编写同一个应用：ios={{}} / android={{}} / desktop={{}} 中的平台专属属性，nsh/ios 与 nsh/android 模块，Platform.OS 与 Platform.select，以及平台相关的 Tailwind 变体。
-order: 25
+description: 为手机和桌面编写同一个应用：ios={{}} / android={{}} / desktop={{}} 中的平台专属属性，nsh/ios 与 nsh/android 模块，Platform.OS 与 Platform.select，以及平台相关的 Tailwind 变体。
+order: 17
+group: platforms
 ---
 
 # 平台特定代码
 
-同一个 nsh 包可以在 iOS、Android 和 Mac Catalyst 上运行。应用的大部分代码根本不需要判断平台：元素、样式、布局、组件和模块在各处的行为都相同，`nsh/ui/mobile` 的组件由 nsh 自己绘制而不是借用各平台的控件，所以两边看起来一样。当某样东西确实只属于一个平台时，nsh 给它安排了明确的位置，让平台代码一目了然、范围可控：
+同一个 nsh 包可以在 iOS、Android、macOS、Windows 和 Linux 上运行（也可以在 Mac Catalyst 中运行）。应用的大部分代码根本不需要判断平台：元素、样式、布局、组件和模块在各处的行为都相同，`nsh/ui/mobile` 的组件由 nsh 自己绘制而不是借用各平台的控件，所以在各处看起来都一样。当某样东西确实只属于一个平台时，nsh 给它安排了明确的位置，让平台代码一目了然、范围可控：
 
 | 位置 | 用途 |
 |---|---|
@@ -72,7 +73,7 @@ order: 25
 | 导出 | 说明 |
 |---|---|
 | `Toast.show(message, duration?)` | 在屏幕底部显示 toast；`"short"`（默认）或 `"long"`。 |
-| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图和导航栈之后监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
+| `BackHandler.addEventListener("hardwareBackPress", listener)` | 在模态视图之后、导航栈之前监听返回键；处理了就返回 `true`。返回 `{ remove() }`。 |
 | `BackHandler.exitApp()` | 退出应用。 |
 | `setStatusBarBackgroundColor(color, animated?)` | `StatusBar` 组件所设置内容之下的状态栏颜色（全面屏之前，API 35）。 |
 | `isAvailable` | Android 上为 `true`。 |
@@ -100,7 +101,7 @@ function Player() {
 }
 ```
 
-返回键先由最上层的模态视图处理，然后是最上层的导航栈，再然后是 `BackHandler` 监听器（最近添加的最先），都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
+返回键先由最上层的模态视图处理，然后是 `BackHandler` 监听器（最近添加的最先），再然后是最上层的导航栈，都没有处理时应用退出。见[导航](./navigation.md#android-返回键)。
 
 ### nsh/ios
 

@@ -8,6 +8,8 @@ const schema = z.object({
   description: z.string().min(1),
   /** Sidebar position, ascending; pages without one follow, by title. */
   order: z.number().optional(),
+  /** The sidebar group the page is listed under: a key of `GROUPS` (`src/lib/sections.ts`). */
+  group: z.string().optional(),
   /** The name of a demo app in `website/demos/<name>.tsx`, shown on the page. */
   demo: z.string().optional(),
 });

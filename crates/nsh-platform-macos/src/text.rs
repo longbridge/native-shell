@@ -965,7 +965,8 @@ pub(crate) fn set(
         // The I-beam.
         crate::input::style_changed(view);
     }
-    view.changed();
+    // The mounter draws it, when it shows.
+    view.restyle();
 }
 
 /// The view draws `selectable` text: mouse drags over it select rather
@@ -1279,7 +1280,7 @@ fn with_selection<R>(
 fn select(view: &crate::view::NshView, range: Option<(u32, u32)>) {
     let range = range.filter(|(a, b)| a < b);
     if with_selection(view, |s, _| s.range.replace(range) != range) == Some(true) {
-        crate::surface::quiet(|| view.ns().setNeedsDisplay(true));
+        crate::surface::quiet(|| view.redraw());
     }
 }
 

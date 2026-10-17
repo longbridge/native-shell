@@ -1,7 +1,8 @@
 ---
 title: JSX and components
 description: How nsh compiles JSX, what a component is, how props, children, control flow, refs and spreads work, and how tags name elements and components.
-order: 6
+order: 30
+group: ui
 demo: guide-components
 ---
 

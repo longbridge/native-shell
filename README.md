@@ -1,18 +1,32 @@
 # native-shell (nsh)
 
-**AI-generated UI, native in your app.** native-shell is designed for UI that a model writes and a native app loads
-after it ships: an iOS or Android app embeds an `NshAppView` / `NshView`, and nsh runs TSX modules in it — signed
-packages the app verifies, each in a sandboxed QuickJS VM with host-set limits and capabilities — rendered with the
-system's own views (UIKit, Android views). The same mechanism makes native apps extensible in general (plugins,
-features delivered after release); standalone apps are a second use. Mobile clients come first; on Linux, apps run with GTK 4
-widgets, on macOS with AppKit views, on Windows in Win32 windows drawn with Direct2D; other desktop clients follow through a GPUI backend in development. The host stays a native app; nsh is the layer inside it.
+**AI-generated UI, native in your app — on every platform.** native-shell is designed for UI that a model writes and
+a native app loads after it ships: the app embeds an nsh view, and nsh runs TSX modules in it — signed packages the app
+verifies, each in a sandboxed QuickJS VM with host-set limits and capabilities — drawn with the platform's own UI. The
+same mechanism makes native apps extensible in general (plugins, features delivered after release); standalone apps
+are a second use.
+
+nsh runs on phones and desktops, each with a native backend of its own:
+
+| Platform | Backend | Embed with | Requirements |
+|---|---|---|---|
+| iOS | UIKit, CoreText | `NshAppView` (Swift, `NativeShell.xcframework`) | iOS 15.0+ |
+| Android | Android views, `StaticLayout` | `NshView` (Java / Kotlin, `nsh.aar`) | Android 9 (API 28)+ |
+| macOS | AppKit, Core Animation, CoreText | `AppView` (Rust, `nsh-platform-macos`) | macOS 14+ |
+| Windows | Win32 windows drawn with Direct2D, DirectWrite | `AppView` (Rust, `nsh-platform-windows`) | Windows 10 1809+ |
+| Linux | GTK 4 widgets, Pango | `AppView` (Rust, `nsh-platform-linux`) | GTK 4.14+ |
+
+Every platform runs apps with hot reload (`nsh run`) and packages them (`nsh package`). Mac Catalyst (an iPhone-sized
+window on a Mac) is a development target, and a WebAssembly build runs the website's live demos. A GPUI desktop
+backend is in development and not available yet. The host stays a native app; nsh is the layer inside it.
 
 Inside, only a module's code is JavaScript: signals, the renderer and every module it imports are Rust, layout is
 Taffy, and the toolchain is a single `nsh` binary (no Node.js, and no Rust toolchain for module authors).
 
 The components of the mobile UI set (`import { Button, Card } from "nsh/ui/mobile"`) are written in Rust and run in
-the core, laid out with the rest of the app: one implementation, the same look on iOS and Android, and JS only
-describes the UI and handles the events.
+the core, laid out with the rest of the app: one implementation, the same look on every platform, and JS only
+describes the UI and handles the events. Desktop layouts use the primitives with `desktop={{…}}` props and
+`Platform.select`; there is no desktop UI set yet.
 
 ## Related project: GPUI Kit
 
@@ -41,6 +55,7 @@ edited components render again, the rest of the app keeps its state). Logs and e
 dist/nsh/bin/nsh run examples/gallery                      # Mac Catalyst window (390×844) on macOS, a GTK window on Linux, a Win32 window on Windows
 dist/nsh/bin/nsh run examples/gallery --target ios         # iOS simulator (boots one if none is running)
 dist/nsh/bin/nsh run examples/gallery --target android     # Android emulator or device
+dist/nsh/bin/nsh run examples/gallery --target macos       # the AppKit app on macOS (Windows and Linux run their own by default)
 ```
 
 Requirements: Xcode for the Mac and iOS targets; GTK 4 (4.14 or later) for Linux; Windows 10 1809 or later for

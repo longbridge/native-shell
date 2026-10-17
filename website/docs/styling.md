@@ -1,7 +1,8 @@
 ---
 title: Styling
 description: The style prop - camelCase properties with flexbox, grid and CSS effects - colors, borders, corners, shadows, gradients, filters, transforms and transitions, with platform differences.
-order: 8
+order: 32
+group: ui
 demo: guide-styling
 ---
 

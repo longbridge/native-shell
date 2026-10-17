@@ -1,7 +1,8 @@
 ---
 title: 性能
 description: nsh 如何让应用保持高速（原生运行时、批量跨线程、原生动画、虚拟化列表），这对你的代码意味着什么，以及如何用 nsh trace 测量。
-order: 34
+order: 62
+group: tools
 ---
 
 # 性能

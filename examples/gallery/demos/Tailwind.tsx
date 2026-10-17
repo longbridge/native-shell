@@ -380,8 +380,9 @@ function Lists() {
       <View class="overflow-hidden rounded-xl border border-paper-line dark:border-graphite-line">
         <Each of={items}>
           {(item) => (
-            <View class="min-h-12 flex-row items-center justify-between border-t border-paper-line px-3.5 first:border-t-0 even:bg-black/3 last:bg-rose-500/10 active:bg-citrus/10 dark:border-graphite-line dark:even:bg-white/5 dark:active:bg-citrus/10">
-              <Text class="text-[15px] text-zinc-800 last:text-rose-600 dark:text-zinc-200 dark:last:text-rose-300">{item()}</Text>
+            <View class="min-h-12 flex-row items-center justify-between border-t border-paper-line px-3.5 text-zinc-800 first:border-t-0 even:bg-black/3 last:bg-rose-500/10 last:text-rose-600 active:bg-citrus/10 dark:border-graphite-line dark:text-zinc-200 dark:even:bg-white/5 dark:last:text-rose-300 dark:active:bg-citrus/10">
+              {/* `last:` is the row's: the label inherits its color. */}
+              <Text class="text-[15px]">{item()}</Text>
               <Text class="text-base text-zinc-400 dark:text-zinc-600">›</Text>
             </View>
           )}

@@ -97,7 +97,8 @@ pub(crate) fn set(surface: &Rc<Surface>, view: &NshView, drawing: Arc<Drawing>) 
             view.changed();
         });
     }
-    view.changed();
+    // The mounter draws it, when it shows.
+    view.restyle();
 }
 
 /// Native value slot `k` changed; whether its value did (the canvas is

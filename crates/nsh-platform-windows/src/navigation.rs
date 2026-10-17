@@ -1743,10 +1743,19 @@ impl Nav {
     }
 
     /// Going back: a stack inside the newest modal pops, else the modal
-    /// asks to close, else the innermost stack pops, else the app's
-    /// `onBackPress` hears it. Whether something took it.
+    /// asks to close; without a modal the app's `onBackPress` hears it
+    /// first when it listens (it sends `Command::Back` when no listener
+    /// takes it), else the innermost stack pops. Whether something took it.
     fn go_back(&mut self, surface: &Rc<Surface>) -> bool {
-        match self.back_target(surface.root.state().events.contains(EventKind::BackPress)) {
+        self.go_back_to(
+            surface,
+            surface.root.state().events.contains(EventKind::BackPress),
+        )
+    }
+
+    /// Goes back to what [`Nav::back_target`] names.
+    fn go_back_to(&mut self, surface: &Rc<Surface>, back_press: bool) -> bool {
+        match self.back_target(back_press) {
             Some(Back::Stack(stack)) => self.back(surface, stack),
             Some(Back::Modal(id)) => self.request_close(surface, id),
             Some(Back::App) => surface.event(ROOT_ID, EventKind::BackPress, EventPayload::None),
@@ -1766,7 +1775,7 @@ impl Nav {
     }
 
     /// What going back acts on (`back_press`: the app listens to
-    /// `onBackPress`).
+    /// `onBackPress`, and hears it before the stacks).
     fn back_target(&self, back_press: bool) -> Option<Back> {
         if let Some(&id) = self.order.last() {
             let view = self.modals.get(&id).and_then(|m| m.view.clone());
@@ -1775,10 +1784,10 @@ impl Nav {
                 None => Back::Modal(id),
             });
         }
-        if let Some(stack) = self.back_stack(None) {
-            return Some(Back::Stack(stack));
+        if back_press {
+            return Some(Back::App);
         }
-        back_press.then_some(Back::App)
+        self.back_stack(None).map(Back::Stack)
     }
 
     /// Keeps the presented modals (and those leaving) over the app's
@@ -1958,6 +1967,19 @@ enum Back {
     Modal(NodeId),
     /// The app's `onBackPress`.
     App,
+}
+
+/// `Command::Back`: goes back as without the app's listeners, once the
+/// batch being applied is in.
+pub(crate) fn default_back(surface: &Rc<Surface>) {
+    let key = surface.key();
+    crate::window::invoke(move || {
+        if let Some(surface) = Surface::by_key(key)
+            && let Ok(mut nav) = surface.nav.try_borrow_mut()
+        {
+            nav.go_back_to(&surface, false);
+        }
+    });
 }
 
 /// Goes back (the newest modal, the innermost stack or the app's
@@ -2435,6 +2457,8 @@ mod tests {
         assert_eq!(nav.back_target(true), Some(Back::App));
         let outer = stack(&mut nav, &root, 2, &[4, 6]);
         assert_eq!(nav.back_target(false), Some(Back::Stack(2)));
+        // The app's listeners hear it before the stack pops.
+        assert_eq!(nav.back_target(true), Some(Back::App));
         // A stack inside the top screen, with a screen to pop: it goes
         // first.
         let top = outer.child_views().last().cloned().unwrap();

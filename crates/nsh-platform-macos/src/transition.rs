@@ -853,9 +853,9 @@ fn tick(view: &NshView, now: f64) -> bool {
         return false;
     }
     view.moved();
-    if restyled && view.state().draws() {
+    if restyled {
         // Text and canvas drawings may use the style (tint).
-        view.ns().setNeedsDisplay(true);
+        view.redraw();
     }
     !finished
 }

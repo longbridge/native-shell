@@ -1,7 +1,8 @@
 ---
 title: macOS
 description: Run nsh apps on macOS in AppKit windows, package them as .app bundles, embed them in a Mac app with AppView, and what the macOS backend does not support.
-order: 3.24
+order: 13
+group: platforms
 ---
 
 # macOS

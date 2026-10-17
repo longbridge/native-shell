@@ -1,7 +1,8 @@
 ---
 title: 表单与键盘
 description: 用 input 元素输入文本：受控与非受控的值、键盘类型、回车键、焦点、选区、自动增高的多行输入框，以及让内容避开软键盘。
-order: 18
+order: 42
+group: ui
 demo: guide-forms
 ---
 

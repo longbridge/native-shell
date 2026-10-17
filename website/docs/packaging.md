@@ -1,7 +1,8 @@
 ---
 title: Packaging
-description: Build installable apps with nsh package for iOS devices, the iOS simulator and Android, with app metadata, icons and signing.
-order: 29
+description: Build installable apps with nsh package for iOS devices, the iOS simulator, Android, macOS, Windows and Linux, with app metadata, icons and signing.
+order: 19
+group: platforms
 ---
 
 # Packaging
@@ -23,8 +24,7 @@ The app is built in release mode (minified, compiled to QuickJS bytecode) exactl
 it. Output goes to `out/` unless you pass `--out`.
 
 > [!NOTE]
-> To put nsh *inside* an existing native app instead, see [Embedding in iOS apps](./embedding-ios.md) and
-> [Embedding in Android apps](./embedding-android.md). To ship updates that apps download and verify, see
+> To put nsh *inside* an existing native app instead, see [Platforms](./platforms.md#embed-in-a-native-app). To ship updates that apps download and verify, see
 > [Signed packages](./signed-packages.md).
 
 ## App metadata: `nsh.json`

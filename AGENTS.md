@@ -1,15 +1,17 @@
 # AGENTS.md
 
 native-shell (nsh for short: crates, the CLI, the JS module and Java package all use `nsh`) is designed for
-AI-generated, dynamically delivered native UI: native iOS / Android apps embed it (`NshAppView`, `NshView`) and load
-TSX modules at run time — signed, sandboxed by the host, rendered with the system's native views (UIKit / Android
-View). Plugins for native apps and standalone apps use the same machinery.
+AI-generated, dynamically delivered native UI: native apps embed it (`NshAppView` on iOS, `NshView` on Android,
+`AppView` on macOS, Windows and Linux) and load TSX modules at run time — signed, sandboxed by the host, rendered with
+each platform's own UI. Embedding comes first; plugins for native apps and standalone apps use the same machinery.
 Module code runs in QuickJS on a native runtime (the reactive graph, the renderer and every module apps import are
 Rust); layout uses Taffy; embedding native components such as maps or web views has no layering problems. The
 toolchain is pure Rust and does not need Node.js; app developers get a prebuilt distribution (`cargo xtask dist`) and
-never need Rust either. Mobile comes first; Linux runs apps with GTK 4 widgets (`nsh-platform-linux`), macOS with AppKit views
-(`nsh-platform-macos`), Windows in Win32 windows drawn with Direct2D (`nsh-platform-windows`); a GPUI desktop backend is
-in development; the web build only runs the website's demos.
+never need Rust either. Every platform has a native backend: iOS with UIKit views (`nsh-platform-ios`), Android with
+Android views (`nsh-platform-android`), macOS with AppKit views (`nsh-platform-macos`), Windows in Win32 windows drawn
+with Direct2D (`nsh-platform-windows`), Linux with GTK 4 widgets (`nsh-platform-linux`). A GPUI desktop backend is
+planned (in development, not in the tree yet); the web build only runs the website's demos. The only UI set is
+`nsh/ui/mobile` (it renders on every platform); a desktop set is planned.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.
@@ -190,7 +192,7 @@ check them on Windows, with the MSVC Build Tools, the Windows SDK and LLVM (libc
   `nsh/ios` / `nsh/android`, platform-only props into `ios={{…}}` / `android={{…}}` / `desktop={{…}}`. `nsh` has no
   catch-all re-exports; moved APIs get no compatibility re-exports.
 - **Primitives only.** The runtime adds capabilities, not widgets: components are drawn with the primitives in a UI
-  set and look the same on iOS and Android; no platform-styled widgets. React Native is a reference for which
+  set and look the same on every platform; no platform-styled widgets. React Native is a reference for which
   capabilities exist, not an API to be compatible with.
 - **Components are Rust.** A UI set's components live in its crate (`crates/nsh-ui-mobile`), run in the core and
   render primitives with typed styles (GPUI-style `Styled` methods, never class strings) and theme colors (gpui-kit's

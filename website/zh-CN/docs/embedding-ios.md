@@ -1,10 +1,42 @@
 ---
-title: 嵌入 iOS 应用
-description: 把 NativeShell.xcframework 加入现有 iOS 应用，在 NshAppView 中显示 nsh 应用，并加载 bundle、签名包或连接开发服务器。
-order: 3.1
+title: iOS
+description: 在 iOS 上用 UIKit 视图运行 nsh 应用（模拟器或真机），打包成 .app 和 .ipa，并通过 NativeShell.xcframework 和 NshAppView 嵌入现有 iOS 应用。
+order: 11
+group: platforms
 ---
 
-# 嵌入 iOS 应用
+# iOS
+
+nsh 应用在 iOS 上用 UIKit 视图和 CoreText 文本运行，支持真机和模拟器，要求 iOS 15.0 及以上。主要用途是嵌入：现有应用在
+`NshAppView` 中显示模块，加载它下载的签名包，并按自己设定的限制和能力运行它们。也可以运行和打包完整应用，方式与其他平台相同。在 iOS
+上，`Platform.OS` 是 `"ios"`，`ios={{…}}` 属性生效。
+
+## 环境要求
+
+- Mac 上的 **Xcode**，以及一个 iOS 模拟器运行时（`xcodebuild -downloadPlatform iOS` 可以安装）。见[安装](./installation.md#ios-与-mac-catalyst)。
+- 应用需要 **iOS 15.0** 及以上，支持 iPhone 和 iPad。
+
+## 运行应用
+
+```sh
+nsh run my-app --target ios
+nsh run my-app --target ios --device "iPhone 16 Pro"
+```
+
+`nsh` 会使用已启动的模拟器，或者启动最新的 iPhone，把开发宿主安装进去，并在你保存时更新应用，日志显示在终端中。`--device`
+按名称或 UDID 选择模拟器。想要不用模拟器、更快的开发循环，在 Mac 上直接运行 `nsh run`，会在一个 iPhone 尺寸的
+[Mac Catalyst](./getting-started.md#mac-catalystmacos-上默认) 窗口中打开同一个 UIKit 后端。
+
+## 打包
+
+```sh
+nsh package my-app --target ios-simulator --run      # out/<Name>.app，安装到模拟器并启动
+nsh package my-app --target ios --sign "Apple Distribution: Example Inc (ABCDE12345)" --profile AppStore.mobileprovision
+```
+
+`--target ios` 为真机、TestFlight 或 App Store 生成签名的 `.ipa`。签名身份、描述文件和图标见[打包](./packaging.md#ios-真机)。
+
+## 嵌入 iOS 应用
 
 现有的 iOS 应用可以在自己的界面中显示 nsh 应用。运行时以 `NativeShell.xcframework` 的形式提供，这是一个带 Swift
 模块的静态 framework：创建一个 `NshAppView`（一个 `UIView`），把它加到视图层级的任意位置，再往里加载一个应用即可。你的原生页面、导航和

@@ -1,16 +1,17 @@
 ---
 title: Getting started
-description: "Write a module with nsh init, develop it with hot reload, host it in your iOS or Android app, and ship updates as signed packages; or package it as a standalone app."
-order: 3
+description: "Write a module with nsh init, run it with hot reload on iOS, Android, macOS, Windows or Linux, host it in your app, and ship updates as signed packages; or package it as a standalone app."
+order: 4
+group: start
 demo: guide-getting-started
 ---
 
 # Getting started
 
-nsh's main use is hosting modules inside a native app (see [Introduction](./index.md)). This guide follows that path: write a module, develop it with hot reload, show it in your iOS or Android app, and ship an update as a signed package. It assumes `nsh` is installed and on your `PATH` ([Installation](./installation.md)); in a checkout, use `./target/debug/nsh` instead.
+nsh's main use is hosting modules inside a native app (see [Introduction](./index.md)). This guide follows that path: write a module, develop it with hot reload on the platforms you target, show it in your app, and ship an update as a signed package. It assumes `nsh` is installed and on your `PATH` ([Installation](./installation.md)); in a checkout, use `./target/debug/nsh` instead.
 
 > [!TIP]
-> No app project at hand? The first two sections need none: `nsh run` shows the module in nsh's own development host on the Mac, the iOS simulator or Android. You can stop there, or [package it as a standalone app](#or-ship-it-as-a-standalone-app).
+> No app project at hand? The first two sections need none: `nsh run` shows the module in nsh's own development host: in a window on your computer, in the iOS simulator or on an Android device. You can stop there, or [package it as a standalone app](#or-ship-it-as-a-standalone-app).
 
 ## Create a module
 
@@ -59,7 +60,7 @@ mount(App);
 Line by line:
 
 - **`import { mount, signal, Text, View } from "nsh"`**: `nsh` is the core module: [signals](./reactivity.md), `mount`, the other reactive primitives, and the host elements `View` and `Text`. It is served by the native runtime, not bundled.
-- **`import { SafeAreaView } from "nsh/ui/mobile"`**: the mobile UI set. [`SafeAreaView`](../components/safe-area-view.md) pads its content so it stays clear of the notch, the status bar and the home indicator.
+- **`import { SafeAreaView } from "nsh/ui/mobile"`**: the mobile UI set. [`SafeAreaView`](../components/safe-area-view.md) pads its content so it stays clear of the notch, the status bar and the home indicator; on desktops, where the safe area is 0, it adds no padding.
 - **`function App()`** is a component: a function that returns JSX. It runs **once**. `signal(0)` makes a value that changes over time.
 - **`{count()}`** reads the signal inside JSX. The compiler sees a call and makes this text follow the signal: when `count` changes, the runtime updates this one text, nothing else.
 - **`<View onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from nsh's modules, like any component; only `If` and `Each` need no import.
@@ -75,13 +76,16 @@ Line by line:
 
 `nsh run` starts a dev server, builds the app, launches a development host that loads it, and keeps rebuilding while you edit. Logs from the app (`console.log`, errors) appear in the terminal.
 
-#### Mac Catalyst (default on macOS)
+Without `--target`, `nsh run` uses the machine you are on: a Win32 window on Windows, a GTK window on Linux, and on macOS a Mac Catalyst window that shows the app as an iPhone would. Pick another platform with `--target`:
 
-```sh
-nsh run my-app/App.tsx
-```
-
-The app opens in an iPhone-sized window (390×844 points) on your Mac. This is the fastest loop: no simulator to boot. It uses UIKit like iOS, so what you see is what an iPhone shows, apart from Mac-specific behavior such as scrolling with a mouse wheel.
+| Target | Command | Runs from |
+|---|---|---|
+| iOS simulator | `nsh run my-app/App.tsx --target ios` | macOS with Xcode |
+| Android | `nsh run my-app/App.tsx --target android` | macOS, Windows, Linux |
+| macOS (AppKit) | `nsh run my-app/App.tsx --target macos` | macOS |
+| Windows | `nsh run my-app/App.tsx` | Windows (the default) |
+| Linux (GTK 4) | `nsh run my-app/App.tsx` | Linux (the default) |
+| Mac Catalyst | `nsh run my-app/App.tsx` | macOS (the default) |
 
 #### iOS simulator
 
@@ -109,14 +113,6 @@ nsh run my-app/App.tsx --target macos
 The app opens as a desktop Mac app (AppKit, in a resizable window), with mouse, trackpad and keyboard input instead of
 touches. It needs macOS 14 or later; see [macOS](./macos.md).
 
-#### Linux (default on Linux)
-
-```sh
-nsh run my-app/App.tsx
-```
-
-The app opens in a GTK window (390×844 points). It needs GTK 4.14 or later; see [Linux](./linux.md).
-
 #### Windows (default on Windows)
 
 ```sh
@@ -125,6 +121,22 @@ nsh run my-app/App.tsx
 
 The app opens in a desktop window (1200×800 points), with mouse, touchpad, touch and keyboard input. It needs Windows
 10 1809 or later; see [Windows](./windows.md).
+
+#### Linux (default on Linux)
+
+```sh
+nsh run my-app/App.tsx
+```
+
+The app opens in a GTK window (390×844 points). It needs GTK 4.14 or later; see [Linux](./linux.md).
+
+#### Mac Catalyst (default on macOS)
+
+```sh
+nsh run my-app/App.tsx
+```
+
+The app opens in an iPhone-sized window (390×844 points) on your Mac. This is the quickest way to see a module as a phone shows it: no simulator to boot. It uses UIKit like iOS, so what you see is what an iPhone shows, apart from Mac-specific behavior such as scrolling with a mouse wheel. For the Mac app itself, use `--target macos`.
 
 ### Edit with hot reload
 
@@ -156,7 +168,7 @@ A build error is printed in the terminal and shown on the device as a red overla
 
 ## Host it in your app
 
-Your app shows a module in a view of its own: `NshAppView` (a `UIView`) on iOS, `NshView` (an Android `View`) on Android. Place it like any other view, on any screen, as many times as you need. During development, point it at the dev server; in a release, load a built bundle or a downloaded package.
+Your app shows a module in a view of its own: `NshAppView` (a `UIView`) on iOS, `NshView` (an Android `View`) on Android, `AppView` on macOS, Windows and Linux. Place it like any other view, on any screen, as many times as you need. During development, point it at the dev server; in a release, load a built bundle or a downloaded package.
 
 ### iOS
 
@@ -194,7 +206,13 @@ if (BuildConfig.DEBUG) {
 }
 ```
 
-Before loading, the host decides what the module may do: `grantCapabilities` sets the network hosts and other capabilities it may reach, and limits cap its memory, call time and node count ([Sandbox and capabilities](./sandbox-and-capabilities.md)). To give modules your own native views (a map, a chart, a design-system component), register them as [native components](./native-components.md).
+### macOS, Windows and Linux
+
+Desktop apps written in Rust embed modules with `AppView`, from the `nsh-platform-macos`, `nsh-platform-windows` and `nsh-platform-linux` crates: an `NSView`, a child window or a GTK widget that loads a built bundle. See [macOS](./macos.md#embedding-in-a-mac-app), [Windows](./windows.md#embedding-in-a-win32-app) and [Linux](./linux.md#embedding-in-a-gtk-app), and [Platforms](./platforms.md#embed-in-a-native-app) for what the desktop hosts do not offer yet.
+
+### What the module may do
+
+On iOS and Android, the host decides before loading what the module may do: `grantCapabilities` sets the network hosts and other capabilities it may reach, and limits cap its memory, call time and node count ([Sandbox and capabilities](./sandbox-and-capabilities.md)). To give modules your own native views (a map, a chart, a design-system component), register them as [native components](./native-components.md).
 
 ## Ship updates as signed packages
 
@@ -229,7 +247,7 @@ nsh package my-app --target linux
 nsh package my-app --target windows
 ```
 
-This is a supported use, and the quickest way to put a module on a device, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).
+This is a supported use on every platform, and the quickest way to put a module on a device or a desktop, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).
 
 ## Try it in the terminal
 
@@ -243,7 +261,7 @@ It is a quick way to check that an app starts without errors, and to see how muc
 
 ## Next steps
 
-- [Embedding in iOS apps](./embedding-ios.md) and [Embedding in Android apps](./embedding-android.md): the full host APIs.
+- [Platforms](./platforms.md): what each platform supports, and its own page ([iOS](./embedding-ios.md), [Android](./embedding-android.md), [macOS](./macos.md), [Windows](./windows.md), [Linux](./linux.md)).
 - [Signed packages](./signed-packages.md) and [Sandbox and capabilities](./sandbox-and-capabilities.md): delivery and what modules may do.
 - [JSX and components](./jsx-and-components.md) and [Reactivity](./reactivity.md): writing modules.
 - [Project structure](./project-structure.md): what goes in `nsh.json`, assets, files.

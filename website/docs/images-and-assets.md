@@ -1,7 +1,8 @@
 ---
 title: Images and assets
 description: Showing images with the Image element - imported assets and @2x files, remote URLs, resize modes, placeholders, blur, tint, load events, and Image.getSize / Image.prefetch.
-order: 12
+order: 36
+group: ui
 ---
 
 # Images and assets

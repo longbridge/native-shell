@@ -10,6 +10,15 @@ use nsh_engine::{Bundle, Engine, EngineConfig};
 use crate::ChannelSink;
 
 fn start() -> (Engine, Receiver<MountBatch>) {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    (
+        Engine::start(config(), || ApproxTextEngine, ChannelSink(tx)).unwrap(),
+        rx,
+    )
+}
+
+/// The counter example, bundled and compiled.
+fn config() -> EngineConfig {
     let entry = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter/App.tsx");
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
@@ -18,8 +27,7 @@ fn start() -> (Engine, Receiver<MountBatch>) {
     })
     .unwrap();
     let bytecode = nsh_js::compile_bytecode(&bundle.code, false).unwrap();
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let config = EngineConfig {
+    EngineConfig {
         // SAFETY: compiled just now by this runtime.
         app: nsh_engine::App::Js(unsafe { Bundle::bytecode(bytecode) }),
         viewport: Size::new(390.0, 844.0),
@@ -31,11 +39,7 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         limits: nsh_engine::Limits::default(),
         ui_sets: Vec::new(),
         runtime: None,
-    };
-    (
-        Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),
-        rx,
-    )
+    }
 }
 
 fn texts(batch: &MountBatch) -> Vec<String> {
@@ -79,4 +83,51 @@ fn tap_after_idle_gc_updates_the_ui() {
     let texts = texts(&batch);
     assert!(texts.contains(&"1".to_owned()), "{texts:?}");
     assert!(texts.contains(&"• 1".to_owned()), "{texts:?}");
+}
+
+/// What the engine handed a [`ResizeSink`].
+#[derive(Debug)]
+enum Sent {
+    Batch(MountBatch),
+    Resized(Size),
+}
+
+/// Hands batches and resize reports to the test, in order.
+struct ResizeSink(crossbeam_channel::Sender<Sent>);
+
+impl nsh_engine::MountSink for ResizeSink {
+    fn submit(&self, batch: MountBatch) {
+        let _ = self.0.send(Sent::Batch(batch));
+    }
+
+    fn resized(&self, size: Size) {
+        let _ = self.0.send(Sent::Resized(size));
+    }
+}
+
+#[test]
+fn resize_is_reported_after_its_layout() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let engine = Engine::start(config(), || ApproxTextEngine, ResizeSink(tx)).unwrap();
+    let next = || rx.recv_timeout(Duration::from_secs(5)).expect("a message");
+    assert!(matches!(next(), Sent::Batch(_)), "first frame");
+
+    // The layout at the new size comes first, then the report.
+    let size = Size::new(500.0, 700.0);
+    engine.control().resize(size);
+    let Sent::Batch(batch) = next() else {
+        panic!("the layout at the new size first");
+    };
+    assert!(
+        batch.items.iter().any(|i| matches!(
+            i,
+            MountItem::Frame { frame, .. } if frame.width == 500.0 && frame.height == 700.0
+        )),
+        "the app's root view takes the size"
+    );
+    assert!(matches!(next(), Sent::Resized(s) if s == size));
+
+    // Reported even when nothing changes.
+    engine.control().resize(size);
+    assert!(matches!(next(), Sent::Resized(s) if s == size));
 }

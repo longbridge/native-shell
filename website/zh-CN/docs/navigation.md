@@ -1,7 +1,8 @@
 ---
 title: 导航
 description: 用 createNavigator、Stack 和 Screen 构建原生导航栈，标题栏选项，用 preventBack 把用户留在当前页面，模态视图，以及 Android 返回键。
-order: 17
+order: 41
+group: ui
 ---
 
 # 导航
@@ -266,11 +267,11 @@ function Settings() {
 在 Android 上，返回键（或返回手势）按以下顺序处理：
 
 1. 最上层的模态视图：调用 `onRequestClose`（设置了 `dismissible` 时直接关闭）。
-2. 最上层的栈：弹出栈顶页面，设置了 `preventBack` 时调用 `onBackRequest`。
-3. 你在 `nsh/android` 中注册的 `BackHandler` 监听器，最近添加的最先执行。
+2. 你在 `nsh/android` 中注册的 `BackHandler` 监听器，最近添加的最先执行。
+3. 最上层的栈：弹出栈顶页面，设置了 `preventBack` 时调用 `onBackRequest`。
 4. 都没有处理：应用退出。
 
-监听器处理了按键时返回 `true`：
+监听器处理了按键时返回 `true`，栈就不会弹出。注册了监听器时，Android 的返回手势不会预览弹出效果（手势结束后应用才给出答复），所以只在监听器可能处理按键时才注册它：
 
 ```tsx
 import { cleanup, signal } from "nsh";

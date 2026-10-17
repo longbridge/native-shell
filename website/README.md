@@ -38,7 +38,7 @@ Content is Markdown in four sections, each in English and Chinese:
 the Chinese page has the same file name as the English one.
 
 When changing a documentation page, update its English and Chinese
-counterparts together. Keep their `order` and `demo` frontmatter in sync, and
+counterparts together. Keep their `order`, `group` and `demo` frontmatter in sync, and
 link to pages in the same language.
 
 Frontmatter (checked by `src/content.config.ts`):
@@ -48,6 +48,7 @@ Frontmatter (checked by `src/content.config.ts`):
 title: Getting started          # required; the page heading and sidebar label
 description: "Create an app: …" # required; meta description, llms.txt
 order: 2                        # optional; sidebar position, ascending
+group: start                    # optional; the sidebar group (GROUPS in src/lib/sections.ts)
 demo: guide-getting-started     # optional; a demo from demos/<name>.tsx
 ---
 ```
@@ -57,8 +58,12 @@ demo: guide-getting-started     # optional; a demo from demos/<name>.tsx
 - **Sidebar order**: `index` first, then by `order` (missing = 999), then
   alphabetically by title. Chinese pages sort by their English counterpart,
   so both locales list pages in the same order; the Chinese labels are the
-  Chinese titles. A Chinese page keeps the same `order` and `demo` as its
-  English page (`tests/content.test.ts`).
+  Chinese titles. A Chinese page keeps the same `order`, `group` and `demo`
+  as its English page (`tests/content.test.ts`).
+- **Groups**: a section's pages can be listed under group headings
+  (`group:`, a key of `GROUPS` in `src/lib/sections.ts`; the Guide uses
+  them). A group is a run of consecutive pages, so keep a group's `order`
+  values together.
 - **The heading comes from `title`.** A leading `# Title` in the body is
   removed, so pages may keep one for GitHub. The first paragraph is shown as
   the page's standfirst.

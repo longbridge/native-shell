@@ -1,7 +1,8 @@
 ---
 title: Lists
 description: Long and endless lists with List from nsh/list - recycling, item identity, columns, sticky headers, inverted chat lists, horizontal lists, loading more, viewability and scrolling to an item.
-order: 16
+order: 40
+group: ui
 demo: guide-lists
 ---
 

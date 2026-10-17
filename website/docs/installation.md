@@ -1,14 +1,25 @@
 ---
 title: Installation
-description: Get the nsh command, from a prebuilt distribution or a source checkout, and the Xcode, Android and GTK tools each target needs.
-order: 2
+description: Get the nsh command, from a prebuilt distribution or a source checkout, and the tools each platform needs - iOS, Android, macOS, Windows and Linux.
+order: 3
+group: start
 ---
 
 # Installation
 
 Everything nsh does goes through one command, `nsh`. It bundles and compiles apps, runs the dev server, launches development hosts and packages installable apps. You can use it from a prebuilt distribution, which needs no Rust, or build it from a checkout of the repository.
 
-On top of `nsh`, each target needs the platform's own tools: Xcode for iOS and Mac Catalyst (its command line tools for macOS), the Android SDK for Android, GTK 4 for Linux, Windows 10 1809 or later for Windows.
+On top of `nsh`, each platform needs its own tools:
+
+| Platform | Develop and package on | Needs |
+|---|---|---|
+| iOS | macOS | Xcode and an iOS simulator runtime |
+| Android | macOS, Windows or Linux | The Android SDK and a JDK; an emulator or a device |
+| macOS | macOS | Xcode's command line tools; apps run on macOS 14+ |
+| Windows | Windows | Windows 10 1809+; the WebView2 Runtime for web views |
+| Linux | Linux | GTK 4.14+ (and its development packages to build the runtime) |
+
+Mac Catalyst, `nsh run`'s default on macOS, needs Xcode like iOS. Details are under [Platform tools](#platform-tools).
 
 ## The prebuilt distribution
 

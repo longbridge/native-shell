@@ -2,8 +2,9 @@
 
 Two layers. `nsh` and `nsh/<module>` are the primitives and the environment that every UI set builds on. `nsh/ui/<set>`
 is a whole UI for one form factor: `nsh/ui/mobile` has everything that is mobile UI or interaction (navigation stacks,
-modals, the status bar, system dialogs, and its components, one look on iOS and Android, written in Rust in
-`crates/nsh-ui-mobile`); a desktop set will be a separate one (`nsh/ui/desktop`), not an abstraction over both.
+modals, the status bar, system dialogs, and its components, one look on every platform, written in Rust in
+`crates/nsh-ui-mobile`); a desktop set is planned as a separate one (`nsh/ui/desktop`), not an abstraction over both,
+and does not exist yet.
 Shared vs one form factor decides the layer, not JS vs native.
 
 Every module is native: `nsh-js` serves it (`modules.rs`: nsh's own modules by `nsh_core::js::NATIVE_MODULES`, then the

@@ -1,7 +1,8 @@
 ---
 title: Native Components
 description: Use views of the host app (maps, players, any UIView or Android View) inside a nsh app, with props, events, commands and sizing.
-order: 3.3
+order: 18
+group: platforms
 ---
 
 # Native Components

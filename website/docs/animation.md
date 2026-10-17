@@ -1,7 +1,8 @@
 ---
 title: Animation
 description: Style transitions and keyframe animations, native values with timing, spring and decay, interpolation, composite animations, Easing, LayoutAnimation, and what runs on the UI thread.
-order: 19
+order: 43
+group: ui
 demo: guide-animation
 ---
 

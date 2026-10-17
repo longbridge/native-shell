@@ -43,7 +43,7 @@ in one of them.
 ## Primitives only
 
 nsh's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui-mobile`,
-`docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on iOS and Android. Do not
+`docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on every platform. Do not
 add platform-styled widgets (UISwitch / SeekBar wrappers and the like), and do not add compositions of existing
 primitives to the runtime (section lists, touchables, drawers, ...): they belong to a UI set. React Native is a
 reference for which capabilities exist, not an API to be compatible with. Components that need core or native support
@@ -65,6 +65,10 @@ and reorders fast input). Events tell JS afterwards. Existing answers: input `ma
 `cancelable`. A new capability with such a callback gets a prop (a menu's items, a rule, a flag); what a prop cannot
 express is let through and corrected in the event afterwards (a controlled `value` in `onChangeText`). `BackHandler` is
 of that kind: with a listener the press is taken, and JS exits the app when no listener handles it.
+
+One exception, bounded: on macOS a window resize waits up to 16 ms for the engine's layout at the new size, so the
+window never grows around stale content (AppKit's zoom animation would otherwise show none of it); an engine that
+misses the deadline is not waited for again until it catches up (`docs/dev/macos.md`, Architecture).
 
 ## Interaction and the environment
 

@@ -1,7 +1,8 @@
 ---
 title: Networking
 description: HTTP with fetch - JSON, headers, uploads with FormData, streaming responses and request bodies, cancelling with AbortController, errors, and the network capabilities an app declares.
-order: 22
+order: 46
+group: ui
 ---
 
 # Networking

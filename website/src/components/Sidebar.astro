@@ -1,5 +1,5 @@
 ---
-import type { Page } from '../lib/sections';
+import { GROUPS, type Page } from '../lib/sections';
 import type { Lang } from '../lib/site';
 
 export interface Props {
@@ -12,6 +12,12 @@ export interface Props {
 const { title, pages, current, lang = 'en' } = Astro.props;
 const isZh = lang === 'zh-CN';
 const currentPage = pages.find((page) => page.route === current);
+// A group's label goes before the first page of each run of pages in it.
+const groupLabel = (index: number) => {
+  const group = pages[index].group;
+  if (!group || group === pages[index - 1]?.group) return undefined;
+  return GROUPS[group]?.[lang];
+};
 ---
 
 <aside class="docs-sidebar" aria-label={isZh ? '文档目录' : 'Documentation'}>
@@ -26,7 +32,9 @@ const currentPage = pages.find((page) => page.route === current);
   <nav id="docs-sidebar-nav">
     <p class="sidebar-group__title">{title}</p>
     <ul class="sidebar-group__items">
-      {pages.map((page) => (
+      {pages.map((page, index) => (
+        <>
+        {groupLabel(index) && <li class="sidebar-subgroup" role="presentation">{groupLabel(index)}</li>}
         <li>
           <a
             href={page.href}
@@ -36,6 +44,7 @@ const currentPage = pages.find((page) => page.route === current);
             {page.title}
           </a>
         </li>
+        </>
       ))}
     </ul>
   </nav>

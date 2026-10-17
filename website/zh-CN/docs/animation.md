@@ -1,7 +1,8 @@
 ---
 title: 动画
 description: 样式过渡与关键帧动画，原生值的 timing、spring 和 decay，插值，组合动画，Easing，LayoutAnimation，以及哪些部分运行在 UI 线程上。
-order: 19
+order: 43
+group: ui
 demo: guide-animation
 ---
 

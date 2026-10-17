@@ -1,10 +1,46 @@
 ---
-title: Embedding in iOS Apps
-description: Add NativeShell.xcframework to an existing iOS app, show nsh apps in an NshAppView, and load bundles, signed packages or a dev server.
-order: 3.1
+title: iOS
+description: Run nsh apps on iOS with UIKit views, in the simulator or on devices, package them as .app and .ipa, and embed them in an existing iOS app with NativeShell.xcframework and NshAppView.
+order: 11
+group: platforms
 ---
 
-# Embedding in iOS Apps
+# iOS
+
+nsh apps run on iOS with UIKit views and CoreText text, on devices and in the simulator, from iOS 15.0. The main use is
+embedding: an existing app shows modules in an `NshAppView` and loads signed packages it downloads, under limits and
+capabilities it sets. Running and packaging whole apps work too, as on the other platforms. On iOS,
+`Platform.OS` is `"ios"` and the `ios={{…}}` props apply.
+
+## Requirements
+
+- **Xcode** on a Mac, with an iOS simulator runtime (`xcodebuild -downloadPlatform iOS` installs one). See
+  [Installation](./installation.md#ios-and-mac-catalyst).
+- Apps need **iOS 15.0** or later, on iPhone and iPad.
+
+## Running an app
+
+```sh
+nsh run my-app --target ios
+nsh run my-app --target ios --device "iPhone 16 Pro"
+```
+
+`nsh` uses a booted simulator, or boots the newest iPhone, installs the development host into it and keeps the app up
+to date as you save, with logs in the terminal. `--device` picks a simulator by name or UDID. For a quicker loop
+without a simulator, plain `nsh run` on a Mac opens the same UIKit backend in an iPhone-sized
+[Mac Catalyst](./getting-started.md#mac-catalyst-default-on-macos) window.
+
+## Packaging
+
+```sh
+nsh package my-app --target ios-simulator --run      # out/<Name>.app, installed and launched in the simulator
+nsh package my-app --target ios --sign "Apple Distribution: Example Inc (ABCDE12345)" --profile AppStore.mobileprovision
+```
+
+`--target ios` writes a signed `.ipa` for devices, TestFlight or the App Store. Signing identities, provisioning
+profiles and icons: [Packaging](./packaging.md#ios-devices).
+
+## Embedding in an iOS app
 
 An existing iOS app can show nsh apps inside its own UI. The runtime ships as `NativeShell.xcframework`, a static
 framework with a Swift module: you create an `NshAppView` (a `UIView`), add it anywhere in your view hierarchy and load
