@@ -194,11 +194,16 @@ impl Focusable for AppView {
 
 impl Render for AppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        SurfaceElement {
+        let surface = SurfaceElement {
             surface: self.surface.clone(),
             focus: self.focus.clone(),
             view: cx.entity().downgrade(),
-        }
+        };
+        // A dev session draws its status line and error overlay above.
+        #[cfg(feature = "dev")]
+        return crate::dev::wrap(self, surface.into_any_element(), cx);
+        #[cfg(not(feature = "dev"))]
+        surface
     }
 }
 
