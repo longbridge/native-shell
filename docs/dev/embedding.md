@@ -111,5 +111,7 @@ in a resizable split.
   Kit widgets in its box (`NativeComponent::render`), which take their own input: the example's "Extended hours" is a
   GPUI Kit `Switch` (`src/switch.rs`, `host.switch`) that reports its natural size (`ComponentContext::set_size`: its
   track and label, so the app's style leaves the box's size open), emits `change` to JS, and toggles on clicks and on
-  Space while its own focus handle is focused (a click focuses it; nsh's fields do not see those keys). `AppView::on_error` hears
+  Space or Enter while focused (nsh's fields do not see those keys). It returns a focus handle of its own
+  (`NativeComponent::focus_handle`; a wrapper's, since the `Switch` keeps its handle internal), so it is a Tab stop
+  among the app's text fields, and a click focuses that handle too. `AppView::on_error` hears
   the app's fatal errors (also logged).
