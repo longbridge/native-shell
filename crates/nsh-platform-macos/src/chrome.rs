@@ -31,23 +31,33 @@
 
 use std::{
     cell::{Cell, RefCell},
+    ptr::NonNull,
     rc::Rc,
     sync::Arc,
 };
 
+use block2::RcBlock;
+use dispatch2::DispatchQueue;
 use nsh_core::{
     EventKind, EventPayload, PayloadValue, ROOT_ID,
     desktop::{DesktopCommand, Key, MenuAction, MenuItem, MenuRole, Shortcut, TitleBarStyle},
     platform::Insets,
 };
 use objc2::{
-    DefinedClass, MainThreadOnly, define_class, msg_send, rc::Retained, runtime::Sel, sel,
+    DefinedClass, MainThreadOnly, define_class, msg_send,
+    rc::{Retained, Weak},
+    runtime::{ProtocolObject, Sel},
+    sel,
 };
 use objc2_app_kit::{
-    NSApplication, NSEvent, NSEventModifierFlags, NSMenu, NSMenuItem, NSRunningApplication,
-    NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+    NSApplication, NSButton, NSEvent, NSEventModifierFlags, NSMenu, NSMenuItem,
+    NSRunningApplication, NSViewFrameDidChangeNotification, NSWindow, NSWindowButton,
+    NSWindowStyleMask, NSWindowTitleVisibility,
 };
-use objc2_foundation::{NSObject, NSObjectProtocol, NSPoint, NSString, NSUserDefaults, ns_string};
+use objc2_foundation::{
+    NSNotification, NSNotificationCenter, NSObject, NSObjectProtocol, NSPoint, NSString,
+    NSUserDefaults, ns_string,
+};
 
 use crate::surface::Surface;
 
@@ -118,6 +128,35 @@ pub(crate) struct Chrome {
     height: Cell<Option<f32>>,
     /// The target of its menu items (made with the first menu).
     target: RefCell<Option<Retained<MenuTarget>>>,
+    /// Watches the window controls' frames: AppKit lays the title bar out
+    /// again whenever it likes (the window becoming key, its title, ...),
+    /// which puts them back at the top.
+    controls: RefCell<Option<ControlsWatch>>,
+    /// The traffic lights are being moved (their frame changes are ours).
+    centering: Cell<bool>,
+    /// A frame changed while they were: they are centered again.
+    recenter: Cell<bool>,
+    /// They are centered again once AppKit's layout pass is over.
+    deferred: Cell<bool>,
+    /// The title bar's own height, before an app's height replaced it:
+    /// without one, the controls go back there.
+    natural: Cell<Option<f32>>,
+}
+
+/// The frame observers of a window's controls.
+struct ControlsWatch {
+    window: Weak<NSWindow>,
+    observers: Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
+}
+
+impl Drop for ControlsWatch {
+    fn drop(&mut self) {
+        let center = NSNotificationCenter::defaultCenter();
+        for observer in &self.observers {
+            // SAFETY: removes an observer this surface added.
+            unsafe { center.removeObserver(observer.as_ref()) };
+        }
+    }
 }
 
 fn window(surface: &Surface) -> Option<Retained<NSWindow>> {
@@ -139,10 +178,14 @@ pub(crate) fn update_area(surface: &Surface) {
             let layout = window.contentLayoutRect();
             let height = match surface.chrome.height.get() {
                 Some(height) => {
-                    center_traffic_lights(&window, height);
+                    center_traffic_lights(surface, &window, height);
+                    watch_controls(surface, &window);
                     height
                 }
-                None => (frame.size.height - layout.size.height) as f32,
+                None => {
+                    restore_traffic_lights(surface, &window);
+                    (frame.size.height - layout.size.height) as f32
+                }
             };
             let left = window
                 .standardWindowButton(NSWindowButton::ZoomButton)
@@ -175,34 +218,151 @@ pub(crate) fn update_area(surface: &Surface) {
 /// Centers the traffic lights in an app's title bar `height` points tall:
 /// the title bar's container takes that height at the window's top and the
 /// buttons are centered in it. AppKit lays them out again on every resize
-/// and full screen change, so this runs after each ([`update_area`]).
-fn center_traffic_lights(window: &NSWindow, height: f32) {
+/// and full screen change, and whenever else it likes: this runs after
+/// each ([`update_area`], [`watch_controls`]).
+fn center_traffic_lights(surface: &Surface, window: &NSWindow, height: f32) {
+    let chrome = &surface.chrome;
+    if chrome.centering.replace(true) {
+        // Moving one view moves others (the container's autoresizing):
+        // the pass runs again.
+        chrome.recenter.set(true);
+        return;
+    }
+    // A few passes settle it; more would be AppKit fighting back.
+    for _ in 0..4 {
+        chrome.recenter.set(false);
+        center_traffic_lights_once(surface, window, height);
+        if !chrome.recenter.get() {
+            break;
+        }
+    }
+    chrome.centering.set(false);
+}
+
+fn center_traffic_lights_once(surface: &Surface, window: &NSWindow, height: f32) {
     let buttons = [
         NSWindowButton::CloseButton,
         NSWindowButton::MiniaturizeButton,
         NSWindowButton::ZoomButton,
     ]
     .map(|b| window.standardWindowButton(b));
-    let Some(close) = &buttons[0] else { return };
     // The buttons are in the title bar view, which fills its container.
-    let Some(container) =
-        crate::view::superview(close).and_then(|bar| crate::view::superview(&bar))
+    let container = buttons[0]
+        .as_deref()
+        .and_then(|close| crate::view::superview(close))
+        .and_then(|bar| crate::view::superview(&bar));
+    if let Some(container) = container {
+        let natural = &surface.chrome.natural;
+        if natural.get().is_none() {
+            natural.set(Some(container.frame().size.height as f32));
+        }
+        let height = f64::from(height);
+        let mut frame = container.frame();
+        frame.size.height = height;
+        frame.origin.y = window.frame().size.height - height;
+        if container.frame() != frame {
+            container.setFrame(frame);
+        }
+        for button in buttons.iter().flatten() {
+            let f = button.frame();
+            // The title bar view is not flipped: y goes up.
+            let y = ((height - f.size.height) / 2.0).round();
+            if f.origin.y != y {
+                button.setFrameOrigin(NSPoint::new(f.origin.x, y));
+            }
+        }
+    }
+}
+
+/// Puts the traffic lights back where AppKit had them, at the title bar's
+/// own height (the app's height is gone).
+fn restore_traffic_lights(surface: &Surface, window: &NSWindow) {
+    if let Some(natural) = surface.chrome.natural.get() {
+        center_traffic_lights(surface, window, natural);
+        surface.chrome.natural.set(None);
+    }
+}
+
+/// Centers the traffic lights again (they moved).
+fn recenter(surface: &Surface) {
+    let (Some(height), TitleBarStyle::Hidden) =
+        (surface.chrome.height.get(), surface.chrome.style.get())
     else {
         return;
     };
-    let height = f64::from(height);
-    let mut frame = container.frame();
-    frame.size.height = height;
-    frame.origin.y = window.frame().size.height - height;
-    container.setFrame(frame);
-    for button in buttons.iter().flatten() {
-        let f = button.frame();
-        // The title bar view is not flipped: y goes up.
-        button.setFrameOrigin(NSPoint::new(
-            f.origin.x,
-            ((height - f.size.height) / 2.0).round(),
-        ));
+    if let Some(window) = window(surface)
+        && !full_screen(&window)
+    {
+        center_traffic_lights(surface, &window, height);
     }
+}
+
+/// Centers the traffic lights again whenever AppKit moves them or their
+/// container (once per window).
+fn watch_controls(surface: &Surface, window: &NSWindow) {
+    let mut controls = surface.chrome.controls.borrow_mut();
+    if controls
+        .as_ref()
+        .and_then(|c| c.window.load())
+        .is_some_and(|w| std::ptr::eq(&*w, window))
+    {
+        return;
+    }
+    let buttons: Vec<Retained<NSButton>> = [
+        NSWindowButton::CloseButton,
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ]
+    .into_iter()
+    .filter_map(|b| window.standardWindowButton(b))
+    .collect();
+    let container = buttons
+        .first()
+        .and_then(|close| crate::view::superview(close))
+        .and_then(|bar| crate::view::superview(&bar));
+    let key = surface.key();
+    let block = RcBlock::new(move |_: NonNull<NSNotification>| {
+        let Some(surface) = Surface::with_key(key) else {
+            return;
+        };
+        recenter(&surface);
+        // AppKit may move the others after this one, in the same layout
+        // pass: once it is over, they are centered again.
+        if !surface.chrome.deferred.replace(true) {
+            DispatchQueue::main().exec_async(move || {
+                if let Some(surface) = Surface::with_key(key) {
+                    surface.chrome.deferred.set(false);
+                    recenter(&surface);
+                }
+            });
+        }
+    });
+    let center = NSNotificationCenter::defaultCenter();
+    let views = buttons
+        .iter()
+        .map(|b| Retained::into_super(Retained::into_super(b.clone())))
+        .chain(container);
+    let observers = views
+        .map(|view| {
+            view.setPostsFrameChangedNotifications(true);
+            // SAFETY: a documented notification of a view of this window;
+            // with no queue the block runs where it is posted (the main
+            // thread, laying the title bar out); the observer is removed
+            // when the watch drops.
+            unsafe {
+                center.addObserverForName_object_queue_usingBlock(
+                    Some(NSViewFrameDidChangeNotification),
+                    Some(&view),
+                    None,
+                    &block,
+                )
+            }
+        })
+        .collect();
+    *controls = Some(ControlsWatch {
+        window: Weak::from(window),
+        observers,
+    });
 }
 
 // --- Commands ---------------------------------------------------------------------------
@@ -247,7 +407,7 @@ pub(crate) fn command(surface: &Rc<Surface>, command: &DesktopCommand) {
             let key = surface.key();
             let items = items.clone();
             let at = *at;
-            dispatch2::DispatchQueue::main().exec_async(move || {
+            DispatchQueue::main().exec_async(move || {
                 if let Some(surface) = Surface::with_key(key) {
                     popup(&surface, &items, at);
                 }
@@ -262,6 +422,9 @@ pub(crate) fn apply_title_bar(surface: &Surface) {
         return;
     };
     let hidden = surface.chrome.style.get() == TitleBarStyle::Hidden;
+    if !hidden && !full_screen(&window) {
+        restore_traffic_lights(surface, &window);
+    }
     let mut mask = window.styleMask();
     if hidden {
         mask |= NSWindowStyleMask::FullSizeContentView;
