@@ -638,308 +638,309 @@ const RANGES: [&str; 7] = [
 ];
 
 /// An item of the empty list.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Item {
     n: usize,
     tone: Tone,
 }
 
-/// Horizontal scrolling, pull to refresh on a plain scroll view, and an
-/// empty list.
-#[derive(Debug)]
-struct More {
-    refreshing: bool,
-    refreshed: u32,
-    range: &'static str,
-    items: Rc<Vec<Item>>,
-    /// The refresh in progress (dropping it cancels it).
-    refresh: Option<Task<()>>,
-}
-
-impl Default for More {
-    fn default() -> Self {
-        Self {
-            refreshing: false,
-            refreshed: 0,
-            range: "This week",
-            items: Rc::default(),
-            refresh: None,
-        }
-    }
-}
-
-impl More {
-    fn refresh_section(&self) -> Section {
-        Section::new("Pull to refresh").child(
-            view()
-                .flex_row()
-                .items_center()
-                .gap_3()
-                .child(IconTile::new(IconName::ArrowDown).tint(if self.refreshing {
+/// The pull to refresh section: the spinner's state and the refreshes.
+fn refresh_section(refreshing: Signal<bool>, refreshed: Signal<u32>) -> Section {
+    Section::new("Pull to refresh").child(
+        view()
+            .flex_row()
+            .items_center()
+            .gap_3()
+            .child(IconTile::new(IconName::ArrowDown).tint(move || {
+                if refreshing.get() {
                     colors::ACCENT
                 } else {
                     colors::TEXT
-                }))
-                .child(
-                    view()
-                        .flex_1()
-                        .gap(px(2.0))
-                        .child(
-                            text(if self.refreshing {
+                }
+            }))
+            .child(
+                view()
+                    .flex_1()
+                    .gap(px(2.0))
+                    .child(
+                        text(move || {
+                            if refreshing.get() {
                                 "Refreshing…"
                             } else {
                                 "Pull the page down"
-                            })
-                            .text_size(px(15.0))
-                            .text_color(colors::TEXT),
-                        )
-                        .child(
-                            text("The system spinner on a plain scroll view")
-                                .text_size(px(13.0))
-                                .text_color(colors::MUTED),
-                        ),
-                )
-                .child(
-                    view()
-                        .items_end()
-                        .child(
-                            text(self.refreshed.to_string())
-                                .text_size(px(28.0))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(colors::TEXT)
-                                .tabular_nums(),
-                        )
-                        .child(
-                            text("refreshes")
-                                .text_size(px(12.0))
-                                .text_color(colors::FAINT),
-                        ),
-                ),
-        )
-    }
-
-    fn ranges(&self, cx: &RenderCx<'_, Self>) -> Section {
-        let chips = RANGES.map(|label| {
-            let selected = self.range == label;
-            press_with(
-                PressProps {
-                    hit_slop: Some(4.0),
-                    role: PressRole::Tab.into(),
-                    selected: selected.into(),
-                    label: Some(label.into()).into(),
-                    ..PressProps::default()
-                },
-                cx.listener(move |this: &mut Self, _, cx| {
-                    this.range = label;
-                    cx.notify();
-                }),
+                            }
+                        })
+                        .text_size(px(15.0))
+                        .text_color(colors::TEXT),
+                    )
+                    .child(
+                        text("The system spinner on a plain scroll view")
+                            .text_size(px(13.0))
+                            .text_color(colors::MUTED),
+                    ),
             )
             .child(
                 view()
-                    .h(px(36.0))
-                    .px(px(14.0))
-                    .rounded(px(18.0))
-                    .justify_center()
-                    .map(|v| {
-                        if selected {
-                            v.bg(colors::LIGHT).finish(Finish::Light)
-                        } else {
-                            v.bg(colors::RAISED)
-                                .finish(Finish::Raised)
-                                .border_1()
-                                .border_color(colors::BORDER)
-                        }
-                    })
+                    .items_end()
                     .child(
-                        text(label)
-                            .text_size(px(13.0))
+                        text(move || refreshed.get().to_string())
+                            .text_size(px(28.0))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(if selected {
+                            .text_color(colors::TEXT)
+                            .tabular_nums(),
+                    )
+                    .child(
+                        text("refreshes")
+                            .text_size(px(12.0))
+                            .text_color(colors::FAINT),
+                    ),
+            ),
+    )
+}
+
+/// The horizontal scroll view of range chips, `range` the selected one.
+fn ranges(range: Signal<&'static str>) -> Section {
+    let chips = RANGES.map(|label| {
+        let selected = computed(move || range.get() == label);
+        press_with(
+            PressProps {
+                hit_slop: Some(4.0),
+                role: PressRole::Tab.into(),
+                selected: selected.into(),
+                label: Some(label.into()).into(),
+                ..PressProps::default()
+            },
+            move |_: &()| range.set(label),
+        )
+        .child(
+            view()
+                .h(px(36.0))
+                .px(px(14.0))
+                .rounded(px(18.0))
+                .justify_center()
+                .style_when(selected, |v| v.bg(colors::LIGHT).finish(Finish::Light))
+                .style_when(
+                    move || !selected.get(),
+                    |v| {
+                        v.bg(colors::RAISED)
+                            .finish(Finish::Raised)
+                            .border_1()
+                            .border_color(colors::BORDER)
+                    },
+                )
+                .child(
+                    text(label)
+                        .text_size(px(13.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || {
+                            if selected.get() {
                                 colors::ON_LIGHT
                             } else {
                                 colors::MUTED
-                            }),
+                            }
+                        }),
+                ),
+        )
+    });
+    Section::new("Horizontal scroll view")
+        .note(move || range.get())
+        .child(
+            view().mx(px(-14.0)).child(
+                scroll()
+                    .horizontal()
+                    .shows_indicator(false)
+                    .child(view().flex_row().gap_2().px(px(14.0)).children(chips)),
+            ),
+        )
+}
+
+/// A thousand recycled cards in a horizontal list.
+fn cards() -> Section {
+    // A cell shows other cards as it is reused: what differs between cards
+    // is bound to its position.
+    let cards = virtual_list(1000, |at| {
+        let tone = move || TONES[at.index() % (TONES.len() - 1)];
+        let load = move || ((at.index() * 37) % 100) as f32 / 100.0;
+        view()
+            .w(px(120.0))
+            .h(px(124.0))
+            .rounded(px(radius::INSET))
+            .border_curve(BorderCurve::Continuous)
+            .bg(colors::RAISED)
+            .finish(Finish::Raised)
+            .border_1()
+            .border_color(colors::BORDER)
+            .p_3()
+            .justify_between()
+            .child(
+                text(move || format!("Card {}", at.index() + 1))
+                    .text_size(px(12.0))
+                    .text_color(colors::MUTED)
+                    .tabular_nums(),
+            )
+            .child(
+                text(move || ((load() * 100.0).round() as u32).to_string())
+                    .text_size(px(26.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(colors::TEXT)
+                    .tabular_nums()
+                    .child(
+                        text(" %")
+                            .text_size(px(15.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(move || tone().color()),
                     ),
             )
-        });
-        Section::new("Horizontal scroll view")
-            .note(self.range)
-            .child(
-                view().mx(px(-14.0)).child(
-                    scroll()
-                        .horizontal()
-                        .shows_indicator(false)
-                        .child(view().flex_row().gap_2().px(px(14.0)).children(chips)),
-                ),
-            )
-    }
+            .child(Meter::new(load).tone(tone))
+    })
+    .horizontal()
+    .estimated_item_size(130.0)
+    .shows_indicator(false)
+    .content_padding_x(14.0)
+    .row_gap(10.0)
+    .h(px(124.0));
+    Section::new("Horizontal list")
+        .note("1,000 recycled cards")
+        .child(view().mx(px(-14.0)).child(cards))
+}
 
-    fn cards(&self) -> Section {
-        let cards = virtual_list(1000, |at| {
-            let i = at.index();
-            let tone = TONES[i % (TONES.len() - 1)];
-            let load = ((i * 37) % 100) as f32 / 100.0;
-            view()
-                .w(px(120.0))
-                .h(px(124.0))
-                .rounded(px(radius::INSET))
-                .border_curve(BorderCurve::Continuous)
-                .bg(colors::RAISED)
-                .finish(Finish::Raised)
-                .border_1()
-                .border_color(colors::BORDER)
-                .p_3()
-                .justify_between()
-                .child(
-                    text(format!("Card {}", i + 1))
-                        .text_size(px(12.0))
-                        .text_color(colors::MUTED)
-                        .tabular_nums(),
-                )
-                .child(
-                    text(((load * 100.0).round() as u32).to_string())
-                        .text_size(px(26.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(colors::TEXT)
-                        .tabular_nums()
-                        .child(
-                            text(" %")
-                                .text_size(px(15.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(tone.color()),
-                        ),
-                )
-                .child(Meter::new(load).tone(tone))
-        })
-        .horizontal()
-        .estimated_item_size(130.0)
-        .shows_indicator(false)
-        .content_padding_x(14.0)
-        .row_gap(10.0)
-        .h(px(124.0));
-        Section::new("Horizontal list")
-            .note("1,000 recycled cards")
-            .child(view().mx(px(-14.0)).child(cards))
-    }
-
-    fn empty_list(&self, cx: &RenderCx<'_, Self>) -> Section {
-        // Changes to the list animate.
-        let add = cx.listener(|this: &mut Self, _, cx| {
-            cx.animate_layout(LayoutAnimation::EASE_IN_EASE_OUT);
-            let items = Rc::make_mut(&mut this.items);
+/// A list that starts empty, with separators; rows are added and cleared.
+fn empty_list() -> Section {
+    let items = signal(Rc::new(Vec::<Item>::new()));
+    let count = computed(move || items.with(|i| i.len()));
+    // Changes to the list animate.
+    let add = move |_: &()| {
+        animate_layout(LayoutAnimation::EASE_IN_EASE_OUT);
+        items.update(|items| {
+            let items = Rc::make_mut(items);
             items.push(Item {
                 n: items.len() + 1,
                 tone: TONES[items.len() % (TONES.len() - 1)],
             });
-            cx.notify();
         });
-        let clear = cx.listener(|this: &mut Self, _, cx| {
-            cx.animate_layout(LayoutAnimation::EASE_IN_EASE_OUT);
-            this.items = Rc::default();
-            cx.notify();
-        });
-        let items = self.items.clone();
-        let list = virtual_list(items.len(), move |at| {
-            let i = at.index();
-            let item = &items[i];
-            view()
-                .h(px(48.0))
-                .flex_row()
-                .items_center()
-                .gap(px(10.0))
-                .px(px(14.0))
-                .child(view().size(px(8.0)).rounded(px(2.5)).bg(item.tone.color()))
-                .child(
-                    text(format!("Item {}", item.n))
-                        .flex_1()
-                        .text_size(px(15.0))
-                        .text_color(colors::TEXT),
-                )
-                .child(Badge::new(tone_name(item.tone)).tone(item.tone))
-        })
-        .estimated_item_size(48.0)
-        .empty(
-            view()
-                .items_center()
-                .justify_center()
-                .gap(px(10.0))
-                .h(px(194.0))
-                .child(IconTile::new(IconName::Lists).tint(colors::FAINT))
-                .child(
-                    text("Nothing here yet: tap Add")
-                        .text_size(px(13.0))
-                        .text_color(colors::MUTED),
-                ),
-        )
-        .separator(|| view().h(px(1.0)).ml(px(14.0)).bg(colors::LINE))
-        .h(px(196.0))
-        .rounded(px(radius::CONTROL))
-        .bg(colors::SURFACE)
-        .finish(Finish::Card)
-        .border_1()
-        .border_color(colors::LINE);
-        let mono = |name: &'static str| text(name).font_family(MONO).text_color(colors::TEXT);
-        Section::new("An empty list")
-            .note(format!("{} items", self.items.len()))
+    };
+    let clear = move |_: &()| {
+        animate_layout(LayoutAnimation::EASE_IN_EASE_OUT);
+        items.set(Rc::default());
+    };
+    let list = virtual_list(count, move |at| {
+        // The item this cell shows: a cell shows another item through its
+        // bindings.
+        let item = computed(move || items.with(|i| i.get(at.index()).cloned()));
+        let tone = move || item.with(|i| i.as_ref().map_or(Tone::Neutral, |i| i.tone));
+        view()
+            .h(px(48.0))
+            .flex_row()
+            .items_center()
+            .gap(px(10.0))
+            .px(px(14.0))
             .child(
                 view()
-                    .flex_row()
-                    .gap_2()
-                    .child(
-                        view()
-                            .flex_1()
-                            .child(Button::new("Add", add).icon(IconName::Plus)),
-                    )
-                    .child(
-                        view().flex_1().child(
-                            Button::new("Clear", clear)
-                                .variant(ButtonVariant::Secondary)
-                                .disabled(self.items.is_empty()),
-                        ),
-                    ),
+                    .size(px(8.0))
+                    .rounded(px(2.5))
+                    .bg(move || tone().color()),
             )
-            .child(list)
             .child(
-                text("")
-                    .text_size(px(13.0))
-                    .text_color(colors::MUTED)
-                    .child(mono("ListEmptyComponent"))
-                    .child(" while empty, separators between rows; changes animate with ")
-                    .child(mono("LayoutAnimation"))
-                    .child("."),
-            )
-    }
-}
-
-impl Component for More {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        view().flex_1().child(
-            scroll()
+                text(move || {
+                    item.with(|i| {
+                        i.as_ref()
+                            .map(|i| format!("Item {}", i.n))
+                            .unwrap_or_default()
+                    })
+                })
                 .flex_1()
-                .refreshing(self.refreshing)
-                .on_refresh(cx.listener(|this: &mut Self, _, cx| {
-                    this.refreshing = true;
-                    cx.notify();
-                    this.refresh = Some(cx.set_timeout(Duration::from_secs(1), |this, cx| {
-                        this.refreshed += 1;
-                        this.refreshing = false;
-                        cx.notify();
-                    }));
-                }))
+                .text_size(px(15.0))
+                .text_color(colors::TEXT),
+            )
+            .child(Badge::new(move || tone_name(tone())).tone(tone))
+    })
+    .estimated_item_size(48.0)
+    .empty(
+        view()
+            .items_center()
+            .justify_center()
+            .gap(px(10.0))
+            .h(px(194.0))
+            .child(IconTile::new(IconName::Lists).tint(colors::FAINT))
+            .child(
+                text("Nothing here yet: tap Add")
+                    .text_size(px(13.0))
+                    .text_color(colors::MUTED),
+            ),
+    )
+    .separator(|| view().h(px(1.0)).ml(px(14.0)).bg(colors::LINE))
+    .h(px(196.0))
+    .rounded(px(radius::CONTROL))
+    .bg(colors::SURFACE)
+    .finish(Finish::Card)
+    .border_1()
+    .border_color(colors::LINE);
+    let mono = |name: &'static str| text(name).font_family(MONO).text_color(colors::TEXT);
+    Section::new("An empty list")
+        .note(move || format!("{} items", count.get()))
+        .child(
+            view()
+                .flex_row()
+                .gap_2()
                 .child(
                     view()
-                        .p_4()
-                        .gap_4()
-                        .child(self.refresh_section())
-                        .child(self.ranges(cx))
-                        .child(self.cards())
-                        .child(self.empty_list(cx)),
+                        .flex_1()
+                        .child(Button::new("Add", add).icon(IconName::Plus)),
+                )
+                .child(
+                    view().flex_1().child(
+                        Button::new("Clear", clear)
+                            .variant(ButtonVariant::Secondary)
+                            .disabled(Prop::bind(move || count.get() == 0)),
+                    ),
                 ),
         )
-    }
+        .child(list)
+        .child(
+            text("")
+                .text_size(px(13.0))
+                .text_color(colors::MUTED)
+                .child(mono("ListEmptyComponent"))
+                .child(" while empty, separators between rows; changes animate with ")
+                .child(mono("LayoutAnimation"))
+                .child("."),
+        )
+}
+
+/// Horizontal scrolling, pull to refresh on a plain scroll view, and an
+/// empty list.
+#[component]
+fn More() -> impl IntoElement {
+    let refreshing = signal(false);
+    let refreshed = signal(0_u32);
+    let range = signal("This week");
+    // The refresh in progress.
+    let refresh = stored(None::<Spawned<()>>);
+    let on_refresh = move |_: &()| {
+        refreshing.set(true);
+        let task = set_timeout(Duration::from_secs(1), move || {
+            refreshed.update(|r| *r += 1);
+            refreshing.set(false);
+        });
+        if let Some(old) = refresh.replace(Some(task)) {
+            old.cancel();
+        }
+    };
+    view().flex_1().child(
+        scroll()
+            .flex_1()
+            .refreshing(refreshing)
+            .on_refresh(on_refresh)
+            .child(
+                view()
+                    .p_4()
+                    .gap_4()
+                    .child(refresh_section(refreshing, refreshed))
+                    .child(ranges(range))
+                    .child(cards())
+                    .child(empty_list()),
+            ),
+    )
 }
 
 /// The demo's tabs.
