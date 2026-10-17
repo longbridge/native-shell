@@ -305,6 +305,9 @@ enum Mode {
     /// Scrolling a scroll view, with where the pointer was at the last
     /// move (the scroll module takes deltas).
     Scroll(NshView, (f32, f32)),
+    /// Dragging a scroll view's indicator as a scroll bar's thumb (the
+    /// mouse), from where the drag began.
+    Thumb(NshView, (f32, f32)),
     /// One of two fingers pinching / rotating.
     TwoFinger,
 }
@@ -1140,6 +1143,50 @@ fn down(
             hit = below;
         }
     }
+    // The mouse drags an indicator as a scroll bar: its thumb follows the
+    // pointer, where a drag on the content moves the content with it.
+    let thumb = (!touch && item.is_none())
+        .then(|| {
+            chain(&hit.view).into_iter().find(|v| {
+                let (lx, ly) = local(v, x, y);
+                crate::scroll::grabs_thumb(v, lx, ly)
+            })
+        })
+        .flatten();
+    if let Some(view) = thumb {
+        let input = &surface.input;
+        if input.pointers.borrow().is_empty() {
+            input.js_block.set(false);
+        }
+        let id = input.next_id.get();
+        input.next_id.set(id.wrapping_add(1));
+        let mut p = Pointer {
+            key,
+            id,
+            touch,
+            x,
+            y,
+            start: (x, y),
+            time,
+            velocity: VelocityTracker::default(),
+            target: view.clone(),
+            path: Vec::new(),
+            reporting: false,
+            press: None,
+            item: None,
+            modifiers,
+            candidates: Vec::new(),
+            gate: None,
+            pinch: None,
+            pressed: Vec::new(),
+            mode: Mode::Thumb(view.clone(), (x, y)),
+            moved: false,
+        };
+        p.velocity.add(time, x, y);
+        crate::scroll::thumb_begin(surface, &view);
+        put(surface, p);
+        return;
+    }
     if item.is_none() {
         let candidate = if hit.view.kind() == ViewKind::Input {
             Some(Item::Input(hit.view.clone()))
@@ -1391,6 +1438,10 @@ fn motion(surface: &Rc<Surface>, key: Key, x: f32, y: f32, time: f64) {
             let view = view.clone();
             crate::scroll::drag_move(surface, &view, dx, dy);
         }
+        Mode::Thumb(view, origin) => {
+            let view = view.clone();
+            crate::scroll::thumb_move(surface, &view, x - origin.0, y - origin.1);
+        }
         _ => {}
     }
     put(surface, p);
@@ -1410,6 +1461,10 @@ fn up(surface: &Rc<Surface>, key: Key, at: Option<(f32, f32)>, time: f64, cancel
             *last = (x, y);
             let view = view.clone();
             crate::scroll::drag_move(surface, &view, dx, dy);
+        }
+        if let Mode::Thumb(view, origin) = &p.mode {
+            let view = view.clone();
+            crate::scroll::thumb_move(surface, &view, x - origin.0, y - origin.1);
         }
         p.x = x;
         p.y = y;
@@ -1449,6 +1504,7 @@ fn finish(surface: &Rc<Surface>, mut p: Pointer, cancelled: bool) {
             let (vx, vy) = p.velocity.velocity();
             crate::scroll::drag_end(surface, &view, vx, vy);
         }
+        Mode::Thumb(view, _) => crate::scroll::thumb_end(surface, &view),
         Mode::Idle | Mode::Free => {
             if let Some(mut press) = p.press.take() {
                 if cancelled {

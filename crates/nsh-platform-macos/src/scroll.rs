@@ -66,6 +66,15 @@ const ANIMATION: f64 = 300.0;
 /// The release speed (points per ms) a settled mouse wheel snaps with:
 /// fast enough to move on to the next snap point.
 const WHEEL_SNAP: f32 = 0.6;
+/// Space between the indicator and the ends of the viewport.
+const INDICATOR_MARGIN: f32 = 2.0;
+/// The indicator's thickness.
+const INDICATOR_THICK: f32 = 6.0;
+/// How close to its edge (points) a mouse press grabs the indicator,
+/// which is thinner than a pointer is precise...
+const THUMB_GRAB: f32 = 12.0;
+/// ...and how far past its ends.
+const THUMB_SLOP: f32 = 4.0;
 
 /// What a scroll view is doing.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -75,6 +84,9 @@ enum Phase {
     Idle,
     /// A pointer drag: `start` is the main-axis offset it began at.
     Drag { start: f32 },
+    /// The mouse drags the indicator as a scroll bar's thumb, from offset
+    /// `start`.
+    Thumb { start: f32 },
     /// Wheel or trackpad input: the last at `last` (ms), `total` points
     /// so far; `gesture` for trackpads (began / ended), not mouse wheels;
     /// `raw` is where the gesture's deltas put the offset before the
@@ -290,13 +302,12 @@ fn indicator_alpha(since: f64) -> f32 {
 /// `viewport` points showing `total` points at `offset`, or `None` when
 /// everything fits.
 fn indicator_span(viewport: f32, total: f32, offset: f32) -> Option<(f32, f32)> {
-    const MARGIN: f32 = 2.0;
     /// Short enough to see where it is in long lists, long enough to see.
     const MIN_LENGTH: f32 = 32.0;
-    if total <= viewport + 0.5 || viewport <= 4.0 * MARGIN {
+    if total <= viewport + 0.5 || viewport <= 4.0 * INDICATOR_MARGIN {
         return None;
     }
-    let track = viewport - 2.0 * MARGIN;
+    let track = viewport - 2.0 * INDICATOR_MARGIN;
     let max = total - viewport;
     // Overscrolling shrinks it, as macOS's overlay scrollers do.
     let over = if offset < 0.0 {
@@ -306,7 +317,17 @@ fn indicator_span(viewport: f32, total: f32, offset: f32) -> Option<(f32, f32)> 
     };
     let len = (track * viewport / total - over).max(MIN_LENGTH).min(track);
     let t = (offset / max).clamp(0.0, 1.0);
-    Some((MARGIN + (track - len) * t, len))
+    Some((INDICATOR_MARGIN + (track - len) * t, len))
+}
+
+/// How far the offset moves when the thumb moves by `d` points: the
+/// thumb's travel (`track - length`) spans the whole scroll range.
+fn thumb_scroll(d: f32, range: f32, travel: f32) -> f32 {
+    if travel > 0.0 {
+        d * range / travel
+    } else {
+        0.0
+    }
 }
 
 // Accessors.
@@ -810,10 +831,17 @@ fn tick(surface: &Rc<Surface>, view: &NshView, now: f64) -> bool {
         };
         let mut busy = !matches!(
             s.live.phase,
-            Phase::Idle | Phase::Drag { .. } | Phase::Momentum | Phase::Wheel { gesture: true, .. }
+            Phase::Idle
+                | Phase::Drag { .. }
+                | Phase::Thumb { .. }
+                | Phase::Momentum
+                | Phase::Wheel { gesture: true, .. }
         ) || s.live.resampled.is_some();
         let mut overlays = false;
-        if s.live.alpha > 0.0 {
+        if matches!(s.live.phase, Phase::Thumb { .. }) {
+            // A held thumb stays until it is let go (`thumb_end`).
+            s.live.shown = now;
+        } else if s.live.alpha > 0.0 {
             let alpha = indicator_alpha(now - s.live.shown);
             if alpha != s.live.alpha {
                 s.live.alpha = alpha;
@@ -900,6 +928,26 @@ fn overlay_layer(
     Some(layer)
 }
 
+/// The indicator's frame in a `w` × `h` scroll view and how far it can
+/// travel along its track, or `None` when the content fits.
+fn thumb(s: &ScrollState, w: f32, h: f32) -> Option<(CGRect, f32)> {
+    const EDGE: f32 = 2.0;
+    let inset = s.behavior.content_inset;
+    let (dim, total, offset) = if s.horizontal {
+        (w, s.content.0 + inset.left + inset.right, s.x)
+    } else {
+        (h, s.content.1 + inset.top + inset.bottom, s.y)
+    };
+    let (start, len) = indicator_span(dim, total, offset)?;
+    let frame = if s.horizontal {
+        let x = if s.mirrored { w - start - len } else { start };
+        rect(x, h - INDICATOR_THICK - EDGE, len, INDICATOR_THICK)
+    } else {
+        rect(w - INDICATOR_THICK - EDGE, start, INDICATOR_THICK, len)
+    };
+    Some((frame, dim - 2.0 * INDICATOR_MARGIN - len))
+}
+
 /// Updates the indicator and the refresh spinner of `view` to its offset.
 fn update_overlays(view: &NshView) {
     let mut state = view.state_mut();
@@ -915,29 +963,17 @@ fn update_overlays(view: &NshView) {
         }
     }
     // The indicator.
-    let inset = s.behavior.content_inset;
-    let (dim, total, offset) = if s.horizontal {
-        (w, s.content.0 + inset.left + inset.right, s.x)
+    let frame = if s.indicator && s.live.alpha > 0.0 {
+        thumb(s, w, h).map(|(frame, _)| frame)
     } else {
-        (h, s.content.1 + inset.top + inset.bottom, s.y)
+        None
     };
-    let span = (s.indicator && s.live.alpha > 0.0)
-        .then(|| indicator_span(dim, total, offset))
-        .flatten();
-    match span {
-        Some((start, len)) => {
+    match frame {
+        Some(frame) => {
             if s.live.indicator.is_none() {
                 s.live.indicator = overlay_layer(view, &mut s.live.overlay);
             }
             if let Some(layer) = &s.live.indicator {
-                const THICK: f32 = 6.0;
-                const EDGE: f32 = 2.0;
-                let frame = if s.horizontal {
-                    let x = if s.mirrored { w - start - len } else { start };
-                    rect(x, h - THICK - EDGE, len, THICK)
-                } else {
-                    rect(w - THICK - EDGE, start, THICK, len)
-                };
                 layer.setBounds(rect(
                     0.0,
                     0.0,
@@ -945,7 +981,7 @@ fn update_overlays(view: &NshView) {
                     frame.size.height as f32,
                 ));
                 layer.setPosition(frame.origin);
-                layer.setCornerRadius(THICK as f64 / 2.0);
+                layer.setCornerRadius(INDICATOR_THICK as f64 / 2.0);
                 let color = if s.live.dark {
                     CGColor::new_srgb(1.0, 1.0, 1.0, 0.55)
                 } else {
@@ -1171,6 +1207,7 @@ pub(crate) fn scroll_by(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32)
         // A gesture or animation in flight moves along.
         s.live.phase = match s.live.phase {
             Phase::Drag { start } => Phase::Drag { start: start + d },
+            Phase::Thumb { start } => Phase::Thumb { start: start + d },
             Phase::Wheel {
                 last,
                 total,
@@ -1249,7 +1286,12 @@ pub(crate) fn behavior(_surface: &Rc<Surface>, view: &NshView, behavior: &Scroll
         };
         let inset = s.behavior.content_inset != behavior.content_inset;
         s.behavior = behavior.clone();
-        if !behavior.enabled && matches!(s.live.phase, Phase::Drag { .. } | Phase::Wheel { .. }) {
+        if !behavior.enabled
+            && matches!(
+                s.live.phase,
+                Phase::Drag { .. } | Phase::Thumb { .. } | Phase::Wheel { .. }
+            )
+        {
             s.live.phase = Phase::Idle;
         }
         inset
@@ -1425,6 +1467,87 @@ pub(crate) fn drag_end(surface: &Rc<Surface>, view: &NshView, vx: f32, vy: f32) 
     emit(surface, view, EventKind::ScrollEndDrag);
     pulled_to_refresh(surface, view);
     release(surface, view, v, 0.0, true);
+}
+
+/// Whether a mouse press at `(x, y)` (view coordinates) grabs `view`'s
+/// indicator, faded out or not: on the desktop it is a scroll bar.
+pub(crate) fn grabs_thumb(view: &NshView, x: f32, y: f32) -> bool {
+    let state = view.state();
+    let Some(s) = &state.scroll else {
+        return false;
+    };
+    if !s.indicator || !s.behavior.enabled {
+        return false;
+    }
+    let (w, h) = (state.frame.width, state.frame.height);
+    let Some((frame, _)) = thumb(s, w, h) else {
+        return false;
+    };
+    let (along, across, start, len, edge) = if s.horizontal {
+        (x, y, frame.origin.x as f32, frame.size.width as f32, h)
+    } else {
+        (y, x, frame.origin.y as f32, frame.size.height as f32, w)
+    };
+    (edge - THUMB_GRAB..=edge).contains(&across)
+        && (start - THUMB_SLOP..=start + len + THUMB_SLOP).contains(&along)
+}
+
+/// The mouse grabbed `view`'s indicator ([`grabs_thumb`]).
+pub(crate) fn thumb_begin(surface: &Rc<Surface>, view: &NshView) {
+    interrupt(surface, view);
+    {
+        let mut state = view.state_mut();
+        let Some(s) = state.scroll.as_mut() else {
+            return;
+        };
+        s.live.phase = Phase::Thumb { start: main(s) };
+        s.live.shown = now();
+        s.live.alpha = 1.0;
+        s.live.dark = surface.environment.get().color_scheme == nsh_engine::ColorScheme::Dark;
+    }
+    update_overlays(view);
+    emit(surface, view, EventKind::ScrollBeginDrag);
+}
+
+/// The grabbed indicator was dragged by `(dx, dy)` points since it was
+/// grabbed: the content moves the other way, so the thumb follows the
+/// pointer (a content drag moves the content with it).
+pub(crate) fn thumb_move(surface: &Rc<Surface>, view: &NshView, dx: f32, dy: f32) {
+    let Phase::Thumb { start } = phase(view) else {
+        return;
+    };
+    let pos = {
+        let state = view.state();
+        let Some(s) = &state.scroll else { return };
+        let Some((_, travel)) = thumb(s, state.frame.width, state.frame.height) else {
+            return;
+        };
+        let (min, max) = limits(&state);
+        let d = if !s.horizontal {
+            dy
+        } else if s.mirrored {
+            -dx
+        } else {
+            dx
+        };
+        (start + thumb_scroll(d, max, travel)).clamp(min, max.max(min))
+    };
+    moved_to(surface, view, pos);
+}
+
+/// The grabbed indicator was let go: it fades from now, snapping views
+/// settle on a snap point.
+pub(crate) fn thumb_end(surface: &Rc<Surface>, view: &NshView) {
+    if !matches!(phase(view), Phase::Thumb { .. }) {
+        return;
+    }
+    set_phase(view, Phase::Idle);
+    if let Some(s) = view.state_mut().scroll.as_mut() {
+        s.live.shown = now();
+    }
+    ensure_ticking(surface, view);
+    emit(surface, view, EventKind::ScrollEndDrag);
+    release(surface, view, 0.0, 0.0, false);
 }
 
 // Wheels and trackpads.
@@ -1865,6 +1988,20 @@ mod tests {
         let (_, l2) = indicator_span(400.0, 1600.0, -50.0).unwrap();
         assert!(l2 < l0);
         assert_eq!(indicator_alpha(INDICATOR_HOLD + INDICATOR_FADE), 0.0);
+    }
+
+    #[test]
+    fn thumb_follows_the_pointer() {
+        // The thumb's travel spans the scroll range: moving it by its
+        // whole travel scrolls to the end, and it ends that far along.
+        let (s0, l0) = indicator_span(400.0, 1600.0, 0.0).unwrap();
+        let travel = 400.0 - 2.0 * INDICATOR_MARGIN - l0;
+        let end = thumb_scroll(travel, 1200.0, travel);
+        assert!((end - 1200.0).abs() < 0.01);
+        let (s1, _) = indicator_span(400.0, 1600.0, end).unwrap();
+        assert!((s1 - s0 - travel).abs() < 0.01);
+        assert!(thumb_scroll(-10.0, 1200.0, travel) < 0.0);
+        assert_eq!(thumb_scroll(10.0, 1200.0, 0.0), 0.0);
     }
 
     #[test]

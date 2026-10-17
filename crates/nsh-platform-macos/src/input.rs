@@ -163,6 +163,9 @@ enum Mode {
     Pan(NshView),
     /// Scrolling a scroll view, from where the drag began.
     Scroll(NshView, (f32, f32)),
+    /// Dragging a scroll view's indicator as a scroll bar's thumb, from
+    /// where the drag began.
+    Thumb(NshView, (f32, f32)),
     /// Selecting the text of this view (from where the drag began).
     Select(NshView),
 }
@@ -1002,6 +1005,41 @@ fn down(surface: &Rc<Surface>, x: f32, y: f32, time: f64, clicks: usize, shift: 
     input.js_block.set(false);
     let native = hit.native;
     let views = chain(&hit.view);
+    // The mouse drags an indicator as a scroll bar: its thumb follows the
+    // pointer, where a drag on the content moves the content with it.
+    let thumb = (!native)
+        .then(|| {
+            views.iter().find(|v| {
+                let (lx, ly) = local(surface, v, x, y);
+                crate::scroll::grabs_thumb(v, lx, ly)
+            })
+        })
+        .flatten();
+    if let Some(view) = thumb {
+        let id = input.next_id.get();
+        input.next_id.set(id.wrapping_add(1));
+        let mut p = Pointer {
+            id,
+            x,
+            y,
+            start: (x, y),
+            time,
+            velocity: VelocityTracker::default(),
+            target: view.clone(),
+            path: Vec::new(),
+            reporting: false,
+            press: None,
+            candidates: Vec::new(),
+            gate: None,
+            pressed: Vec::new(),
+            mode: Mode::Thumb(view.clone(), (x, y)),
+            moved: false,
+        };
+        p.velocity.add(time, x, y);
+        crate::scroll::thumb_begin(surface, view);
+        put(surface, p);
+        return;
+    }
     let mut path = Vec::new();
     let mut candidates = Vec::new();
     let mut pressed = Vec::new();
@@ -1217,6 +1255,9 @@ fn motion(surface: &Rc<Surface>, x: f32, y: f32, time: f64) {
         Mode::Scroll(view, origin) => {
             crate::scroll::drag_move(surface, view, x - origin.0, y - origin.1);
         }
+        Mode::Thumb(view, origin) => {
+            crate::scroll::thumb_move(surface, view, x - origin.0, y - origin.1);
+        }
         _ => {}
     }
     put(surface, p);
@@ -1262,6 +1303,7 @@ fn finish(surface: &Rc<Surface>, mut p: Pointer, cancelled: bool) {
             let (vx, vy) = p.velocity.velocity();
             crate::scroll::drag_end(surface, &view, vx, vy);
         }
+        Mode::Thumb(view, _) => crate::scroll::thumb_end(surface, &view),
         Mode::Idle | Mode::Free | Mode::Select(_) => {
             if let Mode::Select(view) = &mode
                 && crate::text::selection_up(view)
