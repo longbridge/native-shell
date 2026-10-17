@@ -1512,16 +1512,78 @@ impl<M: TextEngine> Core<M> {
             .is_some_and(|inst| inst.binding)
     }
 
+    /// The text content `new` of node `id` (of `host`'s render), its raw
+    /// text node made, changed or released from `old`.
+    fn reconcile_text(
+        &mut self,
+        id: NodeId,
+        host: NodeId,
+        new: Option<SharedString>,
+        old: Option<(SharedString, NodeId)>,
+    ) -> Option<(SharedString, NodeId)> {
+        match (new, old) {
+            (Some(content), Some((old, raw))) => {
+                if content != old {
+                    let _ = self.apply_op(Op::SetText {
+                        id: raw,
+                        text: content.as_str().to_owned(),
+                    });
+                }
+                Some((content, raw))
+            }
+            (Some(content), None) => {
+                let raw = self.components.alloc();
+                let _ = self.apply_op(Op::CreateText {
+                    id: raw,
+                    text: content.as_str().to_owned(),
+                });
+                self.components.owners.insert(raw, host);
+                let _ = self.apply_op(Op::Insert {
+                    parent: id,
+                    child: raw,
+                    before: None,
+                });
+                Some((content, raw))
+            }
+            (None, Some((_, raw))) => {
+                self.release_id(raw);
+                None
+            }
+            (None, None) => None,
+        }
+    }
+
     /// Applies a render's root `el` to `host` itself and expands its
-    /// children.
+    /// children. A view's root can be any element: the host becomes its
+    /// node (a screen, a modal, a text, a list), or holds it (a region, a
+    /// component). A component that renders again renders a view.
     fn expand_root(&mut self, host: NodeId, inst: &mut Instance, mut el: ElNode) {
+        if inst.binding {
+            let node = matches!(el.kind, ElKind::Plain | ElKind::VirtualList(_));
+            if !node || (el.tag != Tag::View && !self.retag(host, el.tag)) {
+                if node {
+                    log::error!(target: "js", "a component's root takes its kind only when it is first mounted; it is placed in a view");
+                }
+                let inner = std::mem::replace(&mut el, ElNode::new(Tag::View));
+                el.children.push(inner);
+            }
+            if !el.children.is_empty()
+                && let Some(content) = el.bound_text.take()
+            {
+                let mut first = ElNode::new(Tag::Text);
+                first.text = Some(SharedString::default());
+                first.bound_text = Some(content);
+                el.text = None;
+                el.children.insert(0, first);
+            }
+        }
         let bound = if inst.binding {
             super::views::Bound::take(&mut el)
         } else {
             el.resolve_once();
             None
         };
-        if el.tag != Tag::View || !matches!(el.kind, ElKind::Plain) {
+        if !inst.binding && (el.tag != Tag::View || !matches!(el.kind, ElKind::Plain)) {
             log::error!(target: "js", "a component's root must be a view; it is rendered as one");
             el.tag = Tag::View;
             el.kind = ElKind::Plain;
@@ -1533,19 +1595,25 @@ impl<M: TextEngine> Core<M> {
         let old = inst.root.take();
         let old_place = std::mem::replace(&mut inst.children_at, Placement::None);
         // The root is the host itself.
-        let (old_attrs, old_style, old_classes, old_events, old_children) = match old {
-            Some(e) => (e.attrs, e.style, e.classes, e.events, e.children),
-            None => (
-                Attrs::default(),
-                StyleRefinement::default(),
-                (None, None),
-                EventMask::default(),
-                Vec::new(),
-            ),
-        };
+        let (old_attrs, old_style, old_classes, old_events, old_children, old_text, old_list) =
+            match old {
+                Some(e) => (
+                    e.attrs, e.style, e.classes, e.events, e.children, e.text, e.list,
+                ),
+                None => (
+                    Attrs::default(),
+                    StyleRefinement::default(),
+                    (None, None),
+                    EventMask::default(),
+                    Vec::new(),
+                    None,
+                    ListConfig::default(),
+                ),
+            };
         self.apply_attrs_over(host, &el.attrs, &old_attrs, inst.app_style.as_ref());
         let user = inst.user.clone();
         let classes = self.apply_styles(host, &el.style, &old_style, old_classes, user);
+        let text = self.reconcile_text(host, host, el.text.take(), old_text);
         if let Some(bound) = bound {
             self.bind_node(
                 host,
@@ -1554,7 +1622,7 @@ impl<M: TextEngine> Core<M> {
                 &el.attrs,
                 &el.style,
                 classes.clone(),
-                None,
+                text.clone(),
                 inst,
             );
         }
@@ -1571,17 +1639,25 @@ impl<M: TextEngine> Core<M> {
         );
         let new_children = std::mem::take(&mut el.children);
         let children = self.reconcile_children(host, old_children, new_children, host, inst);
+        let (list, part) = match std::mem::replace(&mut el.kind, ElKind::Plain) {
+            ElKind::VirtualList(list) => {
+                let config = list.config;
+                self.update_virtual_list(host, host, *list, &old_list, inst.binding);
+                (config, Part::VirtualList)
+            }
+            _ => (ListConfig::default(), Part::Node),
+        };
         inst.root = Some(Expanded {
             id: host,
-            tag: Tag::View,
+            tag: el.tag,
             key: None,
-            text: None,
+            text,
             attrs: el.attrs,
             style: el.style,
             classes,
             events,
-            list: ListConfig::default(),
-            part: Part::Node,
+            list,
+            part,
             children,
         });
         self.children_placed(host, inst, old_place);
@@ -2415,36 +2491,7 @@ impl<M: TextEngine> Core<M> {
         }
         self.apply_attrs(id, &el.attrs, &old_attrs);
         let classes = self.apply_styles(id, &el.style, &old_style, old_classes, None);
-        let text = match (el.text.take(), old_text) {
-            (Some(content), Some((old, raw))) => {
-                if content != old {
-                    let _ = self.apply_op(Op::SetText {
-                        id: raw,
-                        text: content.as_str().to_owned(),
-                    });
-                }
-                Some((content, raw))
-            }
-            (Some(content), None) => {
-                let raw = self.components.alloc();
-                let _ = self.apply_op(Op::CreateText {
-                    id: raw,
-                    text: content.as_str().to_owned(),
-                });
-                self.components.owners.insert(raw, host);
-                let _ = self.apply_op(Op::Insert {
-                    parent: id,
-                    child: raw,
-                    before: None,
-                });
-                Some((content, raw))
-            }
-            (None, Some((_, raw))) => {
-                self.release_id(raw);
-                None
-            }
-            (None, None) => None,
-        };
+        let text = self.reconcile_text(id, host, el.text.take(), old_text);
         if let Some(bound) = bound {
             self.bind_node(
                 host,
@@ -2919,22 +2966,7 @@ impl<M: TextEngine> Core<M> {
                 self.release_region(region);
                 return;
             }
-            Part::VirtualList => {
-                if let Some(state) = self.components.virtual_lists.remove(&e.id) {
-                    let parts = state.contents.into_iter().chain(state.cells);
-                    for part in parts.filter(|&c| c != 0) {
-                        self.release_instance(part);
-                        self.release_id(part);
-                    }
-                }
-                // The rows of another component's `Items` prop: no longer
-                // its slot.
-                if self.components.slot_names.remove(&e.id).is_some() {
-                    self.unslot(e.id);
-                }
-                self.components.lists.remove(&e.id);
-                self.forget_list_count(e.id);
-            }
+            Part::VirtualList => self.release_virtual_list(e.id),
             Part::Node => {}
         }
         if let Some(r) = &e.attrs.element_ref {
@@ -2981,10 +3013,34 @@ impl<M: TextEngine> Core<M> {
             if let Some(r) = &root.attrs.element_ref {
                 r.detach(host);
             }
+            if root.part == Part::VirtualList {
+                self.release_virtual_list(host);
+            }
+            if let Some((_, raw)) = root.text {
+                self.release_id(raw);
+            }
             for c in root.children {
                 self.release_expanded(c);
             }
         }
+    }
+
+    /// Releases the component's own list `id`: its cells, and what knew of
+    /// it.
+    fn release_virtual_list(&mut self, id: NodeId) {
+        if let Some(state) = self.components.virtual_lists.remove(&id) {
+            let parts = state.contents.into_iter().chain(state.cells);
+            for part in parts.filter(|&c| c != 0) {
+                self.release_instance(part);
+                self.release_id(part);
+            }
+        }
+        // The rows of another component's `Items` prop: no longer its slot.
+        if self.components.slot_names.remove(&id).is_some() {
+            self.unslot(id);
+        }
+        self.components.lists.remove(&id);
+        self.forget_list_count(id);
     }
 
     /// A native event on node `id`: true when a component handled it (its

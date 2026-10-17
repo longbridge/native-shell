@@ -6977,4 +6977,81 @@ mod views {
         c.take_events(&mut events);
         assert!(events.is_empty(), "nothing for JS: {events:?}");
     }
+
+    /// A text as its root: a count, bumped by a press.
+    #[derive(Default)]
+    struct Tally;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct TallyProps {}
+
+    impl Component for Tally {
+        type Props = TallyProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: TallyProps, _: Scope<NoEvent>) -> impl IntoElement {
+            let n = signal(0);
+            text(move || format!("tally {}", n.get())).on_press(move |_: &()| n.update(|n| *n += 1))
+        }
+    }
+
+    /// A scroll view as its root.
+    #[derive(Default)]
+    struct Scroller;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct ScrollerProps {}
+
+    impl Component for Scroller {
+        type Props = ScrollerProps;
+        type Event = NoEvent;
+        const RUNS_ONCE: bool = true;
+
+        fn view(_: ScrollerProps, _: Scope<NoEvent>) -> impl IntoElement {
+            scroll().child(text("inside"))
+        }
+    }
+
+    #[test]
+    fn a_views_root_can_be_any_element() {
+        let mut c = core();
+        c.mount_root(&Root::new::<Tally>(|| TallyProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        assert!(
+            batch.items.iter().any(|i| matches!(
+                i,
+                MountItem::Create { id, kind: crate::ViewKind::Text } if *id == host
+            )),
+            "the host is the text: {:?}",
+            batch.items
+        );
+        assert_eq!(
+            batch
+                .items
+                .iter()
+                .filter(|i| matches!(i, MountItem::Create { id, .. } if *id == host))
+                .count(),
+            1,
+            "made once"
+        );
+        assert_eq!(texts(&batch), ["tally 0"]);
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["tally 1"]);
+
+        let mut c = core();
+        c.mount_root(&Root::new::<Scroller>(|| ScrollerProps {}));
+        let batch = c.commit().unwrap();
+        let host = root_host(&batch);
+        assert!(
+            batch.items.iter().any(|i| matches!(
+                i,
+                MountItem::Create { id, kind: crate::ViewKind::Scroll } if *id == host
+            )),
+            "the host is the scroll view: {:?}",
+            batch.items
+        );
+        assert_eq!(texts(&batch), ["inside"]);
+    }
 }

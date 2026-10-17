@@ -229,6 +229,27 @@ impl Kind {
 
     /// Kinds whose taffy style is derived from the JS style (and must keep
     /// the JS style around to re-derive it).
+    fn of(tag: Tag) -> Self {
+        match tag {
+            Tag::View => Kind::View,
+            Tag::Text => Kind::Text,
+            Tag::Image => Kind::Image,
+            Tag::Scroll => Kind::Scroll,
+            Tag::List => Kind::List,
+            Tag::Cell => Kind::Cell,
+            Tag::Input => Kind::Input,
+            Tag::Stack => Kind::Stack,
+            Tag::Screen => Kind::Screen,
+            Tag::Modal => Kind::Modal,
+            Tag::HeaderItem => Kind::HeaderItem,
+            Tag::InputAccessory => Kind::InputAccessory,
+            Tag::Canvas => Kind::Canvas,
+            Tag::WebView => Kind::WebView,
+            Tag::Video => Kind::Video,
+            Tag::Native => Kind::Native,
+        }
+    }
+
     fn derives_layout(self) -> bool {
         matches!(
             self,
@@ -1245,52 +1266,26 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn create(&mut self, id: NodeId, tag: Tag) -> Result<(), ApplyError> {
-        let kind = match tag {
-            Tag::View => Kind::View,
-            Tag::Text => Kind::Text,
-            Tag::Image => Kind::Image,
-            Tag::Scroll => Kind::Scroll,
-            Tag::List => Kind::List,
-            Tag::Cell => Kind::Cell,
-            Tag::Input => Kind::Input,
-            Tag::Stack => Kind::Stack,
-            Tag::Screen => Kind::Screen,
-            Tag::Modal => Kind::Modal,
-            Tag::HeaderItem => Kind::HeaderItem,
-            Tag::InputAccessory => Kind::InputAccessory,
-            Tag::Canvas => Kind::Canvas,
-            Tag::WebView => Kind::WebView,
-            Tag::Video => Kind::Video,
-            Tag::Native => Kind::Native,
-        };
+        let kind = Kind::of(tag);
         let key = self.alloc(id, kind)?;
         let style = Style::default().layout;
-        let layout = match kind {
-            Kind::Text => {
-                self.nodes[key as usize].dirty |= dirty::TEXT_BUILD;
-                self.layout.new_leaf_with_context(
-                    style.clone(),
-                    LeafContext::Text(TextContext::new(Arc::default())),
-                )
-            }
-            Kind::Image => self
-                .layout
-                .new_leaf_with_context(style.clone(), LeafContext::Image(None)),
-            // Sized by its style, else by the size the component reports.
-            Kind::Native => self
-                .layout
-                .new_leaf_with_context(style.clone(), LeafContext::Native(None)),
-            // Inputs measure like a text block holding their text (or
-            // placeholder).
-            Kind::Input => self.layout.new_leaf_with_context(
-                style.clone(),
-                LeafContext::Text(TextContext::new(Arc::default())),
-            ),
-            _ => self.layout.new_leaf(style.clone()),
+        let layout = match leaf_context(kind) {
+            Some(context) => self.layout.new_leaf_with_context(style.clone(), context),
+            None => self.layout.new_leaf(style.clone()),
         }
         .expect("taffy leaf");
+        self.nodes[key as usize].layout = Some(layout);
+        self.became(key, style);
+        Ok(())
+    }
+
+    /// What a node of its kind needs once made, its layout style `style`.
+    fn became(&mut self, key: Key, style: taffy::Style) {
+        let kind = self.nodes[key as usize].kind;
         let node = &mut self.nodes[key as usize];
-        node.layout = Some(layout);
+        if kind == Kind::Text {
+            node.dirty |= dirty::TEXT_BUILD;
+        }
         if kind.derives_layout() {
             node.base_layout = Some(Box::new(style));
         }
@@ -1304,7 +1299,62 @@ impl<M: TextEngine> Core<M> {
             self.measure_input(key);
         }
         self.sync_layout_style(key);
-        Ok(())
+    }
+
+    /// Node `id`, a view no child is in yet, becomes a `tag` (a component's
+    /// root of another kind on its host): as if it had been made one. Only
+    /// while its native view is not sent yet (it was made in this batch);
+    /// whether it did.
+    pub(super) fn retag(&mut self, id: NodeId, tag: Tag) -> bool {
+        let Ok(key) = self.key(id) else {
+            return false;
+        };
+        let kind = Kind::of(tag);
+        let node = &self.nodes[key as usize];
+        if node.kind == kind {
+            return true;
+        }
+        let unsent = self
+            .mount
+            .iter()
+            .any(|m| matches!(m, MountItem::Create { id: c, .. } if *c == id));
+        if node.kind != Kind::View || !node.children.is_empty() || (node.created && !unsent) {
+            return false;
+        }
+        // Out of its parent, its native view never made.
+        let parent = node.parent;
+        let at = (parent != NO_KEY).then(|| {
+            let siblings = &self.nodes[parent as usize].children;
+            let i = siblings.iter().position(|&c| c == key).expect("child");
+            let next = siblings.get(i + 1).map(|&c| self.nodes[c as usize].id);
+            (self.nodes[parent as usize].id, next)
+        });
+        if parent != NO_KEY {
+            self.unlink(key, false);
+        }
+        self.mount.retain(|m| {
+            !matches!(m, MountItem::Create { id: c, .. } | MountItem::Insert { child: c, .. } if *c == id)
+        });
+        // The kind's own state and layout.
+        let fresh = Node::new(id, kind);
+        let node = &mut self.nodes[key as usize];
+        node.created = false;
+        node.kind = kind;
+        node.image = fresh.image;
+        node.scroll = fresh.scroll;
+        node.list = fresh.list;
+        node.input = fresh.input;
+        node.root = fresh.root;
+        node.control = fresh.control;
+        node.component = fresh.component;
+        let layout = node.layout.expect("a view has a layout");
+        let _ = self.layout.set_node_context(layout, leaf_context(kind));
+        let style = self.layout.style(layout).cloned().unwrap_or_default();
+        self.became(key, style);
+        if let Some((parent, before)) = at {
+            let _ = self.insert(parent, id, before);
+        }
+        true
     }
 
     /// Rebuilds the text an input is measured with: its value, else its
@@ -4542,4 +4592,16 @@ const PRESSES: [EventKind; 4] = [
 /// Whether a span with `events` takes presses (a link in its text block).
 fn pressable(events: EventMask) -> bool {
     PRESSES.iter().any(|&e| events.contains(e))
+}
+
+/// What a leaf of `kind` measures with, if anything: texts and inputs (an
+/// input measures like a text block holding its text or placeholder) their
+/// text, images their image, native components the size they report.
+fn leaf_context<P>(kind: Kind) -> Option<LeafContext<P>> {
+    match kind {
+        Kind::Text | Kind::Input => Some(LeafContext::Text(TextContext::new(Arc::default()))),
+        Kind::Image => Some(LeafContext::Image(None)),
+        Kind::Native => Some(LeafContext::Native(None)),
+        _ => None,
+    }
 }
