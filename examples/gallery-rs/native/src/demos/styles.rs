@@ -835,7 +835,7 @@ fn right_to_left() -> Card {
                         .text_size(px(15.0)),
                 )
         });
-    let chip = |n: usize, fill: AdaptiveColor, fg: AdaptiveColor| {
+    let chip = |n: Reactive<SharedString>, fill: AdaptiveColor, fg: AdaptiveColor| {
         view()
             .size(px(40.0))
             .rounded(px(10.0))
@@ -843,12 +843,7 @@ fn right_to_left() -> Card {
             .items_center()
             .justify_center()
             .bg(fill)
-            .child(
-                text(n.to_string())
-                    .text_size(px(13.0))
-                    .text_color(fg)
-                    .tabular_nums(),
-            )
+            .child(text(n).text_size(px(13.0)).text_color(fg).tabular_nums())
     };
     let mono_note = |label: &'static str, note: &'static str| caption_spans(text(label), note);
     let flip = |_: &()| force_rtl(!rtl());
@@ -876,14 +871,16 @@ fn right_to_left() -> Card {
                         view()
                             .flex_row()
                             .gap(px(6.0))
-                            .children((1..=12).map(|n| chip(n, tints::INFO, colors::INFO))),
+                            .children((1..=12).map(|n| chip(n.to_string().into_reactive(), tints::INFO, colors::INFO))),
                     ),
             )
             .child(mono_note("Horizontal list", "List"))
             .child(
                 virtual_list(30, move |at| {
-                    let i = at.index();
-                    chip(i + 1, tints::ACCENT, colors::ACCENT).me(px(6.0))
+                    // A cell shows the row its position says (cells are
+                    // recycled).
+                    let label = move || SharedString::from((at.index() + 1).to_string());
+                    chip(label.into_reactive(), tints::ACCENT, colors::ACCENT).me(px(6.0))
                 })
                 .horizontal()
                 .estimated_item_size(46.0)
