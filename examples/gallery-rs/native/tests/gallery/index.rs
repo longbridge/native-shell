@@ -117,6 +117,69 @@ fn navigation_pushes_its_screens() {
 }
 
 #[test]
+fn navigation_intercepts_the_back_button_while_switched_on() {
+    use nsh_core::{EventKind, EventPayload, ROOT_ID};
+    let (engine, rx, mut screen) = crate::common::open("Navigation");
+    let root_listens = |screen: &crate::common::Screen| {
+        screen
+            .events
+            .get(&ROOT_ID)
+            .is_some_and(|e| e.contains(EventKind::BackPress))
+    };
+    assert!(!root_listens(&screen), "no listener while off");
+    // The toggle: the one pressable view with no text in it.
+    let holds_text = |id: u32| {
+        screen.texts.iter().any(|&(mut t, _)| {
+            loop {
+                if t == id {
+                    break true;
+                }
+                match screen.parents.get(&t) {
+                    Some(&p) => t = p,
+                    None => break false,
+                }
+            }
+        })
+    };
+    let toggles: Vec<u32> = screen
+        .events
+        .iter()
+        .filter(|&(&id, e)| e.contains(EventKind::Press) && !holds_text(id))
+        .map(|(&id, _)| id)
+        .collect();
+    let [toggle] = toggles[..] else {
+        panic!("one toggle: {toggles:?}");
+    };
+    let control = engine.control();
+    control.dispatch_event(toggle, EventKind::Press, EventPayload::None);
+    crate::common::drain(&rx, &mut screen);
+    assert!(root_listens(&screen), "it listens while on");
+    control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
+    crate::common::drain(&rx, &mut screen);
+    for label in [
+        "1 press caught",
+        "The handler returns true: back presses stay on this screen.",
+    ] {
+        assert!(
+            crate::common::shows(&screen, label),
+            "{label}: {:?}",
+            screen.texts
+        );
+    }
+    assert!(
+        screen.titles.iter().any(|t| t.1 == "Navigation"),
+        "{:?}",
+        screen.titles
+    );
+    control.dispatch_event(toggle, EventKind::Press, EventPayload::None);
+    crate::common::drain(&rx, &mut screen);
+    assert!(
+        !root_listens(&screen),
+        "the listener goes when switched off"
+    );
+}
+
+#[test]
 fn navigation_presents_its_modals() {
     let (engine, rx, mut screen) = crate::common::open("Navigation");
     crate::common::press(&engine, &rx, &mut screen, "Page sheet");

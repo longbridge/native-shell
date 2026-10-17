@@ -22,7 +22,6 @@ mod typed_styles;
 
 use nsh_core::ui::{AnyElement, Screen, prelude::*};
 
-pub(crate) use self::navigation::BackIntercept;
 use crate::{
     Gallery, nav,
     ui::{IconName, IconTile, MONO, PressProps, appear, colors, header, icon, press_with, radius},
@@ -236,7 +235,6 @@ fn demo_row(demo: &'static Demo, first: bool, cx: &mut RenderCx<'_, Gallery>) ->
 
 /// The index: the demos by group; a tap pushes one.
 pub(crate) fn index(cx: &mut RenderCx<'_, Gallery>) -> Screen {
-    let intercept = *cx.global::<BackIntercept>();
     let groups: Vec<AnyElement> = GROUPS
         .iter()
         .enumerate()
@@ -286,23 +284,9 @@ pub(crate) fn index(cx: &mut RenderCx<'_, Gallery>) -> Screen {
         })
         .collect();
     header(screen().key("index").title("Rust Gallery"), cx).child(
-        scroll().flex_1().bg(colors::BACKGROUND).child(
-            view()
-                .p_4()
-                .pb(px(40.0))
-                .gap_5()
-                .when(intercept.on, |v| {
-                    v.child(
-                        text(format!(
-                            "Back is intercepted ({} presses): release it in Navigation",
-                            intercept.count
-                        ))
-                        .px_1()
-                        .text_size(px(13.0))
-                        .text_color(colors::MUTED),
-                    )
-                })
-                .children(groups),
-        ),
+        scroll()
+            .flex_1()
+            .bg(colors::BACKGROUND)
+            .child(view().p_4().pb(px(40.0)).gap_5().children(groups)),
     )
 }

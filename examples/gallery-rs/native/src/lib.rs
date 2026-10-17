@@ -24,26 +24,11 @@ fn native(registry: &mut Registry) {
 /// The gallery: a native stack of its index and the screens pushed on it,
 /// in the gallery's design for the system's appearance.
 #[derive(Default)]
-pub struct Gallery {
-    _back: Option<BackSubscription>,
-}
+pub struct Gallery;
 
 impl Component for Gallery {
     type Props = ();
     type Event = NoEvent;
-
-    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        // The Android back button comes here before the stack pops; the
-        // Navigation demo switches whether the gallery takes it.
-        self._back = Some(cx.on_back_press(|_: &mut Self, cx| {
-            cx.update_global::<demos::BackIntercept, _>(|intercept, _| {
-                if intercept.on {
-                    intercept.count += 1;
-                }
-                intercept.on
-            })
-        }));
-    }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let routes = cx.global::<Routes>().screens();

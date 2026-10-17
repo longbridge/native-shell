@@ -616,22 +616,17 @@ fn modal_body(title: &str, note: &str, text_body: &str, close: Listener<()>) -> 
         )
 }
 
-/// Whether the gallery takes the Android back button where it would leave
-/// the app (its index), and how often it did: the gallery listens
-/// (`Gallery::setup`), this demo switches it.
-#[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct BackIntercept {
-    pub(crate) on: bool,
-    pub(crate) count: u32,
-}
-
 /// The demo's page: rows pushing the screens, its modals, and the Android
 /// back button.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct Navigation {
     sheet: Option<Presented>,
     /// The dialog's spring in, 0 to 1.
     pop: Option<NativeValue>,
+    /// The back button's listener while it is intercepted.
+    back: Option<BackSubscription>,
+    /// The presses it caught.
+    presses: u32,
 }
 
 impl Component for Navigation {
@@ -643,7 +638,7 @@ impl Component for Navigation {
     }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let intercept = *cx.global::<BackIntercept>();
+        let intercepting = self.back.is_some();
         let pop = self.pop.as_ref().expect("set up");
         type Make = fn(&mut RenderCx<'_, Gallery>) -> Screen;
         let screens: [(&str, IconName, &str, &str, Make); 8] = [
@@ -870,7 +865,7 @@ impl Component for Navigation {
             ),
             None => None,
         };
-        let presses = intercept.count;
+        let presses = self.presses;
         view().flex_1().child(
             scroll()
                 .flex_1()
@@ -922,29 +917,38 @@ impl Component for Navigation {
                                     .title("Back button")
                                     .subtitle("Android: BackHandler")
                                     .right(
-                                        toggle(intercept.on, "Intercept the back button").on_event(
-                                            cx.listener(|_: &mut Self, e: &ToggleEvent, cx| {
+                                        toggle(intercepting, "Intercept the back button").on_event(
+                                            cx.listener(|this: &mut Self, e: &ToggleEvent, cx| {
                                                 let ToggleEvent::Change(on) = *e;
-                                                cx.update_global::<BackIntercept, _>(|b, _| {
-                                                    b.on = on
+                                                // A listener hears the button before the
+                                                // stack pops it; listening only while
+                                                // intercepting keeps Android's back gesture
+                                                // previewing the pop.
+                                                this.back = on.then(|| {
+                                                    cx.on_back_press(|this: &mut Self, cx| {
+                                                        this.presses += 1;
+                                                        cx.notify();
+                                                        true
+                                                    })
                                                 });
+                                                cx.notify();
                                             }),
                                         ),
                                     )
                                     .child(
                                         Figure::new(presses.to_string())
                                             .unit(if presses == 1 { "press" } else { "presses" })
-                                            .note(if intercept.on { "caught" } else { "popped" })
-                                            .tone(if intercept.on {
+                                            .note(if intercepting { "caught" } else { "popped" })
+                                            .tone(if intercepting {
                                                 Tone::Warn
                                             } else {
                                                 Tone::Accent
                                             }),
                                     )
                                     .child(
-                                        text(if intercept.on {
-                                            "The handler returns true: back presses on the index \
-                                         stay in the gallery."
+                                        text(if intercepting {
+                                            "The handler returns true: back presses stay on this \
+                                             screen."
                                         } else {
                                             "Off: the back button pops this screen."
                                         })
