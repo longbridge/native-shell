@@ -46,6 +46,7 @@ mod render;
 mod rt;
 mod script;
 mod scroll;
+mod stats;
 mod surface;
 mod system;
 mod text;

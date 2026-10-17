@@ -120,7 +120,8 @@ draw a panel.
   Debug builds draw the Animations page in 1.5–3.5 ms.
 
   On the Wayland desktop (Hyprland, 3840×2160 at 144 Hz, scale 1.6; a 1500×900 pt window, unfocused, release with
-  thin LTO; `paint` is the main thread's per frame, `frame` GPUI's draw and present):
+  thin LTO, `nsh-gpui-host --fps` with `ZED_MEASUREMENTS=1` (`gpui.md` "Frame statistics"); `paint` is the main
+  thread's per frame, `frame` GPUI's draw and present):
 
   | Demo | Before: fps, paint p50, frame p50 | After: fps, paint p50, frame p50 |
   |---|---|---|

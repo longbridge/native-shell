@@ -9,6 +9,7 @@
 //!   the window shows: screenshots and simulated input (on Linux under
 //!   X11, which shots need).
 //! - `--size 1200x800` sets the window size.
+//! - `--fps` logs frame statistics once a second (`nsh::perf fps …`).
 //!
 //! Without arguments it connects to the dev server on this machine.
 //!
@@ -48,6 +49,7 @@ pub fn main() -> std::process::ExitCode {
                 source = Some(AppSource::Bundle(bundle));
             }
             "--trace" => options.trace = true,
+            "--fps" => options.fps = true,
             "--script" => options.script = args.next(),
             "--size" => {
                 if let Some((w, h)) = args.next().as_deref().and_then(|s| s.split_once('x')) {

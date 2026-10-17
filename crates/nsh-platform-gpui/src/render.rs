@@ -111,6 +111,9 @@ pub(crate) struct DrawCx<'a> {
     saved: Vec<Saved>,
     /// Hosted items drawn in this pass, with their window bounds.
     pub(crate) drawn: Vec<(Rc<dyn Hosted>, Bounds<Pixels>)>,
+    /// Paths painted in this pass, and milliseconds spent rasterizing
+    /// canvases, while frame statistics are kept ([`crate::stats`]).
+    pub(crate) measured: Option<(u32, f64)>,
 }
 
 impl<'a> DrawCx<'a> {
@@ -136,6 +139,7 @@ impl<'a> DrawCx<'a> {
             clip_polygon: None,
             saved: Vec::new(),
             drawn: Vec::new(),
+            measured: None,
         }
     }
 
@@ -435,7 +439,12 @@ impl<'a> DrawCx<'a> {
             return;
         }
         match builder.build() {
-            Ok(path) => self.paint(|window, _| window.paint_path(path, c)),
+            Ok(path) => {
+                if let Some((paths, _)) = &mut self.measured {
+                    *paths += 1;
+                }
+                self.paint(|window, _| window.paint_path(path, c))
+            }
             Err(err) => log::debug!("render: path not filled: {err}"),
         }
     }
@@ -604,7 +613,16 @@ pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
     }
     crate::text::draw(cx, &state);
     crate::image::draw(cx, &state);
-    crate::canvas::draw(cx, &state);
+    match cx.measured {
+        Some(_) => {
+            let start = std::time::Instant::now();
+            crate::canvas::draw(cx, &state);
+            if let Some((_, ms)) = &mut cx.measured {
+                *ms += start.elapsed().as_secs_f64() * 1e3;
+            }
+        }
+        None => crate::canvas::draw(cx, &state),
+    }
     if !clip {
         cx.pop();
     }
@@ -703,8 +721,12 @@ impl Element for SurfaceElement {
             window.scale_factor(),
         );
         crate::system::window_prepaint(surface, window, cx);
+        let start = std::time::Instant::now();
         if surface.wants_frames() {
             surface.tick();
+        }
+        if let Some(stats) = surface.stats.borrow_mut().as_mut() {
+            stats.tick(start);
         }
         // Changes made by the tick are in this frame.
         surface.drawing();
@@ -726,6 +748,7 @@ impl Element for SurfaceElement {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let start = std::time::Instant::now();
         let surface = self.surface.clone();
         let dark = crate::system::dark(&surface);
         // Embedded with a theme, the surface is drawn on the host's
@@ -741,8 +764,16 @@ impl Element for SurfaceElement {
         let drawn = {
             crate::canvas::begin_pass(surface.key());
             let mut dcx = DrawCx::new(window, cx, bounds, dark);
+            if surface.stats.borrow().is_some() {
+                dcx.measured = Some((0, 0.0));
+            }
             let origin = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
             draw_view(&mut dcx, &surface.root, Mat4::new(), origin);
+            if let (Some(stats), Some((paths, canvas))) =
+                (surface.stats.borrow_mut().as_mut(), dcx.measured)
+            {
+                stats.content(paths, canvas);
+            }
             std::mem::take(&mut dcx.drawn)
         };
         surface.items_placed(drawn);
@@ -759,10 +790,17 @@ impl Element for SurfaceElement {
         // asking when idle); a change made while painting (a frame client
         // added, an item placed) is drawn in the next frame, as no entry
         // point flushes after a paint.
-        if surface.wants_frames() || surface.invalidated() {
+        let requested = surface.wants_frames() || surface.invalidated();
+        if requested {
             window.request_animation_frame();
         }
         crate::access::paint(&surface, window, cx);
+        if let Some(stats) = surface.stats.borrow_mut().as_mut() {
+            if requested {
+                stats.requested();
+            }
+            stats.painted(start, window.is_window_active());
+        }
     }
 
     fn a11y_role(&self) -> Option<gpui::accesskit::Role> {

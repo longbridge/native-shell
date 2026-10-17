@@ -153,6 +153,8 @@ pub(crate) struct Surface {
     /// Extra frame clients (transitions, glides, spinners): called on every
     /// frame until they return false ([`Surface::on_frame`]).
     frame_clients: RefCell<Vec<FrameClient>>,
+    /// Frame statistics, while they are logged ([`crate::stats`]).
+    pub(crate) stats: RefCell<Option<crate::stats::FrameStats>>,
     epoch: std::time::Instant,
     on_error: Handler<dyn Fn(&str)>,
     on_hot_update_failed: Handler<dyn Fn()>,
@@ -215,6 +217,7 @@ impl Surface {
             appearance: Cell::default(),
             js_frame: Cell::new(false),
             frame_clients: RefCell::default(),
+            stats: RefCell::new(None),
             epoch: std::time::Instant::now(),
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
@@ -555,7 +558,12 @@ pub(crate) fn flush_all(cx: &mut gpui::App) {
             .values()
             .filter_map(Weak::upgrade)
             .filter(|surface| surface.invalid.get())
-            .filter_map(|surface| surface.entity.get())
+            .filter_map(|surface| {
+                if let Some(stats) = surface.stats.borrow_mut().as_mut() {
+                    stats.notified();
+                }
+                surface.entity.get()
+            })
             .collect()
     });
     for id in ids {

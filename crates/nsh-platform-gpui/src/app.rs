@@ -109,6 +109,9 @@ pub struct AppOptions {
     pub components: crate::native::Components,
     /// The app's appearance until it sets one (`nsh.json` `"appearance"`).
     pub appearance: Appearance,
+    /// Log frame statistics once a second (`nsh::perf fps …`): see
+    /// [`AppView::set_fps_monitor`].
+    pub fps: bool,
 }
 
 impl Default for AppOptions {
@@ -122,6 +125,7 @@ impl Default for AppOptions {
             script: None,
             components: Default::default(),
             appearance: Appearance::System,
+            fps: false,
         }
     }
 }
@@ -198,6 +202,9 @@ impl AppView {
         bind_keys(cx);
         let surface = Surface::new(initial_environment());
         surface.appearance.set(options.appearance);
+        if options.fps {
+            *surface.stats.borrow_mut() = Some(Default::default());
+        }
         surface.entity.set(Some(cx.entity_id()));
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
@@ -317,6 +324,13 @@ impl AppView {
         });
         crate::system::host_appearance_changed(&self.surface);
         crate::rt::flush(cx);
+    }
+
+    /// Logs the surface's frame statistics once a second (`nsh::perf fps
+    /// …`: frames drawn, their gaps, the main thread's tick and paint, what
+    /// made GPUI draw), or stops.
+    pub fn set_fps_monitor(&self, on: bool) {
+        *self.surface.stats.borrow_mut() = on.then(Default::default);
     }
 
     /// Calls `f` with the message of every fatal error of the app (an

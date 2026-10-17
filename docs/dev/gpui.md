@@ -151,6 +151,17 @@ import -window root -display :170 whole.png        # the display, if the window'
 | Networking | `net.rs` | ureq, as on Windows and Linux |
 | Dev | `dev.rs` | The dev client on its own thread (reconnecting with a backoff); its events, runtime errors and the reload key drained by a foreground task of the view; the status line and the error overlay are GPUI elements over the surface |
 
+## Frame statistics: `--fps`
+
+`nsh-gpui-host --fps` (`AppOptions::fps`, `AppView::set_fps_monitor` for embedders) logs one `nsh::perf` line a
+second (`stats.rs`): `fps 145 active 0/145 gap … tick … paint … canvas 0.04 paths 26.0 raf 145 notifies 0`. Frames
+drawn and how many of them GPUI counted active (unfocused windows run at 30 fps unless `inactive_frame_interval` is
+`None`), the gaps between frames, the animation tick (prepaint) and the tree's paint (milliseconds as
+mean/p50/p95/max), the paint's milliseconds rasterizing canvases and its paths per frame (each batch of paths is a
+viewport-sized MSAA pass for GPUI), the animation frames requested and the notifies sent (what made GPUI draw). GPUI's
+own draw and present are not in it: add `ZED_MEASUREMENTS=1` (`frame duration: …` per frame). Measure GPU frames on a
+real display: Xwayland started with `-shm` renders with llvmpipe, and a hidden window gets no frame callbacks.
+
 ## Checking a change: `--script`
 
 `nsh-gpui-host --script "<steps>"` (or `AppOptions::script`) runs steps once the window shows, separated by `;` or
