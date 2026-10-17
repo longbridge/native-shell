@@ -1221,6 +1221,14 @@ fn up(surface: &Rc<Surface>, x: f32, y: f32, time: f64) {
     finish(surface, p, false);
 }
 
+/// Cancels the press in progress, whose release will not come: a menu
+/// that popped up during it tracked the mouse and took the release.
+pub(crate) fn cancel_pointer(surface: &Rc<Surface>) {
+    if let Some(p) = take(surface) {
+        finish(surface, p, true);
+    }
+}
+
 /// The button lifted (or the press was cancelled): ends what it did.
 fn finish(surface: &Rc<Surface>, mut p: Pointer, cancelled: bool) {
     if p.reporting {

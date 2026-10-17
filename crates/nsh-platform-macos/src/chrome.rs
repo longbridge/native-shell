@@ -688,7 +688,7 @@ fn set_menu(surface: &Surface, items: Option<&[MenuItem]>) {
 }
 
 /// Shows a context menu at `at` (root coordinates) or at the mouse.
-fn popup(surface: &Surface, items: &Arc<[MenuItem]>, at: Option<(f32, f32)>) {
+fn popup(surface: &Rc<Surface>, items: &Arc<[MenuItem]>, at: Option<(f32, f32)>) {
     let root = surface.root.ns();
     let menu = menu(surface, "", items);
     let location = match at {
@@ -702,6 +702,9 @@ fn popup(surface: &Surface, items: &Arc<[MenuItem]>, at: Option<(f32, f32)>) {
     };
     // Returns once the menu closed (the chosen item's action sent).
     menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(root));
+    // A menu opened during a press (`onPressIn`, a long press) took its
+    // release: the press ends here, or the view would stay pressed.
+    crate::input::cancel_pointer(surface);
     // The app's `Menu.popup` promise settles.
     surface.event(
         ROOT_ID,
