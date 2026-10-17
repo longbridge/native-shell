@@ -120,4 +120,4 @@ Holding a key down fires its binding once, until the key is released; with `repe
 keymap.bind("alt+down", nextItem, { repeat: true });
 ```
 
-On macOS, the menus' other shortcuts (Cmd+W, Cmd+C, ...) give way to a binding of the same keystroke. While you develop with `nsh run`, Cmd+R / Ctrl+R always reloads the app, even if it binds `mod+r`; a packaged app can bind it.
+Menu shortcuts give way to a binding of the same keystroke: the application menu's ([`nsh/desktop`](./nsh-desktop)) on every desktop, and on macOS the built-in menus' too (Cmd+W, Cmd+C, ...). While you develop with `nsh run`, Cmd+R / Ctrl+R always reloads the app, even if it binds `mod+r`; a packaged app can bind it.

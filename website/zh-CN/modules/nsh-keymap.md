@@ -120,4 +120,4 @@ keymap.bind("mod+e", archive, { when: "notEditing" });
 keymap.bind("alt+down", nextItem, { repeat: true });
 ```
 
-在 macOS 上，菜单中的其他快捷键（Cmd+W、Cmd+C 等）会让位给相同按键组合的绑定。使用 `nsh run` 开发时，即使应用绑定了 `mod+r`，Cmd+R / Ctrl+R 也总是重新加载应用；打包后的应用可以绑定它。
+菜单快捷键会让位给相同按键组合的绑定：所有桌面平台上的应用菜单（[`nsh/desktop`](./nsh-desktop)），以及 macOS 上的内置菜单（Cmd+W、Cmd+C 等）。使用 `nsh run` 开发时，即使应用绑定了 `mod+r`，Cmd+R / Ctrl+R 也总是重新加载应用；打包后的应用可以绑定它。

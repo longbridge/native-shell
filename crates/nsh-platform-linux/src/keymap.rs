@@ -30,6 +30,9 @@ use crate::surface::Surface;
 #[derive(Default)]
 pub(crate) struct KeymapState {
     controller: RefCell<Option<gtk::ShortcutController>>,
+    /// Each binding's trigger and whether it fires in a text field
+    /// (`KeyBinding::in_text`), for [`claims`].
+    triggers: RefCell<Vec<(gtk::ShortcutTrigger, bool)>>,
     /// The binding whose key is held down (GDK does not mark auto-repeats):
     /// it does not fire again until a key is released.
     held: Rc<Cell<Option<u32>>>,
@@ -76,9 +79,15 @@ pub(crate) fn set(surface: &Rc<Surface>, keymap: Arc<Keymap>) {
             }
             _ => glib::Propagation::Proceed,
         });
-        let shortcut =
-            gtk::Shortcut::new(gtk::ShortcutTrigger::parse_string(&trigger), Some(action));
-        controller.add_shortcut(shortcut);
+        let Some(trigger) = gtk::ShortcutTrigger::parse_string(&trigger) else {
+            continue;
+        };
+        surface
+            .keymap
+            .triggers
+            .borrow_mut()
+            .push((trigger.clone(), in_text));
+        controller.add_shortcut(gtk::Shortcut::new(Some(trigger), Some(action)));
     }
     surface.root.add_controller(controller.clone());
     *surface.keymap.controller.borrow_mut() = Some(controller);
@@ -95,6 +104,21 @@ pub(crate) fn clear(surface: &Surface) {
         window.remove_controller(&keys);
     }
     surface.keymap.held.set(None);
+    surface.keymap.triggers.borrow_mut().clear();
+}
+
+/// Whether a binding fires for `event` where the focus is: the application
+/// menu's shortcuts (`chrome.rs`), whose controller the window runs first,
+/// give way to it, as menus' key equivalents do on macOS.
+pub(crate) fn claims(surface: &Surface, event: &gtk::gdk::Event) -> bool {
+    surface
+        .keymap
+        .triggers
+        .borrow()
+        .iter()
+        .any(|(trigger, in_text)| {
+            trigger.trigger(event, false) != gtk::gdk::KeyMatch::None && fires(surface, *in_text)
+        })
 }
 
 /// Listens to the releases of the surface's window (once per window), so

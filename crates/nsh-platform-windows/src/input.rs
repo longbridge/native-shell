@@ -902,8 +902,8 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     let shortcut = surface.shortcuts.borrow().iter().any(|f| f(&event));
     let handled = shortcut
         || crate::system::key(surface, &event)
-        || crate::chrome::shortcut(surface, &event)
         || crate::keymap::key(surface, &event)
+        || crate::chrome::shortcut(surface, &event)
         || crate::text_input::key(surface, &event)
         || crate::text::key(surface, &event)
         || crate::navigation::key_pressed(surface, &event)
