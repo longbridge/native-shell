@@ -323,91 +323,76 @@ fn nav_button(
     )
 }
 
+/// The inline page and the messages between it and the app. The page's
+/// HTML follows the appearance (it reloads when it changes).
+fn messaging() -> impl IntoElement {
+    let web = element_ref();
+    let post = web.clone();
+    // What the inline page posted last.
+    let message = signal(String::new());
+    // What the app posted last (`hi #N`), 0 before.
+    let sent = signal(0_u32);
+    Card::new()
+        .icon(IconName::Media)
+        .title("Web view")
+        .subtitle("Inline HTML, with messages both ways")
+        .child(frame(
+            web_view_html(move || page(dark()), None)
+                .element_ref(&web)
+                .h(px(210.0))
+                .bg(colors::INSET)
+                .on_message(move |data: &str| message.set(data.to_owned())),
+        ))
+        .child(caption(
+            "From the page",
+            Some(move || {
+                message.with(|m| {
+                    if m.is_empty() {
+                        "—".to_owned()
+                    } else {
+                        m.clone()
+                    }
+                })
+            }),
+        ))
+        .child(caption(
+            "To the page",
+            Some(move || {
+                let sent = sent.get();
+                if sent > 0 {
+                    format!("hi #{sent}")
+                } else {
+                    "—".to_owned()
+                }
+            }),
+        ))
+        .child(Button::new("Post to the page", move |_: &()| {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
+            let n = (now.as_millis() % 1000) as u32;
+            sent.set(n);
+            post.post_message(format!("hi #{n}"));
+        }))
+}
+
 /// The demo's page: an inline page, a web site and a video, with what they
-/// tell the app. It renders again for the inline page alone, whose HTML
-/// follows the appearance (a web view's HTML is not a binding yet); the
-/// web site and the video run once.
-#[derive(Debug, Default)]
-pub(crate) struct Media {
-    /// The inline page.
-    web: Option<ElementRef>,
-    /// What the inline page posted last.
-    message: String,
-    /// What the app posted last (`hi #N`), 0 before.
-    sent: u32,
-}
-
-impl Media {
-    fn messaging(&self, cx: &mut RenderCx<'_, Self>) -> impl IntoElement + use<> {
-        let web = self.web.clone().expect("set up");
-        let post = web.clone();
-        Card::new()
-            .icon(IconName::Media)
-            .title("Web view")
-            .subtitle("Inline HTML, with messages both ways")
-            .child(frame(
-                web_view_html(&page(cx.dark()), None)
-                    .element_ref(&web)
-                    .h(px(210.0))
-                    .bg(colors::INSET)
-                    .on_message(cx.listener(|this: &mut Self, data: &str, cx| {
-                        this.message = data.to_owned();
-                        cx.notify();
-                    })),
-            ))
-            .child(caption(
-                "From the page",
-                Some(if self.message.is_empty() {
-                    "—".to_owned()
-                } else {
-                    self.message.clone()
-                }),
-            ))
-            .child(caption(
-                "To the page",
-                Some(if self.sent > 0 {
-                    format!("hi #{}", self.sent)
-                } else {
-                    "—".to_owned()
-                }),
-            ))
-            .child(Button::new(
-                "Post to the page",
-                cx.listener(move |this: &mut Self, _, cx| {
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default();
-                    this.sent = (now.as_millis() % 1000) as u32;
-                    post.post_message(format!("hi #{}", this.sent));
-                    cx.notify();
-                }),
-            ))
-    }
-}
-
-impl Component for Media {
-    type Props = ();
-    type Event = NoEvent;
-
-    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        self.web = Some(cx.element_ref());
-    }
-
-    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let cards = [
-            self.messaging(cx).into_element(),
-            Site::element(()).into_element(),
-            Player::element(()).into_element(),
-        ];
-        view().flex_1().child(
-            scroll().flex_1().bg(colors::BACKGROUND).child(
-                view().p_4().pb(px(40.0)).gap_4().children(
-                    cards
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, card)| appear(i as u32).child(card)),
-                ),
+/// tell the app.
+#[component]
+pub(crate) fn Media() -> impl IntoElement {
+    let cards = [
+        messaging().into_element(),
+        Site::element(()).into_element(),
+        Player::element(()).into_element(),
+    ];
+    view().flex_1().child(
+        scroll().flex_1().bg(colors::BACKGROUND).child(
+            view().p_4().pb(px(40.0)).gap_4().children(
+                cards
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, card)| appear(i as u32).child(card)),
             ),
-        )
-    }
+        ),
+    )
 }
