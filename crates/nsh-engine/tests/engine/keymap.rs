@@ -97,7 +97,7 @@ const log = signal("");
 const say = (s: string) => log.set(s);
 
 const errors: string[] = [];
-for (const k of ["cmd+kk", "mod+q", "cmd+K"]) {
+for (const k of ["cmd+kk", "mod+q"]) {
   try { keymap.bind(k, () => {}); } catch (e) { errors.push(String(e.message)); }
 }
 say(errors.join(" | "));
@@ -105,6 +105,8 @@ say(errors.join(" | "));
 keymap.bind("mod+k", (k) => say(`k ${k}`));
 keymap.bind({ "mod+s": (k) => say(`saved ${k}`), "escape": (k) => say(`esc ${k}`) }, { when: "always" });
 keymap.bind("alt+down", () => {}, { repeat: true });
+// Any case; the handler gets the keystroke as written.
+keymap.bind("Mod+Shift+J", (k) => say(`written ${k}`));
 
 function Panel() {
   keymap.bind("mod+p", () => say("panel"));
@@ -126,11 +128,10 @@ fn key_commands_run_their_handlers() {
     let errors = seen.texts.iter().find(|t| t.starts_with("log ")).unwrap();
     assert!(errors.contains("invalid keystroke \"cmd+kk\": unknown key \"kk\""));
     assert!(errors.contains("\"mod+q\" cannot be bound: it quits the app"));
-    assert!(errors.contains("shift+k"));
     let keymap = seen.keymap.expect("a table");
-    // mod+k, mod+s, escape (always), alt+down (repeats), mod+p (the
-    // panel's).
-    assert_eq!(keymap.bindings().len(), 5);
+    // mod+k, mod+s, escape (always), alt+down (repeats), Mod+Shift+J,
+    // mod+p (the panel's).
+    assert_eq!(keymap.bindings().len(), 6);
     let down = Keystroke::parse("alt+down", Os::MacOs).unwrap();
     assert!(keymap.find(down, false, true).consumed());
     assert!(!matches!(
@@ -152,6 +153,12 @@ fn key_commands_run_their_handlers() {
         next(&rx, |s| s.texts.contains(&"log saved mod+s".into()))
             .texts
             .contains(&"log saved mod+s".into())
+    );
+    press(&engine, &keymap, "cmd+shift+j", false);
+    assert!(
+        next(&rx, |s| s.texts.contains(&"log written Mod+Shift+J".into()))
+            .texts
+            .contains(&"log written Mod+Shift+J".into())
     );
 }
 

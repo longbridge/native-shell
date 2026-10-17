@@ -270,8 +270,9 @@ pub(crate) const TYPES: &str = r#"export interface KeyBindingOptions {
 }
 
 /** The app's keyboard shortcuts (desktop platforms; elsewhere bindings are
- * kept but no key fires them). A keystroke is lower case modifiers and a key
- * joined by `+`: `"mod+k"`, `"ctrl+shift+p"`, `"alt+enter"`, `"escape"`,
+ * kept but no key fires them). A keystroke is modifiers and a key joined by
+ * `+`, in any case (lowercase is the recommended style; a capital letter is
+ * the same key, not Shift): `"mod+k"`, `"ctrl+shift+p"`, `"alt+enter"`, `"escape"`,
  * `"f5"`, `"mod+plus"`. Modifiers: `mod` (`cmdorctrl`): Command on Apple
  * platforms, Control elsewhere, for the app's own shortcuts; `cmd`
  * (`command`, `meta`, `super`, `win`), `ctrl` (`control`), `alt` (`option`,
@@ -284,8 +285,8 @@ pub(crate) const TYPES: &str = r#"export interface KeyBindingOptions {
  * binding; when several bindings have its keystroke, the newest that may
  * fire runs. */
 export interface Keymap {
-  /** Runs `handler` when `keystroke` is pressed; returns a function that
-   * removes the binding. A binding made while a component renders is removed
+  /** Runs `handler` when `keystroke` is pressed (it gets the keystroke as
+   * written, in its case); returns a function that removes the binding. A binding made while a component renders is removed
    * with the component. Throws on an invalid keystroke, or one the platform
    * keeps (Command+Q, Command+H, Command+M, Control+Command+F on Apple
    * platforms; Control+Q, Alt+F4, F11 elsewhere). */

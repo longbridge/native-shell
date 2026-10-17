@@ -153,8 +153,9 @@ fn error(text: &str, reason: impl fmt::Display) -> KeystrokeError {
 }
 
 impl Keystroke {
-    /// Parses `text`: lower case modifiers and a key joined by `+`
-    /// (`"mod+shift+k"`, `"mod+-"` for Command and minus). Modifiers:
+    /// Parses `text`: modifiers and a key joined by `+` (`"mod+shift+k"`,
+    /// `"mod+-"` for Command and minus), in any case (lowercase is the
+    /// style; a capital letter is the same key, not Shift). Modifiers:
     /// `ctrl`, `alt` (`option`), `shift`, `cmd` (`super`, `win`) and `mod`,
     /// which is Command on Apple platforms (`os`) and Control elsewhere.
     /// Keys: a character of the US layout typed without Shift (`k`, `1`,
@@ -163,7 +164,10 @@ impl Keystroke {
     /// `down` / `left` / `right`, `home`, `end`, `pageup`, `pagedown`, `f1`
     /// to `f24`.
     pub fn parse(text: &str, os: Os) -> Result<Keystroke, KeystrokeError> {
-        let (mods, key) = split(text)?;
+        // Case does not matter (lowercase is the style); messages quote
+        // the text as written and suggest lowercase.
+        let lower = text.to_ascii_lowercase();
+        let (mods, key) = split(text, &lower)?;
         let mut modifiers = Modifiers::default();
         for name in mods {
             let flag = modifier(&mut modifiers, name, os).map_err(|why| error(text, why))?;
@@ -227,7 +231,7 @@ impl Keystroke {
 }
 
 /// The modifiers and the key of `text` (`"mod+shift+k"`).
-fn split(text: &str) -> Result<(Vec<&str>, &str), KeystrokeError> {
+fn split<'a>(text: &str, lower: &'a str) -> Result<(Vec<&'a str>, &'a str), KeystrokeError> {
     if text.is_empty() {
         return Err(error(text, "empty"));
     }
@@ -237,8 +241,8 @@ fn split(text: &str) -> Result<(Vec<&str>, &str), KeystrokeError> {
             "one keystroke per binding (key sequences such as \"mod+k mod+s\" are not supported)",
         ));
     }
-    if text == "+" || text.ends_with("++") {
-        let mods = text.strip_suffix("++").unwrap_or("");
+    if lower == "+" || lower.ends_with("++") {
+        let mods = lower.strip_suffix("++").unwrap_or("");
         let plus = if mods.is_empty() {
             "plus".to_owned()
         } else {
@@ -249,9 +253,9 @@ fn split(text: &str) -> Result<(Vec<&str>, &str), KeystrokeError> {
             format_args!("write the plus key as \"plus\": {plus:?}"),
         ));
     }
-    let (mods, key) = match text.rsplit_once('+') {
+    let (mods, key) = match lower.rsplit_once('+') {
         Some((mods, key)) => (mods.split('+').collect(), key),
-        None => (Vec::new(), text),
+        None => (Vec::new(), lower),
     };
     if key.is_empty() {
         return Err(error(text, "no key after the modifiers"));
@@ -270,12 +274,6 @@ fn modifier<'a>(modifiers: &'a mut Modifiers, name: &str, os: Os) -> Result<&'a 
         "mod" | "cmdorctrl" | "commandorcontrol" if apple => &mut modifiers.cmd,
         "mod" | "cmdorctrl" | "commandorcontrol" => &mut modifiers.ctrl,
         "" => return Err("an empty modifier".into()),
-        other if other != other.to_ascii_lowercase() => {
-            return Err(format!(
-                "modifiers are lower case: {:?}",
-                other.to_ascii_lowercase()
-            ));
-        }
         other => {
             return Err(format!(
                 "unknown modifier {other:?} (ctrl, alt, shift, cmd or mod)"
@@ -298,14 +296,7 @@ fn parse_key(text: &str, key: &str) -> Result<Key, KeystrokeError> {
     }
     let mut chars = key.chars();
     let (Some(c), None) = (chars.next(), chars.next()) else {
-        let lower = key.to_ascii_lowercase();
-        let named = NAMED.iter().any(|(name, _)| *name == lower)
-            || lower
-                .strip_prefix('f')
-                .is_some_and(|n| n.parse::<u8>().is_ok());
-        let hint = if named {
-            format!(" (key names are lower case: {lower:?})")
-        } else if let Some((first, _)) = key.split_once('-')
+        let hint = if let Some((first, _)) = key.split_once('-')
             && modifier(&mut Modifiers::default(), first, Os::Linux).is_ok()
         {
             // `mod--` is `mod+-`.
@@ -319,15 +310,6 @@ fn parse_key(text: &str, key: &str) -> Result<Key, KeystrokeError> {
         };
         return Err(error(text, format_args!("unknown key {key:?}{hint}")));
     };
-    if c.is_ascii_uppercase() {
-        return Err(error(
-            text,
-            format_args!(
-                "letters are lower case, with shift+ for Shift (\"shift+{}\")",
-                c.to_ascii_lowercase()
-            ),
-        ));
-    }
     if let Some(&(_, base)) = SHIFTED.iter().find(|(shifted, _)| *shifted == c) {
         return Err(error(
             text,
@@ -537,6 +519,13 @@ mod tests {
         );
         // `mod` is Command on Apple platforms, Control elsewhere.
         assert_eq!(parse("mod+k"), parse("cmd+k"));
+        // Case does not matter, and a capital letter is not Shift.
+        assert_eq!(parse("Mod+Shift+N"), parse("mod+shift+n"));
+        assert_eq!(parse("CMD+K"), parse("cmd+k"));
+        assert_eq!(parse("mod+K"), parse("mod+k"));
+        assert_eq!(parse("Escape"), parse("escape"));
+        assert_eq!(parse("F5"), parse("f5"));
+        assert_eq!(parse("Ctrl+Plus"), parse("ctrl+="));
         assert_eq!(parse("cmdorctrl+k"), parse("meta+k"));
         assert_eq!(parse("mod+plus"), parse("mod+="));
         assert_eq!(parse("ctrl+minus"), parse("ctrl+-"));
@@ -560,16 +549,14 @@ mod tests {
         assert!(err("mod+k mod+s").contains("one keystroke per binding"));
         assert!(err("cmd+").contains("no key after the modifiers"));
         assert!(err("hyper+k").contains("unknown modifier \"hyper\""));
-        assert!(err("Mod+k").contains("modifiers are lower case: \"mod\""));
         assert!(err("cmd+cmd+k").contains("\"cmd\" twice"));
         assert!(err("cmd+kk").contains("unknown key \"kk\""));
         assert!(err("mod-k").contains("join modifiers and the key with \"+\": \"mod+k\""));
         assert!(err("ctrl-shift-p").contains("\"ctrl+shift+p\""));
         assert!(err("mod--").contains("\"mod+-\""));
-        assert!(err("cmd+K").contains("\"shift+k\""));
-        assert!(err("Mod+K").contains("lower case"));
-        assert!(err("Escape").contains("key names are lower case: \"escape\""));
-        assert!(err("F5").contains("\"f5\""));
+        // Hints suggest lowercase, whatever case the text was written in.
+        assert!(err("Mod-K").contains("join modifiers and the key with \"+\": \"mod+k\""));
+        assert!(err("CTRL++").contains("\"ctrl+plus\""));
         assert!(err("cmd+?").contains("write \"shift+/\""));
         assert!(err("mod++").contains("write the plus key as \"plus\": \"mod+plus\""));
         assert!(err("+").contains("\"plus\""));
