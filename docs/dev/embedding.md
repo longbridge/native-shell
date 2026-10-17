@@ -91,6 +91,9 @@ in a resizable split.
   the host's widgets onto the view goes on to its first field (its last with Shift: a keystroke observer, since the
   host handles that Tab); in a window with no other tab stop (`run_app`) the fields wrap around, as on the other
   backends.
+- **Frame rate.** Open the host window with `inactive_frame_interval: None` in its `WindowOptions`: GPUI draws
+  windows without keyboard focus at 30 fps by default, which halves the surfaces' animations whenever the host window
+  is not focused (nsh's own windows set it, `open_app_window`).
 - **Overlays.** The surface draws only inside its bounds and takes the mouse only on its hitbox: GPUI Kit's dialogs,
   sheets, popovers and notifications (drawn by `Root` above the content) cover it and take the input, while its app
   keeps running.

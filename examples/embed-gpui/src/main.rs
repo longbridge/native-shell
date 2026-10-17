@@ -352,6 +352,10 @@ fn main() {
                 title: Some("nsh in GPUI Kit".into()),
                 ..Default::default()
             }),
+            // GPUI draws unfocused windows at 30 fps by default, which
+            // would halve the embedded apps' animations whenever another
+            // window has the keyboard.
+            inactive_frame_interval: None,
             ..Default::default()
         };
         if std::env::args().any(|a| a == "--alone") {
