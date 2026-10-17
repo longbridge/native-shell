@@ -4,7 +4,7 @@
 //!
 //! ```sh
 //! cargo run -p nsh-cli -- build examples/embedded -o target/embedded
-//! cargo run -p nsh-platform-gpui --example embed -- target/embedded/bundle.nshc
+//! (cd crates/gpui && cargo run -p nsh-platform-gpui --example embed -- ../../target/embedded/bundle.nshc)
 //! ```
 //!
 //! The badge is laid out by nsh (sized to its text with

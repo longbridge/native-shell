@@ -78,15 +78,17 @@ crates/
                        AppView, standalone app; feature `dev` as above; `--script` steps (docs/dev/windows.md)
   nsh-windows-host/    Development host on Windows (`nsh run --target windows`): connects to a dev server or runs a bundle
   nsh-windows-app/     Release runner on Windows: the executable of apps built by `nsh package --target windows`
-  nsh-platform-gpui/   GPUI backend (macOS, Windows, Linux; in development): the Windows backend's retained `NshView` tree, input,
+  gpui/                The GPUI backend: a workspace of its own (`crates/gpui/Cargo.toml`, its own `Cargo.lock` and GPUI's dependencies),
+                       excluded from the main one, so the main workspace's builds, tests and CI never build GPUI:
+  gpui/nsh-platform-gpui/ GPUI backend (macOS, Windows, Linux; in development): the Windows backend's retained `NshView` tree, input,
                        scrolling and editing logic, painted by one GPUI element per surface (`render.rs`: `SurfaceElement`,
                        `DrawCx` with the transform and opacity GPUI lacks), text shaped by GPUI's text system on the engine
                        thread, the main-thread queue (`rt.rs`), GPUI events (`events.rs`, keys as Windows VK codes);
                        `AppView` is a GPUI view for GPUI / GPUI Kit apps; features `webview` (wry), `video` (GStreamer),
                        `dev` as above, `shot` (`--script` shots on macOS / Windows: GPUI's test support, never in the runner)
                        (docs/dev/gpui.md)
-  nsh-gpui-host/       Development host on GPUI (`nsh run --target gpui`): connects to a dev server or runs a bundle
-  nsh-gpui-app/        Release runner on GPUI: the executable of apps built by `nsh package --target gpui`
+  gpui/nsh-gpui-host/  Development host on GPUI (`nsh run --target gpui`): connects to a dev server or runs a bundle
+  gpui/nsh-gpui-app/   Release runner on GPUI: the executable of apps built by `nsh package --target gpui`
   nsh-ios-host/        Development host app (Catalyst / iOS simulator); connects to a dev server or runs a local bundle
   nsh-ios-app/         Release runner: the executable of iOS apps built by `nsh package`
   nsh-cli/             The `nsh` command line (a library: `main_with(ui_sets)`): init / build / trace / check / dev / run / package; keygen /
@@ -147,7 +149,7 @@ cargo build -p nsh-ios-app --target aarch64-apple-ios-sim                       
 cargo build -p nsh-linux-host                                                          # the Linux (GTK) development host (`nsh run` on Linux builds it in a checkout)
 cargo build -p nsh-macos-host                                                          # the macOS (AppKit) development host (`nsh run --target macos` builds it in a checkout)
 cargo build -p nsh-windows-host                                                        # the Windows development host (`nsh run` on Windows builds it in a checkout)
-cargo build -p nsh-gpui-host                                                           # the GPUI development host (`nsh run --target gpui` builds it in a checkout)
+cargo build --manifest-path crates/gpui/Cargo.toml --target-dir target -p nsh-gpui-host                    # the GPUI development host (`nsh run --target gpui` builds it in a checkout)
 ./target/debug/nsh trace examples/counter                                  # headless run: prints mount items and the time of every commit
 ./target/release/nsh trace examples/gallery/Bench.tsx --scroll 3000 --taps 0       # headless scrolling (10pt per frame): per-frame list cost
 ./target/debug/nsh trace examples/hopper --tap label:Plan --wait 500 --safe-area 47,0,34,0   # tap by testID / label / text, run timers, insets
@@ -185,8 +187,8 @@ cargo clippy -p nsh-platform-linux -p nsh-linux-host -p nsh-linux-app --all-targ
 cargo clippy -p nsh-platform-macos -p nsh-macos-host -p nsh-macos-app --all-targets --features nsh-platform-macos/dev   # the macOS backend (on macOS)
 cargo clippy -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app --all-targets   # the Windows backend (on Windows; empty elsewhere)
 cargo test -p nsh-platform-windows -p nsh-windows-host -p nsh-windows-app               # its tests (on Windows; they open no window)
-cargo clippy -p nsh-platform-gpui -p nsh-gpui-host -p nsh-gpui-app --all-targets --features nsh-platform-gpui/dev   # the GPUI backend (empty off the desktops)
-cargo test -p nsh-platform-gpui -p nsh-gpui-app                                          # its tests (they open no window)
+(cd crates/gpui && cargo clippy --all-targets --features nsh-platform-gpui/dev)        # the GPUI backend, its own workspace (empty off the desktops)
+(cd crates/gpui && cargo test && cargo +nightly fmt --all)                              # its tests (they open no window) and formatting
 cd website && bun run dev                                                       # the documentation site (builds the player too)
 ```
 
@@ -197,10 +199,12 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 check them on Linux, with the GTK 4 (≥ 4.14) development packages installed. `nsh-platform-macos` and its hosts are
 empty off macOS (`target_os = "macos"`, not Catalyst). `nsh-platform-windows` and its hosts are empty off Windows:
 check them on Windows, with the MSVC Build Tools, the Windows SDK and LLVM (libclang for QuickJS' bindings);
-`RUST_MIN_STACK=268435456` if rustc overflows its stack on the `windows` crate. `nsh-platform-gpui` and its hosts
-build on all three desktops and are empty elsewhere; on Linux they need GPUI's X11 / Wayland / xkbcommon / fontconfig
-packages plus GTK 3, WebKitGTK 4.1 (feature `webview`, on by default) and GStreamer 1.20+ with its base plug-ins
-(feature `video`, the host's and the runner's): `cargo test --workspace` and clippy need them too (`docs/dev/gpui.md`). `.cargo/config.toml` sets
+`RUST_MIN_STACK=268435456` if rustc overflows its stack on the `windows` crate. The GPUI backend (`crates/gpui`) is
+a workspace of its own: the main workspace's `cargo test --workspace` and clippy never build it, and its CI runs only when
+it changes (and daily). Its crates build on all three desktops and are empty elsewhere; on Linux they need GPUI's X11 /
+Wayland / xkbcommon / fontconfig packages plus GTK 3, WebKitGTK 4.1 (feature `webview`, on by default) and GStreamer
+1.20+ with its base plug-ins (feature `video`, the host's and the runner's) (`docs/dev/gpui.md`). It builds into the
+repository's `target/`; dependencies only it uses are declared in `crates/gpui/Cargo.toml`, not the root. `.cargo/config.toml` sets
 `IPHONEOS_DEPLOYMENT_TARGET = 15.0` for Rust and C alike.
 
 ## Rules
@@ -254,7 +258,7 @@ packages plus GTK 3, WebKitGTK 4.1 (feature `webview`, on by default) and GStrea
 - Everything is written in English: code comments, docs, logs and this file. Comments explain why, not what the code says.
 - Library crates only log through the `log` facade (no `eprintln!`); performance logs use target `nsh::perf`, JS logs target `js`. Binaries install the logger.
   The CLI prints through `nsh-cli`'s `ui.rs` (steps, captured tools, `error` reports), xtask through `term.rs`.
-- Dependencies are declared once in the root `Cargo.toml` `[workspace.dependencies]`; crates only write `.workspace = true`.
+- Dependencies are declared once in the root `Cargo.toml` `[workspace.dependencies]` (the GPUI backend's in `crates/gpui/Cargo.toml`); crates only write `.workspace = true`.
 - Every `unsafe` block has a `// SAFETY:` comment.
 - A crate's integration tests are one test binary (`tests/<name>/main.rs` with a module per area, as
   `nsh-engine/tests/engine/`), never a new `tests/*.rs`: each binary links its own copy of the bundler, QuickJS and
@@ -296,7 +300,7 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
 
 ## Verification after changes
 
-1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, the macOS crates, `cargo xtask clippy-android`, on Linux the Linux crates, on Windows the Windows crates, and the GPUI crates).
+1. `cargo test --workspace`, plus fmt and clippy as listed above (including the Catalyst target, the macOS crates, `cargo xtask clippy-android`, on Linux the Linux crates, on Windows the Windows crates; for changes in `crates/gpui` or to what it uses, its own tests and clippy there).
 2. Changes to the runtime (`nsh-js`), engine or core: run `nsh trace` and check item counts and timings.
 3. Changes to the platform layer: launch with `nsh run`, check screenshots and simulate input where needed (the terminal needs the Screen
    Recording and Accessibility permissions; while the screen is locked the frontmost app is `loginwindow` and clicks fail, but window

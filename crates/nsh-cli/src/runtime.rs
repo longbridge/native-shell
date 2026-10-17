@@ -233,6 +233,16 @@ pub(crate) fn file(platform: Platform, runner: bool) -> anyhow::Result<PathBuf> 
     let profile = bin.file_name().context("cli profile dir")?;
     if let Some(root) = checkout(bin) {
         let mut args = vec!["build", "-p", name];
+        // The GPUI backend is a workspace of its own, built into the same
+        // `target/` (cargo reads `crates/gpui/.cargo/config.toml` only when
+        // run from there).
+        let manifest = root.join("crates/gpui/Cargo.toml");
+        let manifest = manifest.to_string_lossy();
+        let target_dir = root.join("target");
+        let target_dir = target_dir.to_string_lossy();
+        if matches!(platform, Platform::Gpui) {
+            args.extend(["--manifest-path", &manifest, "--target-dir", &target_dir]);
+        }
         if let Some(triple) = platform.triple() {
             args.extend(["--target", triple]);
         }

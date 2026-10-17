@@ -109,7 +109,21 @@ pub(crate) fn dist() -> anyhow::Result<()> {
             ("nsh-gpui-host", "the development host for GPUI"),
             ("nsh-gpui-app", "the release runner for GPUI"),
         ] {
-            cargo(&["build", "--release", "-p", package], what)?;
+            // The GPUI backend is a workspace of its own (`crates/gpui`),
+            // built into the same `target/`.
+            cargo(
+                &[
+                    "build",
+                    "--release",
+                    "--manifest-path",
+                    "crates/gpui/Cargo.toml",
+                    "--target-dir",
+                    "target",
+                    "-p",
+                    package,
+                ],
+                what,
+            )?;
             copy(
                 &release.join("release").join(exe(package)),
                 &out.join("runtime/gpui").join(exe(package)),

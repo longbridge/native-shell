@@ -21,7 +21,7 @@
   the taskbar, the version and the appearance, which the window opens in); plus the same as `<name>.zip`. No tools
   are needed; `--run` launches the executable.
   GPUI: packaged as the native apps of the machine it runs on are (Linux's directory and `.tar.gz`, macOS' `.app`,
-  Windows' directory and `.zip`), with the GPUI release runner (`crates/nsh-gpui-app`) as the executable; it finds
+  Windows' directory and `.zip`), with the GPUI release runner (`crates/gpui/nsh-gpui-app`) as the executable; it finds
   `nsh/` next to itself, or `Contents/Resources/nsh` inside an app bundle (`nsh_gpui_app::resources`). The Linux
   runner links WebKitGTK 4.1 (GTK 3) and GStreamer dynamically (features `webview`, `video`): they must be installed
   where the package runs, as GTK 4 must for Linux packages.
@@ -59,7 +59,7 @@
   value, window, cx)`, `command(name, args, window, cx)`), so it can update its entities. `render` is also called while
   the box is empty, so a component can size itself. Content masks are
   rectangles: rounded corners do not cut a component (videos follow them).
-  `crates/nsh-platform-gpui/examples/embed.rs` runs `examples/embedded` with its badge as a GPUI element.
+  `crates/gpui/nsh-platform-gpui/examples/embed.rs` runs `examples/embedded` with its badge as a GPUI element.
 - **The iOS SDK** (`crates/xtask/src/ios.rs`): per platform slice (device, simulator, Catalyst) a static
   `NativeShell.framework` whose binary is `nsh-platform-ios` with feature `embed` (built by `cargo rustc --crate-type
   staticlib`, so the hosts never build or export it) merged by `libtool` with the Swift module, compiled with library

@@ -1,8 +1,8 @@
 # The GPUI backend (macOS, Windows, Linux)
 
-`crates/nsh-platform-gpui` renders nsh apps with GPUI (GPUI Fast: crates.io `gpui-fast` 0.1.x, aliased as `gpui` in
-the workspace), on macOS, Windows and Linux alike. `crates/nsh-gpui-host` is its development host (`nsh run --target
-gpui`), `crates/nsh-gpui-app` the release runner of `nsh package --target gpui`. Its main purpose is embedding: an
+`crates/gpui/nsh-platform-gpui` renders nsh apps with GPUI (GPUI Fast: crates.io `gpui-fast` 0.1.x, aliased as `gpui` in
+its workspace), on macOS, Windows and Linux alike. `crates/gpui/nsh-gpui-host` is its development host (`nsh run --target
+gpui`), `crates/gpui/nsh-gpui-app` the release runner of `nsh package --target gpui`. Its main purpose is embedding: an
 `AppView` is a GPUI view, so GPUI and GPUI Kit apps (`gpui_component`) show nsh modules anywhere in their element tree.
 The crate started as a port of the Windows backend (`windows.md`): one retained view per node, nsh draws every view
 itself, and the input, scrolling, transition, keymap and editing logic is the Windows backend's, platform-free. Only
@@ -26,18 +26,24 @@ sudo apt-get install clang libclang-dev pkg-config libfontconfig-dev libfreetype
 macOS needs Xcode (Metal), Windows the MSVC toolchain and LLVM as for the Windows backend (`RUST_MIN_STACK` included).
 Off the three desktops the crates are empty.
 
+The three crates are a workspace of their own, `crates/gpui` (its own `Cargo.toml`, `Cargo.lock` and the dependencies
+only they use: GPUI, wry, GStreamer, tiny-skia, ...), excluded from the main workspace, so the main workspace's builds,
+`cargo test --workspace`, clippy and CI never build GPUI. It builds into the repository's `target/`
+(`crates/gpui/.cargo/config.toml`; the CLI and xtask pass `--manifest-path` and `--target-dir` from the root).
+
 ```sh
-cargo clippy -p nsh-platform-gpui -p nsh-gpui-host -p nsh-gpui-app --all-targets --features nsh-platform-gpui/dev -- -D warnings
-cargo test -p nsh-platform-gpui -p nsh-gpui-app   # needs no display: tests open no window
-cargo build -p nsh-gpui-host                      # target/debug/nsh-gpui-host
+cd crates/gpui
+cargo clippy --all-targets --features nsh-platform-gpui/dev -- -D warnings
+cargo test                                        # needs no display: tests open no window
+cargo +nightly fmt --all                          # the main workspace's fmt does not reach it
+cargo build -p nsh-gpui-host                      # ../../target/debug/nsh-gpui-host
 ```
 
 The GPUI binaries are built for the machine itself, so the CLI finds them in `target/<profile>` and builds them first
 in a checkout; `cargo xtask dist` puts them in `dist/nsh/runtime/gpui/` on each of the three OSes (`tooling.md`,
 `embedding.md`). CI: `.github/workflows/gpui.yml` (Ubuntu 24.04, macOS 15 and Windows: clippy with `-D warnings` and
-tests of the GPUI crates, the CLI and `nsh-dev`).
-
-`cargo test --workspace` and clippy build these crates too, so on Linux the whole workspace needs these packages.
+tests of the GPUI workspace), run when `crates/gpui` changes and daily, which catches what changes to the crates it
+shares with the main workspace (`nsh-core`, `nsh-engine`, ...) break.
 
 Features:
 

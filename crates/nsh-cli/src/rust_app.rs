@@ -315,7 +315,9 @@ exclude = [\"gpui\"]
         // The same versions as nsh's own build.
         let lock = ws.join("Cargo.lock");
         if !lock.exists() {
-            fs::copy(self.source.join("Cargo.lock"), &lock).context("copy nsh's Cargo.lock")?;
+            // The GPUI workspace's own lock (`crates/gpui`).
+            fs::copy(self.source.join("crates/gpui/Cargo.lock"), &lock)
+                .context("copy the GPUI workspace's Cargo.lock")?;
         }
         write(
             &ws.join("cli/Cargo.toml"),
@@ -385,7 +387,9 @@ exclude = [\"gpui\"]
         )?;
         let lock = ws.join("Cargo.lock");
         if !lock.exists() {
-            fs::copy(self.source.join("Cargo.lock"), &lock).context("copy nsh's Cargo.lock")?;
+            // The GPUI workspace's own lock (`crates/gpui`).
+            fs::copy(self.source.join("crates/gpui/Cargo.lock"), &lock)
+                .context("copy the GPUI workspace's Cargo.lock")?;
         }
         self.write_host(&ws, "gpui-host", "nsh-gpui-host", "development host")?;
         self.write_host(&ws, "gpui-app", "nsh-gpui-app", "release runner")?;
@@ -396,7 +400,7 @@ exclude = [\"gpui\"]
     /// `lib` (`nsh-linux-host`, ...) with the mobile UI and the app's set.
     fn write_host(&self, ws: &Path, dir: &str, lib: &str, what: &str) -> anyhow::Result<()> {
         let src = |c: &str| {
-            let path = self.source.join("crates").join(c);
+            let path = nsh_crate(&self.source, c);
             format!("{{ path = {:?} }}", path.to_string_lossy())
         };
         let app = format!(
@@ -644,6 +648,17 @@ fn install(from: &Path, to: &Path) -> anyhow::Result<()> {
 /// The cargo to run.
 fn cargo() -> std::ffi::OsString {
     env::var_os("CARGO").unwrap_or_else(|| "cargo".into())
+}
+
+/// The directory of nsh's crate `name` in the checkout at `source`: the GPUI
+/// backend's crates are a workspace of their own, in `crates/gpui`.
+fn nsh_crate(source: &Path, name: &str) -> PathBuf {
+    match name {
+        "nsh-platform-gpui" | "nsh-gpui-host" | "nsh-gpui-app" => {
+            source.join("crates/gpui").join(name)
+        }
+        _ => source.join("crates").join(name),
+    }
 }
 
 #[cfg(test)]

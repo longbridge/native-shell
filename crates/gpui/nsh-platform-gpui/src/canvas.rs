@@ -3667,7 +3667,7 @@ mod tests {
     fn glyph_outlines_come_from_the_font_file() {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../examples/gallery/fonts/Pacifico-Regular.ttf"
+            "/../../../examples/gallery/fonts/Pacifico-Regular.ttf"
         );
         let data: Arc<[u8]> = std::fs::read(path).unwrap().into();
         let face = ttf_parser::Face::parse(&data, 0).unwrap();

@@ -111,7 +111,7 @@ cargo xtask android --dev                                       # nsh run --targ
 cargo build -p nsh-macos-host                                   # nsh run --target macos (built for you in a checkout)
 cargo build -p nsh-linux-host                                   # nsh run on Linux (built for you in a checkout)
 cargo build -p nsh-windows-host                                 # nsh run on Windows (built for you in a checkout)
-cargo build -p nsh-gpui-host                                    # nsh run --target gpui (built for you in a checkout)
+cargo build --manifest-path crates/gpui/Cargo.toml --target-dir target -p nsh-gpui-host   # nsh run --target gpui (built for you in a checkout)
 ```
 
 For `nsh package`, build the release runners as well:
@@ -123,7 +123,7 @@ cargo xtask android                                             # nsh package --
 cargo build -p nsh-macos-app                                    # nsh package --target macos
 cargo build -p nsh-linux-app                                    # nsh package --target linux
 cargo build -p nsh-windows-app                                  # nsh package --target windows
-cargo build -p nsh-gpui-app                                     # nsh package --target gpui
+cargo build --manifest-path crates/gpui/Cargo.toml --target-dir target -p nsh-gpui-app    # nsh package --target gpui
 ```
 
 A CLI built from a checkout looks for the runtimes in `target/<triple>/<profile>` (the macOS, Linux, Windows and GPUI ones, built for this machine, in `target/<profile>`) and `target/android/<profile>[-dev]`, using its own profile: `./target/debug/nsh` uses debug runtimes, `./target/release/nsh` release ones. Build both with the same profile (add `--release` to all of them for faster apps).

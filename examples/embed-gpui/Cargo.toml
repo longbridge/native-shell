@@ -12,7 +12,7 @@ publish = false
 [workspace]
 
 [dependencies]
-nsh-platform-gpui = { path = "../../crates/nsh-platform-gpui" }
+nsh-platform-gpui = { path = "../../crates/gpui/nsh-platform-gpui" }
 # `gpui-fast`: GPUI Kit drawn by the same `gpui_fast` crate as nsh.
 gpui-kit = { version = "0.7.3", features = ["gpui-fast"] }
 gpui_platform = { package = "gpui-fast-platform", version = "0.1.7", default-features = false, features = ["font-kit", "wayland", "x11"] }

@@ -223,7 +223,7 @@ A packaged app registers no [native components](./native-components.md); for tho
 nsh it uses `target/<triple>/<profile>` and `target/android/<profile>`, with the CLI's own profile (a debug CLI uses
 debug runtimes): build them with `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim` (or `aarch64-apple-ios`
 for devices) and `cargo xtask android` (add `--release` for a release CLI); `nsh-macos-app` (on macOS), `nsh-linux-app` (on Linux), `nsh-windows-app` (on Windows) and `nsh-gpui-app` (on any of them) are built for this
-machine in `target/<profile>` (`cargo build -p nsh-macos-app`, `cargo build -p nsh-linux-app`, `cargo build -p nsh-windows-app`, `cargo build -p nsh-gpui-app`). The environment variable `NSH_RUNTIME`
+machine in `target/<profile>` (`cargo build -p nsh-macos-app`, `cargo build -p nsh-linux-app`, `cargo build -p nsh-windows-app`, `cargo build --manifest-path crates/gpui/Cargo.toml --target-dir target -p nsh-gpui-app`). The environment variable `NSH_RUNTIME`
 points the CLI at another directory laid out like the distribution's `runtime/` (`ios/iphoneos`,
 `ios/iphonesimulator`, `android/release`, `macos`, `linux`, `windows`, `gpui`, ...).
 

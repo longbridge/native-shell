@@ -207,7 +207,7 @@ Linux 上的 GPUI 包动态链接 WebKitGTK 4.1（Web 视图）和 GStreamer（�
 `nsh package` 会在 CLI 旁边查找预构建运行时（发行包中的 `bin/../runtime`）。在 nsh 的源码仓库中，它使用
 `target/<triple>/<profile>` 和 `target/android/<profile>`，profile 与 CLI 自身一致（debug 版 CLI 使用 debug 版运行时）：用
 `cargo build -p nsh-ios-app --target aarch64-apple-ios-sim`（真机用 `aarch64-apple-ios`）和 `cargo xtask android`
-构建它们（release 版 CLI 需加上 `--release`）；`nsh-macos-app`（在 macOS 上）、`nsh-linux-app`（在 Linux 上）、`nsh-windows-app`（在 Windows 上）和 `nsh-gpui-app`（在三者任一上）为本机构建，位于 `target/<profile>`（`cargo build -p nsh-macos-app`、`cargo build -p nsh-linux-app`、`cargo build -p nsh-windows-app`、`cargo build -p nsh-gpui-app`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
+构建它们（release 版 CLI 需加上 `--release`）；`nsh-macos-app`（在 macOS 上）、`nsh-linux-app`（在 Linux 上）、`nsh-windows-app`（在 Windows 上）和 `nsh-gpui-app`（在三者任一上）为本机构建，位于 `target/<profile>`（`cargo build -p nsh-macos-app`、`cargo build -p nsh-linux-app`、`cargo build -p nsh-windows-app`、`cargo build --manifest-path crates/gpui/Cargo.toml --target-dir target -p nsh-gpui-app`）。环境变量 `NSH_RUNTIME` 可以让 CLI 改用另一个目录，其结构与发行包的
 `runtime/` 相同（`ios/iphoneos`、`ios/iphonesimulator`、`android/release`、`macos`、`linux`、`windows`、`gpui` 等）。
 
 ## 另请参阅

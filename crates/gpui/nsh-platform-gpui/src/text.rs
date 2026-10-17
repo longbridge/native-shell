@@ -3441,7 +3441,7 @@ mod tests {
         let Some(engine) = engine() else {
             return;
         };
-        let data = include_bytes!("../../../examples/gallery/fonts/Pacifico-Regular.ttf");
+        let data = include_bytes!("../../../../examples/gallery/fonts/Pacifico-Regular.ttf");
         let style = ResolvedTextStyle {
             font_family: Some(nsh_core::FontFamily::new("Pacifico")),
             font_size: 20.0,
