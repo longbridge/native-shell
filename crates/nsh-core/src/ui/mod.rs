@@ -108,7 +108,7 @@ pub use crate::{
     LayoutCurve, LayoutProperty, LayoutTransition, Measurement, ModalAnimation, ModalPresentation,
     PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation, SnapAlignment, StatusBarConfig,
     StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, TransformOrigin, Viewability,
-    platform::{Idiom, Os},
+    platform::{Idiom, Locale, Os},
     style::{Color, OriginLen},
 };
 

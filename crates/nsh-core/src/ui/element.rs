@@ -319,6 +319,12 @@ impl<'a, C: Component> RenderCx<'a, C> {
         (points * ratio).round() / ratio
     }
 
+    /// The user's locale (TS: what `Intl` and `toLocaleString` format
+    /// for by default): format numbers and dates for it with a Rust crate.
+    pub fn locale(&self) -> crate::platform::Locale {
+        self.read(env::LOCALE).locale
+    }
+
     /// The operating system (TS: `Platform.OS`).
     pub fn os(&self) -> crate::platform::Os {
         self.scope.environment.os

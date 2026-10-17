@@ -1302,6 +1302,7 @@ fn ui_environment(env: &Environment, window: Size) -> nsh_core::ui::Environment 
         os: env.os,
         os_version: env.os_version,
         idiom: env.idiom,
+        locale: env.locale,
     }
 }
 

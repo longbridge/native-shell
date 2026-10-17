@@ -3,7 +3,7 @@
 
 use crate::{
     EdgeInsets, Size,
-    platform::{Idiom, Os},
+    platform::{Idiom, Locale, Os},
 };
 
 /// The environment of a surface, as the platform reports it.
@@ -35,6 +35,8 @@ pub struct Environment {
     pub os_version: (u16, u16),
     /// The kind of device.
     pub idiom: Idiom,
+    /// The user's locale, for formatting numbers and dates.
+    pub locale: Locale,
 }
 
 impl Default for Environment {
@@ -53,6 +55,7 @@ impl Default for Environment {
             os: Os::default(),
             os_version: (0, 0),
             idiom: Idiom::Phone,
+            locale: Locale::EN_US,
         }
     }
 }
@@ -71,6 +74,8 @@ pub(crate) const INSETS: u16 = 256;
 /// The pixel ratio (a window moved to another screen). The OS, its version
 /// and the idiom never change.
 pub(crate) const PIXEL_RATIO: u16 = 512;
+/// The user's locale.
+pub(crate) const LOCALE: u16 = 1024;
 
 impl Environment {
     /// The parts that differ from `old`.
@@ -90,6 +95,7 @@ impl Environment {
         flag(SCREEN_READER, self.screen_reader != old.screen_reader);
         flag(RTL, self.rtl != old.rtl);
         flag(PIXEL_RATIO, self.pixel_ratio != old.pixel_ratio);
+        flag(LOCALE, self.locale != old.locale);
         changed
     }
 }

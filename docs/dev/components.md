@@ -125,6 +125,7 @@ impl Component for Button {                // JS export: `Button`, the type's na
   | `cleanup` | `fn cleanup(&mut self, props, cx)` (with a `Context`: it can still use the platform's services), and `Drop` |
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
   | `PixelRatio.get()`, `roundToNearestPixel`, `Platform.OS` / `Version` / `isPad` | `cx.pixel_ratio()`, `cx.round_to_nearest_pixel(v)`, `cx.os()`, `cx.os_version()`, `cx.idiom()` in the render |
+  | `Intl.NumberFormat()`, `toLocaleString()` (the user's locale) | `cx.locale()` in the render (a `Locale`: `de-DE`; reading subscribes), formatted with a Rust crate: `Intl` and the locale-aware `toLocale*String`s are JS globals of TS apps, like `fetch` |
   | `requestAnimationFrame(cb)`, `cancelAnimationFrame` | `cx.request_animation_frame(\|this, at, cx\| ..)` returns a `Task` (dropping it cancels); in a task `cx.next_frame().await` (an `Instant`), once per frame in a loop |
   | `I18nManager.forceRTL` / `allowRTL` | `cx.force_rtl(bool)` / `cx.allow_rtl(bool)`: the root's direction at once, `cx.rtl()` readers render again |
   | `import logo from "./logo@2x.png"`, `import font from "./a.ttf"` | `const LOGO: ImageAsset = asset!("logo@2x.png");` (`image(LOGO)` lays out at its natural size), `const A: FontAsset = asset!("a.ttf");` (`.font_family(A.family)`), with `registry.assets(assets!())` (below) |
@@ -232,7 +233,7 @@ component cancels all of its own.
 ## Environment
 
 The engine hands the core what components may read (`ui::Environment`: window, safe area, keyboard height, appearance,
-font scale, reduced motion, screen reader, direction, pixel ratio, OS, its version, idiom). A render records what it
+font scale, reduced motion, screen reader, direction, pixel ratio, OS, its version, idiom, locale). A render records what it
 read (`RenderCx::window()` and the like); when the environment changes, only the components that read a changed part
 render again. The direction components read is the surface's: its root's (`Prop::LayoutDirection`, which JS's
 `I18nManager` sets), else the platform's; once a component sets a policy (`force_rtl` / `allow_rtl`), and from the

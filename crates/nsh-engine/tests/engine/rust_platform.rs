@@ -1,7 +1,7 @@
 //! The platform's services for Rust components on the engine: the fonts
 //! the UI sets' crates ship are registered before the first render, tasks
 //! wait for display frames, components set the layout direction and read
-//! the pixel ratio and the device.
+//! the pixel ratio, the device and the locale.
 
 use std::{
     sync::{
@@ -15,7 +15,7 @@ use crossbeam_channel::{Receiver, Sender};
 use nsh_core::{
     ApproxTextEngine, AttributedText, EventKind, EventPayload, MountBatch, MountItem, Size,
     TextEngine, TextLayout,
-    platform::{Idiom, Os},
+    platform::{Idiom, Locale, Os},
     ui::{AssetFile, AssetKind, Registry, Root, prelude::*},
 };
 use nsh_engine::{App, Assets, Engine, EngineConfig, Environment, MountSink};
@@ -305,7 +305,7 @@ fn components_set_the_layout_direction() {
     assert_eq!(directions, [false]);
 }
 
-/// Shows the pixel ratio and the device.
+/// Shows the pixel ratio, the device and the locale.
 #[derive(Default)]
 struct Device;
 
@@ -316,39 +316,46 @@ impl Component for Device {
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let (major, minor) = cx.os_version();
         view().child(text(format!(
-            "{} {major}.{minor} {:?} ×{} {}",
+            "{} {major}.{minor} {:?} ×{} {} {}",
             cx.os().name(),
             cx.idiom(),
             cx.pixel_ratio(),
             cx.round_to_nearest_pixel(10.3),
+            cx.locale(),
         )))
     }
 }
 
 #[test]
-fn components_read_the_pixel_ratio_and_the_device() {
+fn components_read_the_pixel_ratio_the_device_and_the_locale() {
     let environment = Environment {
         pixel_ratio: 3.0,
         os: Os::Android,
         os_version: (34, 0),
         idiom: Idiom::Pad,
+        locale: Locale::parse("de_DE").unwrap(),
         ..Environment::default()
     };
     let (engine, rx, _) = start::<Device>(environment);
-    let (texts, ..) = until(&rx, "android 34.0 Pad ×3 10.333333");
-    assert!(
-        texts.iter().any(|t| t == "android 34.0 Pad ×3 10.333333"),
-        "{texts:?}"
-    );
+    let shown = "android 34.0 Pad ×3 10.333333 de-DE";
+    let (texts, ..) = until(&rx, shown);
+    assert!(texts.iter().any(|t| t == shown), "{texts:?}");
     // The window moved to another screen: the pixel ratio's readers render
     // again.
     engine.control().set_environment(Environment {
         pixel_ratio: 2.0,
         ..environment
     });
-    let (texts, ..) = until(&rx, "android 34.0 Pad ×2 10.5");
-    assert!(
-        texts.iter().any(|t| t == "android 34.0 Pad ×2 10.5"),
-        "{texts:?}"
-    );
+    let shown = "android 34.0 Pad ×2 10.5 de-DE";
+    let (texts, ..) = until(&rx, shown);
+    assert!(texts.iter().any(|t| t == shown), "{texts:?}");
+    // The user changed the language: the locale's readers render again.
+    engine.control().set_environment(Environment {
+        pixel_ratio: 2.0,
+        locale: Locale::parse("zh-Hans_CN").unwrap(),
+        ..environment
+    });
+    let shown = "android 34.0 Pad ×2 10.5 zh-Hans-CN";
+    let (texts, ..) = until(&rx, shown);
+    assert!(texts.iter().any(|t| t == shown), "{texts:?}");
 }
