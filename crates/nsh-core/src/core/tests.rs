@@ -4672,6 +4672,116 @@ mod components {
         assert_eq!(scrolled(&c.commit().unwrap()), 0.0);
     }
 
+    thread_local! {
+        /// How many times `Opened` was set up on this thread.
+        static SETUPS: Cell<u32> = const { Cell::new(0) };
+    }
+
+    /// A drawer whose content (lazy children) shows while it is open.
+    #[derive(Default)]
+    struct Drawer;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct DrawerProps {
+        #[prop(default)]
+        open: bool,
+        #[prop(lazy)]
+        children: Children,
+    }
+
+    impl Component for Drawer {
+        type Props = DrawerProps;
+        type Event = NoEvent;
+
+        fn render(&self, props: &DrawerProps, _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().children(props.open.then(|| view().p_2().child(props.children)))
+        }
+    }
+
+    /// Content with state of its own: the how-manieth it was set up.
+    #[derive(Default)]
+    struct Opened(u32);
+
+    impl Component for Opened {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &(), _: &mut Context<'_, Self>) {
+            self.0 = SETUPS.with(|s| {
+                s.set(s.get() + 1);
+                s.get()
+            });
+        }
+
+        fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(text(format!("opened {}", self.0)))
+        }
+    }
+
+    /// Renders a drawer with content, opened and closed by a press.
+    #[derive(Default)]
+    struct Shelf {
+        open: bool,
+    }
+
+    impl Component for Shelf {
+        type Props = ();
+        type Event = NoEvent;
+
+        fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view()
+                .child(
+                    view()
+                        .h(px(10.0))
+                        .on_press(cx.listener(|this: &mut Self, _, cx| {
+                            this.open = !this.open;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Drawer::element(DrawerProps {
+                        open: self.open,
+                        children: Children::default(),
+                    })
+                    .child(Opened::element(())),
+                )
+        }
+    }
+
+    #[test]
+    fn lazy_children_a_component_passes_are_made_while_placed() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Shelf>(|| ()));
+        let batch = c.commit().unwrap();
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button");
+        let instances = c.components.instances.len();
+        assert_eq!(SETUPS.with(Cell::get), 0, "closed: not made");
+        let mut events = Vec::new();
+        c.take_events(&mut events);
+        assert!(events.is_empty(), "nothing for JS: {events:?}");
+
+        // Opened: made, and placed in the same commit.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["opened 1"]);
+        assert_eq!(c.components.instances.len(), instances + 1);
+        // Closed: released.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        c.commit();
+        assert_eq!(c.components.instances.len(), instances);
+        // Opened again: made afresh.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["opened 2"]);
+        c.take_events(&mut events);
+        assert!(events.is_empty(), "nothing for JS: {events:?}");
+    }
+
     /// Shows a fallback while a component below it failed; a press tries
     /// again.
     #[derive(Default)]

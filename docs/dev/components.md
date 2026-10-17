@@ -353,7 +353,10 @@ never sees the expanded nodes; their events are the component's (below).
   render places them, under a `cond` on a signal; the core tells it with a `$children` event (`true` / `false`) on
   the host when the render starts or stops placing them (`ComponentSpec::lazy_children`), so they are made again on
   each opening and released after. Until they are made, `Children::is_empty()` is true: a render that places them
-  only when they are present never asks for them.
+  only when they are present never asks for them. The content a Rust render passes such a component
+  (`Sheet::element(..).child(..)`) is lazy the same way: the core leaves it out (slots and rows stay) while the
+  nested component does not place its children, and renders the passing component again when that changes, instead
+  of telling JS.
 - Named slots: the JS face creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
   JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never
   releases it (it is JS's). Filling or emptying a holder renders the component again.

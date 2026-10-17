@@ -1287,20 +1287,34 @@ impl<M: TextEngine> Core<M> {
                 self.detach_id(child);
             }
         }
-        // Lazy children are made while the render places them.
+        // Lazy children are made while the render places them: by JS, or
+        // by the component that renders this one (it renders again to pass
+        // them, or to drop them).
         let wanted = inst.children_at != Placement::None;
         if inst.children_wanted != wanted && inst.spec.as_ref().is_some_and(|s| s.lazy_children) {
             inst.children_wanted = wanted;
-            self.events.push((
-                host,
-                EventKind::NativeEvent,
-                EventPayload::Native {
-                    name: "$children".into(),
-                    data: JsonValue::Bool(wanted),
-                },
-            ));
+            match self.components.owners.get(&host).copied() {
+                Some(owner) => self.components.mark(owner),
+                None => self.events.push((
+                    host,
+                    EventKind::NativeEvent,
+                    EventPayload::Native {
+                        name: "$children".into(),
+                        data: JsonValue::Bool(wanted),
+                    },
+                )),
+            }
         }
         failure
+    }
+
+    /// Whether the component hosted by `nested` takes its children now:
+    /// unless they are lazy and its render does not place them.
+    fn wants_children(&self, nested: NodeId) -> bool {
+        self.components
+            .instances
+            .get(&nested)
+            .is_none_or(|i| i.children_wanted || !i.spec.as_ref().is_some_and(|s| s.lazy_children))
     }
 
     fn detach_id(&mut self, id: NodeId) {
@@ -1830,7 +1844,17 @@ impl<M: TextEngine> Core<M> {
             // The content this render passes it (`.child`, `.fill`): nodes of
             // this render, inserted into its host as JS inserts its children,
             // so the nested component places them where its render says.
-            let content = std::mem::take(&mut el.children);
+            // Lazy children are passed only while it places them, as JS
+            // makes the app's (`$children`); slots and rows always are.
+            let mut content = std::mem::take(&mut el.children);
+            if !self.wants_children(id) {
+                content.retain(|c| {
+                    c.attrs
+                        .props
+                        .iter()
+                        .any(|p| matches!(p, Prop::ComponentSlot(_)))
+                });
+            }
             let children = self.reconcile_children(id, old_children, content, host, inst);
             return Expanded {
                 id,
