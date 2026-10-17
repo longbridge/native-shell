@@ -67,6 +67,8 @@ zbus = { version = "5.19", default-features = false, features = ["async-io", "bl
 wry = { package = "lb-wry", version = "0.53.3" }
 gtk = "0.18"
 webkit2gtk = { version = "=2.0.1", features = ["v2_38"] }
+# COM on the threads that use GPUI's text system (Windows: DirectWrite).
+windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
 # Videos (GStreamer 1.20+).
 gstreamer = "0.25"
 gstreamer-app = "0.25"

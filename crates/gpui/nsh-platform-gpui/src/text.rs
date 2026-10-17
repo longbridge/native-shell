@@ -86,6 +86,28 @@ pub(crate) fn ui_family() -> Arc<str> {
         .map_or_else(|| Arc::from(SYSTEM_UI), |(_, f)| f.clone())
 }
 
+/// Prepares this thread for GPUI's text system: on Windows, COM, which
+/// GPUI initializes on the main thread only; DirectWrite's font selection
+/// fails without it on other threads (the engine's, canvas workers'), and
+/// every font then resolves to the fallback face (bold and registered fonts
+/// included). Elsewhere, nothing.
+pub(crate) fn init_thread() {
+    #[cfg(windows)]
+    {
+        thread_local! {
+            static DONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        if !DONE.replace(true) {
+            use windows_sys::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
+            // SAFETY: a plain call with no pointers; a thread already in an
+            // apartment of another kind keeps it (RPC_E_CHANGED_MODE), which
+            // DirectWrite works with too. Never uninitialized: the thread
+            // uses the text system until it ends.
+            unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) };
+        }
+    }
+}
+
 /// UI fonts of Linux desktops, in order of preference: GPUI's own name for
 /// the UI font stands for a font apps rarely have there.
 #[cfg(target_os = "linux")]
@@ -337,6 +359,7 @@ impl GpuiTextEngine {
     /// An engine over the app's text system, with `family` as the UI
     /// font (GPUI's name for the system's: an installed one on Linux).
     pub(crate) fn new(system: Arc<TextSystem>, family: Arc<str>) -> Self {
+        init_thread();
         GpuiTextEngine {
             shaper: RefCell::new(WindowTextSystem::new(system.clone())),
             system,
@@ -2753,6 +2776,7 @@ mod tests {
 
     /// The platform's text system, without a window (one per process).
     fn system() -> Arc<TextSystem> {
+        init_thread();
         static SYSTEM: OnceLock<Arc<TextSystem>> = OnceLock::new();
         SYSTEM
             .get_or_init(|| {
@@ -2772,6 +2796,7 @@ mod tests {
         if cfg!(target_os = "macos") {
             return None;
         }
+        init_thread();
         Some(GpuiTextEngine::new(system(), ui_family()))
     }
 

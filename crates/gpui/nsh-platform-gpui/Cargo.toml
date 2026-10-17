@@ -69,3 +69,6 @@ webkit2gtk = { workspace = true, optional = true }
 [[example]]
 name = "embed"
 test = false
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -4453,6 +4453,7 @@ dependencies = [
  "unicode-linebreak",
  "ureq",
  "webkit2gtk",
+ "windows-sys 0.61.2",
  "x11rb",
  "zbus",
 ]

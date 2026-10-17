@@ -576,6 +576,7 @@ fn spawn(job: Job) {
             let spawned = std::thread::Builder::new()
                 .name(format!("nsh-canvas-{i}"))
                 .spawn(move || {
+                    crate::text::init_thread();
                     for job in rx {
                         rasterize(job);
                     }
