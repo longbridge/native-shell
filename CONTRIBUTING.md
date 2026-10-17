@@ -66,10 +66,11 @@ Commit subjects and pull request titles name the area first, then say what chang
 ```
 
 - The area is the part of nsh the change is about, in lower case: a crate without its `nsh-` prefix (`core`, `animation`,
-  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`), a platform (`ios`, `android`, `linux`), a JS layer or module
-  (`runtime`, `list`, `animated`, `mobile`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. Name two or
-  three areas separated by commas when a change spans them (`ios, android: …`); a change everywhere names its
-  subject instead (`signed packages: …`).
+  `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`, `ui-mobile` for the `nsh/ui/mobile` set), a platform (`ios`,
+  `android`, `macos`, `windows`, `linux`), a JS layer or module (`runtime`, `list`, `animated`), or `tailwind`, `text`,
+  `docs`, `examples`, `gallery`, `ci`. A change to all the desktop backends (macOS, Windows and Linux) is `desktop`, one
+  to both mobile platforms (iOS and Android) is `mobile`. Name two or three areas separated by commas when a change
+  spans them (`core, desktop: …`); a change everywhere names its subject instead (`signed packages: …`).
 - The sentence starts with a capital letter, uses the imperative mood, has no trailing period and fits in about 72
   characters with its area. It says what the change does for a user of nsh, not which files moved: `list: Keep the
   visible rows in place when items are inserted above them`, not `list: Update list.rs`.
@@ -83,7 +84,8 @@ Examples:
 ```
 tailwind: Make flex a row and block use block layout, as in CSS
 list: Keep the visible rows in place when items are inserted above them
-ios, android: Answer the back gesture from preventBack without asking JS
+mobile: Answer the back gesture from preventBack without asking JS
+desktop: Keep the keyboard focus inside the newest modal
 cli: Add `nsh package --target ios` for signed .ipa files
 docs: Describe the capability checks of fetch redirects
 ```
