@@ -258,7 +258,7 @@ pub(crate) struct Input {
     js_block: Cell<bool>,
     /// Where the mouse last was (root coordinates): keyboard scrolling
     /// goes to the scroll view under it.
-    last: Cell<Option<(f32, f32)>>,
+    pub(crate) last: Cell<Option<(f32, f32)>>,
     /// A key with Alt was taken: Alt's release must not open the window
     /// menu.
     alt_combo: Cell<bool>,
@@ -794,6 +794,7 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     match event.kind {
         PointerKind::Down => {
             if mouse && event.button == 1 {
+                surface.input.last.set(Some((x, y)));
                 context_menu(surface, x, y);
                 return;
             }
@@ -850,6 +851,17 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
     if !event.precise && dx == 0.0 && event.modifiers.shift {
         (dx, dy) = (dy, dx);
     }
+    // A multiline field under the pointer scrolls its own lines first, as
+    // GTK's and AppKit's text views do.
+    if dy.abs() > dx.abs()
+        && let Some(hit) = pick(&surface.root, x, y, true)
+        && let Some(field) = chain(&hit.view)
+            .into_iter()
+            .find(|v| v.kind() == ViewKind::Input)
+        && crate::text_input::wheel(&field, dy)
+    {
+        return;
+    }
     let kind = if event.precise {
         WheelInput::Touchpad
     } else {
@@ -863,6 +875,7 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
 pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     let input = &surface.input;
     if !event.down {
+        crate::keymap::released(surface, &event);
         // `DefWindowProc` opens the window menu when Alt is released after
         // it saw no other key: swallow the release once Alt + key was ours.
         return event.vk == VK_MENU && input.alt_combo.replace(false);

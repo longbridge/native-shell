@@ -579,6 +579,43 @@ fn input_of(view: &NshView) -> Option<Rc<InputState>> {
     view.state().input.clone()
 }
 
+/// The field's text, whether it is read-only and whether it is secure, for
+/// accessibility's value ([`crate::access`]).
+pub(crate) fn accessible_value(view: &NshView) -> Option<crate::access::FieldValue> {
+    let input = input_of(view)?;
+    let config = input.config.borrow();
+    Some(crate::access::FieldValue {
+        text: if config.secure {
+            String::new()
+        } else {
+            input.model.borrow().text().to_owned()
+        },
+        read_only: !config.editable,
+        password: config.secure,
+    })
+}
+
+/// Replaces the field's text as typing it would (an assistive
+/// technology's set value): `maxLength` applies and the change is
+/// reported. False when it cannot (read-only).
+pub(crate) fn set_accessible_value(surface: &Rc<Surface>, view: &NshView, text: &str) -> bool {
+    let Some(input) = input_of(view) else {
+        return false;
+    };
+    if !input.config.borrow().editable {
+        return false;
+    }
+    let text = pasted(text, input.multiline());
+    input.model.borrow_mut().select_all();
+    if text.is_empty() {
+        let deleted = input.model.borrow_mut().delete(Unit::Char, false);
+        after_edit(surface, view, &input, deleted);
+    } else {
+        insert(surface, view, &input, &text, false);
+    }
+    true
+}
+
 /// The field that has the keyboard focus.
 pub(crate) fn focused(surface: &Surface) -> Option<NshView> {
     let view = FOCUS.with(|f| f.borrow().get(&surface.key()).and_then(|f| f.view.clone()))?;
@@ -635,6 +672,7 @@ fn set_focus(surface: &Rc<Surface>, view: Option<&NshView>) {
         send(surface, view, EventKind::Focus, || EventPayload::None);
         // The scroll views around bring the field into view.
         crate::scroll::reveal(surface, view);
+        crate::access::focus_changed(surface, view);
         view.changed();
     }
     blink::update();
@@ -1395,7 +1433,6 @@ pub(crate) fn pointer(surface: &Rc<Surface>, view: &NshView, event: &ItemPointer
 
 /// A wheel over input `view`: scrolls the lines of a multiline field that
 /// do not fit. True when it scrolled (an outer scroll view does not).
-#[allow(dead_code)] // For `crate::input`'s wheel routing.
 pub(crate) fn wheel(view: &NshView, dy: f32) -> bool {
     let Some(input) = input_of(view) else {
         return false;
@@ -1855,47 +1892,6 @@ mod blink {
             schedule(generation);
         });
     }
-}
-
-/// The text, access and kind of an input, for accessibility (secure
-/// fields expose no text).
-pub(crate) fn accessible_value(view: &NshView) -> Option<crate::access::FieldValue> {
-    let input = input_of(view)?;
-    let config = input.config.borrow();
-    Some(crate::access::FieldValue {
-        text: if config.secure {
-            String::new()
-        } else {
-            input.model.borrow().text().to_owned()
-        },
-        read_only: !config.editable,
-        password: config.secure,
-    })
-}
-
-/// Replaces the field's text as typing it would (an assistive
-/// technology's SetValue): `maxLength` applies and the change is reported.
-/// False when it cannot (read-only).
-pub(crate) fn set_accessible_value(surface: &Rc<Surface>, view: &NshView, text: &str) -> bool {
-    let Some(input) = input_of(view) else {
-        return false;
-    };
-    if !input.config.borrow().editable {
-        return false;
-    }
-    let text = if input.multiline() {
-        text.to_owned()
-    } else {
-        text.replace(['\r', '\n'], " ")
-    };
-    input.model.borrow_mut().select_all();
-    if text.is_empty() {
-        let deleted = input.model.borrow_mut().delete(Unit::Char, false);
-        after_edit(surface, view, &input, deleted);
-    } else {
-        insert(surface, view, &input, &text, false);
-    }
-    true
 }
 
 #[cfg(test)]
