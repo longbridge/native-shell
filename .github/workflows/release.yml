@@ -11,6 +11,13 @@ name: Release
 #   artifacts): a dry run before tagging. With a tag it releases that tag.
 # - Pull requests that change this workflow or xtask build the archives
 #   only, so a broken distribution shows before a release.
+#
+# Asset names carry no version (`nsh-macos-arm64.tar.gz`, each with a
+# `.sha256`), so `releases/latest/download/<asset>` always resolves: the
+# installers (`website/public/install.sh`, `install.ps1`, also attached to
+# each release), mise's `github:` backend and the Scoop manifest download by
+# that name. Every archive holds one directory, `nsh/`, laid out as
+# `dist/nsh`. Publishing the draft runs `packages.yml` (Homebrew).
 
 on:
   push:
@@ -18,6 +25,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/release.yml"
+      - ".github/packages/**"
       - "crates/xtask/**"
   workflow_dispatch:
     inputs:
@@ -79,7 +87,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/tmp"
           echo "TMPDIR=$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
-          echo "ARCHIVE=nsh-${TAG:-${GITHUB_SHA::7}}-${{ matrix.name }}" >> "$GITHUB_ENV"
+          echo "ARCHIVE=nsh-${{ matrix.name }}" >> "$GITHUB_ENV"
 
       - name: Set up Windows
         if: runner.os == 'Windows'
@@ -140,28 +148,28 @@ jobs:
       - name: Package
         run: |
           mkdir -p target/release-assets
-          cp -R dist/nsh "target/release-assets/$ARCHIVE"
-          cp README.md LICENSE-APACHE "target/release-assets/$ARCHIVE/"
           cd target/release-assets
+          cp -R ../../dist/nsh nsh
+          cp ../../README.md ../../LICENSE-APACHE nsh/
           if [[ "$RUNNER_OS" == Windows ]]; then
-            7z a -tzip "$ARCHIVE.zip" "$ARCHIVE" > /dev/null
+            7z a -tzip "$ARCHIVE.zip" nsh > /dev/null
             sha256sum "$ARCHIVE.zip" > "$ARCHIVE.zip.sha256"
           else
-            tar -czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+            tar -czf "$ARCHIVE.tar.gz" nsh
             shasum -a 256 "$ARCHIVE.tar.gz" > "$ARCHIVE.tar.gz.sha256"
           fi
           # The embedding SDKs on their own, for native apps that embed nsh
           # and need no CLI (iOS from macOS, Android from Linux).
           embed() {
-            local name="nsh-${TAG:-${GITHUB_SHA::7}}-embed-$1"
+            local name="nsh-embed-$1"
             mkdir -p "$name"
-            cp -R "$ARCHIVE/embed/$1/." "$name/"
+            cp -R "nsh/embed/$1/." "$name/"
             zip -qry "$name.zip" "$name"
             shasum -a 256 "$name.zip" > "$name.zip.sha256"
           }
           [[ "$RUNNER_OS" != macOS ]] || embed ios
           [[ "$RUNNER_OS" != Linux ]] || embed android
-          rm -rf "$ARCHIVE" nsh-*-embed-*/
+          rm -rf nsh nsh-embed-*/
           ls -l
 
       - uses: actions/upload-artifact@v4
@@ -178,11 +186,27 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
       - uses: actions/download-artifact@v4
         with:
           pattern: nsh-*
           path: assets
           merge-multiple: true
+
+      # The installers go with the archives they download, and Scoop installs
+      # from the manifest attached to the latest release:
+      # `scoop install https://github.com/<repo>/releases/latest/download/nsh.json`.
+      - name: Add the installers and the Scoop manifest
+        run: |
+          cp website/public/install.sh website/public/install.ps1 assets/
+          read -r hash _ < assets/nsh-windows-x86_64.zip.sha256
+          # shellcheck disable=SC2016 # envsubst's list of variables
+          NSH_VERSION="${TAG#v}" NSH_HASH="$hash" NSH_REPO="$GITHUB_REPOSITORY" \
+            envsubst '$NSH_VERSION $NSH_HASH $NSH_REPO' < .github/packages/nsh.json > assets/nsh.json
+          cat assets/nsh.json
 
       # Created only after every platform has built; a draft until it is
       # published by hand.

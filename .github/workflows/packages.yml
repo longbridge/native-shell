@@ -1,0 +1,74 @@
+name: Packages
+
+# Points the package managers at a release once it is published (release.yml
+# creates it as a draft): writes the Homebrew formula into
+# longbridge/homebrew-tap (`brew install longbridge/tap/nsh`).
+# Scoop and mise need nothing here: Scoop installs from the manifest attached
+# to the latest release, mise's `github:` backend reads the release itself.
+#
+# Needs the secret HOMEBREW_TAP_TOKEN, a token that may push to
+# longbridge/homebrew-tap. Run it by hand to write the formula of a release
+# again.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0); empty: the latest release"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  homebrew:
+    name: Homebrew
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fill in the formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          if [[ -z "$TAG" ]]; then
+            TAG=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          fi
+          mkdir -p sums
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D sums \
+            -p nsh-macos-arm64.tar.gz.sha256 -p nsh-linux-x86_64.tar.gz.sha256
+          read -r NSH_MACOS_ARM64 _ < sums/nsh-macos-arm64.tar.gz.sha256
+          read -r NSH_LINUX_X86_64 _ < sums/nsh-linux-x86_64.tar.gz.sha256
+          export NSH_VERSION="${TAG#v}" NSH_REPO="$GITHUB_REPOSITORY" NSH_MACOS_ARM64 NSH_LINUX_X86_64
+          # shellcheck disable=SC2016 # envsubst's list of variables
+          envsubst '$NSH_VERSION $NSH_REPO $NSH_MACOS_ARM64 $NSH_LINUX_X86_64' \
+            < .github/packages/nsh.rb > nsh.rb
+          echo "VERSION=$NSH_VERSION" >> "$GITHUB_ENV"
+          cat nsh.rb
+
+      - uses: actions/checkout@v4
+        with:
+          repository: longbridge/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Push the formula
+        run: |
+          mkdir -p homebrew-tap/Formula
+          cp nsh.rb homebrew-tap/Formula/nsh.rb
+          cd homebrew-tap
+          git add Formula/nsh.rb
+          if git diff --cached --quiet; then
+            echo "the formula is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "nsh $VERSION" \
+            -m "Written by https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          git push

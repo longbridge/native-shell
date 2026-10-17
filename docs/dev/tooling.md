@@ -232,13 +232,28 @@ The CLI finds prebuilt runtimes next to itself (`bin/../runtime`, the distributi
 
 `.github/workflows/release.yml` runs `cargo xtask dist` on macOS (Apple silicon: the iOS, Mac Catalyst and macOS
 runtimes and the iOS SDK), Linux and Windows (x86_64), each with the Android runtime, checks that the packaged CLI
-makes and bundles a new app, and archives `dist/nsh` as `nsh-<tag>-<platform>.tar.gz` (`.zip` on Windows), plus the
-embedding SDKs alone (`nsh-<tag>-embed-ios.zip`, `nsh-<tag>-embed-android.zip`), each with a `.sha256`. To release,
-set `version` in the root `Cargo.toml`, push the tag `v<version>` (a tag that does not match fails the run) and
-publish the draft release the run creates once every platform has built. Running the workflow by hand without a tag,
-or a pull request that changes it or xtask, builds the archives only (the run's artifacts). The binaries are not
-signed: macOS quarantines downloads from a browser (`xattr -dr com.apple.quarantine nsh-…`), and the Linux runtime
-needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later).
+makes and bundles a new app, and archives `dist/nsh` as one directory `nsh/` in `nsh-<platform>.tar.gz` (`.zip` on
+Windows), plus the embedding SDKs alone (`nsh-embed-ios.zip`, `nsh-embed-android.zip`), each with a `.sha256`. Asset
+names carry no version, so `releases/latest/download/<asset>` always resolves; the installers and package managers
+rely on that. To release, set `version` in the root `Cargo.toml`, push the tag `v<version>` (a tag that does not
+match fails the run) and publish the draft release the run creates once every platform has built. Running the
+workflow by hand without a tag, or a pull request that changes it or xtask, builds the archives only (the run's
+artifacts). The binaries are not signed: macOS quarantines downloads from a browser (`xattr -dr
+com.apple.quarantine nsh`), and the Linux runtime needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later).
+
+How users get it (`website/docs/installation.md`):
+
+- `website/public/install.sh` and `install.ps1` (served at `native-shell.com/install.sh`, `/install.ps1`, and
+  attached to each release) download the latest archive or `NSH_VERSION`, check its `.sha256` and replace
+  `~/.nsh` (`%LOCALAPPDATA%\nsh` on Windows) with it; `~/.local/bin/nsh` links to it, Windows adds `bin` to the
+  user's `PATH`. The CLI resolves its own symlink (`runtime::cli_exe`) to find `bin/../runtime`: macOS reports
+  `current_exe` as it was run.
+- Homebrew: publishing the release runs `.github/workflows/packages.yml`, which fills in
+  `.github/packages/nsh.rb` with the archives' checksums and pushes it to `longbridge/homebrew-tap` as
+  `Formula/nsh.rb` (secret `HOMEBREW_TAP_TOKEN`). The formula keeps the distribution in `libexec`.
+- Scoop: the release job fills in `.github/packages/nsh.json` and attaches it as `nsh.json`; Scoop installs from
+  `releases/latest/download/nsh.json` and updates from the same URL, so nothing is committed anywhere.
+- mise: its `github:` backend picks the archive by OS and architecture, strips `nsh/` and finds `bin/`.
 
 ## Entries and `cargo run`
 

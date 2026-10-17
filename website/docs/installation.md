@@ -21,6 +21,49 @@ On top of `nsh`, each platform needs its own tools:
 
 Mac Catalyst, `nsh run`'s default on macOS, needs Xcode like iOS. Details are under [Platform tools](#platform-tools).
 
+## Installing a release
+
+Each [GitHub release](https://github.com/longbridge/native-shell/releases) carries the prebuilt distribution (below) for macOS (Apple silicon), Linux x86_64 and Windows x86_64. Every way of installing it puts the same `nsh` command on your `PATH`.
+
+**macOS and Linux**, with the install script:
+
+```sh
+curl -fsSL https://native-shell.com/install.sh | sh
+```
+
+It installs the distribution to `~/.nsh` and links `~/.local/bin/nsh` to it; running it again updates it. `NSH_VERSION=v0.1.0` pins a release, `NSH_INSTALL_DIR` picks another directory.
+
+**Windows**, in PowerShell:
+
+```powershell
+irm https://native-shell.com/install.ps1 | iex
+```
+
+It installs to `%LOCALAPPDATA%\nsh` and adds its `bin` to your user `PATH` (open a new terminal afterwards). `$env:NSH_VERSION` and `$env:NSH_INSTALL_DIR` work as above.
+
+**Homebrew** (macOS and Linux):
+
+```sh
+brew install longbridge/tap/nsh
+```
+
+**Scoop** (Windows):
+
+```powershell
+scoop install https://github.com/longbridge/native-shell/releases/latest/download/nsh.json
+```
+
+**mise** (all three):
+
+```sh
+mise use -g github:longbridge/native-shell
+```
+
+The archives (`nsh-macos-arm64.tar.gz`, `nsh-linux-x86_64.tar.gz`, `nsh-windows-x86_64.zip`, each with a `.sha256`) carry no version in their names, so `https://github.com/longbridge/native-shell/releases/latest/download/<archive>` always fetches the latest. The embedding SDKs are also released alone, for native apps that need no CLI: `nsh-embed-ios.zip` and `nsh-embed-android.zip`.
+
+> [!NOTE]
+> The binaries are not signed yet. macOS quarantines files downloaded by a browser; the install script, Homebrew and mise download with `curl` and are not affected, otherwise run `xattr -dr com.apple.quarantine <dir>`. The Linux runtime needs glibc 2.39 and GTK 4.14 or newer (Ubuntu 24.04 and later). There is no Intel Mac or arm64 Linux / Windows build: build those from a checkout.
+
 ## The prebuilt distribution
 
 The distribution is a directory, `dist/nsh`, with the CLI and the prebuilt native runtimes it packages apps with:
@@ -38,7 +81,7 @@ dist/nsh/embed/ios/{NativeShell,NativeShellDev}.xcframework  # embedding in iOS 
 dist/nsh/embed/android/{nsh,nsh-dev}.aar                     # embedding in Android apps
 ```
 
-Put `dist/nsh/bin` on your `PATH` (or call `dist/nsh/bin/nsh` directly) and keep the directory together: `nsh` finds the runtimes next to itself, in `bin/../runtime`.
+Put `dist/nsh/bin` on your `PATH` (or call `dist/nsh/bin/nsh` directly) and keep the directory together: `nsh` finds the runtimes next to itself, in `bin/../runtime` (through a symlink to it, as the installers make, too).
 
 ```sh
 export PATH="$PWD/dist/nsh/bin:$PATH"
