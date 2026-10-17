@@ -674,9 +674,7 @@ class Player {
     const el = this.view(id);
     if (!el) return;
     el._horizontal = horizontal;
-    el._base = horizontal ? "overflow-x:auto;overflow-y:hidden;" : "overflow-x:hidden;overflow-y:auto;";
-    el.style.overflowX = horizontal ? "auto" : "hidden";
-    el.style.overflowY = horizontal ? "hidden" : "auto";
+    this.scrollOverflow(el);
     el.classList.toggle("nsh-noindicator", !indicator);
   }
 
@@ -701,8 +699,20 @@ class Player {
     const el = this.view(id);
     if (!el) return;
     el._behavior = behavior;
-    el.style.overflow = behavior.enabled ? "" : "hidden";
+    this.scrollOverflow(el);
     this.snapMarkers(el);
+  }
+
+  /** Scrolls only along the view's axis, and not at all while scrolling is
+   * disabled. With `overflow: auto` on both axes, a vertical view's own bar
+   * narrows it below its content's laid-out width and adds a horizontal bar.
+   * Kept in `_base` so that restyling (`op_s`) keeps it. */
+  scrollOverflow(el) {
+    const scroll = el._behavior?.enabled === false ? "hidden" : "auto";
+    const [x, y] = el._horizontal ? [scroll, "hidden"] : ["hidden", scroll];
+    el._base = `overflow-x:${x};overflow-y:${y};`;
+    el.style.overflowX = x;
+    el.style.overflowY = y;
   }
 
   snapMarkers(el) {
