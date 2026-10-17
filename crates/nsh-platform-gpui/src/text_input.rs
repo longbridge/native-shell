@@ -579,6 +579,43 @@ fn input_of(view: &NshView) -> Option<Rc<InputState>> {
     view.state().input.clone()
 }
 
+/// The field's text, whether it is read-only and whether it is secure, for
+/// accessibility's value ([`crate::access`]).
+pub(crate) fn accessible_value(view: &NshView) -> Option<crate::access::FieldValue> {
+    let input = input_of(view)?;
+    let config = input.config.borrow();
+    Some(crate::access::FieldValue {
+        text: if config.secure {
+            String::new()
+        } else {
+            input.model.borrow().text().to_owned()
+        },
+        read_only: !config.editable,
+        password: config.secure,
+    })
+}
+
+/// Replaces the field's text as typing it would (an assistive
+/// technology's set value): `maxLength` applies and the change is
+/// reported. False when it cannot (read-only).
+pub(crate) fn set_accessible_value(surface: &Rc<Surface>, view: &NshView, text: &str) -> bool {
+    let Some(input) = input_of(view) else {
+        return false;
+    };
+    if !input.config.borrow().editable {
+        return false;
+    }
+    let text = pasted(text, input.multiline());
+    input.model.borrow_mut().select_all();
+    if text.is_empty() {
+        let deleted = input.model.borrow_mut().delete(Unit::Char, false);
+        after_edit(surface, view, &input, deleted);
+    } else {
+        insert(surface, view, &input, &text, false);
+    }
+    true
+}
+
 /// The field that has the keyboard focus.
 pub(crate) fn focused(surface: &Surface) -> Option<NshView> {
     let view = FOCUS.with(|f| f.borrow().get(&surface.key()).and_then(|f| f.view.clone()))?;
@@ -635,6 +672,7 @@ fn set_focus(surface: &Rc<Surface>, view: Option<&NshView>) {
         send(surface, view, EventKind::Focus, || EventPayload::None);
         // The scroll views around bring the field into view.
         crate::scroll::reveal(surface, view);
+        crate::access::focus_changed(surface, view);
         view.changed();
     }
     blink::update();
@@ -1429,7 +1467,7 @@ pub(crate) fn context_menu(surface: &Rc<Surface>, view: &NshView) {
     }
     let key = surface.key();
     let view = view.clone();
-    crate::rt::defer(move |cx| {
+    crate::rt::on_app(move |cx| {
         let has_text = cx
             .read_from_clipboard()
             .and_then(|item| item.text())
@@ -1701,7 +1739,7 @@ fn copy(input: &InputState, secure: bool) {
         }
         model.selected().to_owned()
     };
-    crate::rt::defer(move |cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
+    crate::rt::on_app(move |cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text)));
 }
 
 fn cut(surface: &Surface, view: &NshView, input: &InputState, secure: bool) -> bool {
@@ -1722,7 +1760,7 @@ fn cut(surface: &Surface, view: &NshView, input: &InputState, secure: bool) -> b
 fn paste(surface: &Surface, view: &NshView) {
     let key = surface.key();
     let view = view.clone();
-    crate::rt::defer(move |cx| {
+    crate::rt::on_app(move |cx| {
         let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
             return;
         };

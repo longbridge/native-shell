@@ -131,6 +131,7 @@ impl AppView {
         surface.entity.set(Some(cx.entity_id()));
         *surface.text_system.borrow_mut() = Some(cx.text_system().clone());
         surface.native.set_components(options.components.clone());
+        crate::system::watch_environment(&surface, window, cx);
         AppView {
             surface,
             focus: cx.focus_handle(),
@@ -308,11 +309,16 @@ impl gpui::EntityInputHandler for AppView {
 
 impl Render for AppView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        SurfaceElement {
+        let surface = SurfaceElement {
             surface: self.surface.clone(),
             focus: self.focus.clone(),
             view: cx.entity().downgrade(),
-        }
+        };
+        // A dev session draws its status line and error overlay above.
+        #[cfg(feature = "dev")]
+        return crate::dev::wrap(self, surface.into_any_element(), cx);
+        #[cfg(not(feature = "dev"))]
+        surface
     }
 }
 
@@ -363,6 +369,7 @@ pub fn open_app_window(
             AppSource::DevServer(url) => crate::dev::start(&view, url, cx),
         }
         let focus = view.read(cx).focus.clone();
+        crate::system::own_window(view.read(cx).surface());
         window.focus(&focus, cx);
         view
     })?;

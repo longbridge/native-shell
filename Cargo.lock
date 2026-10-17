@@ -4405,6 +4405,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsh-gpui-app"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nsh-platform-gpui",
+ "serde_json",
+]
+
+[[package]]
 name = "nsh-gpui-host"
 version = "0.1.0"
 dependencies = [
@@ -4550,6 +4559,7 @@ dependencies = [
  "serde_json",
  "ttf-parser",
  "ureq",
+ "zbus",
 ]
 
 [[package]]
