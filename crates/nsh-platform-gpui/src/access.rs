@@ -24,3 +24,7 @@ pub(crate) fn text_changed(_view: &NshView) {}
 pub(crate) fn prepare(_batch: &nsh_core::MountBatch) {}
 /// A batch was applied.
 pub(crate) fn batch_applied(_surface: &Surface) {}
+/// Announces `text` to assistive technologies (a toast, `announce`).
+pub(crate) fn announce(_surface: &Rc<Surface>, text: &str) {
+    log::debug!("announce: {text}");
+}

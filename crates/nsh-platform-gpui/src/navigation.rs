@@ -57,3 +57,6 @@ pub(crate) fn stack_changed(_surface: &Rc<Surface>, _stack: &NshView, _added: Op
 pub(crate) fn stack_resized(_surface: &Rc<Surface>, _stack: &NshView) {}
 /// The surface was resized.
 pub(crate) fn surface_resized(_surface: &Surface, _width: f32, _height: f32) {}
+/// `Command::Back`: the app did not take the back press; goes back
+/// without asking it again.
+pub(crate) fn default_back(_surface: &Rc<Surface>) {}
